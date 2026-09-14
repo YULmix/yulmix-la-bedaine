@@ -1,0 +1,33 @@
+# TECH STACK & ARCHITECTURE
+- Stack: React (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js).
+- Styling: Use '@tailwindcss/vite' plugin in vite.config.js. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'. Do not create tailwind.config.js or postcss.config.js.
+- Supabase Client: Initialize and export the client strictly from 'src/lib/supabase.js'.
+- Environment Keys: Use 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'.
+
+# LOCALIZATION & TYPES
+- Variables, database entities, internal comments, and file names must be in English.
+- All customer-facing and admin-facing UI text (labels, headers, buttons, error messages, modals, banners) must be French (fr-CA).
+- Currency: CAD ($). Display format: "0,00 $ CAD" or standard Quebec formatting.
+
+# DATABASE DESIGN & SECURITY
+- Target Output: All schema updates, triggers, and Row Level Security scripts must be appended to 'supabase/schema.sql'.
+- Auth Architecture: Sync 'auth.users' to 'public.profiles' using an automated trigger on insert.
+- Roles: Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'. Use an 'is_admin' boolean column on 'public.profiles'.
+- Row Level Security: Enable RLS on every table. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins.
+
+# SYSTEM OS (WINDOWS POWERSHELL RULES)
+- Operating System: Windows running PowerShell.
+- Never use Unix chain operators (&&, ;, ||). Run commands as individual executions.
+- Never use inline shell environment variable setters (e.g. 'NODE_ENV=dev command').
+- Do not use Unix redirection operators ('2>nul', '> /dev/null'). Use '2>$null' or '| Out-Null'.
+- Always use forward slashes (/) for JavaScript/TypeScript imports and asset paths.
+- Always run 'npm run build' after substantial file changes to verify compilation.
+- Do not run process-killing commands (Stop-Process, taskkill) targeting powershell, cmd, or conhost.
+- Never wrap shell commands in JSON array brackets (e.g., ["command"]). Run plain, standard PowerShell commands directly.
+- File Inspection: Never pipe Get-Content into Select-String or Select-Object via terminal. Always use the built-in 'read_file' tool to check file contents.
+
+### Language & Localization Policy (fr-CA)
+- 100% of user-facing UI text, button labels, table headers, form placeholders, toasts, modal dialogs, and error messages MUST be written in natural Quebec French (fr-CA).
+- Never render raw database enums or technical keys directly to the user. Always map them to localized French display labels (e.g., PAID -> Payé, UNPAID -> En attente de paiement, DRAFT -> Brouillon, ACTIVE -> En cours).
+- When a prompt or technical requirement provides an English label, concept, or column name (e.g., "Sign Out", "User Name", "Bed", "Sofa"), automatically translate it to standard French UI terminology ("Se déconnecter", "Nom de l'utilisateur", "Lit", "Canapé").
+- Format all dates using French Canadian standards (e.g., YYYY-MM-DD or 'D MMMM YYYY') and currency as CAD with the dollar sign following the amount (e.g., "75,00 $ CAD").
