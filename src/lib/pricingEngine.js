@@ -1,0 +1,181 @@
+/**
+ * Pricing Engine for Bedaine Event Cost Calculation
+ * 
+ * Business Rules:
+ * 1. Points per attendee:
+ *    - Adult (Whole Event): 2.0 pts
+ *    - Adult (Main Event): 1.5 pts  
+ *    - Teenager (Whole Event): 1.0 pt
+ *    - Teenager (Main Event): 0.5 pts
+ *    - Kids / After-Party: 0.0 pts
+ * 
+ * 2. Contingency Cost = Total Event Cost * 1.20
+ *    Base Price per Point = Contingency Cost / Total Points
+ *    Round UP to nearest $10 CAD (e.g., $71 → $80, $70.01 → $80)
+ *    Zero-point guard: return $0.00 CAD
+ * 
+ * 3. New Member Discount:
+ *    - Adult Whole → 1.5 pts (Main Event equivalent)
+ *    - Teen Whole → 0.5 pts (Main Event equivalent)  
+ *    - Others remain at their base points
+ *    - 70% of calculated cost for new members
+ * 
+ * 4. Grandfathering: Paid parties preserve historical calculated_amount_owed
+ */
+
+/**
+ * Calculate base points by age type and participation level
+ * @param {string} type - 'Adult', 'Teenager', 'Kid'
+ * @param {string} participation - 'Whole', 'Main', 'After-Party'
+ * @returns {number} Points value
+ */
+export const calculateBasePoints = (type, participation) => {
+  if (type === 'Adult') {
+    return participation === 'Whole' ? 2.0 : 1.5;
+  }
+  if (type === 'Teenager') {
+    return participation === 'Whole' ? 1.0 : 0.5;
+  }
+  return 0.0;
+};
+
+/**
+ * Round amount UP to the nearest multiple of 10 CAD
+ * @param {number} amount - Amount in CAD
+ * @returns {number} Rounded amount
+ */
+export const roundUpToNearestTen = (amount) => {
+  return Math.ceil(amount / 10) * 10;
+};
+
+/**
+ * Calculate price per point with contingency
+ * @param {number} totalCost - Total event cost in CAD
+ * @param {number} totalPoints - Sum of all attendee points
+ * @returns {number} Base price per point (rounded up to nearest $10)
+ */
+export const calculatePricePerPoint = (totalCost, totalPoints) => {
+  if (totalPoints === 0) return 0;
+  
+  const contingencyCost = totalCost * 1.2;
+  const rawPricePerPoint = contingencyCost / totalPoints;
+  return roundUpToNearestTen(rawPricePerPoint);
+};
+
+/**
+ * Get final points for an attendee (with new member adjustment)
+ * @param {Object} attendee - Attendee object
+ * @param {string} attendee.type - 'Adult', 'Teenager', 'Kid'
+ * @param {string} attendee.participation - 'Whole', 'Main', 'After-Party'
+ * @param {boolean} attendee.isNewMember - Whether attendee is a new member
+ * @returns {number} Adjusted points
+ */
+export const getFinalPoints = (attendee) => {
+  const basePoints = calculateBasePoints(attendee.type, attendee.participation);
+  
+  // New member adjustment: Whole Event → Main Event equivalent
+  if (attendee.isNewMember) {
+    if (attendee.type === 'Adult' && attendee.participation === 'Whole') {
+      return 1.5; // Adult Main equivalent
+    }
+    if (attendee.type === 'Teenager' && attendee.participation === 'Whole') {
+      return 0.5; // Teen Main equivalent
+    }
+  }
+  
+  return basePoints;
+};
+
+/**
+ * Calculate total points across all attendees (ignoring new member status)
+ * @param {Array} attendeeParties - Array of party objects
+ * @returns {number} Total base points
+ */
+export const calculateTotalPoints = (attendeeParties) => {
+  return attendeeParties.reduce((sum, party) => {
+    return sum + party.attendees.reduce((partySum, attendee) => {
+      return partySum + calculateBasePoints(attendee.type, attendee.participation);
+    }, 0);
+  }, 0);
+};
+
+/**
+ * Simulate event pricing calculation
+ * @param {Array} attendeeParties - Array of party objects
+ * @param {number} totalCost - Total event cost in CAD
+ * @param {number|null} priceOverride - Optional override for base price per point
+ * @returns {Object} Pricing simulation results
+ */
+export const simulateEventPricing = (attendeeParties, totalCost, priceOverride = null) => {
+  // Sum all base points (ignoring isNewMember status)
+  const totalPoints = calculateTotalPoints(attendeeParties);
+  
+  // Calculate or use override for base price per point
+  const basePricePerPoint = priceOverride !== null 
+    ? priceOverride 
+    : calculatePricePerPoint(totalCost, totalPoints);
+  
+  // Calculate total owed amount
+  let calculated_amount_owed = 0;
+  
+  // Process each party
+  const processedParties = attendeeParties.map(party => {
+    let partyTotal = 0;
+    let processedAttendees = [];
+    
+    // Grandfathering: preserve historical amount for paid parties
+    if (party.is_paid) {
+      partyTotal = party.historical_owed || 0;
+    } else {
+      // Calculate cost for each attendee in the party
+      processedAttendees = party.attendees.map(attendee => {
+        const points = getFinalPoints(attendee);
+        let cost = points * basePricePerPoint;
+        
+        // Apply 70% discount for new members
+        if (attendee.isNewMember) {
+          cost *= 0.7;
+        }
+        
+        return {
+          ...attendee,
+          basePoints: calculateBasePoints(attendee.type, attendee.participation),
+          finalPoints: points,
+          calculated_cost: cost
+        };
+      });
+      
+      // Sum costs for all attendees in this party
+      partyTotal = processedAttendees.reduce((sum, attendee) => sum + attendee.calculated_cost, 0);
+    }
+    
+    // Add party total to overall total
+    calculated_amount_owed += partyTotal;
+    
+    // Return party object with calculated data
+    return {
+      ...party,
+      attendees: processedAttendees.length > 0 ? processedAttendees : party.attendees,
+      party_total: partyTotal
+    };
+  });
+  
+  return {
+    totalPoints,
+    basePricePerPoint,
+    calculated_amount_owed,
+    parties: processedParties,
+    contingencyCost: totalCost * 1.2,
+    rawPricePerPoint: totalPoints > 0 ? (totalCost * 1.2) / totalPoints : 0
+  };
+};
+
+// Export all functions
+export default {
+  calculateBasePoints,
+  roundUpToNearestTen,
+  calculatePricePerPoint,
+  getFinalPoints,
+  calculateTotalPoints,
+  simulateEventPricing
+};

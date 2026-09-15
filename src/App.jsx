@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
+import HomeView from './views/HomeView';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 
@@ -165,61 +166,9 @@ function App() {
             {fr.welcome}
           </h1>
 
-          {/* Active Event Banner */}
-          {activeEvent && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-600 rounded-lg shadow-lg p-6 mb-8">
-              <div className="flex items-center mb-4">
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">
-                  Événement actif
-                </span>
-                <span className="ml-auto px-3 py-1 bg-green-100 text-green-800 text-sm font-semibold rounded-full">
-                  {activeEvent.is_reg_open ? 'Inscriptions ouvertes' : 'Inscriptions fermées'}
-                </span>
-              </div>
-              
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-3">
-                {activeEvent.theme}
-              </h2>
-              
-              <p className="text-gray-600 mb-4">
-                {activeEvent.description}
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-sm text-gray-500">Lieu</p>
-                  <p className="font-semibold">{activeEvent.venue_address}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-sm text-gray-500">Durée</p>
-                  <p className="font-semibold">{activeEvent.duration_days} jours</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-sm text-gray-500">Coût individuel estimé</p>
-                  <p className="font-semibold">{formatCurrency(activeEvent.estimated_individual_cost_whole_event)}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-sm text-gray-500">Date d'ouverture des inscriptions</p>
-                  <p className="font-semibold">{formatDate(activeEvent.reg_start_date)}</p>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap gap-4">
-                <button 
-                  onClick={() => handleEventClick(activeEvent)}
-                  className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Voir les détails complets
-                </button>
-                {activeEvent.is_reg_open && (
-                  <button className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors">
-                    S'inscrire maintenant
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          
+          {/* Active Event Registration Flow */}
+          <HomeView activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
+
           {/* Other Events */}
           {otherEvents.length > 0 && (
             <>
@@ -310,3 +259,4 @@ function App() {
 }
 
 export default App;
+

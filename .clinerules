@@ -1,33 +1,44 @@
 # TECH STACK & ARCHITECTURE
-- Stack: React (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js).
-- Styling: Use '@tailwindcss/vite' plugin in vite.config.js. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'. Do not create tailwind.config.js or postcss.config.js.
-- Supabase Client: Initialize and export the client strictly from 'src/lib/supabase.js'.
-- Environment Keys: Use 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'.
+- Stack: React (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js)[cite: 1].
+- Styling: Use '@tailwindcss/vite' plugin in vite.config.js[cite: 1]. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'[cite: 1]. Do not create tailwind.config.js or postcss.config.js[cite: 1].
+- Supabase Client: Initialize and export the client strictly from 'src/lib/supabase.js'[cite: 1].
+- Environment Keys: Use 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'[cite: 1].
 
 # LOCALIZATION & TYPES
-- Variables, database entities, internal comments, and file names must be in English.
-- All customer-facing and admin-facing UI text (labels, headers, buttons, error messages, modals, banners) must be French (fr-CA).
-- Currency: CAD ($). Display format: "0,00 $ CAD" or standard Quebec formatting.
+- Variables, database entities, internal comments, and file names must be in English[cite: 1].
+- All customer-facing and admin-facing UI text (labels, headers, buttons, error messages, modals, banners) must be French (fr-CA)[cite: 1].
+- Currency: CAD ($). Display format: "0,00 $ CAD" or standard Quebec formatting[cite: 1].
 
 # DATABASE DESIGN & SECURITY
-- Target Output: All schema updates, triggers, and Row Level Security scripts must be appended to 'supabase/schema.sql'.
-- Auth Architecture: Sync 'auth.users' to 'public.profiles' using an automated trigger on insert.
-- Roles: Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'. Use an 'is_admin' boolean column on 'public.profiles'.
-- Row Level Security: Enable RLS on every table. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins.
+- Target Output: All schema updates, triggers, and Row Level Security scripts must be appended to 'supabase/schema.sql'[cite: 1].
+- Auth Architecture: Sync 'auth.users' to 'public.profiles' using an automated trigger on insert[cite: 1].
+- Roles: Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'[cite: 1]. Use an 'is_admin' boolean column on 'public.profiles'[cite: 1].
+- Row Level Security: Enable RLS on every table[cite: 1]. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins[cite: 1].
 
 # SYSTEM OS (WINDOWS POWERSHELL RULES)
-- Operating System: Windows running PowerShell.
-- Never use Unix chain operators (&&, ;, ||). Run commands as individual executions.
-- Never use inline shell environment variable setters (e.g. 'NODE_ENV=dev command').
-- Do not use Unix redirection operators ('2>nul', '> /dev/null'). Use '2>$null' or '| Out-Null'.
-- Always use forward slashes (/) for JavaScript/TypeScript imports and asset paths.
-- Always run 'npm run build' after substantial file changes to verify compilation.
-- Do not run process-killing commands (Stop-Process, taskkill) targeting powershell, cmd, or conhost.
-- Never wrap shell commands in JSON array brackets (e.g., ["command"]). Run plain, standard PowerShell commands directly.
-- File Inspection: Never pipe Get-Content into Select-String or Select-Object via terminal. Always use the built-in 'read_file' tool to check file contents.
+- Operating System: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7).
+- Command Execution & Separators:
+  - The operators '&&' and '||' do NOT exist in Windows PowerShell 5.1 and produce a fatal ParserError.
+  - Never chain commands using '&&', '||', or ';'. Every command must be executed as a single, standalone tool call.
+  - Never run 'cd <directory> && <command>' or execute 'cd' prior to tasks. The session opens in the project root workspace; run commands (such as 'npm install', 'npm run build', 'npm run dev') directly[cite: 2].
+- Shell Syntax & Switches:
+  - Never use Command Prompt (cmd.exe) switches or flags like '/b', '/s', '/q', or '/y'.
+  - To list files bare/names-only, use 'Get-ChildItem -Name', never 'dir /b'.
+  - Prefer using built-in workspace inspection tools ('list_files', 'read_file') over terminal directory listing commands.
+- Script Formatting:
+  - Never use inline shell environment variable setters (e.g., 'NODE_ENV=dev command')[cite: 1].
+  - Do not use Unix redirection operators ('2>nul', '> /dev/null')[cite: 1]. Use '2>$null' or '| Out-Null'[cite: 1].
+  - Always use forward slashes (/) for JavaScript/TypeScript imports and asset paths[cite: 1].
+  - Always run 'npm run build' after substantial file changes to verify compilation[cite: 1].
+  - Do not run process-killing commands (Stop-Process, taskkill) targeting powershell, cmd, or conhost[cite: 1].
+  - Never wrap shell commands in JSON array brackets (e.g., ["command"]). Run plain, standard PowerShell commands directly[cite: 1].
+- File Inspection & Operations:
+  - Never pipe Get-Content into Select-String or Select-Object via terminal[cite: 1, 2]. Always use the built-in 'read_file' tool to check file contents[cite: 1, 2].
+  - Always use the built-in 'write_to_file' or 'replace_in_file' tools to create or edit files. Do not use PowerShell file creation cmdlets (Set-Content, Out-File, Add-Content) via the terminal[cite: 1].
+  - Dev Server & Process Execution: Never use 'Start-Process' to launch npm or node scripts. Windows rejects 'npm' as not a valid Win32 application. Do not run persistent dev servers via tool calls; instruct the user to run 'npm run dev' directly.
 
 ### Language & Localization Policy (fr-CA)
-- 100% of user-facing UI text, button labels, table headers, form placeholders, toasts, modal dialogs, and error messages MUST be written in natural Quebec French (fr-CA).
-- Never render raw database enums or technical keys directly to the user. Always map them to localized French display labels (e.g., PAID -> Payé, UNPAID -> En attente de paiement, DRAFT -> Brouillon, ACTIVE -> En cours).
-- When a prompt or technical requirement provides an English label, concept, or column name (e.g., "Sign Out", "User Name", "Bed", "Sofa"), automatically translate it to standard French UI terminology ("Se déconnecter", "Nom de l'utilisateur", "Lit", "Canapé").
-- Format all dates using French Canadian standards (e.g., YYYY-MM-DD or 'D MMMM YYYY') and currency as CAD with the dollar sign following the amount (e.g., "75,00 $ CAD").
+- 100% of user-facing UI text, button labels, table headers, form placeholders, toasts, modal dialogs, and error messages MUST be written in natural Quebec French (fr-CA)[cite: 3].
+- Never render raw database enums or technical keys directly to the user[cite: 3]. Always map them to localized French display labels (e.g., PAID -> Payé, UNPAID -> En attente de paiement, DRAFT -> Brouillon, ACTIVE -> En cours)[cite: 3].
+- When a prompt or technical requirement provides an English label, concept, or column name (e.g., "Sign Out", "User Name", "Bed", "Sofa"), automatically translate it to standard French UI terminology ("Se déconnecter", "Nom de l'utilisateur", "Lit", "Canapé")[cite: 3].
+- Format all dates using French Canadian standards (e.g., YYYY-MM-DD or 'D MMMM YYYY') and currency as CAD with the dollar sign following the amount (e.g., "75,00 $ CAD")[cite: 3].

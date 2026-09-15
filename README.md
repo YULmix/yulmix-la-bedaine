@@ -55,8 +55,8 @@ cp .env.example .env
 ```
 Remplir les valeurs dans `.env`:
 ```
-VITE_SUPABASE_URL=https://ceacurlofmasyvhsoska.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_BBa7kvKsIOdAf80vx5ksFw_FK81oyc6
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
 4. Lancer l'application en mode développement
