@@ -1,4 +1,4 @@
-﻿import { X } from 'lucide-react';
+import { X } from 'lucide-react';
 import fr from '../locales/fr.json';
 
 const EventModal = ({ event, isOpen, onClose }) => {

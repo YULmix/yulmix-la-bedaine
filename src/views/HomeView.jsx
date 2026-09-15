@@ -89,6 +89,20 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
     });
   };
 
+  const handleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erreur de connexion:', error);
+    }
+  };
+
   const eventPhase = getEventPhase();
 // If no active event
   if (!activeEvent) {
@@ -227,7 +241,7 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
           <h3 className="text-xl font-semibold text-gray-700 mb-2">Connectez-vous pour vous inscrire</h3>
           <p className="text-gray-500 mb-6">Vous devez être connecté pour voir les détails de l'événement et vous inscrire.</p>
           <button 
-            onClick={() => {/* Auth handled by header */}}
+            onClick={handleSignIn}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
             Se connecter

@@ -1,12 +1,12 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { calculateBasePoints, calculatePricePerPoint, simulateEventPricing } from '../lib/pricingEngine';
 
 const TIER_OPTIONS = [
-  { value: 'adult-whole', label: 'Adulte - Fin de semaine complÃ¨te', type: 'Adult', participation: 'Whole' },
-  { value: 'adult-main', label: 'Adulte - Ã‰vÃ©nement principal', type: 'Adult', participation: 'Main' },
-  { value: 'teen-whole', label: 'Ado - Fin de semaine complÃ¨te', type: 'Teenager', participation: 'Whole' },
-  { value: 'teen-main', label: 'Ado - Ã‰vÃ©nement principal', type: 'Teenager', participation: 'Main' },
+  { value: 'adult-whole', label: 'Adulte - Fin de semaine complète', type: 'Adult', participation: 'Whole' },
+  { value: 'adult-main', label: 'Adulte - Événement principal', type: 'Adult', participation: 'Main' },
+  { value: 'teen-whole', label: 'Ado - Fin de semaine complète', type: 'Teenager', participation: 'Whole' },
+  { value: 'teen-main', label: 'Ado - Événement principal', type: 'Teenager', participation: 'Main' },
   { value: 'kid', label: 'Enfant', type: 'Kid', participation: 'After-Party' }
 ];
 
@@ -105,7 +105,7 @@ const handleRemoveAttendee = (id) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!event || !event.id) {
-      setError('Ã‰vÃ©nement non spÃ©cifiÃ©');
+      setError('Événement non spécifié');
       return;
     }
 
@@ -116,7 +116,7 @@ const handleRemoveAttendee = (id) => {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
-      if (!user) throw new Error('Vous devez Ãªtre connectÃ© pour vous inscrire');
+      if (!user) throw new Error('Vous devez être connecté pour vous inscrire');
 
       // Prepare attendees data for storage
       const attendeesData = attendees.map(attendee => ({
@@ -160,8 +160,8 @@ const handleRemoveAttendee = (id) => {
         attendees: attendeesData,
         counts: counts,
         calculated_amount_owed: estimatedBalance,
-        status: 'EnregistrÃ©',
-        payment_status: 'ImpayÃ©',
+        status: 'Enregistré',
+        payment_status: 'Impayé',
         is_waitlisted: false
       };
 
@@ -202,9 +202,9 @@ const handleRemoveAttendee = (id) => {
     
       return (
     <div className="bg-white rounded-xl shadow-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Inscription Ã  l'Ã©vÃ©nement</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Inscription à l'événement</h2>
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">{error}</div>}
-      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">âœ… Votre inscription a Ã©tÃ© enregistrÃ©e avec succÃ¨s!</div>}
+      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">✓ Votre inscription a été enregistrée avec succès!</div>}
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
           {/* Attendee list */}
@@ -250,7 +250,7 @@ const handleRemoveAttendee = (id) => {
           </div>
 {/* Summary section */}
           <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">RÃ©sumÃ© de votre inscription</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">Résumé de votre inscription</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
                 <div className="text-3xl font-bold text-blue-600">{totalPoints.toFixed(1)}</div>
@@ -262,11 +262,11 @@ const handleRemoveAttendee = (id) => {
               </div>
               <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
                 <div className="text-3xl font-bold text-purple-600">{formatCurrency(estimatedBalance)}</div>
-                <div className="text-sm text-gray-600 mt-1">Montant estimÃ© dÃ»</div>
+                <div className="text-sm text-gray-600 mt-1">Montant estimé dû</div>
               </div>
             </div>
             <div className="mt-6 text-sm text-gray-600">
-              <p>Le calcul inclut une marge de contingence de 20% sur le coÃ»t total de l'Ã©vÃ©nement. Les nouveaux membres bÃ©nÃ©ficient d'une rÃ©duction de 70% sur le coÃ»t calculÃ©.</p>
+              <p>Le calcul inclut une marge de contingence de 20% sur le coût total de l'événement. Les nouveaux membres bénéficient d'une réduction de 70% sur le coût calculé.</p>
             </div>
           </div>
 

@@ -1,44 +1,32 @@
 # TECH STACK & ARCHITECTURE
-- Stack: React (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js)[cite: 1].
-- Styling: Use '@tailwindcss/vite' plugin in vite.config.js[cite: 1]. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'[cite: 1]. Do not create tailwind.config.js or postcss.config.js[cite: 1].
-- Supabase Client: Initialize and export the client strictly from 'src/lib/supabase.js'[cite: 1].
-- Environment Keys: Use 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'[cite: 1].
+- Stack: React 19 (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js).
+- Styling: Use '@tailwindcss/vite' plugin in vite.config.js. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'[cite: 1]. Do not create tailwind.config.js or postcss.config.js[cite: 1].
+- Client Isolation: Initialize and export Supabase client strictly from 'src/lib/supabase.js' using 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'[cite: 1].
 
-# LOCALIZATION & TYPES
-- Variables, database entities, internal comments, and file names must be in English[cite: 1].
-- All customer-facing and admin-facing UI text (labels, headers, buttons, error messages, modals, banners) must be French (fr-CA)[cite: 1].
-- Currency: CAD ($). Display format: "0,00 $ CAD" or standard Quebec formatting[cite: 1].
+# LOCALIZATION & ENCODING (fr-CA)
+- Codebase Language: Code, variables, database entities, file names, and internal comments must be in English[cite: 1].
+- UI Language: 100% of user-facing UI text, button labels, table headers, form placeholders, toasts, modal dialogs, and error messages MUST be in natural Quebec French (fr-CA).
+- Centralized Dictionary: Keep all UI strings and translations centralized in 'src/locales/fr.json'[cite: 6]. Components must pull labels from this dictionary rather than hardcoding raw strings.
+- Enums & Formats: Never render raw DB enums (e.g., map PAID -> "Payé", UNPAID -> "En attente de paiement", DRAFT -> "Brouillon", ACTIVE -> "En cours")[cite: 1, 3]. Currency: "0,00 $ CAD"[cite: 1, 3]. Dates: French Canadian standard (YYYY-MM-DD or 'D MMMM YYYY')[cite: 3].
+- File Encoding: All source files, JSX components, and JSON dictionaries MUST strictly be authored and saved in UTF-8 (without BOM). Never allow terminal tools to re-encode accented French characters into Windows-1252/ANSI.
 
 # DATABASE DESIGN & SECURITY
-- Target Output: All schema updates, triggers, and Row Level Security scripts must be appended to 'supabase/schema.sql'[cite: 1].
-- Auth Architecture: Sync 'auth.users' to 'public.profiles' using an automated trigger on insert[cite: 1].
-- Roles: Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'[cite: 1]. Use an 'is_admin' boolean column on 'public.profiles'[cite: 1].
-- Row Level Security: Enable RLS on every table[cite: 1]. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins[cite: 1].
+- Target Output: All schema updates, triggers, and RLS policies must be appended to 'supabase/schema.sql'[cite: 1].
+- Auth Architecture: Sync 'auth.users' to 'public.profiles' via an automated trigger on insert[cite: 1]. Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'[cite: 1].
+- Row Level Security: Enable RLS on every table[cite: 1]. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins[cite: 1]. Prevent self-privilege escalation on 'is_admin'[cite: 4].
 
-# SYSTEM OS (WINDOWS POWERSHELL RULES)
-- Operating System: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7).
-- Command Execution & Separators:
-  - The operators '&&' and '||' do NOT exist in Windows PowerShell 5.1 and produce a fatal ParserError.
-  - Never chain commands using '&&', '||', or ';'. Every command must be executed as a single, standalone tool call.
-  - Never run 'cd <directory> && <command>' or execute 'cd' prior to tasks. The session opens in the project root workspace; run commands (such as 'npm install', 'npm run build', 'npm run dev') directly[cite: 2].
-- Shell Syntax & Switches:
-  - Never use Command Prompt (cmd.exe) switches or flags like '/b', '/s', '/q', or '/y'.
-  - To list files bare/names-only, use 'Get-ChildItem -Name', never 'dir /b'.
-  - Prefer using built-in workspace inspection tools ('list_files', 'read_file') over terminal directory listing commands.
-- Script Formatting:
-  - Never use inline shell environment variable setters (e.g., 'NODE_ENV=dev command')[cite: 1].
-  - Do not use Unix redirection operators ('2>nul', '> /dev/null')[cite: 1]. Use '2>$null' or '| Out-Null'[cite: 1].
-  - Always use forward slashes (/) for JavaScript/TypeScript imports and asset paths[cite: 1].
-  - Always run 'npm run build' after substantial file changes to verify compilation[cite: 1].
-  - Do not run process-killing commands (Stop-Process, taskkill) targeting powershell, cmd, or conhost[cite: 1].
+# SYSTEM OS (WINDOWS POWERSHELL 5.1 RULES)
+- Shell Environment: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7)[cite: 1].
+- Execution & Chaining:
+  - The operators '&&', '||', and ';' are invalid statement separators in PowerShell 5.1. Never chain commands. Run each command as a single, standalone tool call[cite: 1].
+  - The terminal session opens in the project root workspace; never run 'cd <directory>' prior to commands[cite: 1].
   - Never wrap shell commands in JSON array brackets (e.g., ["command"]). Run plain, standard PowerShell commands directly[cite: 1].
-- File Inspection & Operations:
-  - Never pipe Get-Content into Select-String or Select-Object via terminal[cite: 1, 2]. Always use the built-in 'read_file' tool to check file contents[cite: 1, 2].
-  - Always use the built-in 'write_to_file' or 'replace_in_file' tools to create or edit files. Do not use PowerShell file creation cmdlets (Set-Content, Out-File, Add-Content) via the terminal[cite: 1].
-  - Dev Server & Process Execution: Never use 'Start-Process' to launch npm or node scripts. Windows rejects 'npm' as not a valid Win32 application. Do not run persistent dev servers via tool calls; instruct the user to run 'npm run dev' directly.
-
-### Language & Localization Policy (fr-CA)
-- 100% of user-facing UI text, button labels, table headers, form placeholders, toasts, modal dialogs, and error messages MUST be written in natural Quebec French (fr-CA)[cite: 3].
-- Never render raw database enums or technical keys directly to the user[cite: 3]. Always map them to localized French display labels (e.g., PAID -> Payé, UNPAID -> En attente de paiement, DRAFT -> Brouillon, ACTIVE -> En cours)[cite: 3].
-- When a prompt or technical requirement provides an English label, concept, or column name (e.g., "Sign Out", "User Name", "Bed", "Sofa"), automatically translate it to standard French UI terminology ("Se déconnecter", "Nom de l'utilisateur", "Lit", "Canapé")[cite: 3].
-- Format all dates using French Canadian standards (e.g., YYYY-MM-DD or 'D MMMM YYYY') and currency as CAD with the dollar sign following the amount (e.g., "75,00 $ CAD")[cite: 3].
+- Cmdlet Compatibility:
+  - Do not use PowerShell 7+ specific parameters (e.g., 'Get-Content -AsByteStream' does NOT exist in 5.1; do not use it).
+  - Never use Command Prompt (cmd.exe) switches ('/b', '/s', '/q', '/y')[cite: 1]. To list files bare/names-only, use 'Get-ChildItem -Name'[cite: 1].
+  - Do not use inline environment variable setters ('NODE_ENV=dev command') or Unix redirection ('2>nul', '> /dev/null')[cite: 1]. Use '2>$null' or '| Out-Null'[cite: 1].
+- File Operations & Tool Discipline:
+  - NEVER use PowerShell cmdlets (Get-Content, Set-Content, Out-File, Add-Content) or terminal pipelines to inspect, search, or edit code[cite: 1].
+  - Always use built-in agent tools: 'read_file', 'write_to_file', 'replace_in_file', and 'list_files'[cite: 1].
+  - Dev Server: Never use 'Start-Process' to run npm or node scripts[cite: 5]. Instruct the user to run 'npm run dev' directly[cite: 5].
+  - Always run 'npm run build' after substantial file changes to verify compilation[cite: 1].

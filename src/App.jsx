@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
 import HomeView from './views/HomeView';
@@ -13,14 +13,46 @@ function App() {
   const [activeEvent, setActiveEvent] = useState(null);
   const [otherEvents, setOtherEvents] = useState([]);
 
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+
   useEffect(() => {
     fetchEvents();
     
-    // Simulate auth check
-    setTimeout(() => {
-      setIsAuthenticated(false);
-      setLoading(false);
-    }, 500);
+    // Initialize auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session);
+        setSession(session);
+        setUser(session?.user || null);
+        setIsAuthenticated(!!session);
+        setLoading(false);
+      }
+    );
+
+    // Get initial session
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        console.log('Initial session:', session);
+        setSession(session);
+        setUser(session?.user || null);
+        setIsAuthenticated(!!session);
+      } catch (error) {
+        console.error('Error getting initial session:', error);
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getInitialSession();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchEvents = async () => {
@@ -158,7 +190,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} />
+      <Header isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} user={user} />
 
       <main className="flex-grow container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">

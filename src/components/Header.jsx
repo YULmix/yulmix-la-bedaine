@@ -3,23 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 
-const Header = ({ isAuthenticated, setIsAuthenticated }) => {
+const Header = ({ isAuthenticated, setIsAuthenticated, user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const navigate = useNavigate();
+  
+  // User display name
+  const userDisplayName = user 
+    ? (user.user_metadata?.full_name || user.email || fr.profile)
+    : fr.profile;
 
   const handleSignIn = async (provider) => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}`
         }
       });
       
       if (error) {
         console.error(`${fr.authError}:`, error);
-      } else {
-        setIsAuthenticated(true);
       }
     } catch (error) {
       console.error(`${fr.authError}:`, error);
@@ -56,7 +59,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated }) => {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg"
           >
-            {isAuthenticated ? fr.profile : fr.signIn}
+            {isAuthenticated ? userDisplayName : fr.signIn}
           </button>
           
           {isDropdownOpen && (
