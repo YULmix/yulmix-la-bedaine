@@ -14,10 +14,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user }) => {
 
   const handleSignIn = async (provider) => {
     try {
+      console.log('OAuth redirectTo:', window.location.origin);
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}`
+          redirectTo: window.location.origin
         }
       });
       
@@ -81,13 +82,6 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user }) => {
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={() => navigate('/profile')}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-100"
-                  >
-                    {fr.profile}
-                  </button>
-                  <div className="border-t my-1"></div>
                   <button
                     onClick={handleSignOut}
                     className="w-full px-4 py-3 text-left hover:bg-gray-100 text-red-600"

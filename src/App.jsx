@@ -194,9 +194,6 @@ function App() {
 
       <main className="flex-grow container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-6">
-            {fr.welcome}
-          </h1>
 
           {/* Active Event Registration Flow */}
           <HomeView activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
@@ -269,13 +266,10 @@ function App() {
       <footer className="bg-gray-800 text-white py-6">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm">
-            © {new Date().getFullYear()} {fr.appTitle}. {fr.allRightsReserved}
+            © {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}
           </p>
           <div className="mt-4 flex justify-center space-x-6 text-sm">
-            <a href="#" className="hover:text-gray-300">{fr.privacy}</a>
-            <a href="#" className="hover:text-gray-300">{fr.terms}</a>
-            <a href="#" className="hover:text-gray-300">{fr.help}</a>
-            <a href="#" className="hover:text-gray-300">{fr.about}</a>
+            <a href="https://docs.google.com/document/d/17bVJexViR12O4x62B9gizkM5bny5Ey1lStzJA_5u1Do/edit?usp=sharing" className="hover:text-gray-300">{fr.about}</a>
           </div>
         </div>
       </footer>

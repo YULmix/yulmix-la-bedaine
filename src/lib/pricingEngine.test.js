@@ -34,9 +34,9 @@ const runTests = () => {
         ]
       }
     ],
-    totalCost: 1000,
+    sellingPriceWholeEvent: 1000,
     expectedTotal: 0,
-    reason: 'Kids have 0.0 points, so total points = 0, base price per point = 0'
+    reason: 'Kids have 0.0 points, so total price per point = sellingPriceWholeEvent / 2 = 500, cost = 0'
   });
   
   // Edge Case 2: Single adult calculation
@@ -51,9 +51,9 @@ const runTests = () => {
         ]
       }
     ],
-    totalCost: 1000,
-    expectedTotal: 1200,
-    reason: 'Adult Whole = 2.0 pts, contingency = 1200, price per point = 600, cost = 2.0 × 600 = 1200'
+    sellingPriceWholeEvent: 1000,
+    expectedTotal: 1000,
+    reason: 'Adult Whole = 2.0 pts, price per point = sellingPriceWholeEvent / 2 = 500, cost = 2.0 × 500 = 1000'
   });
   
   // Edge Case 3: Fractional new members
@@ -69,15 +69,15 @@ const runTests = () => {
         ]
       }
     ],
-    totalCost: 1000,
-    expectedTotal: 560,
-    reason: 'Base points: 2.0 + 1.0 = 3.0, contingency = 1200, price per point = 400, ' +
-            'Adult: 1.5 × 400 × 0.7 = 420, Teen: 0.5 × 400 × 0.7 = 140, Total = 560'
+    sellingPriceWholeEvent: 1000,
+    expectedTotal: 700,
+    reason: 'Price per point = sellingPriceWholeEvent / 2 = 500, ' +
+            'Adult: 1.5 × 500 × 0.7 = 525, Teen: 0.5 × 500 × 0.7 = 175, Total = 700'
   });
   
-  // Edge Case 4: Nearest-ten rounding boundary
+  // Edge Case 4: Fractional cost calculation
   testCases.push({
-    description: 'Rounding up to nearest $10',
+    description: 'Fractional cost calculation',
     parties: [
       {
         id: 'party-1',
@@ -87,10 +87,9 @@ const runTests = () => {
         ]
       }
     ],
-    totalCost: 1,
-    expectedTotal: 15,
-    reason: 'Contingency = 1.2, raw price per point = 1.2 / 1.5 = 0.8, ' +
-            'rounded up to $10, cost = 1.5 × 10 = 15'
+    sellingPriceWholeEvent: 1,
+    expectedTotal: 0.75,
+    reason: 'Price per point = sellingPriceWholeEvent / 2 = 0.5, cost = 1.5 × 0.5 = 0.75'
   });
   
 // Edge Case 5: Grandfathering for paid parties
@@ -113,8 +112,8 @@ const runTests = () => {
         ]
       }
     ],
-    totalCost: 1000,
-    expectedTotal: 1275, // Party1: 750 (grandfathered), Party2: 525 (see calculation below)
+    sellingPriceWholeEvent: 1000,
+    expectedTotal: 1500, // Party1: 750 (grandfathered), Party2: 750 (calculated)
     reason: 'Party1 is paid, so uses historical $750. Party2: total points = 2.0 + 1.5 = 3.5, ' +
             'contingency = 1200, raw price per point = 1200/3.5 ≈ 342.86 → rounded up to $350, ' +
             'cost = 1.5 × 350 = 525, Total = 750 + 525 = 1275'
@@ -124,7 +123,7 @@ const runTests = () => {
     console.log(`\n📋 Test Case ${index + 1}: ${test.description}`);
     console.log(`   ${test.reason}`);
     
-    const result = simulateEventPricing(test.parties, test.totalCost);
+    const result = simulateEventPricing(test.parties, test.sellingPriceWholeEvent);
     const formattedResult = toCAD(result.calculated_amount_owed);
     const formattedExpected = toCAD(test.expectedTotal);
     
@@ -142,8 +141,8 @@ const runTests = () => {
       console.log(`   Debug Info:`);
       console.log(`     - Total Points: ${result.totalPoints}`);
       console.log(`     - Base Price per Point: ${toCAD(result.basePricePerPoint)}`);
-      console.log(`     - Raw Price per Point: ${toCAD(result.rawPricePerPoint)}`);
-      console.log(`     - Contingency Cost: ${toCAD(result.contingencyCost)}`);
+      console.log(`     - Selling Price Whole Event: ${toCAD(result.sellingPriceWholeEvent)}`);
+      console.log(`     - Price per Point: ${toCAD(result.pricePerPoint)}`);
     }
   });
   

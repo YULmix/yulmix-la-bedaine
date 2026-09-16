@@ -9,10 +9,9 @@
  *    - Teenager (Main Event): 0.5 pts
  *    - Kids / After-Party: 0.0 pts
  * 
- * 2. Contingency Cost = Total Event Cost * 1.20
- *    Base Price per Point = Contingency Cost / Total Points
- *    Round UP to nearest $10 CAD (e.g., $71 → $80, $70.01 → $80)
- *    Zero-point guard: return $0.00 CAD
+ * 2. Price per point baseline:
+ *    - Unit price per point = events.selling_price_whole_event / 2.0
+ *    - Adult Whole (2.0 pts) pays exactly selling_price_whole_event
  * 
  * 3. New Member Discount:
  *    - Adult Whole → 1.5 pts (Main Event equivalent)
@@ -49,17 +48,26 @@ export const roundUpToNearestTen = (amount) => {
 };
 
 /**
- * Calculate price per point with contingency
+ * Calculate price per point with contingency (for internal cost estimation)
  * @param {number} totalCost - Total event cost in CAD
  * @param {number} totalPoints - Sum of all attendee points
  * @returns {number} Base price per point (rounded up to nearest $10)
  */
-export const calculatePricePerPoint = (totalCost, totalPoints) => {
+export const calculatePricePerPointFromTotalCost = (totalCost, totalPoints) => {
   if (totalPoints === 0) return 0;
   
   const contingencyCost = totalCost * 1.2;
   const rawPricePerPoint = contingencyCost / totalPoints;
   return roundUpToNearestTen(rawPricePerPoint);
+};
+
+/**
+ * Calculate price per point from selling price baseline
+ * @param {number} sellingPriceWholeEvent - Selling price for adult whole event in CAD
+ * @returns {number} Price per point (sellingPriceWholeEvent / 2.0)
+ */
+export const calculatePricePerPointFromSellingPrice = (sellingPriceWholeEvent) => {
+  return sellingPriceWholeEvent / 2.0;
 };
 
 /**
@@ -100,20 +108,20 @@ export const calculateTotalPoints = (attendeeParties) => {
 };
 
 /**
- * Simulate event pricing calculation
+ * Simulate event pricing calculation based on selling price
  * @param {Array} attendeeParties - Array of party objects
- * @param {number} totalCost - Total event cost in CAD
+ * @param {number} sellingPriceWholeEvent - Selling price for adult whole event in CAD
  * @param {number|null} priceOverride - Optional override for base price per point
  * @returns {Object} Pricing simulation results
  */
-export const simulateEventPricing = (attendeeParties, totalCost, priceOverride = null) => {
+export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, priceOverride = null) => {
   // Sum all base points (ignoring isNewMember status)
   const totalPoints = calculateTotalPoints(attendeeParties);
   
   // Calculate or use override for base price per point
   const basePricePerPoint = priceOverride !== null 
     ? priceOverride 
-    : calculatePricePerPoint(totalCost, totalPoints);
+    : calculatePricePerPointFromSellingPrice(sellingPriceWholeEvent);
   
   // Calculate total owed amount
   let calculated_amount_owed = 0;
@@ -165,8 +173,8 @@ export const simulateEventPricing = (attendeeParties, totalCost, priceOverride =
     basePricePerPoint,
     calculated_amount_owed,
     parties: processedParties,
-    contingencyCost: totalCost * 1.2,
-    rawPricePerPoint: totalPoints > 0 ? (totalCost * 1.2) / totalPoints : 0
+    sellingPriceWholeEvent,
+    pricePerPoint: basePricePerPoint
   };
 };
 
@@ -174,7 +182,8 @@ export const simulateEventPricing = (attendeeParties, totalCost, priceOverride =
 export default {
   calculateBasePoints,
   roundUpToNearestTen,
-  calculatePricePerPoint,
+  calculatePricePerPointFromTotalCost,
+  calculatePricePerPointFromSellingPrice,
   getFinalPoints,
   calculateTotalPoints,
   simulateEventPricing

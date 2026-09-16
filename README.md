@@ -102,6 +102,17 @@ L'application utilise Supabase pour l'authentification OAuth avec :
 
 Les boutons d'authentification sont disponibles dans le menu déroulant de l'en-tête.
 
+### Configuration Supabase OAuth
+
+Pour que l'authentification OAuth fonctionne en production, vous devez configurer les URLs de redirection dans le tableau de bord Supabase :
+
+1. Accédez à **Authentication > URL Configuration** dans votre projet Supabase
+2. Ajoutez les URLs de redirection suivantes :
+   - URL de développement : `http://localhost:5173`
+   - URL de production : `https://votre-domaine.com`
+3. Assurez-vous que les fournisseurs OAuth (Google, Facebook) sont activés et configurés
+
+L'application utilise `redirectTo: window.location.origin` pour gérer le retour OAuth.
 ## Composants principaux
 
 ### Header
@@ -128,6 +139,31 @@ Les boutons d'authentification sont disponibles dans le menu déroulant de l'en-
 - Styling avec classes Tailwind CSS
 - Import des traductions depuis le dictionnaire centralisé
 
+## Déploiement
+
+L'application est prête pour le déploiement sur Vercel, Netlify, ou toute autre plateforme prenant en charge les SPAs React.
+
+### Vercel
+1. Poussez le code sur GitHub, GitLab ou Bitbucket
+2. Connectez votre dépôt à Vercel
+3. Configurez les variables d'environnement :
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+4. Vercel détectera automatiquement le projet Vite et configurera les réécritures SPA
+
+### Netlify
+1. Poussez le code sur votre dépôt Git
+2. Créez un nouveau site sur Netlify et connectez votre dépôt
+3. Configurez les variables d'environnement dans les paramètres du site
+4. Netlify utilisera automatiquement le fichier `netlify.toml` pour la configuration
+
+### Variables d'environnement de production
+Assurez-vous de configurer les mêmes variables d'environnement que en développement :
+- `VITE_SUPABASE_URL` - URL de votre projet Supabase
+- `VITE_SUPABASE_ANON_KEY` - Clé anonyme Supabase
+
+### Configuration SPA
+Pour le routage côté client, assurez-vous que toutes les routes redirigent vers `index.html`. Les fichiers `vercel.json` et `netlify.toml` inclus configurent déjà ces redirections.
 ## Support
 
 Pour toute question ou problème, veuillez contacter l'équipe de développement.

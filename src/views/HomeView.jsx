@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import RegistrationForm from '../components/RegistrationForm';
+import RegistrationSummary from './RegistrationSummary';
 
 const HomeView = ({ activeEvent, isAuthenticated }) => {
   const [userRegistration, setUserRegistration] = useState(null);
   const [loadingRegistration, setLoadingRegistration] = useState(false);
   const [error, setError] = useState(null);
+const [isEditingRegistration, setIsEditingRegistration] = useState(false);
 
   // Fetch user registration for the active event
   useEffect(() => {
@@ -91,6 +93,7 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
 
   const handleSignIn = async () => {
     try {
+      console.log('OAuth redirectTo:', window.location.origin);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -121,6 +124,13 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
 
   return (
     <div className="space-y-8">
+      {/* Loading state for registration data */}
+      {loadingRegistration && (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-600">Chargement de votre inscription...</p>
+        </div>
+      )}
       {/* Event header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-white">
         <h1 className="text-3xl font-bold mb-2">{activeEvent.theme}</h1>
@@ -149,71 +159,30 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
           </div>
         </div>
       )}
-{/* User registration status */}
-      {isAuthenticated && userRegistration && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Votre inscription</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Statut</div>
-              <div className={`text-lg font-semibold ${userRegistration.status === 'Enregistré' ? 'text-green-600' : 'text-yellow-600'}`}>
-                {userRegistration.status}
-              </div>
-            </div>
-            
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Liste d'attente</div>
-              <div className={`text-lg font-semibold ${userRegistration.is_waitlisted ? 'text-red-600' : 'text-green-600'}`}>
-                {userRegistration.is_waitlisted ? 'Oui' : 'Non'}
-              </div>
-            </div>
-            
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Montant dû</div>
-              <div className="text-2xl font-bold text-purple-600">
-                {formatCurrency(userRegistration.calculated_amount_owed || 0)}
-              </div>
-            </div>
-          </div>
+      {/* User registration status */}
+      {isAuthenticated && userRegistration && !isEditingRegistration && eventPhase !== "INTENT_PHASE" && (
+        <RegistrationSummary
+          registration={userRegistration}
+          event={activeEvent}
+          onEdit={() => setIsEditingRegistration(true)}
+          onBackToHome={() => {/* nothing */}}
+        />
+      )}
 
-          {/* Payment alert */}
-          {userRegistration.payment_status === 'Impayé' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                <span className="text-red-700 font-medium">Envoyez votre virement Interac à: </span>
-                <span className="text-red-900 font-bold ml-2">yulmixalabedaine@gmail.com</span>
-              </div>
-              <p className="text-red-600 text-sm mt-2">Veuillez inclure votre nom et le numéro d'événement dans la description du virement.</p>
-            </div>
-          )}
-
-          {/* External links - Liste d'achats */}
-          {activeEvent.external_links && activeEvent.external_links.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">Ressources de l'événement</h3>
-              <div className="space-y-2">
-                {activeEvent.external_links.map((link, index) => (
-                  <a 
-                    key={index} 
-                    href={link.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                    </svg>
-                    {link.label || 'Lien de ressource'}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Edit registration form */}
+      {isAuthenticated && userRegistration && isEditingRegistration && eventPhase !== "INTENT_PHASE" && (
+        <RegistrationForm
+          event={activeEvent}
+          userRegistration={userRegistration}
+          onRegistrationSuccess={() => {
+            setIsEditingRegistration(false);
+            // Refresh registration data
+            if (activeEvent?.id) {
+              window.location.reload();
+            }
+          }}
+          onCancel={() => setIsEditingRegistration(false)}
+        />
       )}
 
       {/* Registration form (show if user is authenticated and either not registered or in intent phase) */}
@@ -260,3 +229,4 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
 };
 
 export default HomeView;
+

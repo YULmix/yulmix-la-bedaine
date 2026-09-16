@@ -14,6 +14,9 @@
 - Target Output: All schema updates, triggers, and RLS policies must be appended to 'supabase/schema.sql'[cite: 1].
 - Auth Architecture: Sync 'auth.users' to 'public.profiles' via an automated trigger on insert[cite: 1]. Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'[cite: 1].
 - Row Level Security: Enable RLS on every table[cite: 1]. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins[cite: 1]. Prevent self-privilege escalation on 'is_admin'[cite: 4].
+- Schema Change Protocol: Whenever you edit or append to 'supabase/schema.sql', you MUST explicitly alert the user in your final response with:
+  1. A summary of what database entities changed (new columns, policies, triggers, or views).
+  2. An isolated SQL snippet containing ONLY the delta/alter statements needed to run in the Supabase SQL Editor.
 
 # SYSTEM OS (WINDOWS POWERSHELL 5.1 RULES)
 - Shell Environment: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7)[cite: 1].
