@@ -4,6 +4,7 @@ import Header from './components/Header';
 import EventModal from './components/EventModal';
 import HomeView from './views/HomeView';
 import AdminView from './views/AdminView';
+import EventDetailsView from './views/EventDetailsView';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 
@@ -322,6 +323,16 @@ function App() {
               )}
             </div>
           </main>
+        } />
+        
+        <Route path="/event-details" element={
+          <ProtectedRoute>
+            <main className="flex-grow container mx-auto px-4 py-8">
+              <div className="max-w-6xl mx-auto">
+                <EventDetailsView activeEvent={activeEvent} />
+              </div>
+            </main>
+          </ProtectedRoute>
         } />
         
         <Route path="/admin" element={

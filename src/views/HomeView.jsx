@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import RegistrationForm from '../components/RegistrationForm';
 import RegistrationSummary from './RegistrationSummary';
+import fr from '../locales/fr.json';
 
 const HomeView = ({ activeEvent, isAuthenticated }) => {
   const [userRegistration, setUserRegistration] = useState(null);
@@ -139,6 +141,12 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
           <div className="bg-white/20 px-3 py-1 rounded-full">{formatDate(activeEvent.reg_start_date)}</div>
           <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.venue_address}</div>
           <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} jour(s)</div>
+          <Link
+            to="/event-details"
+            className="bg-white/30 hover:bg-white/40 px-3 py-1 rounded-full text-white font-medium transition-colors duration-200"
+          >
+            {fr.eventLearnMore}
+          </Link>
         </div>
       </div>
 

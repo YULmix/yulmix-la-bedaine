@@ -126,7 +126,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
   useEffect(() => {
     if (!event) return;
     const currentAttendeesCount = attendees.length;
-    if (event.capacity && currentAttendeesCount > event.capacity) {
+    if (event.max_attendees && currentAttendeesCount > event.max_attendees) {
       setIsWaitlisted(true);
     } else {
       setIsWaitlisted(false);

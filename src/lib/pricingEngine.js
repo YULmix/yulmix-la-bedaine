@@ -54,6 +54,7 @@ export const roundUpToNearestTen = (amount) => {
  * @returns {number} Base price per point (rounded up to nearest $10)
  */
 export const calculatePricePerPointFromTotalCost = (totalCost, totalPoints) => {
+  if (!Number.isFinite(totalCost) || totalCost <= 0) return 0;
   if (totalPoints === 0) return 0;
   
   const contingencyCost = totalCost * 1.2;
@@ -67,6 +68,7 @@ export const calculatePricePerPointFromTotalCost = (totalCost, totalPoints) => {
  * @returns {number} Price per point (sellingPriceWholeEvent / 2.0)
  */
 export const calculatePricePerPointFromSellingPrice = (sellingPriceWholeEvent) => {
+  if (!Number.isFinite(sellingPriceWholeEvent) || sellingPriceWholeEvent <= 0) return 0;
   return sellingPriceWholeEvent / 2.0;
 };
 

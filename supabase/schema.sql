@@ -458,3 +458,105 @@ GRANT SELECT ON public.user_event_history TO authenticated;
 GRANT SELECT ON public.registration_summary_view TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+-- ============================================
+-- SECURITY: PREVENT SELF-PROMOTION AND ENFORCE CAPACITY
+-- ============================================
+
+-- Revoke direct UPDATE on is_admin column to force use of admin_set_is_admin function
+REVOKE UPDATE (is_admin) ON public.profiles FROM authenticated;
+
+-- Function to safely set admin status (caller must be admin, cannot self-promote)
+CREATE OR REPLACE FUNCTION public.admin_set_is_admin(
+    target_user_id UUID,
+    new_is_admin BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Ensure caller is admin
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only administrators can change admin status';
+    END IF;
+    
+    -- Prevent self-promotion/demotion
+    IF target_user_id = auth.uid() THEN
+        RAISE EXCEPTION 'Cannot change your own admin status';
+    END IF;
+    
+    -- Update the profile
+    UPDATE public.profiles
+    SET is_admin = new_is_admin
+    WHERE id = target_user_id;
+    
+    -- Ensure at least one admin remains (hardcoded root admin excluded)
+    -- Root admin yulmixalabedaine@gmail.com is already protected by is_admin() function
+END;
+$$;
+
+-- Grant execute permission to authenticated users (RLS will still restrict via is_admin() check)
+GRANT EXECUTE ON FUNCTION public.admin_set_is_admin(UUID, BOOLEAN) TO authenticated;
+
+-- Function to enforce capacity and waitlist rules on user_parties inserts/updates
+CREATE OR REPLACE FUNCTION public.enforce_capacity_and_waitlist()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_event_id UUID;
+    v_max_attendees INT;
+    v_current_registered INT;
+    v_is_waitlisted BOOLEAN;
+BEGIN
+    -- Determine event ID
+    v_event_id := NEW.event_id;
+    
+    -- Get max attendees for the event
+    SELECT max_attendees INTO v_max_attendees
+    FROM public.events
+    WHERE id = v_event_id;
+    
+    -- If max_attendees is NULL or 0, no capacity restriction
+    IF v_max_attendees IS NULL OR v_max_attendees <= 0 THEN
+        NEW.is_waitlisted := FALSE;
+        RETURN NEW;
+    END IF;
+    
+    -- Use advisory lock to serialize concurrent inserts for the same event
+    -- This prevents race conditions where two parties check capacity simultaneously
+    PERFORM pg_advisory_xact_lock(hashtext(v_event_id::text));
+    
+    -- Count total attendees from non-waitlisted, registered parties for this event
+    -- Exclude the current party (if updating) and already waitlisted parties
+    SELECT COALESCE(SUM(jsonb_array_length(up.attendees)), 0) INTO v_current_registered
+    FROM public.user_parties up
+    WHERE up.event_id = v_event_id
+      AND up.is_waitlisted = FALSE
+      AND up.status IN ('Enregistré', 'En attente')
+      AND up.id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::UUID);
+    
+    -- Add the attendees from the new/updated party
+    v_current_registered := v_current_registered + jsonb_array_length(NEW.attendees);
+    
+    -- Determine waitlist status
+    v_is_waitlisted := v_current_registered > v_max_attendees;
+    
+    -- Override client-provided is_waitlisted with server-calculated value
+    NEW.is_waitlisted := v_is_waitlisted;
+    
+    RETURN NEW;
+END;
+$$;
+
+-- Create trigger to enforce capacity and waitlist before insert/update
+DROP TRIGGER IF EXISTS trg_enforce_capacity_and_waitlist ON public.user_parties;
+CREATE TRIGGER trg_enforce_capacity_and_waitlist
+    BEFORE INSERT OR UPDATE OF attendees, status ON public.user_parties
+    FOR EACH ROW
+    EXECUTE FUNCTION public.enforce_capacity_and_waitlist();
+
+-- ============================================
+-- ADDITIONAL GRANTS FOR NEW FUNCTIONS
+-- ============================================
+GRANT EXECUTE ON FUNCTION public.enforce_capacity_and_waitlist() TO authenticated;
