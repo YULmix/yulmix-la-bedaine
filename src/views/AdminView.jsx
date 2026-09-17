@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -8,7 +8,7 @@ import {
   getOptionLabel,
   getDietaryRequestsLabel
 } from '../lib/registrationOptions';
-import { simulateEventPricing } from '../lib/pricingEngine';
+import { simulateEventPricing, calculateEstimatedCostPerParticipant } from '../lib/pricingEngine';
 
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [events, setEvents] = useState([]);
@@ -21,6 +21,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [editingParty, setEditingParty] = useState(null);
   const [eventChanges, setEventChanges] = useState({});
   const [toasts, setToasts] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [realtimeChannel, setRealtimeChannel] = useState(null);
   const [userProfileModal, setUserProfileModal] = useState(null);
   const [userEventHistory, setUserEventHistory] = useState([]);
@@ -46,6 +47,13 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       }
     };
   }, [isAdmin]);
+
+  // Get current user ID for admin toggle
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id || null);
+    });
+  }, []);
 
   // Subscribe to real-time changes for active event's parties
   useEffect(() => {
@@ -121,7 +129,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const handleActivateEvent = async (event) => {
     const alreadyActive = events.find(e => e.is_active);
     if (alreadyActive && alreadyActive.id !== event.id) {
-      addToast('Un Ã©vÃ©nement est dÃ©jÃ  actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
+      addToast('Un événement est déjà actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
       return;
     }
     try {
@@ -131,12 +139,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .eq('id', event.id);
       if (error) {
         if (error.code === '23505') {
-          addToast('Un Ã©vÃ©nement est dÃ©jÃ  actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
+          addToast('Un événement est déjà actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
         } else {
           throw error;
         }
       } else {
-        addToast(`Ã‰vÃ©nement "${event.theme}" activÃ©`, 'success');
+        addToast(`Événement "${event.theme}" activé`, 'success');
         fetchAllData();
       }
     } catch (err) {
@@ -152,7 +160,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .update({ is_active: false, status: 'ARCHIVED' })
         .eq('id', event.id);
       if (error) throw error;
-      addToast(`Ã‰vÃ©nement "${event.theme}" archivÃ©`, 'success');
+      addToast(`Événement "${event.theme}" Archivé`, 'success');
       fetchAllData();
     } catch (err) {
       console.error('Error archiving event:', err);
@@ -212,7 +220,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .update(eventChanges)
         .eq('id', editingEvent.id);
       if (error) throw error;
-      addToast('MÃ©tadonnÃ©es de l\'Ã©vÃ©nement mises Ã  jour', 'success');
+      addToast('Métadonnéees de l\'événement mises à jour', 'success');
       setEventChanges({});
       setEditingEvent(null);
       fetchAllData();
@@ -224,7 +232,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   // Admin checkbox toggle (prevent self-escalation)
   const handleAdminToggle = async (profile, checked) => {
-    if (profile.id === supabase.auth.getUser()?.user?.id) {
+    if (profile.id === currentUserId) {
       addToast('Vous ne pouvez pas modifier votre propre statut administrateur.', 'warning');
       return;
     }
@@ -244,9 +252,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   // Payment status toggle
   const handlePaymentToggle = async (party, newStatus) => {
+    const action = newStatus === 'Payé' ? 'Payé' : 'Impayé';
     const confirmMessage = newStatus === 'Payé' 
-      ? 'Voulez-vous marquer cette inscription comme payée?' 
-      : 'Voulez-vous remettre cette inscription en attente de paiement?';
+      ? `Voulez-vous marquer le paiement comme Payé pour ${party.profiles?.full_name || 'cet utilisateur'}?`
+      : `Voulez-vous marquer le paiement comme Impayé pour ${party.profiles?.full_name || 'cet utilisateur'}?`;
+    
     if (!window.confirm(confirmMessage)) return;
     
     try {
@@ -255,7 +265,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .update({ payment_status: newStatus })
         .eq('id', party.id);
       if (error) throw error;
-      addToast(`Statut de paiement mis à jour: ${newStatus === 'Payé' ? 'Payé' : 'Impayé'}`, 'success');
+      addToast(`Statut de paiement mis à jour: ${action}`, 'success');
       fetchParties(activeEventState.id);
     } catch (err) {
       console.error('Error updating payment status:', err);
@@ -332,7 +342,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       setUserEventHistory(history || []);
     } catch (err) {
       console.error('Error fetching user event history:', err);
-      addToast('Erreur lors de la rÃ©cupÃ©ration de l\'historique', 'error');
+      addToast('Erreur lors de la récupération de l\'historique', 'error');
       setUserEventHistory([]);
     }
   };
@@ -381,7 +391,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       
       if (error) throw error;
       
-      addToast('Assignations logistiques mises Ã  jour', 'success');
+      addToast('Assignations logistiques mises à jour', 'success');
       
       // Clear changes and refresh
       setLogisticsChanges(prev => {
@@ -460,7 +470,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   // Data export functions
   const exportToCSV = () => {
     if (!parties.length) {
-      addToast('Aucune donnÃ©e Ã  exporter', 'warning');
+      addToast('Aucune donnée à exporter', 'warning');
       return;
     }
     
@@ -544,7 +554,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   const copyToClipboardForSheets = () => {
     if (!parties.length) {
-      addToast('Aucune donnÃ©e Ã  copier', 'warning');
+      addToast('Aucune donnée à copier', 'warning');
       return;
     }
     
@@ -624,7 +634,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-          <p>AccÃ¨s rÃ©servÃ© aux administrateurs.</p>
+          <p>Accès réservé aux administrateurs.</p>
         </div>
       </div>
     );
@@ -642,7 +652,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Tableau de bord administrateur</h1>
-        <p className="text-gray-600">Gestion des Ã©vÃ©nements, inscriptions et utilisateurs</p>
+        <p className="text-gray-600">Gestion des événements, inscriptions et utilisateurs</p>
       </div>
 
       {/* Toasts */}
@@ -660,7 +670,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
       {/* Event Management */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Gestion des Ã©vÃ©nements</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Gestion des événements</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {events.map(event => (
             <div key={event.id} className="border border-gray-200 rounded-lg p-4">
@@ -671,7 +681,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                   event.status === 'ARCHIVED' ? 'bg-gray-100 text-gray-800' :
                   'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {event.status === 'ACTIVE' ? 'En cours' : event.status === 'ARCHIVED' ? 'ArchivÃ©' : 'Brouillon'}
+                  {event.status === 'ACTIVE' ? 'En cours' : event.status === 'ARCHIVED' ? 'Archivé' : 'Brouillon'}
                 </span>
               </div>
               <p className="text-sm text-gray-600 mb-3">{event.description?.substring(0, 100)}...</p>
@@ -713,9 +723,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Modifier les mÃ©tadonnÃ©es de l'Ã©vÃ©nement</h2>
+              <h2 className="text-xl font-bold text-gray-800">Modifier les métadonnées de l'événement</h2>
               <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                ✕œ•
+                ✕
               </button>
             </div>
 <div className="p-6 space-y-4">
@@ -893,7 +903,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                    <span className="text-xl font-bold text-blue-700">
                      {activeEventState?.estimated_individual_cost_whole_event 
                        ? formatCurrency(activeEventState.estimated_individual_cost_whole_event)
-                       : 'Non spÃ©cifiÃ©'}
+                       : 'Non spécifié'}
                    </span>
                  </div>
                  <div className="flex justify-between items-center">
@@ -901,7 +911,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                    <span className="text-xl font-bold text-green-700">
                      {activeEventState?.selling_price_whole_event 
                        ? formatCurrency(activeEventState.selling_price_whole_event)
-                       : 'Non spÃ©cifiÃ©'}
+                       : 'Non spécifié'}
                    </span>
                  </div>
                </div>
@@ -975,12 +985,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                           onClick={() => openUserProfile(profile)}
                           className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
                         >
-                          {profile.full_name || 'Non spÃ©cifiÃ©'}
+                          {profile.full_name || 'Non spécifié'}
                         </button>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
                       <td className="px-4 py-3 text-sm text-gray-800">
-                        {getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, 'Non spÃ©cifiÃ©')}
+                        {getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, 'Non spécifié')}
                       </td>
                       <td className="px-4 py-3">
                         <select
@@ -1192,7 +1202,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <tbody className="divide-y divide-gray-200">
                 {parties.map(party => {
                   const profile = party.profiles || {};
-                  const isCurrentAdmin = profile.id === supabase.auth.getUser()?.user?.id;
+                  const isCurrentAdmin = profile.id === currentUserId;
                   return (
                     <tr key={party.id}>
                       <td className="px-4 py-3 text-sm text-gray-800">
@@ -1230,7 +1240,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                           onClick={() => openPartyEdit(party)}
                           className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
                         >
-                          Éditer l'inscription
+                          Modifier l'inscription
                         </button>
                       </td>
                     </tr>
@@ -1327,9 +1337,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Ã‰dition admin de l'inscription</h2>
+              <h2 className="text-xl font-bold text-gray-800">Édition admin de l'inscription</h2>
               <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                ✕œ•
+                ✕
               </button>
             </div>
             <div className="p-6">

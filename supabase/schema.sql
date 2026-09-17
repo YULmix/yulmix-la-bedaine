@@ -413,10 +413,11 @@ CREATE POLICY "User Parties: User can create own registrations"
 ON public.user_parties FOR INSERT
 WITH CHECK (auth.uid() = user_id OR public.is_admin());
 
+DROP POLICY IF EXISTS "User Parties: User can update own registrations" ON public.user_parties;
 CREATE POLICY "User Parties: User can update own registrations"
 ON public.user_parties FOR UPDATE
-USING (auth.uid() = user_id AND status IN ('Enregistré', 'En attente'))
-WITH CHECK (auth.uid() = user_id AND status IN ('Enregistré', 'En attente'));
+USING ((auth.uid() = user_id AND status IN ('Enregistré', 'En attente')) OR public.is_admin())
+WITH CHECK ((auth.uid() = user_id AND status IN ('Enregistré', 'En attente')) OR public.is_admin());
 
 CREATE POLICY "User Parties: User can delete own registrations"
 ON public.user_parties FOR DELETE

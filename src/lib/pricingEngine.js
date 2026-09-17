@@ -180,6 +180,24 @@ export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, pr
   };
 };
 
+/**
+ * Calculate estimated cost per participant (excluding kids)
+ * @param {number} totalCost - Total event cost in CAD
+ * @param {Array} parties - Array of user_parties objects with counts JSONB
+ * @returns {number} Estimated cost per participant (excluding kids)
+ */
+export const calculateEstimatedCostPerParticipant = (totalCost, parties) => {
+  if (!Array.isArray(parties) || parties.length === 0) return 0;
+  
+  let totalParticipants = 0;
+  parties.forEach(party => {
+    const counts = party.counts || {};
+    totalParticipants += (counts.adult_whole || 0) + (counts.adult_main || 0) + (counts.teen_whole || 0) + (counts.teen_main || 0);
+  });
+  
+  if (totalParticipants === 0) return 0;
+  return totalCost / totalParticipants;
+};
 // Export all functions
 export default {
   calculateBasePoints,
@@ -188,5 +206,6 @@ export default {
   calculatePricePerPointFromSellingPrice,
   getFinalPoints,
   calculateTotalPoints,
-  simulateEventPricing
+  simulateEventPricing,
+  calculateEstimatedCostPerParticipant
 };
