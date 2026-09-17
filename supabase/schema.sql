@@ -1,4 +1,4 @@
-﻿-- supabase/schema.sql
+-- supabase/schema.sql
 -- Comprehensive PostgreSQL schema for La Bédaine event management
 
 -- ============================================
@@ -473,30 +473,64 @@ CREATE OR REPLACE FUNCTION public.admin_set_is_admin(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-AS $$
+AS $
+DECLARE
+    target_email TEXT;
 BEGIN
     -- Ensure caller is admin
     IF NOT public.is_admin() THEN
         RAISE EXCEPTION 'Only administrators can change admin status';
     END IF;
-    
+
     -- Prevent self-promotion/demotion
     IF target_user_id = auth.uid() THEN
         RAISE EXCEPTION 'Cannot change your own admin status';
     END IF;
-    
+
+    -- Fetch target email to protect root admin
+    SELECT email INTO target_email
+    FROM public.profiles
+    WHERE id = target_user_id;
+
+    -- Block demotion of root admin
+    IF target_email = 'yulmixalabedaine@gmail.com' AND new_is_admin = FALSE THEN
+        RAISE EXCEPTION 'Le compte administrateur racine ne peut pas être rétrogradé.';
+    END IF;
+
     -- Update the profile
     UPDATE public.profiles
     SET is_admin = new_is_admin
     WHERE id = target_user_id;
-    
+
     -- Ensure at least one admin remains (hardcoded root admin excluded)
     -- Root admin yulmixalabedaine@gmail.com is already protected by is_admin() function
 END;
-$$;
 
--- Grant execute permission to authenticated users (RLS will still restrict via is_admin() check)
 GRANT EXECUTE ON FUNCTION public.admin_set_is_admin(UUID, BOOLEAN) TO authenticated;
+
+-- ============================================
+-- ROOT ADMIN PROTECTION & REINSTATEMENT
+-- ============================================
+
+-- Immediately reinstate root admin if column was ever set to FALSE
+-- (Run this once manually in Supabase SQL Editor if root admin appears non‑admin in UI)
+-- UPDATE public.profiles SET is_admin = TRUE WHERE email = 'yulmixalabedaine@gmail.com';
+
+-- Prevent root admin from ever being demoted via any UPDATE
+CREATE OR REPLACE FUNCTION public.protect_root_admin()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.email = 'yulmixalabedaine@gmail.com' AND NEW.is_admin = FALSE THEN
+        RAISE EXCEPTION 'Le compte administrateur racine ne peut pas être rétrogradé.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_protect_root_admin ON public.profiles;
+CREATE TRIGGER trg_protect_root_admin
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.protect_root_admin();
 
 -- Function to enforce capacity and waitlist rules on user_parties inserts/updates
 CREATE OR REPLACE FUNCTION public.enforce_capacity_and_waitlist()

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -244,6 +244,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   // Payment status toggle
   const handlePaymentToggle = async (party, newStatus) => {
+    const confirmMessage = newStatus === 'Payé' 
+      ? 'Voulez-vous marquer cette inscription comme payée?' 
+      : 'Voulez-vous remettre cette inscription en attente de paiement?';
+    if (!window.confirm(confirmMessage)) return;
+    
     try {
       const { error } = await supabase
         .from('user_parties')
@@ -710,7 +715,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">Modifier les mÃ©tadonnÃ©es de l'Ã©vÃ©nement</h2>
               <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                âœ•
+                ✕œ•
               </button>
             </div>
 <div className="p-6 space-y-4">
@@ -1324,7 +1329,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">Ã‰dition admin de l'inscription</h2>
               <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                âœ•
+                ✕œ•
               </button>
             </div>
             <div className="p-6">

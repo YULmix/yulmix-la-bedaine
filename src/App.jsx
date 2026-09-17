@@ -19,18 +19,29 @@ function App() {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
 
-  // Fetch admin status for current user
+  // Fetch admin status for current user (matches DB is_admin() function logic)
   const fetchAdminStatus = async (userId) => {
     try {
+      // Use the database's is_admin() function which respects root email fallback
+      const { data: rpcData, error: rpcError } = await supabase
+        .rpc('is_admin');
+      
+      if (!rpcError && typeof rpcData === 'boolean') {
+        setIsAdmin(rpcData);
+        return;
+      }
+      
+      // Fallback: fetch profile and apply same logic client‑side
       const { data, error } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, email')
         .eq('id', userId)
         .maybeSingle();
 
       if (error) throw error;
       // If profile doesn't exist yet (race condition after sign‑up), treat as non‑admin
-      setIsAdmin(!!data?.is_admin);
+      const isAdmin = data ? (data.is_admin || data.email === 'yulmixalabedaine@gmail.com') : false;
+      setIsAdmin(isAdmin);
     } catch (error) {
       console.error('Error fetching admin status:', error);
       setIsAdmin(false);
