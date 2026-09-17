@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 
-const Header = ({ isAuthenticated, setIsAuthenticated, user }) => {
+const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const navigate = useNavigate();
   
@@ -82,6 +82,14 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user }) => {
                 </>
               ) : (
                 <>
+                  {isAdmin && (
+                    <button
+                      onClick={() => { navigate('/admin'); setIsDropdownOpen(false); }}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-100 text-blue-600"
+                    >
+                      Tableau de bord admin
+                    </button>
+                  )}
                   <button
                     onClick={handleSignOut}
                     className="w-full px-4 py-3 text-left hover:bg-gray-100 text-red-600"

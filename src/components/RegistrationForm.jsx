@@ -11,7 +11,7 @@ import {
   DIETARY_OPTIONS
 } from '../lib/registrationOptions';
 
-const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel }) => {
+const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave }) => {
   const [attendees, setAttendees] = useState([]);
   const [totalPoints, setTotalPoints] = useState(0);
   const [estimatedBalance, setEstimatedBalance] = useState(0);
@@ -190,10 +190,21 @@ const handleRemoveAttendee = (id) => {
     setError(null);
 
     try {
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!user) throw new Error('Vous devez être connecté pour vous inscrire');
+      // Handle admin mode vs normal mode
+      let userId;
+      let authUser = null; // Only populated in normal mode for self-healing
+      if (adminMode && userRegistration) {
+        // In admin mode, use the user_id from the existing registration
+        userId = userRegistration.user_id;
+        // authUser remains null; we cannot self-heal for other users
+      } else {
+        // Normal mode: get current logged in user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        if (!user) throw new Error('Vous devez être connecté pour vous inscrire');
+        userId = user.id;
+        authUser = user;
+      }
 
       // Prepare attendees data for storage
       const attendeesData = attendees.map(attendee => ({
@@ -237,33 +248,71 @@ const handleRemoveAttendee = (id) => {
         departure: transportDeparture
       };
 
-      // Get user profile
-      const { data: profile, error: profileError } = await supabase
+      // Get or create user profile (self-healing if missing)
+      let profile;
+      let profileError = null;
+      // First attempt to fetch existing profile
+      const { data: fetchedProfile, error: fetchError } = await supabase
         .from('profiles')
         .select('id')
-        .eq('id', user.id)
-        .single();
+        .eq('id', userId)
+        .maybeSingle();
 
-      if (profileError) throw profileError;
+      if (fetchError) {
+        console.error('Supabase profiles fetch error:', fetchError.message, fetchError.code, fetchError.details, fetchError.hint, JSON.stringify(fetchError));
+        throw fetchError;
+      }
+      profile = fetchedProfile;
+
+      // If profile doesn't exist, attempt to create it (only possible in normal mode where we have authUser)
+      if (!profile && authUser) {
+        const { data: upsertedProfile, error: upsertErr } = await supabase
+          .from('profiles')
+          .upsert([{
+            id: authUser.id,
+            email: authUser.email,
+            full_name: authUser.user_metadata?.full_name || ''
+          }], { onConflict: 'id' })
+          .select('id')
+          .maybeSingle();
+
+        if (upsertErr) {
+          console.error('Supabase profiles upsert error:', upsertErr.message, upsertErr.code, upsertErr.details, upsertErr.hint, JSON.stringify(upsertErr));
+          throw upsertErr;
+        }
+        profile = upsertedProfile;
+      }
+
+      // If still no profile, throw a helpful error
+      if (!profile) {
+        throw new Error(
+          adminMode
+            ? 'Le profil utilisateur n\'existe pas dans la base de données. Veuillez vérifier que l\'utilisateur a un compte valide.'
+            : 'Votre profil utilisateur n\'a pas été trouvé. Veuillez réessayer dans quelques secondes.'
+        );
+      }
 
       // Check if registration already exists
       const { data: existingRegistration, error: checkError } = await supabase
         .from('user_parties')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('event_id', event.id)
         .maybeSingle();
 
-      if (checkError) throw checkError;
+      if (checkError) {
+        console.error('Supabase registration check error:', checkError.message, checkError.code, checkError.details, checkError.hint, JSON.stringify(checkError));
+        throw checkError;
+      }
 
       const registrationData = {
-        user_id: user.id,
+        user_id: userId,
         event_id: event.id,
         attendees: attendeesData,
         counts: counts,
         calculated_amount_owed: estimatedBalance,
         status: 'Enregistré',
-        payment_status: 'Impayé',
+        payment_status: adminMode && userRegistration ? userRegistration.payment_status : 'Impayé',
         is_waitlisted: isWaitlisted,
         logistics: logistics,
         transport: transport,
@@ -271,34 +320,37 @@ const handleRemoveAttendee = (id) => {
         message_to_organizers: messageToOrganizers
       };
 
-      let result;
-      if (existingRegistration) {
-        // Update existing registration
-        result = await supabase
-          .from('user_parties')
-          .update(registrationData)
-          .eq('id', existingRegistration.id);
-      } else {
-        // Create new registration
-        result = await supabase
-          .from('user_parties')
-          .insert([registrationData]);
+      // Single upsert call that handles both insert and update, respecting the UNIQUE(user_id, event_id) constraint.
+      const { data: upsertedRows, error: upsertError } = await supabase
+        .from('user_parties')
+        .upsert([registrationData], { onConflict: 'user_id,event_id' })
+        .select();
+
+      if (upsertError) {
+        console.error('Supabase user_parties upsert error:', upsertError.message, upsertError.code, upsertError.details, upsertError.hint, JSON.stringify(upsertError));
+        throw upsertError;
+      }
+      
+      // Ensure we got a result (should be exactly one row after upsert)
+      if (!upsertedRows || upsertedRows.length === 0) {
+        throw new Error('Aucune ligne retournée après l\'enregistrement de l\'inscription.');
       }
 
-      if (result.error) throw result.error;
-
       setSuccess(true);
-      addToast(fr.registrationSuccess, 'success');
-      if (onRegistrationSuccess) {
+      addToast(adminMode ? 'Inscription mise à jour avec succès' : fr.registrationSuccess, 'success');
+      if (adminMode && onAdminSave) {
+        onAdminSave();
+      } else if (onRegistrationSuccess) {
         onRegistrationSuccess();
       }
     } catch (err) {
       console.error('Erreur lors de l\'inscription:', err);
       setError(err.message);
       addToast(err.message, 'error');
+    } finally {
+      setIsSubmitting(false);
     }
-
-}
+  };
     const formatCurrency = (amount) => {
     return new Intl.NumberFormat('fr-CA', {
       style: 'currency',
@@ -503,7 +555,18 @@ const handleRemoveAttendee = (id) => {
 {onCancel && (
               <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
             )}
-            <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? 'Enregistrement en cours...' : 'Enregistrer l\'inscription'}</button>
+            {adminMode ? (
+              <>
+                <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+                <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmitting ? 'Mise à jour en cours...' : 'Enregistrer (mode admin)'}
+                </button>
+              </>
+            ) : (
+              <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                {isSubmitting ? 'Enregistrement en cours...' : 'Enregistrer l\'inscription'}
+              </button>
+            )}
           </div>
         </div>
       </form>
@@ -512,6 +575,3 @@ const handleRemoveAttendee = (id) => {
 };
 
 export default RegistrationForm;
-
-
-
