@@ -28,3 +28,8 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local agent skill installs (per-developer, not project config)
+.agents/
+.claude/
+skills-lock.json
