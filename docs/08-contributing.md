@@ -38,7 +38,7 @@ The current history (*"head assets"* ×3) is not a model to follow.
 ## Definition of done
 
 - [ ] `npm run build` passes.
-- [ ] `npm run test:pricing` passes (and `npm test`, once it is fixed).
+- [ ] `npm test` passes (includes `npm run test:pricing`).
 - [ ] New/changed UI text is in `fr.json`, not inline.
 - [ ] Schema change includes the `ALTER` delta and this repo's docs are updated.
 - [ ] Manually exercised as **both** a member and an admin — the two roles see genuinely different
@@ -81,7 +81,7 @@ This codebase was built mostly by prompting, and that will continue. What makes 
 
 None of this exists yet. It is ordered by value per hour of setup.
 
-1. **Fix the lockfile** so `npm ci` works (`npm install`, commit). Everything below depends on it.
+1. ~~**Fix the lockfile**~~ **Done** — `npm ci` works.
 2. **GitHub Actions CI**: `npm ci && npm run build && npm test` on every PR. Five minutes of setup,
    and it would have caught the broken `npm test` and the out-of-sync lockfile immediately.
 3. **Gate the Vercel deploy on CI**: production is deployed on Vercel today, but nothing stops a

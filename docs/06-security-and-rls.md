@@ -130,7 +130,10 @@ history prevents ([ADR 0002](./adr/0002-single-schema-file-no-migrations.md)).
 service-role client, asserting that members cannot see DRAFT events, cannot read others'
 registrations, and so on. It is the right idea and the highest-value test suite in the repo.
 
-Current state: **it does not run.** Every case fails with `ReferenceError: fetch is not defined`,
-because Jest's jsdom environment does not expose `fetch`, and it needs a local Supabase plus a real
-service-role key. See [development setup](./07-development-setup.md#running-the-rls-tests) for what
-it would take to fix.
+It runs under `npm run test:rls`, on Node rather than the default jsdom environment (via an
+`@jest-environment node` pragma in the file — jsdom does not expose `fetch`), and is excluded from
+the default `npm test` run since it needs infrastructure a plain `npm test` shouldn't require. It
+still needs a local Supabase plus a real service-role key to actually pass; without one it fails on
+`ECONNREFUSED`, which is the correct failure, not a bug. See
+[development setup](./07-development-setup.md#running-the-rls-tests) for what it takes to stand
+that up.

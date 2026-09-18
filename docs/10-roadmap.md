@@ -18,11 +18,12 @@ flowchart TD
 Nothing else is safe to do in parallel until this exists, because there is currently no automated
 signal that a change broke something.
 
-1. `npm install`, commit the lockfile so `npm ci` works.
+1. ~~`npm install`, commit the lockfile so `npm ci` works.~~ **Done.**
 2. GitHub Actions: `npm ci && npm run build && npm test` on every PR.
-3. Make `npm test` honest: port `pricingEngine.test.js` to Jest `test()` blocks (dropping
-   `process.exit`), give the RLS suite a `fetch` (`testEnvironment: 'node'` or a polyfill), and
-   delete `example.test.js`.
+3. ~~Make `npm test` honest~~ **Done.** `pricingEngine.test.js` is now Jest `test()` blocks, the RLS
+   suite runs on Node (`@jest-environment node`) and is excluded from the default `npm test` run
+   (`jest.config.js`) — it runs separately via `npm run test:rls` / `jest.rls.config.js` — and
+   `example.test.js` is deleted.
 4. ESLint + `eslint-plugin-react-hooks`; fix what it finds (starting with the undefined
    `fetchPartiesForActiveEvent`).
 5. `.nvmrc` → Node 20.
@@ -36,7 +37,7 @@ signal that a change broke something.
    adopted) — file each item in [state of the code](./09-state-of-the-code.md) as an issue so
    progress is visible and assignable, instead of living only in this static list.
 9. Housekeeping: delete `App.jsx.backup` and the three dead locale files, strip BOMs, gitignore
-   `.env.test`, rewrite `README.md` to point at `docs/`.
+   `.env.test`.
 
 ## Stage 1 — trust the numbers
 

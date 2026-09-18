@@ -11,7 +11,10 @@ repo. **Unverified** means it depends on the live Supabase project, which was no
 Worth stating plainly, because the list below is long:
 
 - `npm run build` succeeds — 1943 modules, ~1.3s, chunks split per `vite.config.js`.
-- `npm run test:pricing` — 5/5 pricing cases pass.
+- `npm test` and `npm run test:pricing` both pass — 5/5 pricing cases, as genuine Jest `test()`
+  blocks. The RLS integration suite (`npm run test:rls`) is deliberately excluded from `npm test`
+  since it needs a live Supabase instance; run on its own it now fails on `ECONNREFUSED` rather
+  than the `fetch`-related jsdom artifact it used to.
 - The pricing engine correctly implements the selling-price model, the new-member downgrade + 30%
   reduction, the round-up-to-$10 internal cost, and the zero guards.
 - The security design is layered and sound in its intent: RLS on every table, a non-recursive
@@ -137,10 +140,24 @@ deadline logic beyond the intent phase needs one.
 
 ## P4 — project hygiene
 
-- **`npm ci` fails** — lockfile out of sync with `package.json`. **Verified.** Blocks any CI.
-- **`npm test` fails**: the pricing script calls `process.exit()` inside Jest, and the RLS suite
-  fails on `ReferenceError: fetch is not defined` (jsdom has no `fetch`). **Verified.**
-- **No CI, no linter, no formatter, no pinned Node version.** ESLint alone would have caught item 6.
+Resolved since this document was first written:
+
+- ~~`npm ci` fails~~ — **fixed.** The lockfile is back in sync with `package.json`.
+- ~~`npm test` fails~~ — **fixed.** `pricingEngine.test.js` is now genuine Jest `test()` blocks, the
+  RLS suite runs on Node (`@jest-environment node`) instead of jsdom, and it is excluded from the
+  default `npm test` run via `jest.config.js` so CI doesn't need a live Supabase — it runs on its
+  own via `npm run test:rls` with `jest.rls.config.js`. The placeholder `example.test.js` is deleted.
+- ~~`README.md` is stale~~ — **fixed.** It now describes the app as it actually is and points to
+  `docs/` and `AGENTS.md`.
+- ~~No entry point for agents/contributors~~ — **fixed.** `AGENTS.md` (symlinked as `CLAUDE.md`)
+  now exists at the repo root.
+
+Still open:
+
+- **No CI, no linter, no formatter, no pinned Node version.** `npm test` and `npm run build` both
+  pass locally, but nothing runs them automatically on a PR — see
+  [roadmap, Stage 0](./10-roadmap.md#stage-0--make-the-repo-collaborable). ESLint alone would have
+  caught item 6 above (the undefined `fetchPartiesForActiveEvent`).
 - **No `supabase/config.toml`**, so `supabase start` — the documented first step for the RLS tests —
   has nothing to work from.
 - **`.env.test` is tracked.** Placeholders only today (**verified**, no secret leaked), but it is
@@ -149,8 +166,6 @@ deadline logic beyond the intent phase needs one.
   leftover from before the host was settled and should be deleted.
 - **No CI gate in front of the Vercel deploy.** A push reaches production via Vercel's own git
   integration without `npm run build`/`npm test` running first.
-- **`README.md` is stale**: it documents a two-component app (Header, EventModal) and does not
-  mention registrations, admin, pricing or RLS.
 - **`.clinerules` hardcodes Windows PowerShell 5.1** shell rules, which are wrong for contributors on
   macOS/Linux, mixed in with genuinely useful project conventions.
 - **`index.html` has two `<title>` tags.**

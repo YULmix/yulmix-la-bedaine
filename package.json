@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "jest",
-    "test:rls": "jest src/__tests__/rlsPolicies.test.js",
-    "test:pricing": "node src/lib/pricingEngine.test.js"
+    "test:rls": "jest --config jest.rls.config.js src/__tests__/rlsPolicies.test.js",
+    "test:pricing": "jest src/lib/pricingEngine.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

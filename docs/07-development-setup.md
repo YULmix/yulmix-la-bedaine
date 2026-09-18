@@ -56,9 +56,9 @@ snippets (which `.clinerules` already requires you to produce alongside any sche
 | `npm run dev` | Vite dev server on :5173 | — |
 | `npm run build` | Production build to `dist/` | ✅ passes, ~1.3s, 1943 modules |
 | `npm run preview` | Serve the built `dist/` | — |
-| `npm run test:pricing` | `node src/lib/pricingEngine.test.js` | ✅ 5/5 cases pass |
-| `npm test` | Jest, all suites | ❌ 2 of 3 suites fail (see below) |
-| `npm run test:rls` | Jest, RLS suite only | ❌ needs local Supabase + `fetch` polyfill |
+| `npm run test:pricing` | Jest, `pricingEngine.test.js` only | ✅ 5/5 cases pass |
+| `npm test` | Jest, default (unit) suite | ✅ passes — excludes the RLS integration suite, see below |
+| `npm run test:rls` | Jest, RLS suite only, `--config jest.rls.config.js` | needs a local Supabase instance; fails on `ECONNREFUSED` without one (not on a jsdom artifact — see below) |
 
 Build output, for reference — code splitting is configured in `vite.config.js` so Supabase, the
 router and Lucide are separate chunks:
@@ -76,41 +76,42 @@ build-time one. Do not read a green build as "the app is configured".
 
 ## Testing
 
-Three suites exist, with three different execution models — which is itself the problem.
+Two suites exist, deliberately kept on separate tracks: a unit suite that needs nothing but Node,
+and an integration suite that needs a live Supabase instance. `npm test` only runs the former, so
+CI can be green without any external infrastructure.
 
-### `src/lib/pricingEngine.test.js` — the real one
+### `src/lib/pricingEngine.test.js` — the unit suite
 
-A hand-rolled script: five scenarios, printed to stdout, `process.exit(0|1)`. Run it with
-`npm run test:pricing`. It passes, and it is the only meaningful coverage in the repo.
+Five Jest `test()` cases covering the edge cases from the requirements: zero points, a single
+adult, the new-member discount, fractional selling prices, and grandfathering a paid party. Run it
+on its own with `npm run test:pricing`, or as part of `npm test`. It is the only meaningful
+coverage in the repo, and it is genuinely pure — no Supabase, no DOM, no I/O.
 
-It also **breaks `npm test`**: Jest's `testMatch` picks the file up, finds no `test()` blocks, and
-fails on `process.exit called with "0"`. Either exclude it from `testMatch` or — better — port the
-five cases to Jest `test()` blocks and delete the bespoke runner.
+### `src/__tests__/rlsPolicies.test.js` — the RLS integration suite
 
-Note also that case 5's explanatory text describes contingency-based maths that the engine no longer
-uses; the assertion is correct, the prose is stale. Fix the prose when porting.
+The most valuable *kind* of test in the repo (see [security](./06-security-and-rls.md#testing-rls))
+but the most expensive to run: it drives a real local Supabase instance with both an anon and a
+service-role client, asserting members cannot see DRAFT events, cannot read others' registrations,
+and so on.
 
-### `src/__tests__/example.test.js` — a placeholder
-
-Asserts `1 + 2 === 3`. Passes. Delete it once real component tests exist.
-
-### `src/__tests__/rlsPolicies.test.js` — valuable, currently broken
-
-The most useful suite in the repo (see [security](./06-security-and-rls.md#testing-rls)) and it
-cannot run. Every case fails with `ReferenceError: fetch is not defined`.
+It is excluded from `npm test` via `jest.config.js`'s `testPathIgnorePatterns` and run separately
+with `npm run test:rls`, which points Jest at `jest.rls.config.js` (identical to the default config
+minus that exclusion). The file itself carries an `@jest-environment node` docblock pragma, so it
+gets Node's native `fetch` — jsdom, the project's default test environment, does not provide one,
+and without the pragma every request used to fail with `ReferenceError: fetch is not defined`
+regardless of whether Supabase was even reachable.
 
 #### Running the RLS tests
 
-What it needs:
+With the environment issue fixed, `npm run test:rls` fails cleanly on `ECONNREFUSED` in this repo
+today — the honest failure, because no Supabase instance is running here. To make it actually pass:
 
-1. `fetch` in the test environment. Either set `testEnvironment: 'node'` for this suite (Node 18+
-   has global `fetch`), or add a polyfill in `src/__tests__/setup.js`. jsdom does not provide it.
-2. A local Supabase: `supabase start`, then apply the schema. Note there is **no
+1. A local Supabase: `supabase start`, then apply the schema. Note there is **no
    `supabase/config.toml`** in the repo, so `supabase start` has nothing to configure from —
    `supabase init` output should be committed.
-3. `.env.test` with a real local service-role key (and that file should be gitignored, see
+2. `.env.test` with a real local service-role key (and that file should be gitignored, see
    [security](./06-security-and-rls.md#secrets)).
-4. Seed data: `supabase/tests/seed_test_data.sql` defines a `seed_test_data()` function the suite
+3. Seed data: `supabase/tests/seed_test_data.sql` defines a `seed_test_data()` function the suite
    calls, falling back to inline seeding.
 
 `supabase/tests/README.md` documents the intended workflow, in PowerShell — the project was
