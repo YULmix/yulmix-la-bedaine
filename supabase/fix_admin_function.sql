@@ -1,0 +1,47 @@
+-- Fix admin_set_is_admin function syntax (remove duplicate LANGUAGE/SECURITY DEFINER)
+-- Run this script in Supabase SQL Editor to deploy the corrected function.
+DROP FUNCTION IF EXISTS public.admin_set_is_admin(UUID, BOOLEAN);
+
+CREATE OR REPLACE FUNCTION public.admin_set_is_admin(
+    target_user_id UUID,
+    new_is_admin BOOLEAN
+)
+RETURNS VOID
+AS $$
+DECLARE
+    target_email TEXT;
+BEGIN
+    -- Ensure caller is admin
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only administrators can change admin status';
+    END IF;
+
+    -- Prevent self-promotion/demotion
+    IF target_user_id = auth.uid() THEN
+        RAISE EXCEPTION 'Cannot change your own admin status';
+    END IF;
+
+    -- Fetch target email to protect root admin
+    SELECT email INTO target_email
+    FROM public.profiles
+    WHERE id = target_user_id;
+
+    -- Block demotion of root admin
+    IF target_email = 'yulmixalabedaine@gmail.com' AND new_is_admin = FALSE THEN
+        RAISE EXCEPTION 'Le compte administrateur racine ne peut pas être rétrogradé.';
+    END IF;
+
+    -- Update the profile
+    UPDATE public.profiles
+    SET is_admin = new_is_admin
+    WHERE id = target_user_id;
+
+    -- Ensure at least one admin remains (hardcoded root admin excluded)
+    -- Root admin yulmixalabedaine@gmail.com is already protected by is_admin() function
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.admin_set_is_admin(UUID, BOOLEAN) TO authenticated;
+
+-- Notify PostgREST to reload schema cache
+NOTIFY pgrst, 'reload schema';

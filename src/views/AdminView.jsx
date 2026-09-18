@@ -213,14 +213,22 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
   const saveEventChanges = async () => {
-    if (!editingEvent || Object.keys(eventChanges).length === 0) return;
+    if (!editingEvent) return;
+    
+    // If no changes were made, just close the modal with info message
+    if (Object.keys(eventChanges).length === 0) {
+      addToast('Aucune modification apportée', 'info');
+      setEditingEvent(null);
+      return;
+    }
+    
     try {
       const { error } = await supabase
         .from('events')
         .update(eventChanges)
         .eq('id', editingEvent.id);
       if (error) throw error;
-      addToast('Métadonnéees de l\'événement mises à jour', 'success');
+      addToast('Métadonnées de l\'événement mises à jour', 'success');
       setEventChanges({});
       setEditingEvent(null);
       fetchAllData();
@@ -246,7 +254,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchAllData();
     } catch (err) {
       console.error('Error updating admin status:', err);
-      addToast(err.message || 'Erreur lors de la mise à jour', 'error');
+      if (err.code === 'PGRST202') {
+        addToast('La fonction de gestion des administrateurs n\'est pas encore déployée. Contactez le support technique.', 'error');
+      } else {
+        addToast(err.message || 'Erreur lors de la mise à jour', 'error');
+      }
     }
   };
 
@@ -799,7 +811,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 12. Catégorie de dépense */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExpenseCategoryLabel}</label>
-                <select value={eventChanges.expense_category ?? editingEvent.expense_category} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <select value={eventChanges.expense_category ?? editingEvent.expense_category ?? ''} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                   <option value="">-- Sélectionner --</option>
                   <option value="Chalet">{fr.eventExpenseCategoryChalet}</option>
                   <option value="Food">{fr.eventExpenseCategoryFood}</option>
@@ -994,7 +1006,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                       </td>
                       <td className="px-4 py-3">
                         <select
-                          value={changes.sleepingAssigned !== undefined ? changes.sleepingAssigned : (sleeping.assigned || '')}
+                          value={((changes.sleepingAssigned !== undefined ? changes.sleepingAssigned : sleeping.assigned) ?? '')}
                           onChange={(e) => handleLogisticsChange(party.id, 'sleepingAssigned', e.target.value)}
                           className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
@@ -1031,6 +1043,75 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           </div>
         </div>
       )}
+
+{/* Admin User & Party Management */}
+      {activeEventState && (
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+          <h2 className="text-xl font-semibold text-gray-800 mb-6">Gestion des utilisateurs et inscriptions</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nom</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Courriel</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Admin</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Statut de paiement</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {parties.map(party => {
+                  const profile = party.profiles || {};
+                  const isCurrentAdmin = profile.id === currentUserId;
+                  return (
+                    <tr key={party.id}>
+                      <td className="px-4 py-3 text-sm text-gray-800">
+                        <button 
+                          onClick={() => openUserProfile(profile)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                        >
+                          {profile.full_name || 'Non spécifié'}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={!!profile.is_admin}
+                          onChange={e => handleAdminToggle(profile, e.target.checked)}
+                          disabled={isCurrentAdmin}
+                          className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handlePaymentToggle(party, party.payment_status === 'Payé' ? 'Impayé' : 'Payé')}
+                          className={`px-3 py-1 text-xs rounded-full font-medium ${
+                            party.payment_status === 'Payé' 
+                              ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                              : 'bg-red-100 text-red-800 hover:bg-red-200'
+                          }`}
+                        >
+                          {party.payment_status === 'Payé' ? 'Payé' : 'Impayé'}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openPartyEdit(party)}
+                          className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
+                        >
+                          Modifier l'inscription
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
 {/* Scenario Simulator */}
       {activeEventState && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
@@ -1184,74 +1265,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         </div>
       )}
 
- {/* Admin User & Party Management */}
-      {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">Gestion des utilisateurs et inscriptions</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nom</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Courriel</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Admin</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Statut de paiement</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {parties.map(party => {
-                  const profile = party.profiles || {};
-                  const isCurrentAdmin = profile.id === currentUserId;
-                  return (
-                    <tr key={party.id}>
-                      <td className="px-4 py-3 text-sm text-gray-800">
-                        <button 
-                          onClick={() => openUserProfile(profile)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {profile.full_name || 'Non spécifié'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={!!profile.is_admin}
-                          onChange={e => handleAdminToggle(profile, e.target.checked)}
-                          disabled={isCurrentAdmin}
-                          className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handlePaymentToggle(party, party.payment_status === 'Payé' ? 'Impayé' : 'Payé')}
-                          className={`px-3 py-1 text-xs rounded-full font-medium ${
-                            party.payment_status === 'Payé' 
-                              ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                              : 'bg-red-100 text-red-800 hover:bg-red-200'
-                          }`}
-                        >
-                          {party.payment_status === 'Payé' ? 'Payé' : 'Impayé'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => openPartyEdit(party)}
-                          className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
-                        >
-                          Modifier l'inscription
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* User Profile Modal */}
       {userProfileModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1359,6 +1372,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 };
 
 export default AdminView;
+
 
 
 
