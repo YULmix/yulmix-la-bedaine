@@ -1,7 +1,15 @@
 /**
+ * @jest-environment node
+ *
  * RLS Policy Tests for La Bédaine Supabase Security
  * Tests Row Level Security policies for profiles, events, user_parties, and app_feedback tables.
- * 
+ *
+ * This is an integration suite, not a unit suite: it needs a running local Supabase instance and
+ * a real SUPABASE_SERVICE_ROLE_KEY, and is excluded from the default `npm test` run (see
+ * jest.config.js). The @jest-environment pragma above gives it Node's global `fetch`, which the
+ * default jsdom environment does not provide — without it, every request fails with
+ * "ReferenceError: fetch is not defined" regardless of whether Supabase is reachable.
+ *
  * Setup:
  * 1. Start local Supabase: `supabase start`
  * 2. Run migrations: `supabase db push`
