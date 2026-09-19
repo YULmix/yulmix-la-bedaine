@@ -24,7 +24,7 @@ reasonable reading of evidence, not confirmed by the people who would know).
 | Why was it blocked? | Most likely the Hobby-plan rule that only the account owner can trigger deploys of a private repo | Inferred |
 | Was emptying `supabase/schema.sql` deliberate? | **Undetermined** | see [below](#the-emptied-supabase-schema-sql) |
 | Does the old `schema.sql` still describe the live DB? | Yes at the level of names; not proven for function bodies | Verified (names) |
-| Are the two views a data leak? | Read access: almost certainly yes. Write access: plausible, **untested** | Verified (config) / Untested (exploit) |
+| Were the two views a data leak? | Read access: **yes, measured**. Write access: plausible, never tested. **Fixed 2026-09-18** | Verified |
 
 ## Deployment
 
@@ -79,7 +79,7 @@ flowchart LR
 - **`admin_set_is_admin` is sound.** It is callable by `anon` and `authenticated`, but the body
   re-checks `is_admin()`, refuses self-change, and refuses to demote the hardcoded root admin
   (`yulmixalabedaine@gmail.com`, also hardcoded in `is_admin()` and `handle_new_user()`).
-- **The two views are `SECURITY DEFINER`.** `user_event_history` and `registration_summary_view` are
+- **The two views were `SECURITY DEFINER` — fixed 2026-09-18 (see below).** `user_event_history` and `registration_summary_view` are
   owned by `postgres`, have no `security_invoker` option, and `authenticated` holds
   `SELECT, INSERT, UPDATE, DELETE, TRUNCATE…` on both. Supabase's advisor rates both **ERROR**. This
   confirms what [Security & RLS](./06-security-and-rls.md) and [Data model](./03-data-model.md)
@@ -92,8 +92,14 @@ flowchart LR
     view over `user_parties`, so it may also be *writable*, letting a member alter another member's
     row (e.g. `payment_status`) past RLS. **Untested** — proving it means a write to production, so
     do it on a copy.
-  - Suggested direction (not applied): drop `registration_summary_view`; make `user_event_history`
-    `WITH (security_invoker = true)` and confirm the admin screen still works, since admins pass RLS.
+  - **Measured before the fix**, as a non-admin user, read-only: the tables showed 1 registration and
+    1 profile (their own); `user_event_history` returned 2 rows covering 2 different members and
+    `registration_summary_view` returned 2 rows.
+  - **Fix applied 2026-09-18** by `supabase/fix_views_security.sql`: `registration_summary_view`
+    dropped (unused); `user_event_history` set to `security_invoker = true` with `SELECT` granted to
+    `authenticated` only. **Verified after**, read-only: non-admin sees 1 row / 1 member through the
+    view; the root admin sees 2 of 2; the security advisor reports 0 ERRORs (was 2). *Not verified:*
+    the admin screen in a real browser session — check that member history still loads.
 - **Other advisor warnings (WARN).** All 10 functions have a mutable `search_path`; trigger
   functions are executable via `/rest/v1/rpc/…` by `anon` and `authenticated`; leaked-password
   protection is off in Auth.

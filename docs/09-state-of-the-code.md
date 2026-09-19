@@ -82,14 +82,14 @@ re-checked; the `AS $` fragment is in the scratch file `fixed.txt`. What *is* tr
 that `admin_set_is_admin` had a duplicated `LANGUAGE`/`SECURITY DEFINER` clause that the live database
 has since had repaired via `fix_admin_function.sql`.
 
-### 5a. Two views bypass RLS on the live database
+### 5a. Two views bypassed RLS on the live database — **fixed 2026-09-18**
 
 **Verified (2026-09-18, live catalog + Supabase advisors).** `user_event_history` and
 `registration_summary_view` are `SECURITY DEFINER`, and `authenticated` can read (and, by grant,
 write) them. `user_event_history` therefore exposes every member's email, name, amount owed and
 payment status to any signed-in user. See
 [Live environment audit](./11-live-environment.md#live-database) for the evidence and what remains
-untested. This should be fixed **before** the repo goes public.
+untested. Fixed by `supabase/fix_views_security.sql` and re-verified; this entry is kept as the record.
 
 ### 5b. Production is not deploying `main`
 
