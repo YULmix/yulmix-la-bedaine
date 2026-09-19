@@ -69,12 +69,33 @@ happens to re-save. Given the stated workflow — collect intentions, *then* set
 — this is the normal case, not an edge case. A trigger (item 2) plus an admin "reprice unpaid
 registrations" action solves it.
 
-### 5. `supabase/schema.sql` does not parse
+### 5. `supabase/schema.sql` is empty on `main`
 
-**Verified by reading.** `admin_set_is_admin` is opened with `AS $` — not a valid dollar-quote tag —
-and never closed with a matching delimiter. Postgres cannot parse the file from that point on, so the
-schema cannot be applied to a fresh environment. The live database has a working version (the admin
-toggle calls the function successfully), which means file and reality have already diverged.
+**Verified (2026-09-18, git).** Commit `a2cec16` reduced the file from 597 lines to a 3-byte BOM.
+The full copy survives at `a2cec16^`. Whether that was deliberate is **undetermined**; the evidence
+and the recovery path are in [Live environment audit](./11-live-environment.md#the-emptied-supabase-schema-sql).
+The schema currently cannot be applied to a fresh environment at all.
+
+*Superseded wording:* this entry previously said the file "does not parse" because of an `AS $`
+delimiter in `admin_set_is_admin`. That text was written against the pre-`a2cec16` file and was never
+re-checked; the `AS $` fragment is in the scratch file `fixed.txt`. What *is* true of the old file is
+that `admin_set_is_admin` had a duplicated `LANGUAGE`/`SECURITY DEFINER` clause that the live database
+has since had repaired via `fix_admin_function.sql`.
+
+### 5a. Two views bypassed RLS on the live database — **fixed 2026-09-18**
+
+**Verified (2026-09-18, live catalog + Supabase advisors).** `user_event_history` and
+`registration_summary_view` are `SECURITY DEFINER`, and `authenticated` can read (and, by grant,
+write) them. `user_event_history` therefore exposes every member's email, name, amount owed and
+payment status to any signed-in user. See
+[Live environment audit](./11-live-environment.md#live-database) for the evidence and what remains
+untested. Fixed by `supabase/fix_views_security.sql` and re-verified; this entry is kept as the record.
+
+### 5b. Production is not deploying `main`
+
+**Verified (2026-09-18, GitHub deployment statuses).** The deploy of `65a6171` was blocked;
+production is on `a2cec16`. The project lives in a Vercel account the maintainer cannot see. See
+[Live environment audit](./11-live-environment.md#deployment).
 
 ### 6. Saving bed assignments reports a failure that did not happen
 

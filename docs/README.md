@@ -18,7 +18,8 @@ It documents the system **as it actually is today**, not only as it was specifie
 | 9 | [Contributing](./08-contributing.md) | Branching, reviews, conventions, how to work with agents |
 | 10 | [State of the code](./09-state-of-the-code.md) | Ranked list of confirmed defects and technical debt |
 | 11 | [Roadmap](./10-roadmap.md) | What to build next, in dependency order |
-| 12 | [Decision records](./adr/) | Why the system is shaped the way it is |
+| 12 | [Live environment audit](./11-live-environment.md) | What Supabase and Vercel actually look like today, verified read-only, with open questions |
+| 13 | [Decision records](./adr/) | Why the system is shaped the way it is |
 
 ## Source of record
 

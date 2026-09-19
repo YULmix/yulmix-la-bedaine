@@ -163,6 +163,10 @@ output directory, and the SPA rewrite (all paths → `index.html`). A stale `net
 committed from before the host was settled and should be deleted
 ([state of the code](./09-state-of-the-code.md)).
 
+> **Live state (2026-09-18):** the deploying Vercel project is in an account (`yulm-ix`) that is
+> *not* the `YULMIX-Labedaine` team, and the deploy of `65a6171` was blocked. Details and evidence in
+> [Live environment audit](./11-live-environment.md#deployment).
+
 There is currently no CI gate in front of a deploy — a push reaches production via Vercel's own git
 integration without `npm run build`/`npm test` running first. Wiring the deploy into CI (deploy only
 after tests pass) is a near-term priority; see
