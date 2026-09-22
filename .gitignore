@@ -35,3 +35,5 @@ Thumbs.db
 skills-lock.json
 # Supabase CLI local state (project ref, pooler host)
 supabase/.temp/
+.vercel
+.env*

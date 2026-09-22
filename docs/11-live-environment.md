@@ -67,6 +67,34 @@ flowchart LR
   git integration. That is right, but omit that it is a *different account* from the team and that
   deploys are currently being blocked.
 
+### Update, 2026-09-22: access gained, root cause found
+
+**Verified.** The maintainer signed into the shared account behind `yulm-ix`. It is a Vercel *team*
+(`YULMix`, Hobby), and that account is its **Owner** — the earlier block was never a Vercel
+permissions problem.
+
+The real cause: `YULmix/yulmix-la-bedaine` is a **transferred** repo. Querying its pre-transfer
+name, `Dekayd/YULMixLaBedaine`, redirects to the current one with the same numeric repo ID — it used
+to be a private repo under `dekayd`'s personal account. `vercel project inspect` shows **no Git
+section at all**; every one of the project's 17 deployments (`vercel ls --json`) has
+`"importSource": "import-suggestions"` and metadata still naming the old owner
+(`githubOrg: "Dekayd"`, `githubRepoOwnerType: "User"`). GitHub Apps are installed per-account, so
+the app that used to deploy this repo lost access the moment it moved into the `YULmix` org — that
+is what "Deployment was blocked" meant. Confirmed dead: none of the four commits merged to `main`
+after gaining Vercel access (`40da184`, `435d7ad`, `37c922e`, `30dee21`) produced any Vercel commit
+status at all. Production has stayed up only because someone has been running `vercel --prod` by
+hand from a local clone.
+
+Reconnecting `vercel git connect` to the current repo needs a `YULmix` **org owner** (currently only
+`Dekayd`) to authorize the Vercel GitHub App for the org — a GitHub-side permission, separate from
+the Vercel team ownership above.
+
+**Fix, until that authorization happens:** `.github/workflows/deploy.yml` deploys from GitHub
+Actions using the Vercel CLI directly (`vercel pull` / `vercel build` / `vercel deploy --prebuilt`),
+which needs no GitHub App access — only a Vercel token and the project/org IDs, held as repo
+secrets. See [Development setup → Deploying](./07-development-setup.md#deploying). This also adds
+the CI gate (`npm run build`, `npm run test:pricing`) that was missing in front of every deploy.
+
 ## Live database
 
 **Verified** by `supabase db query --linked` (catalog `SELECT`s only) and

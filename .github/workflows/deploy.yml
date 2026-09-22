@@ -1,0 +1,146 @@
+name: Build, test, deploy
+
+# Bypasses Vercel's native Git integration, which is currently disconnected
+# (the project is still linked to the repo's pre-transfer identity,
+# Dekayd/YULMixLaBedaine, and reconnecting it needs a YULmix org owner — see
+# docs/11-live-environment.md). This workflow deploys straight from CI using
+# the official Vercel CLI instead, and is also the CI gate that was missing
+# in front of every deploy.
+#
+# One-time setup (see docs/07-development-setup.md#deploying), done by
+# someone with access to the yulm-ix Vercel account, run locally, never
+# pasted to an AI assistant:
+#   gh secret set VERCEL_TOKEN     # from vercel.com/account/tokens
+#   gh secret set VERCEL_ORG_ID    # team_2Dq8V0ST1KNITgzIndZyh3IX
+#   gh secret set VERCEL_PROJECT_ID  # prj_hAUPlcsCKxYEW6URcw08AuyE8G8J
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+# One production deploy at a time; queue rather than cancel one mid-flight.
+# Each PR's previews get their own group, so a new push cancels that PR's
+# stale preview build instead of piling up.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || 'production-deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Pinned deliberately, not floating on @latest, so a Vercel CLI release
+  # doesn't silently change deploy behaviour. Bump on purpose.
+  VERCEL_CLI_VERSION: '59'
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm run test:pricing
+
+  deploy:
+    name: Deploy to production
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: npm install -g vercel@${{ env.VERCEL_CLI_VERSION }}
+
+      # Pulls the project's Production env vars (VITE_SUPABASE_URL,
+      # VITE_SUPABASE_ANON_KEY, …) from Vercel itself — nothing Supabase-
+      # related needs to be duplicated as a GitHub secret.
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build with Vercel
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy prebuilt output
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  preview:
+    name: Deploy preview
+    needs: build-and-test
+    # Same-repo PRs only. A fork PR can't see repo secrets anyway (GitHub
+    # withholds them from pull_request runs triggered by forks), so this
+    # just turns that into a clean "skipped" instead of a confusing failed
+    # check on someone else's contribution.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: npm install -g vercel@${{ env.VERCEL_CLI_VERSION }}
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build with Vercel
+        run: vercel build --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy prebuilt output
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Comment preview URL on the PR
+        run: |
+          gh pr comment "$PR_NUMBER" --body "Preview: $PREVIEW_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}

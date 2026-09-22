@@ -134,10 +134,27 @@ rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel proj
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
 be deleted (see [state of the code](./09-state-of-the-code.md)).
 
-Deploys today are triggered manually / by Vercel's own git integration, with no build or test gate
-in front of them. **Wiring the deploy into CI** — so a push to `main` only reaches production after
-`npm run build` and `npm test` pass — is a Stage 0 item; see
-[roadmap](./10-roadmap.md#stage-0--make-the-repo-collaborable).
+**Vercel's own git integration is currently disconnected** — the project is still linked to the
+repo's pre-transfer identity (`Dekayd/YULMixLaBedaine`), and reconnecting it needs a `YULmix` org
+owner. See [Live environment audit](./11-live-environment.md#deployment) for how that was found.
+
+Until that's reconnected, `.github/workflows/deploy.yml` deploys straight from CI using the Vercel
+CLI: on every push and PR it runs `npm run build` and `npm run test:pricing`; on push to `main` it
+also runs `vercel pull` / `vercel build` / `vercel deploy --prebuilt --prod`. This is the CI gate
+that used to be missing, whichever way the Git integration ends up.
+
+It needs three repo secrets, set once by someone with access to the `yulm-ix` Vercel account:
+
+| Secret | Value |
+|---|---|
+| `VERCEL_TOKEN` | a personal token from `vercel.com/account/tokens` |
+| `VERCEL_ORG_ID` | `team_2Dq8V0ST1KNITgzIndZyh3IX` |
+| `VERCEL_PROJECT_ID` | `prj_hAUPlcsCKxYEW6URcw08AuyE8G8J` |
+
+Set them with `gh secret set <name>`, typed or pasted directly into that command — never handed to
+an AI assistant, since that would force rotating them. The workflow pulls the app's own
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from the Vercel project itself, so nothing
+Supabase-related needs to be duplicated here.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.
