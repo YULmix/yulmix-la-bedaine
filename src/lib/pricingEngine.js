@@ -2,22 +2,22 @@
  * Pricing Engine for Bedaine Event Cost Calculation
  * 
  * Business Rules:
- * 1. Points per attendee:
+ * 1. Points per attendee (Regular Members):
  *    - Adult (Whole Event): 2.0 pts
- *    - Adult (Main Event): 1.5 pts  
+ *    - Adult (Main Event): 1.075 pts  
  *    - Teenager (Whole Event): 1.0 pt
- *    - Teenager (Main Event): 0.5 pts
+ *    - Teenager (Main Event): 0.5375 pts
  *    - Kids / After-Party: 0.0 pts
  * 
  * 2. Price per point baseline:
  *    - Unit price per point = events.selling_price_whole_event / 2.0
  *    - Adult Whole (2.0 pts) pays exactly selling_price_whole_event
  * 
- * 3. New Member Discount:
- *    - Adult Whole → 1.5 pts (Main Event equivalent)
- *    - Teen Whole → 0.5 pts (Main Event equivalent)  
- *    - Others remain at their base points
- *    - 70% of calculated cost for new members
+ * 3. Newbie Fixed Point Weights (Tier Ignored):
+ *    - Adult Newbie (any tier): 1.075 pts (same as Adult Main Event)
+ *    - Teen Newbie (any tier): 0.5375 pts (same as Teen Main Event)
+ *    - Kid Newbie: 0.0 pts (free, same as regular kids)
+ *    - Note: Newbies always pay Main Event rate regardless of attendance tier
  * 
  * 4. Grandfathering: Paid parties preserve historical calculated_amount_owed
  */
@@ -30,10 +30,10 @@
  */
 export const calculateBasePoints = (type, participation) => {
   if (type === 'Adult') {
-    return participation === 'Whole' ? 2.0 : 1.5;
+    return participation === 'Whole' ? 2.0 : 1.075;
   }
   if (type === 'Teenager') {
-    return participation === 'Whole' ? 1.0 : 0.5;
+    return participation === 'Whole' ? 1.0 : 0.5375;
   }
   return 0.0;
 };
@@ -81,19 +81,20 @@ export const calculatePricePerPointFromSellingPrice = (sellingPriceWholeEvent) =
  * @returns {number} Adjusted points
  */
 export const getFinalPoints = (attendee) => {
-  const basePoints = calculateBasePoints(attendee.type, attendee.participation);
-  
-  // New member adjustment: Whole Event → Main Event equivalent
+  // Newbies pay fixed flat rates regardless of tier (always Main Event rate)
   if (attendee.isNewMember) {
-    if (attendee.type === 'Adult' && attendee.participation === 'Whole') {
-      return 1.5; // Adult Main equivalent
+    if (attendee.type === 'Adult') {
+      return 1.075; // Fixed newbie rate (same as Adult Main Event)
     }
-    if (attendee.type === 'Teenager' && attendee.participation === 'Whole') {
-      return 0.5; // Teen Main equivalent
+    if (attendee.type === 'Teenager') {
+      return 0.5375; // Fixed newbie rate (same as Teen Main Event)
     }
+    // Kids remain 0.0
+    return 0.0;
   }
   
-  return basePoints;
+  // Regular members use standard point weights
+  return calculateBasePoints(attendee.type, attendee.participation);
 };
 
 /**
@@ -140,12 +141,8 @@ export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, pr
       // Calculate cost for each attendee in the party
       processedAttendees = party.attendees.map(attendee => {
         const points = getFinalPoints(attendee);
-        let cost = points * basePricePerPoint;
-        
-        // Apply 70% discount for new members
-        if (attendee.isNewMember) {
-          cost *= 0.7;
-        }
+        const cost = points * basePricePerPoint;
+        // No additional discount - newbie point weights already reflect the discount
         
         return {
           ...attendee,
@@ -157,6 +154,8 @@ export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, pr
       
       // Sum costs for all attendees in this party
       partyTotal = processedAttendees.reduce((sum, attendee) => sum + attendee.calculated_cost, 0);
+      // Round up to nearest dollar
+      partyTotal = Math.ceil(partyTotal);
     }
     
     // Add party total to overall total

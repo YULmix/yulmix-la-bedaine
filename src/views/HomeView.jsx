@@ -143,7 +143,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
           <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} jour(s)</div>
           <Link
             to="/event-details"
-            className="bg-white/30 hover:bg-white/40 px-3 py-1 rounded-full text-white font-medium transition-colors duration-200"
+            className="bg-[#fb951a] hover:bg-[#e08213] px-3 py-1 rounded-full text-white font-medium transition-colors duration-200 shadow-sm"
           >
             {fr.eventLearnMore}
           </Link>

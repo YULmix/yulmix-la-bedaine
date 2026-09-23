@@ -339,6 +339,34 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     });
   };
 
+  // Calculate rounded party total using current pricing with rounding up
+  const calculateRoundedPartyTotal = (party) => {
+    if (!activeEventState?.selling_price_whole_event) return party.calculated_amount_owed || 0;
+    
+    // Prepare party in format expected by simulateEventPricing
+    const partyForSimulation = {
+      id: party.id,
+      attendees: party.attendees || [],
+      // Always calculate with rounding up, ignore payment status for budget calculations
+      is_paid: false,
+      historical_owed: 0
+    };
+    
+    try {
+      // Simulate pricing for this single party
+      const simulation = simulateEventPricing(
+        [partyForSimulation],
+        activeEventState.selling_price_whole_event
+      );
+      
+      // Return the calculated amount (already rounded up by pricing engine)
+      return simulation.calculated_amount_owed;
+    } catch (error) {
+      console.error('Error calculating rounded party total:', error);
+      return party.calculated_amount_owed || 0;
+    }
+  };
+
   // User profile modal functions
   const openUserProfile = async (profile) => {
     setUserProfileModal(profile);
@@ -928,6 +956,38 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                  </div>
                </div>
              </div>
+{/* Budget Metrics */}
+              <div className="bg-purple-50 border border-purple-100 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.budgetTitle}</h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{fr.budgetTotalCost}</span>
+                    <span className="text-xl font-bold text-purple-700">
+                      {activeEventState?.total_cost 
+                        ? formatCurrency(activeEventState.total_cost)
+                        : 'Non spécifié'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{fr.budgetTotalAmountDue}</span>
+                    <span className="text-xl font-bold text-purple-700">
+                      {formatCurrency(parties.reduce((sum, party) => sum + calculateRoundedPartyTotal(party), 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{fr.budgetAmountToReceive}</span>
+                    <span className="text-xl font-bold text-purple-700">
+                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === 'Impayé' ? calculateRoundedPartyTotal(party) : 0), 0))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{fr.budgetAmountReceived}</span>
+                    <span className="text-xl font-bold text-purple-700">
+                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === 'Payé' ? calculateRoundedPartyTotal(party) : 0), 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
            </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1056,6 +1116,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Courriel</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Admin</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Statut de paiement</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Montant dû</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
                 </tr>
               </thead>
@@ -1095,6 +1156,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                           {party.payment_status === 'Payé' ? 'Payé' : 'Impayé'}
                         </button>
                       </td>
+<td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(calculateRoundedPartyTotal(party))}</td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => openPartyEdit(party)}

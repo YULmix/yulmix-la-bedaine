@@ -40,6 +40,34 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
     });
   };
 
+  // Handle registration deletion
+  const handleDeleteRegistration = async () => {
+    if (!window.confirm(fr.deleteRegistrationConfirm || 'Êtes-vous sûr de vouloir supprimer cette inscription? Cette action est irréversible.')) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('user_parties')
+        .delete()
+        .eq('id', registration.id);
+
+      if (deleteError) throw deleteError;
+
+      // Show success message and reload page
+      alert(fr.deleteRegistrationSuccess || 'Inscription supprimée avec succès');
+      window.location.reload();
+    } catch (err) {
+      console.error('Error deleting registration:', err);
+      setError(fr.deleteRegistrationError || 'Erreur lors de la suppression de l\'inscription');
+      alert(fr.deleteRegistrationError || 'Erreur lors de la suppression de l\'inscription');
+    } finally {
+      setLoading(false);
+    }
+  };
   // Format change description from JSON changes
   const formatChangeDescription = (changes) => {
     if (!changes || typeof changes !== 'object') return 'Aucun changement détaillé';
@@ -228,7 +256,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                       <span>Participation: {attendee.participation === 'Whole' ? 'Complète' : 'Partielle'}</span>
                       {attendee.is_new_member && (
                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                          Nouveau membre
+                           Première fois à la Bédaine
                         </span>
                       )}
                     </div>
@@ -437,14 +465,11 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
       <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end">
         <div className="flex space-x-4">
           <button
-            onClick={() => {
-              if (window.confirm('Êtes-vous sûr de vouloir supprimer cette inscription? Cette action est irréversible.')) {
-                alert('Fonctionnalité de suppression à venir');
-              }
-            }}
-            className="px-6 py-3 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 font-medium"
+            onClick={handleDeleteRegistration}
+            disabled={loading}
+            className="px-6 py-3 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Supprimer l'inscription
+            {loading ? 'Suppression...' : (fr.deleteRegistration || 'Supprimer l\'inscription')}
           </button>
           <button
             onClick={onEdit}

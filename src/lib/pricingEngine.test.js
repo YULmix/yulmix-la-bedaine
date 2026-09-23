@@ -42,11 +42,11 @@ describe('pricingEngine — simulateEventPricing', () => {
     expect(result.calculated_amount_owed).toBeCloseTo(1000, 2);
   });
 
-  test('new members get the main-event point downgrade plus a 30% reduction', () => {
+  test('newbies pay fixed flat point rates (1.075 adult, 0.5375 teen) regardless of tier', () => {
     // Price per point = sellingPriceWholeEvent / 2 = 500.
-    // Adult Whole → 1.5 pts (main-event equivalent): 1.5 × 500 × 0.7 = 525.
-    // Teen Whole → 0.5 pts (main-event equivalent): 0.5 × 500 × 0.7 = 175.
-    // Total = 525 + 175 = 700.
+    // Adult Newbie (Whole Event): 1.075 pts × 500 = 537.50 → rounded up to 538.
+    // Teen Newbie (Whole Event): 0.5375 pts × 500 = 268.75 → rounded up to 269.
+    // Total = 538 + 269 = 807.
     const parties = [
       {
         id: 'party-1',
@@ -60,11 +60,11 @@ describe('pricingEngine — simulateEventPricing', () => {
 
     const result = simulateEventPricing(parties, 1000);
 
-    expect(result.calculated_amount_owed).toBeCloseTo(700, 2);
+    expect(result.calculated_amount_owed).toBeCloseTo(807, 2);
   });
 
   test('fractional selling prices produce fractional costs', () => {
-    // Price per point = sellingPriceWholeEvent / 2 = 0.5, cost = 1.5 × 0.5 = 0.75.
+    // Price per point = sellingPriceWholeEvent / 2 = 0.5, cost = 1.075 × 0.5 = 0.5375 → rounded up to 1.
     const parties = [
       {
         id: 'party-1',
@@ -75,14 +75,14 @@ describe('pricingEngine — simulateEventPricing', () => {
 
     const result = simulateEventPricing(parties, 1);
 
-    expect(result.calculated_amount_owed).toBeCloseTo(0.75, 2);
+    expect(result.calculated_amount_owed).toBeCloseTo(1, 2);
   });
 
   test('a paid party keeps its historical amount even as other parties are priced normally', () => {
     // Party 1 is paid, so it keeps its historical $750 regardless of the current selling price.
-    // Party 2 is unpaid: Adult Main = 1.5 pts, price per point = sellingPriceWholeEvent / 2 = 500,
-    // cost = 1.5 × 500 = 750.
-    // Total = 750 (grandfathered) + 750 (calculated) = 1500.
+    // Party 2 is unpaid: Adult Main = 1.075 pts, price per point = sellingPriceWholeEvent / 2 = 500,
+    // cost = 1.075 × 500 = 537.50 → rounded up to 538.
+    // Total = 750 (grandfathered) + 538 (calculated) = 1288.
     const parties = [
       {
         id: 'party-1',
@@ -99,6 +99,71 @@ describe('pricingEngine — simulateEventPricing', () => {
 
     const result = simulateEventPricing(parties, 1000);
 
-    expect(result.calculated_amount_owed).toBeCloseTo(1500, 2);
+    expect(result.calculated_amount_owed).toBeCloseTo(1288, 2);
   });
+
+  test('teenager attending main event pays 0.5375 pts (updated point system)', () => {
+    // Price per point = sellingPriceWholeEvent / 2 = 500.
+    // Teen Main = 0.5375 pts, cost = 0.5375 × 500 = 268.75 → rounded up to 269.
+    const parties = [
+      {
+        id: 'party-1',
+        is_paid: false,
+        attendees: [{ type: 'Teenager', participation: 'Main', isNewMember: false }]
+      }
+    ];
+
+    const result = simulateEventPricing(parties, 1000);
+
+    expect(result.calculated_amount_owed).toBeCloseTo(269, 2);
+  });
+
+test('newbies attending Main Event pay the same as regular Main Event members', () => {
+    // Adult Newbie Main = 1.075 pts (same as Adult Regular Main = 1.075 pts).
+    // Teen Newbie Main = 0.5375 pts (same as Teen Regular Main = 0.5375 pts).
+    // Price per point = sellingPriceWholeEvent / 2 = 500.
+    // Adult: 1.075 × 500 = 537.50 → rounded up to 538.
+    // Teen: 0.5375 × 500 = 268.75 → rounded up to 269.
+    // Total = 538 + 269 = 807.
+    const parties = [
+      {
+        id: 'party-1',
+        is_paid: false,
+        attendees: [
+          { type: 'Adult', participation: 'Main', isNewMember: true },
+          { type: 'Teenager', participation: 'Main', isNewMember: true }
+        ]
+      }
+    ];
+
+    const result = simulateEventPricing(parties, 1000);
+
+    expect(result.calculated_amount_owed).toBeCloseTo(807, 2);
+  });
+  
+
+  test('mixed party with $160 selling price matches documented scenarios', () => {
+    // Price per point = sellingPriceWholeEvent / 2 = 80 (selling price = 160).
+    // Regular Adult Whole: 2.0 × 80 = 160.00.
+    // Newbie Adult Whole: 1.075 × 80 = 86.00.
+    // Regular Teen Main: 0.5375 × 80 = 43.00.
+    // Kid: 0.0 × 80 = 0.00.
+    // Total = 160 + 86 + 43 + 0 = 289.00.
+    const parties = [
+      {
+        id: 'party-1',
+        is_paid: false,
+        attendees: [
+          { type: 'Adult', participation: 'Whole', isNewMember: false },
+          { type: 'Adult', participation: 'Whole', isNewMember: true },
+          { type: 'Teenager', participation: 'Main', isNewMember: false },
+          { type: 'Kid', participation: 'Whole', isNewMember: false }
+        ]
+      }
+    ];
+
+    const result = simulateEventPricing(parties, 160);
+
+    expect(result.calculated_amount_owed).toBeCloseTo(289, 2);
+});
 });

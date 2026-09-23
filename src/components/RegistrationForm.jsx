@@ -411,13 +411,9 @@ const handleRemoveAttendee = (id) => {
                     <div className="flex items-end">
                       <label className="flex items-center space-x-2">
                         <input type="checkbox" checked={attendee.isNewMember} onChange={(e) => handleAttendeeChange(attendee.id, 'isNewMember', e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
-                        <span className="text-sm text-gray-700">Nouveau membre (70% de rabais)</span>
+                        <span className="text-sm text-gray-700"> Première fois à la Bédaine</span>
                       </label>
                     </div>
-                  </div>
-                  <div className="mt-3 text-sm text-gray-600">
-                    Points: {calculateBasePoints(attendee.type, attendee.participation).toFixed(1)}
-                    {attendee.isNewMember && ' (avec ajustement nouveau membre)'}
                   </div>
                 </div>
               ))}
@@ -530,38 +526,27 @@ const handleRemoveAttendee = (id) => {
 {/* Summary section */}
           <div className="bg-gray-50 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">Résumé de votre inscription</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-                <div className="text-3xl font-bold text-blue-600">{totalPoints.toFixed(1)}</div>
-                <div className="text-sm text-gray-600 mt-1">Points totaux</div>
-              </div>
-              <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-                <div className="text-3xl font-bold text-green-600">{formatCurrency(basePricePerPoint)}</div>
-                <div className="text-sm text-gray-600 mt-1">Prix de base par point</div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
               <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
                 <div className="text-3xl font-bold text-purple-600">{formatCurrency(estimatedBalance)}</div>
                 <div className="text-sm text-gray-600 mt-1">Montant estimé dû</div>
               </div>
             </div>
             <div className="mt-6 text-sm text-gray-600">
-              <p>Le calcul est basé sur le prix de vente pour un adulte participant à l'événement complet. Les nouveaux membres bénéficient d'une réduction de 70% sur le coût calculé.</p>
+              <p>Le calcul est basé sur le prix de vente pour un adulte participant à l'événement complet. Ceux qui viennent pour la première fois bénéficient d'une réduction.</p>
             </div>
           </div>
 
           {/* Submit button */}
           <div className="flex justify-end space-x-4">
             <button type="button" onClick={handleAddAttendee} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Ajouter un autre participant</button>
-{onCancel && (
+            {onCancel && (
               <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
             )}
             {adminMode ? (
-              <>
-                <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
-                <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isSubmitting ? 'Mise à jour en cours...' : 'Enregistrer (mode admin)'}
-                </button>
-              </>
+              <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                {isSubmitting ? 'Mise à jour en cours...' : 'Enregistrer (mode admin)'}
+              </button>
             ) : (
               <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 {isSubmitting ? 'Enregistrement en cours...' : 'Enregistrer l\'inscription'}
