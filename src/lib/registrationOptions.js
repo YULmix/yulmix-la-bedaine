@@ -4,6 +4,43 @@ import fr from '../locales/fr.json';
 // 'value' is the raw value persisted in Supabase (English/DB keys); 'label' is the French UI text.
 // Centralizing these avoids raw DB values leaking untranslated into the UI.
 
+// user_parties.status / payment_status enum values (English, matching events.status).
+// See supabase/schema.sql and supabase/migrate_status_payment_status_to_english.sql.
+export const REGISTRATION_STATUS = {
+  REGISTERED: 'registered',
+  PENDING: 'pending',
+  CANCELLED: 'cancelled'
+};
+
+export const PAYMENT_STATUS = {
+  PAID: 'paid',
+  UNPAID: 'unpaid'
+};
+
+export const EDITABLE_REGISTRATION_STATUSES = [REGISTRATION_STATUS.REGISTERED, REGISTRATION_STATUS.PENDING];
+
+const REGISTRATION_STATUS_LABELS = {
+  [REGISTRATION_STATUS.REGISTERED]: fr.statusRegistered,
+  [REGISTRATION_STATUS.PENDING]: fr.statusPending,
+  [REGISTRATION_STATUS.CANCELLED]: fr.statusCancelled
+};
+
+const PAYMENT_STATUS_LABELS = {
+  [PAYMENT_STATUS.PAID]: fr.paid,
+  [PAYMENT_STATUS.UNPAID]: fr.unpaid
+};
+
+// Short form for compact UI (admin toggle buttons, toasts) — 'unpaid' above is the
+// longer "En attente de paiement" phrasing used on the member-facing summary badge.
+const PAYMENT_STATUS_SHORT_LABELS = {
+  [PAYMENT_STATUS.PAID]: fr.paid,
+  [PAYMENT_STATUS.UNPAID]: fr.unpaidShort
+};
+
+export const getRegistrationStatusLabel = (status) => REGISTRATION_STATUS_LABELS[status] || status;
+export const getPaymentStatusLabel = (status) => PAYMENT_STATUS_LABELS[status] || status;
+export const getPaymentStatusShortLabel = (status) => PAYMENT_STATUS_SHORT_LABELS[status] || status;
+
 export const TIER_OPTIONS = [
   { value: 'adult-whole', label: 'Adulte - Fin de semaine complète', type: 'Adult', participation: 'Whole' },
   { value: 'adult-main', label: 'Adulte - Événement principal', type: 'Adult', participation: 'Main' },

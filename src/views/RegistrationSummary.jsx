@@ -8,7 +8,12 @@ import {
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
   getOptionLabel,
-  getDietaryRequestsLabel
+  getDietaryRequestsLabel,
+  EDITABLE_REGISTRATION_STATUSES,
+  REGISTRATION_STATUS,
+  PAYMENT_STATUS,
+  getRegistrationStatusLabel,
+  getPaymentStatusLabel
 } from '../lib/registrationOptions';
 
 const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
@@ -42,7 +47,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
 
   // Handle registration deletion
   const handleDeleteRegistration = async () => {
-    if (!window.confirm(fr.deleteRegistrationConfirm || 'Êtes-vous sûr de vouloir supprimer cette inscription? Cette action est irréversible.')) {
+    if (!window.confirm(fr.deleteRegistrationConfirm)) {
       return;
     }
 
@@ -58,12 +63,12 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
       if (deleteError) throw deleteError;
 
       // Show success message and reload page
-      alert(fr.deleteRegistrationSuccess || 'Inscription supprimée avec succès');
+      alert(fr.deleteRegistrationSuccess);
       window.location.reload();
     } catch (err) {
       console.error('Error deleting registration:', err);
-      setError(fr.deleteRegistrationError || 'Erreur lors de la suppression de l\'inscription');
-      alert(fr.deleteRegistrationError || 'Erreur lors de la suppression de l\'inscription');
+      setError(fr.deleteRegistrationError);
+      alert(fr.deleteRegistrationError);
     } finally {
       setLoading(false);
     }
@@ -109,9 +114,9 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
           }
           return JSON.stringify(value);
         case 'status':
-          return value === 'Enregistré' ? 'Enregistré' : value === 'En attente' ? 'En attente' : value;
+          return getRegistrationStatusLabel(value);
         case 'payment_status':
-          return value === 'Payé' ? 'Payé' : value === 'Impayé' ? 'En attente de paiement' : value;
+          return getPaymentStatusLabel(value);
         case 'is_waitlisted':
           return value ? 'Oui' : 'Non';
         default:
@@ -198,23 +203,6 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
   const transport = registration.transport || {};
   const volunteeringSelections = logistics.volunteering || [];
 
-  // Get status label
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case 'Enregistré': return 'Enregistré';
-      case 'En attente': return 'En attente';
-      default: return status;
-    }
-  };
-
-  // Get payment status label
-  const getPaymentLabel = (paymentStatus) => {
-    switch (paymentStatus) {
-      case 'Payé': return 'Payé';
-      case 'Impayé': return 'En attente de paiement';
-      default: return paymentStatus;
-    }
-  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 max-w-6xl mx-auto">
@@ -256,7 +244,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                       <span>Participation: {attendee.participation === 'Whole' ? 'Complète' : 'Partielle'}</span>
                       {attendee.is_new_member && (
                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                           Première fois à la Bédaine
+                           {fr.firstTimeAttendee}
                         </span>
                       )}
                     </div>
@@ -343,17 +331,17 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
               <div>
                 <p className="text-sm text-gray-500">{fr.registrationStatus}</p>
                 <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${
-                  registration.status === 'Enregistré' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  registration.status === REGISTRATION_STATUS.REGISTERED ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {getStatusLabel(registration.status)}
+                  {getRegistrationStatusLabel(registration.status)}
                 </div>
               </div>
               <div>
                 <p className="text-sm text-gray-500">{fr.paymentStatus}</p>
                 <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${
-                  registration.payment_status === 'Payé' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  registration.payment_status === PAYMENT_STATUS.PAID ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {getPaymentLabel(registration.payment_status)}
+                  {getPaymentStatusLabel(registration.payment_status)}
                 </div>
               </div>
               <div>
@@ -464,13 +452,15 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
       {/* Action buttons */}
       <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end">
         <div className="flex space-x-4">
-          <button
-            onClick={handleDeleteRegistration}
-            disabled={loading}
-            className="px-6 py-3 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Suppression...' : (fr.deleteRegistration || 'Supprimer l\'inscription')}
-          </button>
+          {EDITABLE_REGISTRATION_STATUSES.includes(registration.status) && (
+            <button
+              onClick={handleDeleteRegistration}
+              disabled={loading}
+              className="px-6 py-3 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? fr.deleteRegistrationInProgress : fr.deleteRegistration}
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"

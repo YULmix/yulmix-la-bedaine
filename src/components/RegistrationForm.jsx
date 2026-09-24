@@ -8,7 +8,9 @@ import {
   BED_REASON_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
-  DIETARY_OPTIONS
+  DIETARY_OPTIONS,
+  REGISTRATION_STATUS,
+  PAYMENT_STATUS
 } from '../lib/registrationOptions';
 
 const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave }) => {
@@ -311,8 +313,8 @@ const handleRemoveAttendee = (id) => {
         attendees: attendeesData,
         counts: counts,
         calculated_amount_owed: estimatedBalance,
-        status: 'Enregistré',
-        payment_status: adminMode && userRegistration ? userRegistration.payment_status : 'Impayé',
+        status: REGISTRATION_STATUS.REGISTERED,
+        payment_status: adminMode && userRegistration ? userRegistration.payment_status : PAYMENT_STATUS.UNPAID,
         is_waitlisted: isWaitlisted,
         logistics: logistics,
         transport: transport,
@@ -411,7 +413,7 @@ const handleRemoveAttendee = (id) => {
                     <div className="flex items-end">
                       <label className="flex items-center space-x-2">
                         <input type="checkbox" checked={attendee.isNewMember} onChange={(e) => handleAttendeeChange(attendee.id, 'isNewMember', e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
-                        <span className="text-sm text-gray-700"> Première fois à la Bédaine</span>
+                        <span className="text-sm text-gray-700"> {fr.firstTimeAttendee}</span>
                       </label>
                     </div>
                   </div>
@@ -533,7 +535,7 @@ const handleRemoveAttendee = (id) => {
               </div>
             </div>
             <div className="mt-6 text-sm text-gray-600">
-              <p>Le calcul est basé sur le prix de vente pour un adulte participant à l'événement complet. Ceux qui viennent pour la première fois bénéficient d'une réduction.</p>
+              <p>{fr.firstTimeDiscountNotice}</p>
             </div>
           </div>
 

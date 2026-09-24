@@ -83,14 +83,7 @@ export const calculatePricePerPointFromSellingPrice = (sellingPriceWholeEvent) =
 export const getFinalPoints = (attendee) => {
   // Newbies pay fixed flat rates regardless of tier (always Main Event rate)
   if (attendee.isNewMember) {
-    if (attendee.type === 'Adult') {
-      return 1.075; // Fixed newbie rate (same as Adult Main Event)
-    }
-    if (attendee.type === 'Teenager') {
-      return 0.5375; // Fixed newbie rate (same as Teen Main Event)
-    }
-    // Kids remain 0.0
-    return 0.0;
+    return calculateBasePoints(attendee.type, 'Main');
   }
   
   // Regular members use standard point weights

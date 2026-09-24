@@ -16,7 +16,10 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0003](./0003-pricing-as-a-pure-module.md) | Pricing lives in one pure, tested module | accepted |
 | [0004](./0004-per-attendee-logistics-inside-attendees.md) | Per-person logistics live inside the `attendees` JSONB | accepted |
 | [0005](./0005-waitlist-instead-of-blocking.md) | Over capacity waitlists, never blocks | accepted |
-| [0006](./0006-french-values-in-payment-and-status-columns.md) | Payment status is stored in French | accepted, regretted |
+| [0006](./0006-french-values-in-payment-and-status-columns.md) | Payment status is stored in French | superseded by 0012 |
 | [0007](./0007-selling-price-not-cost-drives-member-pricing.md) | The admin-set selling price, not the cost estimate, determines what members pay | accepted |
 | [0008](./0008-archive-never-delete.md) | Events are archived, never deleted | accepted |
 | [0009](./0009-french-ui-english-code.md) | French UI from one dictionary, English codebase | accepted |
+| [0010](./0010-pricing-rules-and-logistics.md) | Refined pricing rules, individual logistics, and event lifecycle | accepted |
+| [0011](./0011-feedback-loop-and-admin-controls.md) | Operational feedback loop, event safety, and communications | accepted |
+| [0012](./0012-migrate-status-columns-to-english.md) | Migrate status/payment_status to English enum values | accepted |

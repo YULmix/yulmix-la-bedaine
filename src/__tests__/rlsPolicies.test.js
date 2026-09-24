@@ -169,13 +169,13 @@ async function seedTestDataManually() {
       id: TEST_UUIDS.USER_REGISTRATION_ID,
       user_id: TEST_UUIDS.USER_ID,
       event_id: TEST_UUIDS.ACTIVE_EVENT_ID,
-      status: 'Enregistré'
+      status: 'registered'
     },
     {
       id: TEST_UUIDS.ADMIN_REGISTRATION_ID,
       user_id: TEST_UUIDS.ADMIN_ID,
       event_id: TEST_UUIDS.DRAFT_EVENT_ID,
-      status: 'Enregistré'
+      status: 'registered'
     }
   ]);
 

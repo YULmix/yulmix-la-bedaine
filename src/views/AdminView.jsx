@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -6,7 +6,9 @@ import {
   ACCOMMODATION_OPTIONS,
   DIETARY_OPTIONS,
   getOptionLabel,
-  getDietaryRequestsLabel
+  getDietaryRequestsLabel,
+  PAYMENT_STATUS,
+  getPaymentStatusShortLabel
 } from '../lib/registrationOptions';
 import { simulateEventPricing, calculateEstimatedCostPerParticipant } from '../lib/pricingEngine';
 
@@ -264,10 +266,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   // Payment status toggle
   const handlePaymentToggle = async (party, newStatus) => {
-    const action = newStatus === 'Payé' ? 'Payé' : 'Impayé';
-    const confirmMessage = newStatus === 'Payé' 
-      ? `Voulez-vous marquer le paiement comme Payé pour ${party.profiles?.full_name || 'cet utilisateur'}?`
-      : `Voulez-vous marquer le paiement comme Impayé pour ${party.profiles?.full_name || 'cet utilisateur'}?`;
+    const action = getPaymentStatusShortLabel(newStatus);
+    const confirmMessage = `Voulez-vous marquer le paiement comme ${action} pour ${party.profiles?.full_name || 'cet utilisateur'}?`;
     
     if (!window.confirm(confirmMessage)) return;
     
@@ -343,13 +343,14 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const calculateRoundedPartyTotal = (party) => {
     if (!activeEventState?.selling_price_whole_event) return party.calculated_amount_owed || 0;
     
-    // Prepare party in format expected by simulateEventPricing
+    // Prepare party in format expected by simulateEventPricing.
+    // Preserve grandfathering: a party that already paid keeps its historical amount
+    // rather than being repriced at the current selling price.
     const partyForSimulation = {
       id: party.id,
       attendees: party.attendees || [],
-      // Always calculate with rounding up, ignore payment status for budget calculations
-      is_paid: false,
-      historical_owed: 0
+      is_paid: party.payment_status === PAYMENT_STATUS.PAID,
+      historical_owed: party.calculated_amount_owed || 0
     };
     
     try {
@@ -366,6 +367,18 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       return party.calculated_amount_owed || 0;
     }
   };
+
+  // Memoize per-party rounded totals so the pricing engine only reruns when the
+  // parties list or selling price actually changes, not on every render.
+  const roundedPartyTotals = useMemo(() => {
+    const totals = new Map();
+    parties.forEach(party => {
+      totals.set(party.id, calculateRoundedPartyTotal(party));
+    });
+    return totals;
+  }, [parties, activeEventState?.selling_price_whole_event]);
+
+  const getRoundedPartyTotal = (party) => roundedPartyTotals.get(party.id) ?? (party.calculated_amount_owed || 0);
 
   // User profile modal functions
   const openUserProfile = async (profile) => {
@@ -456,46 +469,40 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
   const runSimulation = () => {
-    // Build synthetic parties for simulation
-    const syntheticParties = [];
-    
-    // Add parties based on counts
+    // Build a single synthetic party holding every simulated attendee, so the pricing
+    // engine's per-party rounding is applied once to the total rather than once per
+    // attendee (which would inflate the projected total).
+    const attendees = [];
+
     const addAttendees = (type, participation, count) => {
       for (let i = 0; i < count; i++) {
-        syntheticParties.push({
-          id: `sim-${type}-${participation}-${i}`,
-          attendees: [{
-            id: `attendee-${syntheticParties.length}`,
-            name: `${type} ${participation}`,
-            type: type === 'adult' ? 'Adult' : type === 'teen' ? 'Teenager' : 'Kid',
-            participation: participation === 'Whole' ? 'Whole' : 'Main',
-            isNewMember: false
-          }]
+        attendees.push({
+          id: `attendee-${attendees.length}`,
+          type: type === 'adult' ? 'Adult' : type === 'teen' ? 'Teenager' : 'Kid',
+          participation: participation === 'Whole' ? 'Whole' : 'Main',
+          isNewMember: false
         });
       }
     };
-    
-    // Create parties (simplified - could be optimized)
+
     addAttendees('adult', 'Whole', scenarioValues.adultWhole);
     addAttendees('adult', 'Main', scenarioValues.adultMain);
     addAttendees('teen', 'Whole', scenarioValues.teenWhole);
     addAttendees('teen', 'Main', scenarioValues.teenMain);
-    
+
     // Kids don't count for points but we include them
     for (let i = 0; i < scenarioValues.kids; i++) {
-      syntheticParties.push({
-        id: `sim-kid-${i}`,
-        attendees: [{
-          id: `attendee-kid-${i}`,
-          name: 'Enfant',
-          type: 'Kid',
-          participation: 'After-Party',
-          isNewMember: false
-        }]
+      attendees.push({
+        id: `attendee-kid-${i}`,
+        type: 'Kid',
+        participation: 'After-Party',
+        isNewMember: false
       });
     }
-    
-    const sellingPrice = scenarioValues.sellingPriceOverride 
+
+    const syntheticParties = [{ id: 'sim-party', attendees }];
+
+    const sellingPrice = scenarioValues.sellingPriceOverride
       ? parseFloat(scenarioValues.sellingPriceOverride) 
       : activeEventState?.selling_price_whole_event || 0;
     
@@ -544,7 +551,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         counts.kids || 0,
         getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, ''),
         sleeping.assigned || '',
-        party.payment_status || '',
+        getPaymentStatusShortLabel(party.payment_status),
         party.calculated_amount_owed || 0
       ];
     });
@@ -628,7 +635,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         counts.kids || 0,
         getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, ''),
         sleeping.assigned || '',
-        party.payment_status || '',
+        getPaymentStatusShortLabel(party.payment_status),
         party.calculated_amount_owed || 0
       ];
     });
@@ -971,19 +978,19 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{fr.budgetTotalAmountDue}</span>
                     <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + calculateRoundedPartyTotal(party), 0))}
+                      {formatCurrency(parties.reduce((sum, party) => sum + getRoundedPartyTotal(party), 0))}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{fr.budgetAmountToReceive}</span>
                     <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === 'Impayé' ? calculateRoundedPartyTotal(party) : 0), 0))}
+                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === PAYMENT_STATUS.UNPAID ? getRoundedPartyTotal(party) : 0), 0))}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{fr.budgetAmountReceived}</span>
                     <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === 'Payé' ? calculateRoundedPartyTotal(party) : 0), 0))}
+                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === PAYMENT_STATUS.PAID ? getRoundedPartyTotal(party) : 0), 0))}
                     </span>
                   </div>
                 </div>
@@ -1146,17 +1153,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => handlePaymentToggle(party, party.payment_status === 'Payé' ? 'Impayé' : 'Payé')}
+                          onClick={() => handlePaymentToggle(party, party.payment_status === PAYMENT_STATUS.PAID ? PAYMENT_STATUS.UNPAID : PAYMENT_STATUS.PAID)}
                           className={`px-3 py-1 text-xs rounded-full font-medium ${
-                            party.payment_status === 'Payé' 
+                            party.payment_status === PAYMENT_STATUS.PAID
                               ? 'bg-green-100 text-green-800 hover:bg-green-200'
                               : 'bg-red-100 text-red-800 hover:bg-red-200'
                           }`}
                         >
-                          {party.payment_status === 'Payé' ? 'Payé' : 'Impayé'}
+                          {getPaymentStatusShortLabel(party.payment_status)}
                         </button>
                       </td>
-<td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(calculateRoundedPartyTotal(party))}</td>
+<td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(getRoundedPartyTotal(party))}</td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => openPartyEdit(party)}
@@ -1384,11 +1391,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                             <td className="px-4 py-3 text-sm text-gray-800">{history.registration_status}</td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 text-xs rounded-full ${
-                                history.payment_status === 'Payé' 
+                                history.payment_status === PAYMENT_STATUS.PAID 
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-red-100 text-red-800'
                               }`}>
-                                {history.payment_status === 'Payé' ? 'Payé' : 'Impayé'}
+                                {getPaymentStatusShortLabel(history.payment_status)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(history.calculated_amount_owed)}</td>
