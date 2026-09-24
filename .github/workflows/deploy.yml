@@ -41,6 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # lint:diff needs the base branch's history to compute which lines
+          # this PR actually added (see scripts/lint-diff.mjs).
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -52,6 +56,17 @@ jobs:
       - run: npm run build
 
       - run: npm run test:pricing
+
+      # Repo-wide, informational only (local/no-literal-ui-strings is a
+      # warning — see eslint.config.js for the pre-existing backlog this
+      # is tracking, not gating).
+      - run: npm run lint
+
+      # Blocking: fails only on NEW hardcoded UI strings introduced by this
+      # PR's diff, never on pre-existing ones in a touched file.
+      - name: Lint changed files for new hardcoded UI strings
+        if: github.event_name == 'pull_request'
+        run: npm run lint:diff -- "origin/${{ github.base_ref }}"
 
   deploy:
     name: Deploy to production

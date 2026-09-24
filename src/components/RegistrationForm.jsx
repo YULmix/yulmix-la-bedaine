@@ -45,7 +45,8 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         sleepingPreference: attendee.sleeping_preference || '',
         dietaryNeeds: attendee.dietary_needs || '',
         bedReason: attendee.bed_reason || '',
-        dietaryOther: attendee.dietary_other || ''
+        dietaryOther: attendee.dietary_other || '',
+        assignedBed: attendee.assigned_bed || ''
       }));
       setAttendees(formattedAttendees);
       // Set party-wide logistics from userRegistration metadata if present
@@ -217,7 +218,8 @@ const handleRemoveAttendee = (id) => {
         sleeping_preference: attendee.sleepingPreference,
         dietary_needs: attendee.dietaryNeeds,
         bed_reason: attendee.bedReason,
-        dietary_other: attendee.dietaryOther
+        dietary_other: attendee.dietaryOther,
+        assigned_bed: attendee.assignedBed || ''
       }));
 
       // Calculate counts for the counts JSONB field
@@ -228,13 +230,9 @@ const handleRemoveAttendee = (id) => {
         teen_main: attendeesData.filter(a => a.type === 'Teenager' && a.participation === 'Main').length,
         kids: attendeesData.filter(a => a.type === 'Kid').length
       };
-      // Build logistics JSONB
+      // Build logistics JSONB (party-wide fields only; per-attendee accommodation,
+      // bed reason and bed assignment live on each entry in attendeesData instead)
       const logistics = {
-        sleeping: {
-          pref: attendees.length > 0 ? attendees[0].sleepingPreference : '',
-          reason: attendees.length > 0 ? attendees[0].bedReason : '',
-          assigned: ''
-        },
         food_requests: {
           requests: attendees.map(a => a.dietaryNeeds).filter(Boolean).join(', '),
           notes: attendees.map(a => a.dietaryOther).filter(Boolean).join(', ')
