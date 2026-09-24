@@ -78,7 +78,7 @@ CREATE TABLE public.user_parties (
 );
 
 COMMENT ON TABLE public.user_parties IS 'Event registrations with attendee tracking and payment status';
-COMMENT ON COLUMN public.user_parties.attendees IS 'Array of objects: [{"name": "...", "tier": "adult_whole" | "adult_main" | "teen_whole" | "teen_main" | "kids", "is_new_member": boolean}]';
+COMMENT ON COLUMN public.user_parties.attendees IS 'Array of objects: [{"name": "...", "type": "Adult" | "Teenager" | "Kid", "participation": "Whole" | "Main" | "After-Party", "isNewMember": boolean}]';
 COMMENT ON COLUMN public.user_parties.counts IS 'Auto-computed from attendees on insert/update';
 COMMENT ON COLUMN public.user_parties.admin_notes IS 'Private notes reserved for organizers only';
 COMMENT ON COLUMN public.user_parties.last_edited_at IS 'Timestamp of last edit to registration';
@@ -152,7 +152,14 @@ BEGIN
     IF NEW.attendees IS NOT NULL AND jsonb_typeof(NEW.attendees) = 'array' THEN
         FOR attendee IN SELECT * FROM jsonb_array_elements(NEW.attendees)
         LOOP
-            tier_name := attendee->>'tier';
+            tier_name := CASE
+                WHEN attendee->>'type' = 'Adult' AND attendee->>'participation' = 'Whole' THEN 'adult_whole'
+                WHEN attendee->>'type' = 'Adult' THEN 'adult_main'
+                WHEN attendee->>'type' = 'Teenager' AND attendee->>'participation' = 'Whole' THEN 'teen_whole'
+                WHEN attendee->>'type' = 'Teenager' THEN 'teen_main'
+                WHEN attendee->>'type' = 'Kid' THEN 'kids'
+                ELSE NULL
+            END;
             IF tier_name IS NOT NULL THEN
                 counts := jsonb_set(
                     counts,
