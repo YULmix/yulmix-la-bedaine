@@ -20,8 +20,10 @@ sécurité/RLS, contribution, dette technique, feuille de route) se trouve dans
 - [Modèle de données](./docs/03-data-model.md) — tables, JSONB, triggers, RLS
 - [Tarification et règles d'affaires](./docs/04-pricing-and-business-rules.md) — la logique monétaire
 - [Contribuer](./docs/08-contributing.md) — conventions, branches, revues
-- [État du code](./docs/09-state-of-the-code.md) — anomalies confirmées et dette technique
 - [Décisions d'architecture (ADR)](./docs/adr/) — pourquoi le système est fait ainsi
+
+Les anomalies connues et le travail à faire sont suivis dans les
+[GitHub Issues](https://github.com/YULmix/yulmix-la-bedaine/issues) — pas dans un fichier Markdown.
 
 Un agent (ou un humain) qui commence à travailler sur ce dépôt devrait d'abord lire
 **[`AGENTS.md`](./AGENTS.md)**.
@@ -103,9 +105,10 @@ Détails complets (y compris les pièges actuels vérifiés — lockfile, schém
 `VITE_SUPABASE_ANON_KEY`) se configurent dans les paramètres du projet Vercel.
 
 Un fichier `netlify.toml` subsiste dans le dépôt d'une période où l'hébergeur n'était pas encore
-fixé; il n'est plus utilisé. Le déploiement n'est pour l'instant pas conditionné par la CI — voir
-[l'état du code](./docs/09-state-of-the-code.md) et la [feuille de route](./docs/10-roadmap.md)
-pour le plan visant à corriger cela.
+fixé; il n'est plus utilisé (voir [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)
+pour le supprimer). Le déploiement est conditionné par la CI depuis
+`.github/workflows/deploy.yml` (`npm run build` / `npm run test:pricing` doivent passer avant tout
+déploiement en production).
 
 ## Contribuer
 

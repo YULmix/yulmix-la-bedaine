@@ -8,10 +8,11 @@ not in this file. Read this first, then follow the pointers.
 
 1. **[`docs/README.md`](./docs/README.md)** — the documentation index. Read it before touching
    anything non-trivial.
-2. **[`docs/09-state-of-the-code.md`](./docs/09-state-of-the-code.md)** — known defects and gaps,
-   each cited to `file:line`. Check this before "discovering" a bug that's already tracked, and
-   before assuming something odd in the code is a mistake rather than a deliberate (if undocumented)
-   choice explained in an ADR.
+2. **[GitHub Issues](https://github.com/YULmix/yulmix-la-bedaine/issues)** — the only source of truth
+   for known defects, planned work, and open questions needing an organiser decision. Check open
+   issues before "discovering" a bug that's already tracked, and before assuming something odd in the
+   code is a mistake rather than a deliberate (if undocumented) choice explained in an ADR. There is
+   no defect list or roadmap file in `docs/` anymore — don't recreate one; file an issue instead.
 3. **[`docs/glossary.md`](./docs/glossary.md)** — the domain vocabulary (party, tier, point, selling
    price vs. base cost…). Get this right before writing code or docs that use these terms.
 
@@ -50,8 +51,8 @@ became hard to use. See [Contributing → Tracking work](./docs/08-contributing.
 
 - `npm run build` — must pass.
 - `npm run test:pricing` — must pass; add cases for pricing changes.
-- `npm test` — currently broken (two of three suites fail); see
-  [Development setup](./docs/07-development-setup.md#scripts) before trusting its output either way.
+- `npm test` — must pass (the RLS suite is deliberately excluded; see
+  [Development setup](./docs/07-development-setup.md#scripts)).
 - Exercise the change as **both** a member and an admin — RLS means the two roles genuinely see
   different things, and that boundary is the one most likely to break silently.
 

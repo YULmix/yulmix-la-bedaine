@@ -16,19 +16,24 @@ It documents the system **as it actually is today**, not only as it was specifie
 | 7 | [Security & RLS](./06-security-and-rls.md) | Auth, roles, the RLS policy matrix, threat notes |
 | 8 | [Development setup](./07-development-setup.md) | Getting it running, scripts, verified current state |
 | 9 | [Contributing](./08-contributing.md) | Branching, reviews, conventions, how to work with agents |
-| 10 | [State of the code](./09-state-of-the-code.md) | Ranked list of confirmed defects and technical debt |
-| 11 | [Roadmap](./10-roadmap.md) | What to build next, in dependency order |
-| 12 | [Live environment audit](./11-live-environment.md) | What Supabase and Vercel actually look like today, verified read-only, with open questions |
-| 13 | [Decision records](./adr/) | Why the system is shaped the way it is |
+| 10 | [Live environment audit](./11-live-environment.md) | What Supabase and Vercel actually look like today, verified read-only, with open questions |
+| 11 | [Decision records](./adr/) | Why the system is shaped the way it is |
+
+## Where defects and work items live
+
+**GitHub Issues is the only source of truth for known defects, planned work, and open questions** —
+see [Contributing → Tracking work](./08-contributing.md#tracking-work). There used to be a
+`09-state-of-the-code.md` and a `10-roadmap.md` here; both were static Markdown lists that drifted
+from GitHub Issues and from each other. They were removed and their contents filed as issues instead.
+Don't recreate them — if you find an undocumented bug or gap, open an issue.
 
 ## Source of record
 
 - **[Bedaine App - Requirements.md](./Bedaine%20App%20-%20Requirements.md)** — the original
   prompt-by-prompt specification used to build the app. It is a historical record of *intent*,
-  including decisions that were later reversed. Where intent and code disagree,
-  [State of the code](./09-state-of-the-code.md) records the gap. **It is not where ongoing work is
-  tracked** — see [Contributing → Tracking work](./08-contributing.md#tracking-work): current and
-  future work belongs in GitHub Issues (or beads tasks).
+  including decisions that were later reversed. **It is not where ongoing work is tracked** — see
+  [Contributing → Tracking work](./08-contributing.md#tracking-work): current and future work
+  belongs in GitHub Issues (or beads tasks).
 - **The Excel/Google spreadsheet** — the legacy tool being replaced. See
   [Product overview](./01-product-overview.md#relationship-to-the-spreadsheet) for the migration status
   and what still needs to be extracted from it.

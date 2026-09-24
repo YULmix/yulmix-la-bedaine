@@ -132,7 +132,7 @@ developed on Windows. The commands are shell-agnostic enough to translate.
 rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project settings.
 
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
-be deleted (see [state of the code](./09-state-of-the-code.md)).
+be deleted (see [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).
 
 **Vercel's own git integration is currently disconnected** — the project is still linked to the
 repo's pre-transfer identity (`Dekayd/YULMixLaBedaine`), and reconnecting it needs a `YULmix` org

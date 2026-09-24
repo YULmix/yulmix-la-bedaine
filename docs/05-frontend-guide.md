@@ -53,7 +53,8 @@ Sizes, as a blunt signal of where the complexity is:
 `AdminView` is eight screens in one file (event list, metadata editor, aggregates, cost-vs-price,
 logistics table, user table, profile modal, simulator, export). It is the obvious first
 refactoring target and the most likely source of merge conflicts once more than one person is
-committing — splitting it is [roadmap](./10-roadmap.md) work, not cleanup.
+committing — splitting it is tracked as
+[issue #29](https://github.com/YULmix/yulmix-la-bedaine/issues/29), not cleanup.
 
 ## State and data ownership
 
@@ -168,14 +169,11 @@ French. Keep that — PostgREST errors are otherwise very hard to diagnose from 
 
 ## Known frontend defects
 
-Confirmed by reading the code; full list with severities in
-[state of the code](./09-state-of-the-code.md):
+Tracked in [GitHub Issues](https://github.com/YULmix/yulmix-la-bedaine/issues), not here. Notably:
 
-- `saveLogisticsChanges` calls `fetchPartiesForActiveEvent()`, which **does not exist**
-  (`src/views/AdminView.jsx:403`). The write succeeds, then the ReferenceError is swallowed by the
-  surrounding `catch`, so the organiser sees *"Erreur lors de la sauvegarde"* and a stale table.
 - `aggregateTotals()` (`src/views/AdminView.jsx:292`) builds a zeroed object and returns it without
-  counting anything. It is also never called — dead code that looks authoritative.
+  counting anything. It is also never called — dead code that looks authoritative. See
+  [issue #41](https://github.com/YULmix/yulmix-la-bedaine/issues/41).
 - Admin aggregates read `party.counts`, which the counts trigger fills with zeros (see
   [data model](./03-data-model.md#user_partiesattendees)).
 - The registration form has **two** "Annuler" buttons (`RegistrationForm.jsx:556`, `:560`) and no

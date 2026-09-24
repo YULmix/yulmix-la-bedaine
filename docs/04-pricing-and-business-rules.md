@@ -105,7 +105,7 @@ stored historical amount for any party flagged as paid, regardless of later sell
 > is `calculated_amount_owed`. Nothing in the app maps one to the other, so grandfathering is
 > currently only exercised by the simulator and the tests — a paid member who re-opens and saves
 > their registration after a price change **will** have their amount recomputed. See
-> [state of the code](./09-state-of-the-code.md).
+> [issue #31](https://github.com/YULmix/yulmix-la-bedaine/issues/31).
 
 ## The internal base cost
 

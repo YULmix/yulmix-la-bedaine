@@ -48,9 +48,11 @@ The current history (*"head assets"* ×3) is not a model to follow.
 ## Tracking work
 
 **Work in progress and work to be done lives in GitHub Issues** (or beads tasks, if the team
-adopts that tool) — not in a Markdown file. Each item in
-[state of the code](./09-state-of-the-code.md) and each roadmap step is a candidate issue: file it,
-assign it, close it when it's done, and let the issue carry the discussion and the eventual PR link.
+adopts that tool) — not in a Markdown file. There used to be a `09-state-of-the-code.md` (a ranked
+defect list) and a `10-roadmap.md` (a staged plan) in this folder; both were static lists that
+inevitably drifted from GitHub Issues and from each other, so they were removed and their contents
+filed as issues. File new work as an issue, assign it, close it when it's done, and let the issue
+carry the discussion and the eventual PR link.
 
 `docs/Bedaine App - Requirements.md` stays in the repo as a **historical record of intent** — the
 original prompt-by-prompt spec, including the decisions that were made and later reversed. It is
@@ -63,9 +65,10 @@ keep appending new work items to it — open an issue instead.
 
 This codebase was built mostly by prompting, and that will continue. What makes it work in a group:
 
-- **Point the agent at the docs, not just the code.** Start from `docs/README.md`;
-  `docs/09-state-of-the-code.md` lists the traps (zeroed `counts`, the broken schema file, the
-  browser-computed balance) that an agent will otherwise "discover" and half-fix.
+- **Point the agent at the docs and the issue tracker, not just the code.** Start from
+  `docs/README.md` and open GitHub issues — the browser-computed balance
+  ([#30](https://github.com/YULmix/yulmix-la-bedaine/issues/30)) is the one an agent most often
+  "discovers" and half-fixes without checking first.
 - **File agent-discovered issues in the tracker, not in a doc.** If an agent surfaces a new defect or
   gap, the output is a GitHub issue (or beads task), not another paragraph appended to a Markdown
   file — see [Tracking work](#tracking-work) above.
