@@ -4,6 +4,7 @@ import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
 import {
   ACCOMMODATION_OPTIONS,
+  BED_REASON_OPTIONS,
   DIETARY_OPTIONS,
   getOptionLabel,
   getDietaryRequestsLabel,
@@ -406,12 +407,25 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
   // Logistics updates
-  const handleLogisticsChange = (partyId, field, value) => {
+  const handleAdminNotesChange = (partyId, value) => {
     setLogisticsChanges(prev => ({
       ...prev,
       [partyId]: {
         ...prev[partyId],
-        [field]: value
+        adminNotes: value
+      }
+    }));
+  };
+
+  const handleAssignedBedChange = (partyId, attendeeIndex, value) => {
+    setLogisticsChanges(prev => ({
+      ...prev,
+      [partyId]: {
+        ...prev[partyId],
+        attendees: {
+          ...prev[partyId]?.attendees,
+          [attendeeIndex]: value
+        }
       }
     }));
   };
@@ -419,40 +433,38 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const saveLogisticsChanges = async (partyId) => {
     const changes = logisticsChanges[partyId];
     if (!changes) return;
-    
+
     const party = parties.find(p => p.id === partyId);
     if (!party) return;
-    
+
     try {
-      const updatedLogistics = {
-        ...party.logistics,
-        sleeping: {
-          ...party.logistics?.sleeping,
-          assigned: changes.sleepingAssigned || (party.logistics?.sleeping?.assigned || '')
-        }
-      };
-      
+      const updatedAttendees = (party.attendees || []).map((attendee, index) => (
+        changes.attendees && changes.attendees[index] !== undefined
+          ? { ...attendee, assigned_bed: changes.attendees[index] }
+          : attendee
+      ));
+
       const updateData = {
-        logistics: updatedLogistics,
+        attendees: updatedAttendees,
         admin_notes: changes.adminNotes !== undefined ? changes.adminNotes : party.admin_notes
       };
-      
+
       const { error } = await supabase
         .from('user_parties')
         .update(updateData)
         .eq('id', partyId);
-      
+
       if (error) throw error;
-      
+
       addToast('Assignations logistiques mises à jour', 'success');
-      
+
       // Clear changes and refresh
       setLogisticsChanges(prev => {
         const newChanges = { ...prev };
         delete newChanges[partyId];
         return newChanges;
       });
-      
+
       fetchPartiesForActiveEvent();
     } catch (error) {
       console.error('Error saving logistics:', error);
@@ -514,6 +526,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     setSimulationResult(result);
   };
 
+  // Summarize per-attendee accommodation info for the party-level export rows
+  const summarizeAccommodationPrefs = (party) => (party.attendees || [])
+    .map(a => getOptionLabel(ACCOMMODATION_OPTIONS, a.sleeping_preference, ''))
+    .filter(Boolean)
+    .join('; ');
+
+  const summarizeAssignedBeds = (party) => (party.attendees || [])
+    .filter(a => a.assigned_bed)
+    .map(a => `${a.name || '?'}: ${a.assigned_bed}`)
+    .join('; ');
+
   // Data export functions
   const exportToCSV = () => {
     if (!parties.length) {
@@ -538,9 +561,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     const rows = parties.map(party => {
       const profile = party.profiles || {};
       const counts = party.counts || {};
-      const logistics = party.logistics || {};
-      const sleeping = logistics.sleeping || {};
-      
+
       return [
         `"${profile.full_name || ''}"`,
         `"${profile.email || ''}"`,
@@ -549,8 +570,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         counts.teen_whole || 0,
         counts.teen_main || 0,
         counts.kids || 0,
-        getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, ''),
-        sleeping.assigned || '',
+        `"${summarizeAccommodationPrefs(party)}"`,
+        `"${summarizeAssignedBeds(party)}"`,
         getPaymentStatusShortLabel(party.payment_status),
         party.calculated_amount_owed || 0
       ];
@@ -622,9 +643,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     const rows = parties.map(party => {
       const profile = party.profiles || {};
       const counts = party.counts || {};
-      const logistics = party.logistics || {};
-      const sleeping = logistics.sleeping || {};
-      
+
       return [
         profile.full_name || '',
         profile.email || '',
@@ -633,8 +652,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         counts.teen_whole || 0,
         counts.teen_main || 0,
         counts.kids || 0,
-        getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, ''),
-        sleeping.assigned || '',
+        summarizeAccommodationPrefs(party),
+        summarizeAssignedBeds(party),
         getPaymentStatusShortLabel(party.payment_status),
         party.calculated_amount_owed || 0
       ];
@@ -1002,7 +1021,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <h3 className="text-lg font-medium text-gray-700 mb-3">Hébergement</h3>
               <div className="space-y-2">
                 {ACCOMMODATION_OPTIONS.map(opt => {
-                  const count = parties.filter(p => p.logistics?.sleeping?.pref === opt.value).length;
+                  const count = parties.reduce((sum, p) => sum + (p.attendees || []).filter(a => a.sleeping_preference === opt.value).length, 0);
                   return count > 0 ? (
                     <div key={opt.value} className="flex justify-between items-center">
                       <span className="text-gray-700">{opt.label}</span>
@@ -1036,77 +1055,91 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {activeEventState && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.logisticsViewTitle}</h2>
-          <p className="text-sm text-gray-600 mb-4">Assignez les places de couchage et ajoutez des notes internes.</p>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableName}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableEmail}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableSleepingPref}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableSleepingAssigned}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableAdminNotes}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {parties.map(party => {
-                  const profile = party.profiles || {};
-                  const logistics = party.logistics || {};
-                  const sleeping = logistics.sleeping || {};
-                  const changes = logisticsChanges[party.id] || {};
-                  
-                  return (
-                    <tr key={party.id}>
-                      <td className="px-4 py-3 text-sm text-gray-800">
-                        <button 
-                          onClick={() => openUserProfile(profile)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {profile.full_name || 'Non spécifié'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
-                      <td className="px-4 py-3 text-sm text-gray-800">
-                        {getOptionLabel(ACCOMMODATION_OPTIONS, sleeping.pref, 'Non spécifié')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={((changes.sleepingAssigned !== undefined ? changes.sleepingAssigned : sleeping.assigned) ?? '')}
-                          onChange={(e) => handleLogisticsChange(party.id, 'sleepingAssigned', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">Non assigné</option>
-                          {ACCOMMODATION_OPTIONS.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <textarea
-                          value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                          onChange={(e) => handleLogisticsChange(party.id, 'adminNotes', e.target.value)}
-                          rows="2"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Notes internes..."
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        {(changes.sleepingAssigned !== undefined || changes.adminNotes !== undefined) && (
-                          <button
-                            onClick={() => saveLogisticsChanges(party.id)}
-                            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                          >
-                            {fr.saveAssignments}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <p className="text-sm text-gray-600 mb-4">{fr.logisticsViewDescription}</p>
+
+          <div className="space-y-4">
+            {parties.map(party => {
+              const profile = party.profiles || {};
+              const partyAttendees = party.attendees || [];
+              const changes = logisticsChanges[party.id] || {};
+              const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
+
+              return (
+                <div key={party.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 mb-3">
+                    <div>
+                      <button
+                        onClick={() => openUserProfile(profile)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                      >
+                        {profile.full_name || 'Non spécifié'}
+                      </button>
+                      <p className="text-sm text-gray-500">{profile.email}</p>
+                    </div>
+                    {hasChanges && (
+                      <button
+                        onClick={() => saveLogisticsChanges(party.id)}
+                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 self-start"
+                      >
+                        {fr.saveAssignments}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableAttendee}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingPref}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.bedReason}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingAssigned}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {partyAttendees.map((attendee, index) => {
+                          const assignedValue = changes.attendees && changes.attendees[index] !== undefined
+                            ? changes.attendees[index]
+                            : (attendee.assigned_bed || '');
+
+                          return (
+                            <tr key={index}>
+                              <td className="px-4 py-2 text-sm text-gray-800">{attendee.name || `${fr.participantFallback} #${index + 1}`}</td>
+                              <td className="px-4 py-2 text-sm text-gray-800">
+                                {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-800">
+                                {getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason)}
+                              </td>
+                              <td className="px-4 py-2">
+                                <input
+                                  type="text"
+                                  value={assignedValue}
+                                  onChange={(e) => handleAssignedBedChange(party.id, index, e.target.value)}
+                                  placeholder={fr.assignedBedPlaceholder}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-500 uppercase mb-1">{fr.logisticsTableAdminNotes}</label>
+                    <textarea
+                      value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
+                      onChange={(e) => handleAdminNotesChange(party.id, e.target.value)}
+                      rows="2"
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={fr.adminNotesPlaceholder}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

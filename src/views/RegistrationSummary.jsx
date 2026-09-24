@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import {
   ACCOMMODATION_OPTIONS,
-  BED_REASON_OPTIONS,
   DIETARY_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
@@ -252,12 +251,15 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                   <div className="text-right">
                     <p className="text-sm text-gray-500">Hébergement</p>
                     <p className="font-medium">
-                      {attendee.sleeping_preference === 'camping' && fr.accommodationCamping}
-                      {attendee.sleeping_preference === 'floor' && fr.accommodationFloor}
-                      {attendee.sleeping_preference === 'bed' && fr.accommodationBed}
-                      {attendee.sleeping_preference === 'sofa' && fr.accommodationSofa}
-                      {!attendee.sleeping_preference && 'Non spécifié'}
+                      {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference, 'Non spécifié')}
                     </p>
+                    {attendee.assigned_bed && (
+                      <p className="mt-1">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                          {attendee.assigned_bed}
+                        </span>
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -266,16 +268,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
 {/* Logistics summary */}
           <div className="bg-white rounded-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.logisticsSummary}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Hébergement</h4>
-                <div className="space-y-2">
-                  <p><span className="text-gray-600">Préférence:</span> {getOptionLabel(ACCOMMODATION_OPTIONS, logistics.sleeping?.pref, 'Non spécifié')}</p>
-                  {logistics.sleeping?.reason && (
-                    <p><span className="text-gray-600">Raison pour lit:</span> {getOptionLabel(BED_REASON_OPTIONS, logistics.sleeping.reason, logistics.sleeping.reason)}</p>
-                  )}
-                </div>
-              </div>
+            <div className="grid grid-cols-1 gap-6">
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">{fr.foodRequirements}</h4>
                 <div className="space-y-2">
