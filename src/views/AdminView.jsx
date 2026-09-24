@@ -465,7 +465,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         return newChanges;
       });
 
-      fetchPartiesForActiveEvent();
+      fetchParties(activeEventState.id);
     } catch (error) {
       console.error('Error saving logistics:', error);
       addToast('Erreur lors de la sauvegarde', 'error');
