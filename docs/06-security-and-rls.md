@@ -65,7 +65,7 @@ Derived from `supabase/schema.sql`. "own" = `auth.uid()` matches the row's owner
 |---|---|---|---|---|
 | `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — **but `is_admin` column UPDATE is revoked** | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
-| `user_parties` | own or admin | own or admin | own **while status is `Enregistré`/`En attente`**, or admin | own or admin |
+| `user_parties` | own or admin | own or admin | own **while status is `registered`/`pending`**, or admin | own **while status is `registered`/`pending`**, or admin |
 | `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
 | `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
 
@@ -73,12 +73,15 @@ Notes on specific choices:
 
 - **DRAFT events are admin-only**, which is what lets organisers plan next year's weekend in the open
   without members seeing half-finished prices.
-- **The `user_parties` UPDATE status gate** is how cancellation is meant to become final: once a
-  registration leaves `Enregistré`/`En attente`, the member can no longer edit it, only an admin can.
-  The cancellation flow that would set that status does not exist yet.
-- **Members can DELETE their own registration.** The spec says unregistering should mark the record
-  cancelled, not remove it, so this policy is wider than the intent. Nothing in the UI calls delete
-  today, but the policy permits it via the API.
+- **The `user_parties` UPDATE and DELETE status gates** are how cancellation is meant to become final:
+  once a registration leaves `registered`/`pending`, the member can no longer edit or delete it, only
+  an admin can. The cancellation flow that would set `status = 'cancelled'` does not exist yet.
+- **Members can DELETE their own registration while it is `registered`/`pending`.** The spec says
+  unregistering should mark the record cancelled, not remove it, so this is still wider than the
+  intent — but the DELETE policy used to have no status guard at all (any member could delete a
+  *paid* registration via the API), and `RegistrationSummary.jsx` now calls delete for real. The
+  status guard closes the immediate data-loss risk; a proper cancellation flow (`status = 'cancelled'`
+  instead of a row delete) is still the right long-term fix.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

@@ -31,7 +31,7 @@ Un agent (ou un humain) qui commence à travailler sur ce dépôt devrait d'abor
 - 🔐 Authentification Google et Facebook via Supabase OAuth
 - 📝 Inscription au weekend : composition du groupe, hébergement, alimentation, transport, bénévolat
 - 💰 Moteur de tarification par points, avec rabais pour les nouveaux membres
-- 🛠️ Tableau de bord admin : gestion des événements, suivi des paiements, assignation des places,
+- 🛠️ Admin : gestion des événements, suivi des paiements, assignation des places,
   simulateur de scénarios de prix, export CSV/presse-papier
 - 🔒 Sécurité au niveau des lignes (RLS) dans Postgres — chaque membre ne voit que ses propres données
 - 📱 Interface responsive, mobile d'abord

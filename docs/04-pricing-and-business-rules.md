@@ -101,7 +101,7 @@ stored historical amount for any party flagged as paid, regardless of later sell
 (`src/lib/pricingEngine.js:145`). Nobody gets a supplementary invoice after settling.
 
 > **Implementation note:** the engine reads `party.is_paid` / `party.historical_owed`, which are
-> *simulation* field names. The database column is `payment_status = 'Payé'` and the stored amount
+> *simulation* field names. The database column is `payment_status = 'paid'` and the stored amount
 > is `calculated_amount_owed`. Nothing in the app maps one to the other, so grandfathering is
 > currently only exercised by the simulator and the tests — a paid member who re-opens and saves
 > their registration after a price change **will** have their amount recomputed. See

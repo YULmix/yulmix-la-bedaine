@@ -62,7 +62,7 @@ erDiagram
     text confirmation_message
     text status
     numeric calculated_amount_owed "client-computed"
-    text payment_status "Impayé|Payé"
+    text payment_status "unpaid|paid"
     bool is_waitlisted "trigger-computed"
     text admin_notes "organisers only"
     timestamptz last_edited_at
@@ -183,8 +183,8 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 |---|---|---|
 | `events.status` | `DRAFT`, `ACTIVE`, `ARCHIVED` | Mirrored by `is_active`; the two can drift |
 | `events.expense_category` | `Chalet`, `Food`, `Music`, `Tech`, `Accessories` | Unused by the UI |
-| `user_parties.payment_status` | `Impayé`, `Payé` | **French values stored in the database** — see [ADR 0006](./adr/0006-french-values-in-payment-and-status-columns.md) |
-| `user_parties.status` | *unconstrained text* | In practice `Enregistré`; RLS and a view also accept `En attente`. `Annulé` is specified but never written |
+| `user_parties.payment_status` | `unpaid`, `paid` | English values — see [ADR 0012](./adr/0012-migrate-status-columns-to-english.md), which migrated this from French |
+| `user_parties.status` | `registered`, `pending`, `cancelled` | RLS and a view treat `registered`/`pending` as editable; `cancelled` is specified but never written |
 
 ## Derived state: who computes what
 
@@ -241,7 +241,7 @@ when someone else cancels — that is a manual admin action today, and there is 
 | View | Purpose | Notes |
 |---|---|---|
 | `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | The requirements record a Supabase advisory about this view being `SECURITY DEFINER`, and note it as resolved — but the schema file creates it **without** `WITH (security_invoker = true)`. Verify against the live DB and then make the file match |
-| `registration_summary_view` | Flattened registration fields for `status IN ('Enregistré','En attente')` | **Not referenced by any code.** Dead unless something outside the repo reads it |
+| `registration_summary_view` | Flattened registration fields for `status IN ('registered','pending')` | **Not referenced by any code.** Dead unless something outside the repo reads it |
 
 ## Extending the model — the checklist
 

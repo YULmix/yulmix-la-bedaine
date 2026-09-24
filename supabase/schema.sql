@@ -66,9 +66,9 @@ CREATE TABLE public.user_parties (
     music_requests TEXT,
     message_to_organizers TEXT,
     confirmation_message TEXT,
-    status TEXT DEFAULT 'Enregistré',
+    status TEXT CHECK (status IN ('registered', 'pending', 'cancelled')) DEFAULT 'registered',
     calculated_amount_owed NUMERIC(10,2) DEFAULT 0.00,
-    payment_status TEXT CHECK (payment_status IN ('Impayé', 'Payé')) DEFAULT 'Impayé',
+    payment_status TEXT CHECK (payment_status IN ('unpaid', 'paid')) DEFAULT 'unpaid',
     is_waitlisted BOOLEAN DEFAULT FALSE,
     admin_notes TEXT,
     last_edited_at TIMESTAMPTZ DEFAULT NOW(),
@@ -344,7 +344,7 @@ SELECT
     edit_count,
     attendees
 FROM public.user_parties
-WHERE status IN ('Enregistré', 'En attente');
+WHERE status IN ('registered', 'pending');
 
 COMMENT ON VIEW public.registration_summary_view IS 'Simplified view for registration summary display';
 
@@ -416,12 +416,13 @@ WITH CHECK (auth.uid() = user_id OR public.is_admin());
 DROP POLICY IF EXISTS "User Parties: User can update own registrations" ON public.user_parties;
 CREATE POLICY "User Parties: User can update own registrations"
 ON public.user_parties FOR UPDATE
-USING ((auth.uid() = user_id AND status IN ('Enregistré', 'En attente')) OR public.is_admin())
-WITH CHECK ((auth.uid() = user_id AND status IN ('Enregistré', 'En attente')) OR public.is_admin());
+USING ((auth.uid() = user_id AND status IN ('registered', 'pending')) OR public.is_admin())
+WITH CHECK ((auth.uid() = user_id AND status IN ('registered', 'pending')) OR public.is_admin());
 
+DROP POLICY IF EXISTS "User Parties: User can delete own registrations" ON public.user_parties;
 CREATE POLICY "User Parties: User can delete own registrations"
 ON public.user_parties FOR DELETE
-USING (auth.uid() = user_id OR public.is_admin());
+USING ((auth.uid() = user_id AND status IN ('registered', 'pending')) OR public.is_admin());
 
 -- APP_FEEDBACK POLICIES
 CREATE POLICY "App Feedback: Users can insert own feedback"
@@ -568,7 +569,7 @@ BEGIN
     FROM public.user_parties up
     WHERE up.event_id = v_event_id
       AND up.is_waitlisted = FALSE
-      AND up.status IN ('Enregistré', 'En attente')
+      AND up.status IN ('registered', 'pending')
       AND up.id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::UUID);
     
     -- Add the attendees from the new/updated party
