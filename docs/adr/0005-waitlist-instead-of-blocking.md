@@ -14,4 +14,5 @@ negotiable in a way a database column is not.
 - Waitlisting is **all-or-nothing per party**: a party of four that straddles the cap goes entirely to
   the waitlist rather than being split. Splitting a family is worse than one extra manual decision.
 - Nothing ever moves a party *off* the waitlist. Promotion when someone cancels is an unbuilt manual
-  step, and the organisers need it — see [the roadmap](../10-roadmap.md#stage-2--close-the-lifecycle).
+  step, and the organisers need it — see
+  [issue #32](https://github.com/YULmix/yulmix-la-bedaine/issues/32).

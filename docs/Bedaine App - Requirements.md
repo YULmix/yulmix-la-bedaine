@@ -305,29 +305,10 @@ archivÃ©
 Ã©  
 ✕ 
 
-# **Fixes TODO**
-
-Ensure that archiving gives out a warning and reactivating an event is possible (To test)
-
-Ensure editing the payment Status (Statut de paiement) status is working with a confirmation.
-
-On the registration editing pop-up screen for admins, there are two “Annuler” buttons.
-
-Ensure that admins can grant admin access to other users.
-
-Change the “Tableau de bord admin” to “Admin”
-
-# **Backlog**
-
-- Make the address a link to google maps.0  
-  Example: \<a href={\`https://www.google.com/maps/search/?api=1\&query=${encodeURIComponent(event.venue\_address)}\`} target="\_blank" rel="noopener noreferrer" \> {event.venue\_address} \</a\> 
-
-- Email confirmation when registering in french  
-- Email confirmation when payment is confirmed (Registration marked as paid)
-
-# **Investigation TODO**
-
-Validate the rebate for new members.
+> The **Fixes TODO**, **Backlog**, and **Investigation TODO** sections that used to live here have
+> been filed as GitHub Issues instead (#22, #30–45) — see
+> [Contributing → Tracking work](./08-contributing.md#tracking-work). This file stays a historical
+> record of intent; don't append new work items to it.
 
 \_\_\_
 

@@ -121,12 +121,12 @@ the admin screens, and nothing validates them — treat changes here as breaking
 [{ "name": "…", "tier": "adult_whole", "is_new_member": false }]
 ```
 
-> ⚠️ **These two shapes disagree, and it is not cosmetic.** The trigger reads
-> `attendee->>'tier'`, which is absent from every row the app writes, so it computes an all-zero
-> `counts` object and overwrites whatever the client sent. Every admin aggregate that reads
-> `counts` therefore reads zero. This is finding #1 in
-> [state of the code](./09-state-of-the-code.md). *Unverified:* the live database may have a
-> corrected trigger; check before "fixing" it twice.
+> ⚠️ **These two shapes used to disagree, and it was not cosmetic.** The trigger read
+> `attendee->>'tier'`, which is absent from every row the app writes, so it computed an all-zero
+> `counts` object and overwrote whatever the client sent — every admin aggregate that read `counts`
+> read zero. Fixed in code (the trigger now derives the tier from `type`/`participation`), but the
+> fix still needs deploying to the live database — see
+> [issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34).
 
 Per-attendee logistics living inside `attendees` (rather than in the party-level `logistics`) is
 deliberate — see [ADR 0004](./adr/0004-per-attendee-logistics-inside-attendees.md).

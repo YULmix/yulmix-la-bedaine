@@ -119,11 +119,13 @@ Two things to notice, because they shape every future change:
 
 1. **The amount owed is computed in the browser and written as a value.** The database does not
    recompute or validate it (`src/components/RegistrationForm.jsx:312`). A member could post any
-   number. This is the single largest integrity gap in the system —
-   see [state of the code](./09-state-of-the-code.md).
+   number. This is the single largest integrity gap in the system — see
+   [issue #30](https://github.com/YULmix/yulmix-la-bedaine/issues/30).
 2. **Server triggers override client fields.** `counts` and `is_waitlisted` are recomputed by
-   Postgres on every write, so whatever the client sent is discarded. That is correct design, and
-   it is also where the [tier-naming mismatch](./09-state-of-the-code.md) bites.
+   Postgres on every write, so whatever the client sent is discarded. That is correct design; a
+   tier-naming mismatch that used to break this for `counts` is fixed in code
+   (`supabase/fix_attendee_counts.sql`) but still needs deploying — see
+   [issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34).
 
 ## Admin data flow
 
@@ -161,16 +163,12 @@ first of those should move; the others are cosmetic.
 **Production runs on Vercel.** `vercel.json` sets the build command (`npm run build`), the `dist`
 output directory, and the SPA rewrite (all paths → `index.html`). A stale `netlify.toml` is also
 committed from before the host was settled and should be deleted
-([state of the code](./09-state-of-the-code.md)).
+([issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).
 
-> **Live state (2026-09-18):** the deploying Vercel project is in an account (`yulm-ix`) that is
-> *not* the `YULMIX-Labedaine` team, and the deploy of `65a6171` was blocked. Details and evidence in
-> [Live environment audit](./11-live-environment.md#deployment).
-
-There is currently no CI gate in front of a deploy — a push reaches production via Vercel's own git
-integration without `npm run build`/`npm test` running first. Wiring the deploy into CI (deploy only
-after tests pass) is a near-term priority; see
-[roadmap, Stage 0](./10-roadmap.md#stage-0--make-the-repo-collaborable).
+Deploys go through `.github/workflows/deploy.yml`, which runs `npm run build` and
+`npm run test:pricing` before deploying to production via the Vercel CLI — this bypasses Vercel's
+own (disconnected) git integration. See [Live environment audit](./11-live-environment.md#deployment)
+for the history of why.
 
 Environment variables are build-time (`VITE_` prefix), so they are baked into the bundle:
 

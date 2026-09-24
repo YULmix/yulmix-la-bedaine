@@ -90,7 +90,8 @@ payments due at the latest **1 week** before.
 
 > **Gap:** only the intent-phase boundary is implemented (`src/views/HomeView.jsx:52`).
 > `x_reg_close_weeks` is displayed but never enforces anything, and the event has no actual
-> event date column — only `reg_start_date`. See [state of the code](./09-state-of-the-code.md).
+> event date column — only `reg_start_date`. See
+> [issue #33](https://github.com/YULmix/yulmix-la-bedaine/issues/33).
 
 ## Relationship to the spreadsheet
 

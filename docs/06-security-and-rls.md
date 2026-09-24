@@ -102,7 +102,7 @@ The fix is structural, not cosmetic: recompute the amount in a `BEFORE INSERT OR
 from `attendees` and the event's `selling_price_whole_event`, which also makes grandfathering and
 bulk repricing possible. That means porting the point weights and the new-member rule into SQL and
 keeping the two implementations in step — the cost of having no backend of our own. Tracked as
-item #2 in [state of the code](./09-state-of-the-code.md).
+[issue #30](https://github.com/YULmix/yulmix-la-bedaine/issues/30).
 
 ## Secrets
 
