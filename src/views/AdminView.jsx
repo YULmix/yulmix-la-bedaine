@@ -698,7 +698,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Tableau de bord administrateur</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">Admin</h1>
         <p className="text-gray-600">Gestion des événements, inscriptions et utilisateurs</p>
       </div>
 

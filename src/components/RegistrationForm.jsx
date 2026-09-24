@@ -423,7 +423,7 @@ const handleRemoveAttendee = (id) => {
           </div>
           {/* Logistics per attendee */}
           <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.accommodation}</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.accommodationSectionTitle}</h3>
             <div className="mb-4">
               <label className="flex items-center space-x-2">
                 <input type="checkbox" checked={sameForEveryone} onChange={(e) => setSameForEveryone(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
