@@ -22,8 +22,8 @@ reasonable reading of evidence, not confirmed by the people who would know).
 | How does a deploy start? | Vercel's GitHub integration: push to `main` → Production, other branches → Preview | Verified |
 | Is production running the latest `main`? | **No.** `65a6171` was blocked; production is on `a2cec16` | Verified |
 | Why was it blocked? | Most likely the Hobby-plan rule that only the account owner can trigger deploys of a private repo | Inferred |
-| Was emptying `supabase/schema.sql` deliberate? | **Undetermined** | see [below](#the-emptied-supabase-schema-sql) |
-| Does the old `schema.sql` still describe the live DB? | Yes at the level of names; not proven for function bodies | Verified (names) |
+| Was emptying `supabase/schema.sql` deliberate? | **Undetermined**, and moot since 2026-09-24: the file was retired for migrations | see [below](#the-emptied-supabase-schema-sql) |
+| Does the old `schema.sql` still describe the live DB? | No. A full dump on 2026-09-24 found function bodies, policies and defaults that differ ([ADR 0013](./adr/0013-supabase-migrations.md), [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)) | Verified (full dump) |
 | Were the two views a data leak? | Read access: **yes, measured**. Write access: plausible, never tested. **Fixed 2026-09-18** | Verified |
 
 ## Deployment
@@ -138,6 +138,12 @@ the CI gate (`npm run build`, `npm run test:pricing`) that was missing in front 
 
 ## The emptied `supabase/schema.sql`
 
+> **Update 2026-09-24:** superseded by [ADR 0013](./adr/0013-supabase-migrations.md).
+> `supabase/schema.sql` has been removed. The schema's source of truth is now
+> `supabase/migrations/`, seeded with a full read-only dump of this live database. The snippet
+> files mentioned below now live in `supabase/legacy/`. The rest of this section is kept as the
+> 2026-09-18 record.
+
 **Facts (Verified, from git):**
 
 - On `main`, `supabase/schema.sql` is 3 bytes — a UTF-8 BOM and nothing else.
@@ -176,6 +182,8 @@ Requires `supabase` and `vercel` CLIs, logged in, and `gh`. Everything below is 
 ```bash
 supabase link --project-ref ceacurlofmasyvhsoska
 supabase db advisors --linked --type security
+supabase migration list --linked          # which migrations production has recorded as applied
+supabase db dump --linked -s public -f /tmp/live.sql   # full schema, to diff against supabase/migrations/
 supabase db query --linked -o json "select relname, relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind in ('r','v')"
 supabase db query --linked -o json "select relname, reloptions from pg_class where relnamespace='public'::regnamespace and relkind='v'"
 supabase db query --linked -o json "select tablename, policyname, cmd, qual, with_check from pg_policies where schemaname='public'"

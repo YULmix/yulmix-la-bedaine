@@ -123,9 +123,10 @@ Two things to notice, because they shape every future change:
    [issue #30](https://github.com/YULmix/yulmix-la-bedaine/issues/30).
 2. **Server triggers override client fields.** `counts` and `is_waitlisted` are recomputed by
    Postgres on every write, so whatever the client sent is discarded. That is correct design; a
-   tier-naming mismatch that used to break this for `counts` is fixed in code
-   (`supabase/fix_attendee_counts.sql`) but still needs deploying — see
-   [issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34).
+   tier-naming mismatch that used to break this for `counts` was fixed in production
+   ([issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34)). The capacity check behind
+   `is_waitlisted` is currently defeated by stale French status values
+   ([#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)).
 
 ## Admin data flow
 
@@ -170,6 +171,22 @@ Deploys go through `.github/workflows/deploy.yml`, which runs `npm run build` an
 own (disconnected) git integration. See [Live environment audit](./11-live-environment.md#deployment)
 for the history of why.
 
+The **database schema ships separately from the app.** It lives in `supabase/migrations/`
+([ADR 0013](./adr/0013-supabase-migrations.md)). CI only checks that the migrations apply to an
+empty database. A person applies merged migrations to production with `supabase db push`, so a
+merge to `main` deploys the frontend but never changes the database by itself:
+
+```mermaid
+flowchart LR
+  PR["PR (app code and/or migration)"] -->|CI: build, test:pricing, migrations apply cleanly| Main["merge to main"]
+  Main -->|deploy.yml, automatic| Vercel["Vercel (frontend)"]
+  Main -->|"supabase db push, by a person"| DB["Supabase production DB"]
+```
+
+Because the frontend deploys the moment a PR merges, frontend code that needs a schema change will
+break until someone pushes the migration. Run `db push` right after merging. For anything
+non-additive, split the work into two PRs: first the migration, pushed, then the code that uses it.
+
 Environment variables are build-time (`VITE_` prefix), so they are baked into the bundle:
 
 | Variable | Used by | Secret? |
@@ -183,9 +200,6 @@ The client throws at import time if the two `VITE_` variables are missing
 
 ## What deliberately does not exist
 
-- **No migration tool.** `supabase/schema.sql` is a single append-only file, and the live database
-  is the real source of truth. See [ADR 0002](./adr/0002-single-schema-file-no-migrations.md) —
-  and treat it as the highest-priority thing to fix before more than one person writes SQL.
 - **No email/notification layer.** Confirmation emails are on the backlog.
 - **No file storage in use.** A `feedback` storage bucket is specified for screenshot paste;
   the feature is unbuilt.

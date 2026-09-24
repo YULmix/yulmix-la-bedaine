@@ -11,8 +11,8 @@
  * "ReferenceError: fetch is not defined" regardless of whether Supabase is reachable.
  *
  * Setup:
- * 1. Start local Supabase: `supabase start`
- * 2. Run migrations: `supabase db push`
+ * 1. Start local Supabase: `supabase start` (applies supabase/migrations/; `supabase db reset` rebuilds)
+ * 2. Do NOT run `supabase db push` for this: on a linked checkout it targets production.
  * 3. Set environment variables in .env.test
  * 4. Run tests: `npm run test:rls`
  */

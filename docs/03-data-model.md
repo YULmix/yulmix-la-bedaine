@@ -1,9 +1,9 @@
 # Data model
 
-Everything in this document is derived from `supabase/schema.sql`. That file is **not** guaranteed
-to match the live database — there is no migration history and no drift check
-([ADR 0002](./adr/0002-single-schema-file-no-migrations.md)). Statements below describe the schema
-file; where the live DB may differ, it is called out.
+Everything in this document is derived from `supabase/migrations/`. Its first file,
+`20260924233313_baseline_live_schema.sql`, is a dump of the production schema as of 2026-09-24
+([ADR 0013](./adr/0013-supabase-migrations.md)). Later migrations change it from there. Where
+production has a known defect, it is called out.
 
 ## Entity relationships
 
@@ -115,7 +115,8 @@ the admin screens, and nothing validates them — treat changes here as breaking
 ```
 
 **What the schema documents and the counts trigger expects**
-(`supabase/schema.sql`, `COMMENT ON COLUMN … attendees`, `update_attendee_counts`):
+(the baseline migration's `COMMENT ON COLUMN … attendees`; `update_attendee_counts` has since
+been fixed to read `type`/`participation` instead):
 
 ```json
 [{ "name": "…", "tier": "adult_whole", "is_new_member": false }]
@@ -221,8 +222,10 @@ flowchart TD
 
 ### Capacity and waitlisting
 
-`enforce_capacity_and_waitlist` (`supabase/schema.sql`) is the one piece of concurrency-aware logic
-in the system:
+`enforce_capacity_and_waitlist` (baseline migration) is the one piece of concurrency-aware logic
+in the system. **In production it is currently defeated.** Step 3 filters on the old French status
+values, which no row has any more, so it counts zero existing attendees
+([#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)). As designed, it:
 
 1. Reads `max_attendees` for the event; if null or ≤ 0, clears the waitlist flag and returns.
 2. Takes `pg_advisory_xact_lock(hashtext(event_id))` so two simultaneous registrations cannot both
@@ -240,14 +243,16 @@ when someone else cancels — that is a manual admin action today, and there is 
 
 | View | Purpose | Notes |
 |---|---|---|
-| `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | The requirements record a Supabase advisory about this view being `SECURITY DEFINER`, and note it as resolved — but the schema file creates it **without** `WITH (security_invoker = true)`. Verify against the live DB and then make the file match |
-| `registration_summary_view` | Flattened registration fields for `status IN ('registered','pending')` | **Not referenced by any code.** Dead unless something outside the repo reads it |
+| `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | `WITH (security_invoker = true)`, so the querying user's RLS applies: members see only their own rows. `SELECT` for `authenticated` only |
+
+`registration_summary_view` no longer exists. It was unused and bypassed RLS, and was dropped in
+production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
 
 ## Extending the model — the checklist
 
-1. Add the column/constraint to `supabase/schema.sql` **and** produce an isolated `ALTER` snippet
-   for the Supabase SQL editor (`.clinerules` requires this; so does staying sane without
-   migrations).
+1. Add a migration (`supabase migration new <name>`) with the `ALTER TABLE`, and check it locally
+   with `supabase db reset`. It reaches production only through `supabase db push` after review;
+   see [Development setup → Database migrations](./07-development-setup.md#database-migrations).
 2. If it is user-visible, add an RLS consideration: does the new column leak anything a member
    should not see? `admin_notes` is the precedent for organiser-only data.
 3. If it is an enum-like value, add it to `src/lib/registrationOptions.js` with a French label, and
