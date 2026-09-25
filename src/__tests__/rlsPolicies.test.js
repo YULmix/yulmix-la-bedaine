@@ -125,27 +125,28 @@ describe('🔐 RLS Policy Enforcement', () => {
 // GRANTs service_role anything on events/user_parties (see the "EVENTS: Admin can see DRAFT
 // events" failure above, which is that same pre-existing gap, unrelated to #31), while
 // `authenticated` has full grants and is what the app actually uses.
+const ONE_ADULT_WHOLE = [{ type: 'Adult', participation: 'Whole', is_new_member: false }];
+const TWO_ADULTS_WHOLE = [
+  { type: 'Adult', participation: 'Whole', is_new_member: false },
+  { type: 'Adult', participation: 'Whole', is_new_member: false }
+];
+
+const signIn = async (email) => {
+  const client = createClient(SUPABASE_URL, ANON_KEY);
+  const { error } = await client.auth.signInWithPassword({ email, password: 'password123' });
+  if (error) throw error;
+  return client;
+};
+
 describe('💰 calculated_amount_owed grandfathering (#31)', () => {
   jest.setTimeout(30000);
 
   const GF_EVENT_ID = 'a0000000-a000-a000-a000-a00000000031';
   const UNPAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000032';
   const PAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000033';
-  const ONE_ADULT_WHOLE = [{ type: 'Adult', participation: 'Whole', is_new_member: false }];
-  const TWO_ADULTS_WHOLE = [
-    { type: 'Adult', participation: 'Whole', is_new_member: false },
-    { type: 'Adult', participation: 'Whole', is_new_member: false }
-  ];
 
   let memberClient;
   let adminAuthClient;
-
-  const signIn = async (email) => {
-    const client = createClient(SUPABASE_URL, ANON_KEY);
-    const { error } = await client.auth.signInWithPassword({ email, password: 'password123' });
-    if (error) throw error;
-    return client;
-  };
 
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
@@ -240,6 +241,96 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
     // Frozen at the amount owed when it was still marked paid, not recomputed (1000) and not
     // the spoofed value (1) — the row's payment_status at the time of THIS update was 'paid'.
     expect(Number(afterEdit.calculated_amount_owed)).toBe(100);
+  });
+});
+
+// Regression tests for #32: changing events.selling_price_whole_event must retroactively reprice
+// every existing *unpaid* registration for that event, without waiting for the member to resave
+// their own row — and must leave paid registrations untouched (the #31 grandfathering still
+// applies).
+describe('💵 reprice unpaid registrations on price change (#32)', () => {
+  jest.setTimeout(30000);
+
+  const REPRICE_EVENT_ID = 'a0000000-a000-a000-a000-a00000000041';
+  const UNPAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000042';
+  const PAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000043';
+
+  let memberClient;
+  let adminAuthClient;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: REPRICE_EVENT_ID,
+      theme: 'Reprice Test Event',
+      status: 'ACTIVE',
+      selling_price_whole_event: 100
+    });
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+  });
+
+  test('changing the price alone reprices unpaid registrations, without any member edit', async () => {
+    await memberClient.from('user_parties').insert({
+      id: UNPAID_PARTY_ID,
+      user_id: '00000000-0000-0000-0000-000000000001',
+      event_id: REPRICE_EVENT_ID,
+      attendees: ONE_ADULT_WHOLE,
+      payment_status: 'unpaid'
+    });
+
+    const { data: before } = await memberClient
+      .from('user_parties')
+      .select('calculated_amount_owed')
+      .eq('id', UNPAID_PARTY_ID)
+      .single();
+    expect(Number(before.calculated_amount_owed)).toBe(100);
+
+    // Only the event's price changes here — the member never touches their own row.
+    const { error } = await adminAuthClient
+      .from('events')
+      .update({ selling_price_whole_event: 500 })
+      .eq('id', REPRICE_EVENT_ID);
+    expect(error).toBeNull();
+
+    const { data: after } = await memberClient
+      .from('user_parties')
+      .select('calculated_amount_owed')
+      .eq('id', UNPAID_PARTY_ID)
+      .single();
+    expect(Number(after.calculated_amount_owed)).toBe(500);
+  });
+
+  test('a paid registration is not repriced by a price change', async () => {
+    await memberClient.from('user_parties').insert({
+      id: PAID_PARTY_ID,
+      user_id: '00000000-0000-0000-0000-000000000001',
+      event_id: REPRICE_EVENT_ID,
+      attendees: ONE_ADULT_WHOLE,
+      payment_status: 'unpaid'
+    });
+    await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', PAID_PARTY_ID);
+
+    await adminAuthClient
+      .from('events')
+      .update({ selling_price_whole_event: 500 })
+      .eq('id', REPRICE_EVENT_ID);
+
+    const { data: afterPriceChange } = await adminAuthClient
+      .from('user_parties')
+      .select('calculated_amount_owed, payment_status')
+      .eq('id', PAID_PARTY_ID)
+      .single();
+    expect(afterPriceChange.payment_status).toBe('paid');
+    expect(Number(afterPriceChange.calculated_amount_owed)).toBe(100);
   });
 });
 
