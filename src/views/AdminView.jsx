@@ -1163,6 +1163,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-800">
                                 {getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason)}
+                                {attendee.bed_reason === 'other' && attendee.bed_reason_other && (
+                                  <span className="block text-xs text-gray-500">{attendee.bed_reason_other}</span>
+                                )}
                               </td>
                               <td className="px-4 py-2">
                                 <input

@@ -28,6 +28,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
   const [transportArrival, setTransportArrival] = useState('');
   const [transportDeparture, setTransportDeparture] = useState('');
   const [volunteeringSelections, setVolunteeringSelections] = useState([]);
+  const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState('');
   const [musicRequests, setMusicRequests] = useState('');
   const [messageToOrganizers, setMessageToOrganizers] = useState('');
   const [isWaitlisted, setIsWaitlisted] = useState(false);
@@ -46,6 +47,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         sleepingPreferenceOther: attendee.sleeping_preference_other || '',
         dietaryNeeds: attendee.dietary_needs || '',
         bedReason: attendee.bed_reason || '',
+        bedReasonOther: attendee.bed_reason_other || '',
         dietaryOther: attendee.dietary_other || '',
         assignedBed: attendee.assigned_bed || ''
       }));
@@ -66,12 +68,13 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         setTransportDeparture(dtLocal);
       }
       if (userRegistration.logistics?.volunteering) setVolunteeringSelections(userRegistration.logistics.volunteering);
+      if (userRegistration.logistics?.volunteering_other) setVolunteeringOtherDetail(userRegistration.logistics.volunteering_other);
       if (userRegistration.music_requests) setMusicRequests(userRegistration.music_requests);
       if (userRegistration.message_to_organizers) setMessageToOrganizers(userRegistration.message_to_organizers);
       if (userRegistration.is_waitlisted) setIsWaitlisted(userRegistration.is_waitlisted);
     } else {
       // Start with one empty attendee
-      setAttendees([{ id: 'attendee-1', name: '', type: 'Adult', participation: 'Whole', isNewMember: false, sleepingPreference: '', sleepingPreferenceOther: '', dietaryNeeds: '', bedReason: '', dietaryOther: '' }]);
+      setAttendees([{ id: 'attendee-1', name: '', type: 'Adult', participation: 'Whole', isNewMember: false, sleepingPreference: '', sleepingPreferenceOther: '', dietaryNeeds: '', bedReason: '', bedReasonOther: '', dietaryOther: '' }]);
     }
   }, [userRegistration]);
 
@@ -85,6 +88,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         att.sleepingPreferenceOther !== firstAttendee.sleepingPreferenceOther ||
         att.dietaryNeeds !== firstAttendee.dietaryNeeds ||
         att.bedReason !== firstAttendee.bedReason ||
+        att.bedReasonOther !== firstAttendee.bedReasonOther ||
         att.dietaryOther !== firstAttendee.dietaryOther
       );
       if (needsSync) {
@@ -94,6 +98,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
           sleepingPreferenceOther: firstAttendee.sleepingPreferenceOther,
           dietaryNeeds: firstAttendee.dietaryNeeds,
           bedReason: firstAttendee.bedReason,
+          bedReasonOther: firstAttendee.bedReasonOther,
           dietaryOther: firstAttendee.dietaryOther
         })));
       }
@@ -222,6 +227,7 @@ const handleRemoveAttendee = (id) => {
         sleeping_preference_other: attendee.sleepingPreferenceOther,
         dietary_needs: attendee.dietaryNeeds,
         bed_reason: attendee.bedReason,
+        bed_reason_other: attendee.bedReasonOther,
         dietary_other: attendee.dietaryOther,
         assigned_bed: attendee.assignedBed || ''
       }));
@@ -241,7 +247,8 @@ const handleRemoveAttendee = (id) => {
           requests: attendees.map(a => a.dietaryNeeds).filter(Boolean).join(', '),
           notes: attendees.map(a => a.dietaryOther).filter(Boolean).join(', ')
         },
-        volunteering: volunteeringSelections
+        volunteering: volunteeringSelections,
+        volunteering_other: volunteeringOtherDetail
       };
       
       // Build transport JSONB
@@ -455,6 +462,12 @@ const handleRemoveAttendee = (id) => {
                             <option value="">Sélectionnez</option>
                             {BED_REASON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </select>
+                          {attendee.bedReason === 'other' && (
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
+                              <input type="text" value={attendee.bedReasonOther} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReasonOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.bedReasonOtherPlaceholder} />
+                            </div>
+                          )}
                         </div>
                       )}
                       {attendee.sleepingPreference === 'outside_other' && (
@@ -503,6 +516,12 @@ const handleRemoveAttendee = (id) => {
                 </label>
               ))}
             </div>
+            {volunteeringSelections.includes('other') && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
+                <input type="text" value={volunteeringOtherDetail} onChange={(e) => setVolunteeringOtherDetail(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.volunteeringOtherPlaceholder} />
+              </div>
+            )}
           </div>
           {/* Transport */}
           <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">

@@ -312,6 +312,9 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
               ) : (
                 <p className="text-gray-500">Aucun bénévolat sélectionné</p>
               )}
+              {volunteeringSelections.includes('other') && logistics.volunteering_other && (
+                <p className="text-sm text-gray-500 mt-2">{logistics.volunteering_other}</p>
+              )}
             </div>
           </div>
         </div>
