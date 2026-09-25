@@ -110,9 +110,136 @@ describe('🔐 RLS Policy Enforcement', () => {
       .from('events')
       .select('id, status')
       .eq('status', 'DRAFT');
-    
+
     expect(error).toBeNull();
     expect(draftEvents.length).toBeGreaterThan(0);
+  });
+});
+
+// Regression tests for #31: enforce_calculated_amount_owed() (the trigger added for #30) must
+// grandfather a party that has already paid — further edits (or a price change) must not
+// silently overwrite the amount it actually paid.
+//
+// Uses signed-in `authenticated` clients (member@test.local / admin@test.local from
+// supabase/seed.sql), not `adminClient` (the service_role key): the local baseline schema never
+// GRANTs service_role anything on events/user_parties (see the "EVENTS: Admin can see DRAFT
+// events" failure above, which is that same pre-existing gap, unrelated to #31), while
+// `authenticated` has full grants and is what the app actually uses.
+describe('💰 calculated_amount_owed grandfathering (#31)', () => {
+  jest.setTimeout(30000);
+
+  const GF_EVENT_ID = 'a0000000-a000-a000-a000-a00000000031';
+  const UNPAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000032';
+  const PAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000033';
+  const ONE_ADULT_WHOLE = [{ type: 'Adult', participation: 'Whole', is_new_member: false }];
+  const TWO_ADULTS_WHOLE = [
+    { type: 'Adult', participation: 'Whole', is_new_member: false },
+    { type: 'Adult', participation: 'Whole', is_new_member: false }
+  ];
+
+  let memberClient;
+  let adminAuthClient;
+
+  const signIn = async (email) => {
+    const client = createClient(SUPABASE_URL, ANON_KEY);
+    const { error } = await client.auth.signInWithPassword({ email, password: 'password123' });
+    if (error) throw error;
+    return client;
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    // Events can't be deleted (trg_prevent_event_deletion enforces archiving instead), so reuse
+    // the same row across tests via upsert and just reset its price before each one.
+    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: GF_EVENT_ID,
+      theme: 'Grandfathering Test Event',
+      status: 'ACTIVE',
+      selling_price_whole_event: 100
+    });
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+  });
+
+  test('an unpaid party keeps being recomputed on every save', async () => {
+    const { error: insertError } = await memberClient.from('user_parties').insert({
+      id: UNPAID_PARTY_ID,
+      user_id: '00000000-0000-0000-0000-000000000001',
+      event_id: GF_EVENT_ID,
+      attendees: ONE_ADULT_WHOLE,
+      payment_status: 'unpaid'
+    });
+    expect(insertError).toBeNull();
+
+    // Selling price is 100 for a whole-event adult (2.0 pts = the full price), regardless of
+    // the estimate a client might have sent.
+    const { data: afterInsert } = await memberClient
+      .from('user_parties')
+      .select('calculated_amount_owed')
+      .eq('id', UNPAID_PARTY_ID)
+      .single();
+    expect(Number(afterInsert.calculated_amount_owed)).toBe(100);
+
+    // Raising the price and editing the party recomputes fresh — unpaid parties are not
+    // grandfathered.
+    await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', GF_EVENT_ID);
+    await memberClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', UNPAID_PARTY_ID);
+
+    const { data: afterUpdate } = await memberClient
+      .from('user_parties')
+      .select('calculated_amount_owed')
+      .eq('id', UNPAID_PARTY_ID)
+      .single();
+    expect(Number(afterUpdate.calculated_amount_owed)).toBe(1000);
+  });
+
+  test('a paid party keeps its stored amount across a price change and further edits', async () => {
+    const { error: insertError } = await memberClient.from('user_parties').insert({
+      id: PAID_PARTY_ID,
+      user_id: '00000000-0000-0000-0000-000000000001',
+      event_id: GF_EVENT_ID,
+      attendees: ONE_ADULT_WHOLE,
+      payment_status: 'unpaid'
+    });
+    expect(insertError).toBeNull();
+    // Mark as paid at the current (100) price — an admin action, and the row's own persisted
+    // state, the only thing the trigger is allowed to trust.
+    await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', PAID_PARTY_ID);
+
+    const { data: paidAt } = await adminAuthClient
+      .from('user_parties')
+      .select('calculated_amount_owed, payment_status')
+      .eq('id', PAID_PARTY_ID)
+      .single();
+    expect(Number(paidAt.calculated_amount_owed)).toBe(100);
+    expect(paidAt.payment_status).toBe('paid');
+
+    // Raise the price and have the member edit their own party's attendees, even trying to
+    // smuggle a different amount and a "still unpaid" flag through the client-writable columns
+    // (exactly what a devtools/REST client attack would send) — the trigger must ignore all of
+    // that and keep the amount frozen from the row's own prior payment_status.
+    await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', GF_EVENT_ID);
+    await memberClient
+      .from('user_parties')
+      .update({ attendees: TWO_ADULTS_WHOLE, calculated_amount_owed: 1, payment_status: 'unpaid' })
+      .eq('id', PAID_PARTY_ID);
+
+    const { data: afterEdit } = await adminAuthClient
+      .from('user_parties')
+      .select('calculated_amount_owed')
+      .eq('id', PAID_PARTY_ID)
+      .single();
+    // Frozen at the amount owed when it was still marked paid, not recomputed (1000) and not
+    // the spoofed value (1) — the row's payment_status at the time of THIS update was 'paid'.
+    expect(Number(afterEdit.calculated_amount_owed)).toBe(100);
   });
 });
 
