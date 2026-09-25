@@ -60,7 +60,8 @@ export const ACCOMMODATION_OPTIONS = [
 export const BED_REASON_OPTIONS = [
   { value: 'health', label: fr.bedReasonHealth },
   { value: 'children', label: fr.bedReasonChildren },
-  { value: 'comfort', label: fr.bedReasonComfort }
+  { value: 'comfort', label: fr.bedReasonComfort },
+  { value: 'other', label: fr.bedReasonOther }
 ];
 
 export const VOLUNTEERING_OPTIONS = [
