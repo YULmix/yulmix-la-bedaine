@@ -6,12 +6,13 @@ import {
   ACCOMMODATION_OPTIONS,
   BED_REASON_OPTIONS,
   DIETARY_OPTIONS,
+  TIER_OPTIONS,
   getOptionLabel,
   getDietaryRequestsLabel,
   PAYMENT_STATUS,
   getPaymentStatusShortLabel
 } from '../lib/registrationOptions';
-import { simulateEventPricing, calculateEstimatedCostPerParticipant } from '../lib/pricingEngine';
+import { simulateEventPricing, calculateEstimatedCostPerParticipant, calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints } from '../lib/pricingEngine';
 
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [events, setEvents] = useState([]);
@@ -972,14 +973,31 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                        : 'Non spécifié'}
                    </span>
                  </div>
-                 <div className="flex justify-between items-center">
-                   <span className="text-sm text-gray-600">{fr.fixedSellingPrice}</span>
-                   <span className="text-xl font-bold text-green-700">
-                     {activeEventState?.selling_price_whole_event 
-                       ? formatCurrency(activeEventState.selling_price_whole_event)
-                       : 'Non spécifié'}
-                   </span>
-                 </div>
+                 {activeEventState?.selling_price_whole_event ? (() => {
+                   const pricePerPoint = calculatePricePerPointFromSellingPrice(activeEventState.selling_price_whole_event);
+                   const newbiePoints = getFinalPoints({ type: 'Adult', participation: 'Main', isNewMember: true });
+                   const kidOption = TIER_OPTIONS.find(opt => opt.type === 'Kid');
+                   const tierBreakdown = [
+                     ...TIER_OPTIONS
+                       .filter(opt => opt.type !== 'Kid')
+                       .map(opt => ({ label: opt.label, points: calculateBasePoints(opt.type, opt.participation) })),
+                     { label: fr.tierNewbieLabel, points: newbiePoints },
+                     { label: kidOption.label, points: calculateBasePoints(kidOption.type, kidOption.participation) }
+                   ];
+                   return tierBreakdown.map(tier => (
+                     <div key={tier.label} className="flex justify-between items-center">
+                       <span className="text-sm text-gray-600">{tier.label}</span>
+                       <span className="text-lg font-bold text-green-700">
+                         {formatCurrency(Math.ceil(tier.points * pricePerPoint))}
+                       </span>
+                     </div>
+                   ));
+                 })() : (
+                   <div className="flex justify-between items-center">
+                     <span className="text-sm text-gray-600">{fr.costVsPriceTitle}</span>
+                     <span className="text-xl font-bold text-green-700">{fr.notSpecified}</span>
+                   </div>
+                 )}
                </div>
              </div>
 {/* Budget Metrics */}
