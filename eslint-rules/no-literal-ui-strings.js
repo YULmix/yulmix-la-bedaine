@@ -37,6 +37,28 @@ const reportIfTranslatable = (context, node, value) => {
   });
 };
 
+// Checks a JS expression that ends up rendered as JSX text or a user-facing
+// attribute value for a hardcoded string literal anywhere within it — not
+// just when the whole expression IS a literal. Recurses through `||`, `??`
+// and ternary fallbacks (e.g. `data.name || 'Utilisateur inconnu'`,
+// `isPaid ? 'Payé' : 'Non payé'`) since those are exactly where a fallback
+// UI string tends to hide from a shallow "is this node a Literal" check.
+// Deliberately does NOT recurse into function calls, member expressions, or
+// other operand types — those are legitimately dynamic and out of scope.
+const checkExprForLiterals = (context, node, expr) => {
+  if (expr.type === 'Literal' && typeof expr.value === 'string') {
+    reportIfTranslatable(context, node, expr.value);
+  } else if (expr.type === 'TemplateLiteral' && expr.expressions.length === 0) {
+    reportIfTranslatable(context, node, expr.quasis.map((q) => q.value.cooked).join(''));
+  } else if (expr.type === 'LogicalExpression') {
+    checkExprForLiterals(context, node, expr.left);
+    checkExprForLiterals(context, node, expr.right);
+  } else if (expr.type === 'ConditionalExpression') {
+    checkExprForLiterals(context, node, expr.consequent);
+    checkExprForLiterals(context, node, expr.alternate);
+  }
+};
+
 export default {
   meta: {
     type: 'problem',
@@ -66,16 +88,14 @@ export default {
 
         if (!isJsxChild && !isUserFacingAttrValue) return;
 
-        if (expr.type === 'Literal' && typeof expr.value === 'string') {
-          reportIfTranslatable(context, node, expr.value);
-        } else if (expr.type === 'TemplateLiteral' && expr.expressions.length === 0) {
-          reportIfTranslatable(context, node, expr.quasis.map((q) => q.value.cooked).join(''));
-        }
+        checkExprForLiterals(context, node, expr);
       },
       JSXAttribute(node) {
         if (typeof node.name?.name !== 'string' || !USER_FACING_ATTRIBUTES.has(node.name.name)) return;
         if (node.value?.type === 'Literal' && typeof node.value.value === 'string') {
           reportIfTranslatable(context, node.value, node.value.value);
+        } else if (node.value?.type === 'JSXExpressionContainer') {
+          checkExprForLiterals(context, node.value, node.value.expression);
         }
       }
     };

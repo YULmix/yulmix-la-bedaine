@@ -140,6 +140,7 @@
   "adminFeedbackResolve": "Marquer comme résolu",
   "adminFeedbackResolved": "Résolu",
   "adminFeedbackShowResolved": "Afficher les commentaires résolus",
+  "adminFeedbackUnknownAuthor": "Utilisateur inconnu",
   "resolutionBannerMessage": "Des ajustements ont été apportés à l'application. Veuillez rafraîchir la page.",
   "resolutionBannerDismiss": "Fermer",
   "filter": "Filtrer",

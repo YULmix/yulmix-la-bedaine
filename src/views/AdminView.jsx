@@ -139,7 +139,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchFeedback();
     } catch (err) {
       console.error('Error resolving feedback:', err);
-      addToast(err.message || 'Erreur', 'error');
+      addToast(err.message || fr.error, 'error');
     }
   };
 
@@ -1437,7 +1437,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 <div key={item.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{item.profiles?.full_name || item.profiles?.email || 'Utilisateur inconnu'}</p>
+                      <p className="text-sm font-medium text-gray-800">{item.profiles?.full_name || item.profiles?.email || fr.adminFeedbackUnknownAuthor}</p>
                       <p className="text-xs text-gray-500">{new Date(item.created_at).toLocaleString('fr-CA')}</p>
                     </div>
                     {item.is_resolved ? (
