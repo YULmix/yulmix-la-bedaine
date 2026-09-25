@@ -22,7 +22,10 @@ export default {
   // separately via `npm run test:rls`, which resets this ignore pattern.
   testPathIgnorePatterns: [
     '/node_modules/',
-    '<rootDir>/src/__tests__/rlsPolicies.test.js'
+    '<rootDir>/src/__tests__/rlsPolicies.test.js',
+    // e2e/ is Playwright's suite, run via `npm run test:e2e`, not Jest — its testMatch
+    // pattern (*.spec.js) otherwise collides with Jest's own default.
+    '<rootDir>/e2e/'
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',

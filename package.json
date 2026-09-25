@@ -10,6 +10,7 @@
     "test": "jest",
     "test:rls": "jest --config jest.rls.config.js src/__tests__/rlsPolicies.test.js",
     "test:pricing": "jest src/lib/pricingEngine.test.js",
+    "test:e2e": "playwright test",
     "lint": "eslint .",
     "lint:diff": "node scripts/lint-diff.mjs"
   },
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@babel/preset-env": "^7.26.0",
     "@babel/preset-react": "^7.29.7",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^16.3.3",

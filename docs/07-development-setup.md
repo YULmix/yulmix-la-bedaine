@@ -157,6 +157,7 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm run test:pricing` | Jest, `pricingEngine.test.js` only | ✅ 5/5 cases pass |
 | `npm test` | Jest, default (unit) suite | ✅ passes — excludes the RLS integration suite, see below |
 | `npm run test:rls` | Jest, RLS suite only, `--config jest.rls.config.js` | needs a local Supabase instance; fails on `ECONNREFUSED` without one (not on a jsdom artifact — see below) |
+| `npm run test:e2e` | Playwright, real Chromium against `npm run dev` | needs a local Supabase instance; fails cleanly if it isn't running — see below |
 
 Build output, for reference — code splitting is configured in `vite.config.js` so Supabase, the
 router and Lucide are separate chunks:
@@ -213,6 +214,37 @@ today — the honest failure, because no Supabase instance is running here. To m
 
 `supabase/tests/README.md` documents the intended workflow, in PowerShell — the project was
 developed on Windows. The commands are shell-agnostic enough to translate.
+
+### `e2e/auth-and-rls.spec.js` — the Playwright suite
+
+A real-browser suite (Chromium, via `@playwright/test`) that drives `npm run dev` and asserts what
+a member and an admin actually see and can do — not just what the code implies they should. It
+covers the ground the "exercise the change as both a member and an admin" rule in
+[Contributing](./08-contributing.md) otherwise leaves as an unverified aspiration.
+
+There is no email/password sign-in UI (`Header.jsx` only offers Google/Facebook OAuth), so the
+suite can't log in through the form. Instead `e2e/support/auth.js` calls Supabase's password grant
+directly for the seeded `member@test.local` / `admin@test.local` users
+(`supabase/seed.sql`), then hands the resulting tokens to the app's own Supabase client via
+`auth.setSession()` — that client is exposed as `window.__supabase`, but only in dev builds
+(`src/lib/supabase.js`, guarded by `import.meta.env.DEV`; dead-code-eliminated from `npm run
+build`'s output).
+
+Run it with `npm run test:e2e`. `playwright.config.js` reads `supabase status -o env` at config-load
+time (not in `globalSetup` — Playwright starts `webServer` before `globalSetup` runs, which is too
+late for Vite to pick up `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) and fails with a clear error
+if Supabase isn't running.
+
+1. A local Supabase: `supabase start`, or `supabase db reset` for a guaranteed-fresh database —
+   `supabase start` alone can resume from a cached snapshot that predates a recent migration or
+   reseed.
+2. `npx playwright install chromium` once, to download the browser (~300 MB; not part of
+   `node_modules`, cached under `~/.cache/ms-playwright`).
+3. `npm run test:e2e`.
+
+Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
+"For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
+browser-install strategy and runtime cost for CI runners are worked out.
 
 ## Environment files
 
