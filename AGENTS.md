@@ -56,6 +56,14 @@ Before starting work on a GitHub issue (e.g. "tackle the next highest issue"), a
 requesting user (`gh issue edit <number> --add-assignee <github-login>`) so it's visibly claimed
 before any commits or a PR show up.
 
+### Procedure: never commit to `main`
+
+Always work on a feature branch, even for a small or unrelated-looking change (e.g. an AGENTS.md
+edit picked up mid-task). `main` is protected and rejects direct pushes anyway, but branch first —
+don't find that out by pushing to `main` and having to redo the commit on a branch. A doc or
+process fix discovered while working an issue belongs in the same branch/PR as that issue unless
+it's unrelated enough to need its own.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
