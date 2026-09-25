@@ -9,6 +9,7 @@ import AdminView from './views/AdminView';
 import EventDetailsView from './views/EventDetailsView';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
+import { getGoogleMapsUrl } from './lib/venue';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -244,7 +245,14 @@ function App() {
                         </p>
                         
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-500">Lieu: {event.venue_address}</span>
+                          <span className="text-sm text-gray-500">
+                            {fr.venue}:{' '}
+                            {event.venue_address ? (
+                              <a href={getGoogleMapsUrl(event.venue_address)} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600 transition-colors">
+                                {event.venue_address}
+                              </a>
+                            ) : null}
+                          </span>
                           <button className="text-blue-600 hover:text-blue-800 font-medium">
                             {fr.viewDetails}
                           </button>

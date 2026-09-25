@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import fr from '../locales/fr.json';
+import { getGoogleMapsUrl } from '../lib/venue';
 
 const EventModal = ({ event, isOpen, onClose }) => {
   if (!isOpen) return null;
@@ -122,7 +123,11 @@ const EventModal = ({ event, isOpen, onClose }) => {
               <div>
                 <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.venue}</h4>
                 <p className="text-gray-700">{eventData.venue}</p>
-                <p className="text-gray-600 text-sm mt-1">{eventData.address}</p>
+                {eventData.address && (
+                  <a href={getGoogleMapsUrl(eventData.address)} target="_blank" rel="noopener noreferrer" className="text-gray-600 text-sm mt-1 underline hover:text-blue-600 transition-colors inline-block">
+                    {eventData.address}
+                  </a>
+                )}
               </div>
               
               <div>
