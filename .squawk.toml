@@ -1,0 +1,34 @@
+# Squawk (https://squawkhq.com) lints new files in supabase/migrations/ on
+# every PR (.github/workflows/deploy.yml, job "Lint migrations (squawk)").
+#
+# What we want from it: catch migrations that break the app that is still
+# live while the new one deploys (dropped/renamed columns or tables, type
+# changes, NOT NULL columns without a default, …).
+#
+# What we switch off: rules about how long a statement holds a lock on a
+# large, busy table. Our tables hold a few hundred rows, so any lock lasts
+# milliseconds, and several of these rules ask for things a migration here
+# can't do anyway (CREATE INDEX CONCURRENTLY can't run inside the
+# transaction the Supabase CLI wraps each migration file in).
+#
+# To accept a finding on purpose, add `-- squawk-ignore <rule>` on the line
+# above the statement and explain why in the PR.
+
+pg_version = "17.0"
+
+# `supabase db push` runs each migration file in a single transaction.
+assume_in_transaction = true
+
+excluded_rules = [
+  "adding-foreign-key-constraint",
+  "adding-serial-primary-key-field",
+  "constraint-missing-not-valid",
+  "disallowed-unique-constraint",
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  "prefer-identity",
+  "prefer-robust-stmts",
+  "require-concurrent-index-creation",
+  "require-concurrent-index-deletion",
+  "require-timeout-settings",
+]

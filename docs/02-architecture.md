@@ -171,21 +171,26 @@ Deploys go through `.github/workflows/deploy.yml`, which runs `npm run build` an
 own (disconnected) git integration. See [Live environment audit](./11-live-environment.md#deployment)
 for the history of why.
 
-The **database schema ships separately from the app.** It lives in `supabase/migrations/`
-([ADR 0013](./adr/0013-supabase-migrations.md)). CI only checks that the migrations apply to an
-empty database. A person applies merged migrations to production with `supabase db push`, so a
-merge to `main` deploys the frontend but never changes the database by itself:
+The **database schema ships with the app, in the same run.** It lives in `supabase/migrations/`
+([ADR 0013](./adr/0013-supabase-migrations.md)). On a PR, CI checks that the migrations apply to an
+empty database and lints the new ones with Squawk. When a merge to `main` brings new migrations, the
+workflow backs up production, runs `supabase db push`, and deploys the frontend only if that
+succeeded ([ADR 0014](./adr/0014-ci-applies-migrations-on-merge.md)). A merge without migrations
+goes straight to the Vercel deploy:
 
 ```mermaid
 flowchart LR
-  PR["PR (app code and/or migration)"] -->|CI: build, test:pricing, migrations apply cleanly| Main["merge to main"]
-  Main -->|deploy.yml, automatic| Vercel["Vercel (frontend)"]
-  Main -->|"supabase db push, by a person"| DB["Supabase production DB"]
+  PR["PR (app code and/or migration)"] -->|"CI: build, test:pricing, migrations apply cleanly, squawk"| Main["merge to main"]
+  Main -->|"only if migrations changed"| Backup["encrypted backup artifact"]
+  Backup --> DB["supabase db push → production DB"]
+  DB -->|"only if the push succeeded"| Vercel["Vercel (frontend)"]
+  Main -->|"no migrations changed"| Vercel
 ```
 
-Because the frontend deploys the moment a PR merges, frontend code that needs a schema change will
-break until someone pushes the migration. Run `db push` right after merging. For anything
-non-additive, split the work into two PRs: first the migration, pushed, then the code that uses it.
+The schema changes a minute or two before the new frontend is live, while the old frontend is still
+serving. Additive changes (new table, new nullable column) are safe. To remove or rename something
+the frontend reads, use two PRs: first the code that stops reading it, then the migration that drops
+it. There are no down-migrations; a bad migration is fixed by a new one.
 
 Environment variables are build-time (`VITE_` prefix), so they are baked into the bundle:
 
