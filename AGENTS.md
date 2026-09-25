@@ -56,6 +56,11 @@ Before starting work on a GitHub issue (e.g. "tackle the next highest issue"), a
 requesting user (`gh issue edit <number> --add-assignee <github-login>`) so it's visibly claimed
 before any commits or a PR show up.
 
+When the PR for that issue is opened, explicitly assign it too
+(`gh pr create --assignee <github-login> ...`, or `gh pr edit <number> --add-assignee <github-login>`
+right after). Don't rely on the PR ending up assigned some other way (an org default, a repo
+automation) even if it happens to work — assign it yourself so it's not an accident.
+
 ### Procedure: never commit to `main`
 
 Always work on a feature branch, even for a small or unrelated-looking change (e.g. an AGENTS.md
