@@ -50,6 +50,12 @@ not in `docs/Bedaine App - Requirements.md`. That file is a historical record of
 prompt-by-prompt spec, kept for context; it is not a TODO list, and appending to it is how it
 became hard to use. See [Contributing → Tracking work](./docs/08-contributing.md#tracking-work).
 
+### Procedure: picking up an issue
+
+Before starting work on a GitHub issue (e.g. "tackle the next highest issue"), assign it to the
+requesting user (`gh issue edit <number> --add-assignee <github-login>`) so it's visibly claimed
+before any commits or a PR show up.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
