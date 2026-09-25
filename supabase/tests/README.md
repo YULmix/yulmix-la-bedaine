@@ -11,8 +11,10 @@ Automated testing suite for Row Level Security (RLS) policies in the La Bédaine
    ```
 
 2. **Apply Database Schema**
+   `supabase start` applies every file in `supabase/migrations/` to the local database. To rebuild
+   it from scratch later:
    ```powershell
-   supabase db push
+   supabase db reset
    ```
 
 3. **Environment Configuration**
@@ -52,7 +54,7 @@ npm test -- -t "EVENTS: Public can read ACTIVE and ARCHIVED events"
 
 ## Test Data
 
-Test data is seeded automatically using the `seed_test_data()` PostgreSQL function (added to `schema.sql`). This function:
+Test data lives in `supabase/tests/seed_test_data.sql`. The suite seeds inline if it can't find a `seed_test_data()` function. The data:
 
 1. Clears existing test data (identified by specific UUIDs)
 2. Creates:
@@ -81,8 +83,8 @@ Test data is seeded automatically using the `seed_test_data()` PostgreSQL functi
 - Add to `.env.test`
 
 ### "seed_test_data function not found"
-- Ensure `supabase db push` has been run
-- Function is defined at the end of `schema.sql`
+- The suite falls back to inline seeding. To load the seed script yourself, run it with `psql`
+  against the local `DB URL` printed by `supabase status`. Never run it against production.
 
 ### Connection Errors
 - Verify Supabase is running: `supabase status`
@@ -93,8 +95,7 @@ Test data is seeded automatically using the `seed_test_data()` PostgreSQL functi
 Add to CI pipeline:
 ```yaml
 steps:
-  - supabase start
-  - supabase db push
+  - supabase start   # applies supabase/migrations/
   - npm run test:rls
 ```
 

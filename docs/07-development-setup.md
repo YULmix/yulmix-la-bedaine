@@ -34,20 +34,66 @@ immediately and loudly rather than at the first query.
 2. Enable the **Google** and **Facebook** providers, and register the redirect URLs
    (`http://localhost:5173` and the production origin) under
    *Authentication → URL Configuration*.
-3. Apply the schema: paste `supabase/schema.sql` into the SQL editor.
+3. Apply the schema from `supabase/migrations/`. For a local database, `supabase start` applies
+   every migration. For a new hosted project, link it and push:
+   `supabase link --project-ref <ref>`, then `supabase db push`.
 
-> ⚠️ **`supabase/schema.sql` does not currently execute as a whole.** The
-> `admin_set_is_admin` function is opened with `AS $` instead of a valid dollar-quote tag
-> (`AS $$`) and is never closed, so Postgres will not parse from that point on. The live database
-> evidently has a working version of the function — the admin toggle calls it — so the *file* is
-> what is broken, not production. Fix the quoting before relying on the file for a fresh
-> environment, and see [ADR 0002](./adr/0002-single-schema-file-no-migrations.md) for why this went
-> unnoticed.
+## Database migrations
 
-Also note the file uses bare `CREATE TABLE` / `CREATE POLICY` without `IF NOT EXISTS` for most
-objects, so it is **not** idempotent: re-running it against a populated database errors out. Treat it
-as "how to build a fresh database", and apply changes to an existing one with hand-written `ALTER`
-snippets (which `.clinerules` already requires you to produce alongside any schema edit).
+The schema lives in `supabase/migrations/` ([ADR 0013](./adr/0013-supabase-migrations.md)). The
+first file, `20260924233313_baseline_live_schema.sql`, is a dump of production as of
+2026-09-24. Every later file is one reviewed change. Nothing else in `supabase/` is applied by
+the CLI. `supabase/legacy/` holds the hand-run SQL snippets from before migrations, kept only as
+history.
+
+### Changing the schema
+
+```bash
+supabase migration new add_something        # creates supabase/migrations/<timestamp>_add_something.sql
+# write the SQL (ALTER TABLE…, CREATE OR REPLACE FUNCTION…, new policies, GRANTs)
+supabase db reset                           # local: rebuild from all migrations, fails loudly on bad SQL
+```
+
+- **Never edit a migration that has been applied to production.** Fix it with a new one.
+- **New tables need explicit `GRANT`s** for `anon`/`authenticated`. New tables are not exposed to
+  the Data API automatically (see `auto_expose_new_tables` in `supabase/config.toml`), and
+  production's baseline grants only what it needs.
+- If you changed the local database interactively (Studio, `psql`), `supabase db diff -f <name>`
+  writes the difference to a new migration. Read the output before committing it.
+
+CI (`.github/workflows/deploy.yml`, job *Migrations apply cleanly*) starts an empty local database
+and applies every migration on each PR. A migration that doesn't parse, or depends on something
+that doesn't exist, fails there before review.
+
+### Applying to production
+
+Production is **not** migrated by CI. After a PR with a migration merges, someone with access to
+the Supabase project applies it from an up-to-date `main`:
+
+```bash
+git switch main && git pull
+supabase link --project-ref ceacurlofmasyvhsoska   # once per machine
+supabase migration list --linked                   # what production has vs. what's in the repo
+supabase db push --linked --dry-run                # shows which files would run; runs nothing
+supabase db push --linked                          # applies them, records them in production's history
+```
+
+Then check the app as both a member and an admin.
+
+**One-time step before the first push.** Before migrations were adopted, production had no
+migration history table. It already contains everything in the baseline, so tell it so, once:
+
+```bash
+supabase migration repair --status applied 20260924233313 --linked
+```
+
+Without this, `db push` tries to run the baseline against production and fails on objects that
+already exist. `migration list --linked` should then show the baseline as applied on both sides.
+This writes only to `supabase_migrations.schema_migrations` and changes no app table.
+
+**Do not** use `supabase db query --linked` or the SQL editor to change production's schema. It
+creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for read-only
+`SELECT`s.
 
 ## Scripts
 
@@ -106,9 +152,8 @@ regardless of whether Supabase was even reachable.
 With the environment issue fixed, `npm run test:rls` fails cleanly on `ECONNREFUSED` in this repo
 today — the honest failure, because no Supabase instance is running here. To make it actually pass:
 
-1. A local Supabase: `supabase start`, then apply the schema. Note there is **no
-   `supabase/config.toml`** in the repo, so `supabase start` has nothing to configure from —
-   `supabase init` output should be committed.
+1. A local Supabase: `supabase start`. It uses the committed `supabase/config.toml` and applies
+   `supabase/migrations/`, so the local schema matches production's.
 2. `.env.test` with a real local service-role key (and that file should be gitignored, see
    [security](./06-security-and-rls.md#secrets)).
 3. Seed data: `supabase/tests/seed_test_data.sql` defines a `seed_test_data()` function the suite

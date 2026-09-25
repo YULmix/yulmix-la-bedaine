@@ -59,13 +59,15 @@ everyone's personal data and the payment ledger.
 
 ## Policy matrix
 
-Derived from `supabase/schema.sql`. "own" = `auth.uid()` matches the row's owner column.
+Derived from production's schema as captured in the baseline migration
+(`supabase/migrations/20260924233313_baseline_live_schema.sql`, 2026-09-24).
+"own" = `auth.uid()` matches the row's owner column.
 
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
-| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — **but `is_admin` column UPDATE is revoked** | *no policy* → denied |
+| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — `is_admin` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
-| `user_parties` | own or admin | own or admin | own **while status is `registered`/`pending`**, or admin | own **while status is `registered`/`pending`**, or admin |
+| `user_parties` | own or admin | own or admin | own **while status is `'Enregistré'`/`'En attente'`** (stale French values, so in practice **admin only**, see [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)), or admin | own (**no status gate** in production), or admin |
 | `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
 | `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
 
@@ -73,21 +75,26 @@ Notes on specific choices:
 
 - **DRAFT events are admin-only**, which is what lets organisers plan next year's weekend in the open
   without members seeing half-finished prices.
-- **The `user_parties` UPDATE and DELETE status gates** are how cancellation is meant to become final:
-  once a registration leaves `registered`/`pending`, the member can no longer edit or delete it, only
-  an admin can. The cancellation flow that would set `status = 'cancelled'` does not exist yet.
-- **Members can DELETE their own registration while it is `registered`/`pending`.** The spec says
-  unregistering should mark the record cancelled, not remove it, so this is still wider than the
-  intent — but the DELETE policy used to have no status guard at all (any member could delete a
-  *paid* registration via the API), and `RegistrationSummary.jsx` now calls delete for real. The
-  status guard closes the immediate data-loss risk; a proper cancellation flow (`status = 'cancelled'`
-  instead of a row delete) is still the right long-term fix.
+- **The `user_parties` UPDATE and DELETE status gates** are meant to make cancellation final:
+  once a registration leaves `registered`/`pending`, the member can no longer edit or delete it,
+  and only an admin can. In production, the UPDATE gate still compares against the pre-migration
+  French values, so members cannot edit their registration at all. The DELETE policy has no gate,
+  so a member can delete even a *paid* registration through the API, and `RegistrationSummary.jsx`
+  does call delete. Both are tracked in
+  [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49). A proper cancellation flow
+  (`status = 'cancelled'` instead of a row delete) is still the right long-term fix.
+- **`is_admin` is protected by triggers, not by column privileges.** `authenticated` holds table-level
+  `UPDATE` on `profiles`. The old `schema.sql` had a `REVOKE UPDATE (is_admin)`, but a column-level
+  revoke can't narrow a table-level grant, so it did nothing. The real guards are
+  `trg_prevent_self_privilege_escalation` and `trg_protect_root_admin`, and changing someone
+  else's admin flag goes through `admin_set_is_admin()`.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.
-- **`GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated`** is broad. RLS still applies, so it
-  is not an open door, but it means every future table is writable-by-default the moment it is
-  created without policies. Prefer explicit per-table grants.
+- **`authenticated` has `ALL` on every app table** (per-table grants in production). RLS still
+  applies, so this isn't an open door. New tables are not auto-exposed (see
+  `auto_expose_new_tables` in `supabase/config.toml`), so a migration adding a table must grant
+  access explicitly, and should add its RLS policies in the same file.
 
 ## The gap that matters most
 
@@ -118,14 +125,15 @@ forever. Add `.env.test` to `.gitignore` and keep only `.env.test.example`.
 
 Any `VITE_`-prefixed variable is inlined into the public bundle. Never prefix a secret with `VITE_`.
 
-## Resolved advisory, unresolved in the file
+## The `SECURITY DEFINER` view advisory (resolved)
 
-Supabase flagged `public.user_event_history` as a `SECURITY DEFINER` view (it enforces the *creator's*
-permissions and RLS, not the querying user's). The requirements list it under "Done Issues", but
-`supabase/schema.sql` still creates the view without `WITH (security_invoker = true)`. Either the
-live database was fixed and the file was not, or the fix was lost. Verify against the live project,
-then make the file match — and consider that this is exactly the class of bug that a migration
-history prevents ([ADR 0002](./adr/0002-single-schema-file-no-migrations.md)).
+Supabase flagged `public.user_event_history` as a `SECURITY DEFINER` view: it enforced the
+*creator's* permissions and RLS, not the querying user's. Production was fixed on 2026-09-18
+(`supabase/legacy/fix_views_security.sql`). The view now runs `WITH (security_invoker = true)`,
+only `authenticated` may `SELECT` it, and the unused `registration_summary_view` was dropped. The
+old hand-maintained `schema.sql` never picked this up. The baseline migration, dumped from
+production, has it, and that kind of silent drift is why migrations were adopted
+([ADR 0013](./adr/0013-supabase-migrations.md)).
 
 ## Testing RLS
 

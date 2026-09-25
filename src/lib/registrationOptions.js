@@ -5,7 +5,7 @@ import fr from '../locales/fr.json';
 // Centralizing these avoids raw DB values leaking untranslated into the UI.
 
 // user_parties.status / payment_status enum values (English, matching events.status).
-// See supabase/schema.sql and supabase/migrate_status_payment_status_to_english.sql.
+// See the CHECK constraints in supabase/migrations/ and docs/adr/0012-migrate-status-columns-to-english.md.
 export const REGISTRATION_STATUS = {
   REGISTERED: 'registered',
   PENDING: 'pending',

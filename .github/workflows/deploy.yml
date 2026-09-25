@@ -68,6 +68,29 @@ jobs:
         if: github.event_name == 'pull_request'
         run: npm run lint:diff -- "origin/${{ github.base_ref }}"
 
+  # Replays supabase/migrations/ against an empty, throwaway Postgres on the
+  # runner, so a migration that doesn't parse or doesn't apply fails here, in
+  # review, instead of on production. This job NEVER touches the production
+  # database: no Supabase credentials are available to it, and applying
+  # merged migrations to production stays a deliberate, manual
+  # `supabase db push` (see docs/07-development-setup.md#database-migrations
+  # and docs/adr/0013-supabase-migrations.md).
+  migrations:
+    name: Migrations apply cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned like VERCEL_CLI_VERSION above; bump on purpose.
+          version: 2.114.0
+
+      # Starts only the local Postgres container and applies every migration.
+      - run: supabase db start
+
+      - run: supabase migration list --local
+
   deploy:
     name: Deploy to production
     needs: build-and-test

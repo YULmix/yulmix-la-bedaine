@@ -11,12 +11,12 @@
 - File Encoding: All source files, JSX components, and JSON dictionaries MUST strictly be authored and saved in UTF-8 (without BOM). Never allow terminal tools to re-encode accented French characters into Windows-1252/ANSI.
 
 # DATABASE DESIGN & SECURITY
-- Target Output: All schema updates, triggers, and RLS policies must be appended to 'supabase/schema.sql'.
+- Target Output: Every schema update, trigger, and RLS policy change is a new migration file created with 'supabase migration new <name>' under 'supabase/migrations/'. Never edit an existing migration; never apply SQL to the live database by hand (see docs/adr/0013-supabase-migrations.md).
 - Auth Architecture: Sync 'auth.users' to 'public.profiles' via an automated trigger on insert. Root Admin is hardcoded to 'yulmixalabedaine@gmail.com'.
 - Row Level Security: Enable RLS on every table. Provide explicit SELECT, INSERT, UPDATE, and DELETE policies for authenticated users and admins. Prevent self-privilege escalation on 'is_admin'.
-- Schema Change Protocol: Whenever you edit or append to 'supabase/schema.sql', you MUST explicitly alert the user in your final response with:
+- Schema Change Protocol: Whenever you add a migration, you MUST explicitly alert the user in your final response with:
   1. A summary of what database entities changed (new columns, policies, triggers, or views).
-  2. An isolated SQL snippet containing ONLY the delta/alter statements needed to run in the Supabase SQL Editor.
+  2. The migration file's path, and a reminder that it reaches production only when a person runs 'supabase db push' after the PR merges.
 
 # SYSTEM OS (WINDOWS POWERSHELL 5.1 RULES)
 - Shell Environment: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7).

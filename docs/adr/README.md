@@ -12,7 +12,7 @@ misread the original intent — that is more valuable than leaving them unchalle
 | # | Decision | Status |
 |---|---|---|
 | [0001](./0001-supabase-as-the-only-backend.md) | Supabase is the only backend; the SPA talks to Postgres directly | accepted |
-| [0002](./0002-single-schema-file-no-migrations.md) | A single append-only `schema.sql` instead of migrations | accepted, should be revisited |
+| [0002](./0002-single-schema-file-no-migrations.md) | A single append-only `schema.sql` instead of migrations | superseded by 0013 |
 | [0003](./0003-pricing-as-a-pure-module.md) | Pricing lives in one pure, tested module | accepted |
 | [0004](./0004-per-attendee-logistics-inside-attendees.md) | Per-person logistics live inside the `attendees` JSONB | accepted |
 | [0005](./0005-waitlist-instead-of-blocking.md) | Over capacity waitlists, never blocks | accepted |
@@ -23,3 +23,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0010](./0010-pricing-rules-and-logistics.md) | Refined pricing rules, individual logistics, and event lifecycle | accepted |
 | [0011](./0011-feedback-loop-and-admin-controls.md) | Operational feedback loop, event safety, and communications | accepted |
 | [0012](./0012-migrate-status-columns-to-english.md) | Migrate status/payment_status to English enum values | accepted |
+| [0013](./0013-supabase-migrations.md) | Schema changes are Supabase CLI migrations, applied by a person after review | accepted |

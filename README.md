@@ -69,7 +69,8 @@ Détails et justification dans [Architecture](./docs/02-architecture.md) et
 │   │   └── registrationOptions.js  # valeurs stockées ↔ libellés français
 │   └── locales/fr.json     # tous les textes de l'interface
 ├── supabase/
-│   ├── schema.sql          # tables, triggers, RLS (voir les mises en garde dans docs/)
+│   ├── migrations/         # le schéma : tables, triggers, RLS (voir docs/adr/0013)
+│   ├── legacy/             # anciens scripts SQL appliqués à la main (historique seulement)
 │   └── tests/              # données de seed pour les tests RLS
 └── vercel.json             # configuration de déploiement (production tourne sur Vercel)
 ```

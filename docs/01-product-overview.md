@@ -51,7 +51,7 @@ flowchart TD
   first aid / beds). Sets the event's money and dates, edits any registration on someone's behalf,
   assigns sleeping spots, toggles payment status, exports to the spreadsheet.
 - **Root admin** — a hardcoded email that is always an admin and cannot be demoted
-  (`supabase/schema.sql`, `protect_root_admin`). It is the break-glass account.
+  (`protect_root_admin` and `is_admin()` in `supabase/migrations/`). It is the break-glass account.
 
 ## The event lifecycle
 
