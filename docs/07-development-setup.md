@@ -270,6 +270,50 @@ pauses for approval, it just narrows which branch can see the secret. No databas
 needed: given only the access token, the Supabase CLI logs in through a temporary role it creates
 via the Management API.
 
+#### `SUPABASE_ACCESS_TOKEN` permissions
+
+Create it as a **scoped** token (`supabase.com/dashboard/account/tokens`), resource access
+**Project → YULmix - La Bedaine** (not Organization), with exactly this set — everything else
+stays `None`, including `Backups` (this pipeline does its own dump; it doesn't use Supabase's
+PITR/restore feature):
+
+| Category | Setting |
+|---|---|
+| Project Settings | Read |
+| Database | Read-write |
+| Connection Pooling | Read |
+| Migrations | Read-write |
+| API Keys | Read |
+| API Key Secrets | Read |
+
+Supabase tokens can't be edited after creation — getting this wrong means regenerating, so here's
+why each one is needed, traced against the CLI's own source (`supabase/cli`, not just the docs
+page, which doesn't list the raw permission IDs):
+
+- **Project Settings** (`project_admin_read`) and **API Keys** + **API Key Secrets**
+  (`api_gateway_keys_read` / `api_gateway_keys_secret_read`): `supabase link` — which `backup`,
+  `migrate`, and `migration list` all run first — makes two calls that must succeed:
+  `GET /v1/projects/{ref}` and `GET /v1/projects/{ref}/api-keys?reveal=true`. The `reveal=true`
+  fetch (used internally to probe tenant service versions) is what requires the **Secrets**
+  variant specifically, not just key metadata — Supabase itself documents this as "grants
+  elevated access." There's no CLI flag to skip it.
+- **Connection Pooling** (`database_pooling_config_read`): `link` also tries to cache a pooler
+  connection URL via `getPoolerConfig`, but that call is best-effort (silently swallowed on
+  failure) — so a token missing this permission makes `link` *look* successful while leaving no
+  cached pooler URL. `db dump`/`db push`/`migration list` then try a direct Postgres connection
+  first, which fails on GitHub Actions runners (no IPv6 egress), and their pooler fallback needs
+  this same permission to fetch a connection — without it they fail with a generic "IPv6 is not
+  supported on your current network" error that gives no hint the actual cause is a missing
+  scope.
+- **Database** (`database_write`, for `Read-write`): `db dump`/`db push`/`migration list` all
+  mint a temporary Postgres login role via `POST /v1/projects/{ref}/cli/login-role` once they have
+  a connection, rather than needing a stored database password.
+- **Migrations** (`Read-write`): not actually exercised by any of the three commands above in
+  this CLI version — they apply/list migrations over the raw Postgres connection, not a separate
+  Management API call. Kept anyway since `supabase migration repair` (used for the one-time
+  history-repair step, see [Database migrations](#database-migrations)) is a plausible future
+  need and it's a low-risk permission to hold.
+
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.
 
