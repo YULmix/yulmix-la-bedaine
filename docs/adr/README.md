@@ -25,3 +25,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0012](./0012-migrate-status-columns-to-english.md) | Migrate status/payment_status to English enum values | accepted |
 | [0013](./0013-supabase-migrations.md) | Schema changes are Supabase CLI migrations, applied by a person after review | accepted; "by a person" superseded by 0014 |
 | [0014](./0014-ci-applies-migrations-on-merge.md) | CI applies migrations to production on merge, after an encrypted backup; fix forward | accepted |
+| [0015](./0015-dedicated-preview-supabase-project.md) | A dedicated free-tier Supabase project for Vercel Preview, instead of sharing production | accepted |
