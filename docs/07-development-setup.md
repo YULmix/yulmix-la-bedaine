@@ -260,6 +260,11 @@ browser-install strategy and runtime cost for CI runners are worked out.
 **Production runs on Vercel.** `vercel.json` sets the build command, `dist` output, and the SPA
 rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project settings.
 
+**`Preview` points at its own, separate free-tier Supabase project**, not production — see
+[ADR 0015](./adr/0015-dedicated-preview-supabase-project.md). Its schema has to be kept in sync
+with `supabase/migrations/` by hand for now (`supabase db push --project-ref
+uacfrldoiixfstigosqv`); there's no CI automation for it yet.
+
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
 be deleted (see [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).
 
