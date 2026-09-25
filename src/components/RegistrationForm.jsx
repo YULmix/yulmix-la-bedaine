@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { calculateBasePoints, calculatePricePerPointFromSellingPrice, simulateEventPricing } from '../lib/pricingEngine';
+import { calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import {
   TIER_OPTIONS,
@@ -397,7 +397,7 @@ const handleRemoveAttendee = (id) => {
                       <button type="button" onClick={() => handleRemoveAttendee(attendee.id)} className="text-red-600 hover:text-red-800 text-sm">Supprimer</button>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Nom complet</label>
                       <input type="text" value={attendee.name} onChange={(e) => handleAttendeeChange(attendee.id, 'name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Jean Tremblay" required />
@@ -413,6 +413,11 @@ const handleRemoveAttendee = (id) => {
                         <input type="checkbox" checked={attendee.isNewMember} onChange={(e) => handleAttendeeChange(attendee.id, 'isNewMember', e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
                         <span className="text-sm text-gray-700"> {fr.firstTimeAttendee}</span>
                       </label>
+                    </div>
+                    <div className="flex items-end">
+                      <span className="text-sm text-gray-700">
+                        {fr.attendeeValueLabel} : {formatCurrency(getFinalPoints(attendee) * basePricePerPoint)}
+                      </span>
                     </div>
                   </div>
                 </div>
