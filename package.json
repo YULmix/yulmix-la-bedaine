@@ -12,7 +12,8 @@
     "test:pricing": "jest src/lib/pricingEngine.test.js",
     "test:e2e": "playwright test",
     "lint": "eslint .",
-    "lint:diff": "node scripts/lint-diff.mjs"
+    "lint:diff": "node scripts/lint-diff.mjs",
+    "lint:diff:staged": "node scripts/lint-diff.mjs --staged"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
