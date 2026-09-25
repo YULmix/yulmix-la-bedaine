@@ -3,6 +3,9 @@
  * Covers both cases that used to trigger the demo fallback: an empty `events` table,
  * and a failed query.
  */
+// No JSX here: this repo's ESLint config only enables JSX parsing for src/**/*.jsx
+// (and explicitly excludes *.test.jsx from it), so a .test.js file can't use JSX syntax.
+import { createElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import App from '../App';
@@ -53,7 +56,7 @@ describe('App — fetchEvents never fabricates demo data (#33)', () => {
   test('renders the empty state, not demo data, when the events table is empty', async () => {
     mockEventsQuery({ data: [], error: null });
 
-    render(<BrowserRouter><App /></BrowserRouter>);
+    render(createElement(BrowserRouter, null, createElement(App)));
 
     expect(await screen.findByText('Aucun événement en cours')).toBeInTheDocument();
     expect(screen.queryByText('Weekend en montagne')).not.toBeInTheDocument();
@@ -62,7 +65,7 @@ describe('App — fetchEvents never fabricates demo data (#33)', () => {
   test('renders the empty state, not demo data, when the events query errors', async () => {
     mockEventsQuery({ data: null, error: new Error('network error') });
 
-    render(<BrowserRouter><App /></BrowserRouter>);
+    render(createElement(BrowserRouter, null, createElement(App)));
 
     expect(await screen.findByText('Aucun événement en cours')).toBeInTheDocument();
     expect(screen.queryByText('Weekend en montagne')).not.toBeInTheDocument();
