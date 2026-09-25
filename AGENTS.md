@@ -50,6 +50,41 @@ not in `docs/Bedaine App - Requirements.md`. That file is a historical record of
 prompt-by-prompt spec, kept for context; it is not a TODO list, and appending to it is how it
 became hard to use. See [Contributing → Tracking work](./docs/08-contributing.md#tracking-work).
 
+### Procedure: picking up an issue
+
+Before starting work on a GitHub issue (e.g. "tackle the next highest issue"), assign it to the
+requesting user (`gh issue edit <number> --add-assignee <github-login>`) so it's visibly claimed
+before any commits or a PR show up.
+
+### Procedure: never commit to `main`
+
+Always work on a feature branch, even for a small or unrelated-looking change (e.g. an AGENTS.md
+edit picked up mid-task). `main` is protected and rejects direct pushes anyway, but branch first —
+don't find that out by pushing to `main` and having to redo the commit on a branch. A doc or
+process fix discovered while working an issue belongs in the same branch/PR as that issue unless
+it's unrelated enough to need its own.
+
+### Procedure: don't delete a branch tied to an open PR
+
+Never delete a local or remote branch that has an open, unmerged PR on it, even after copying its
+commits elsewhere (e.g. cherry-picking onto the branch you should have used) — ask first. It
+leaves the PR without a branch to keep iterating on, and "the commits are safe on the remote" is
+not the same as leaving the person's working state alone.
+
+### Procedure: verify acceptance criteria, don't assume them
+
+Before calling an issue fixed, actually exercise the behavior the issue describes — not just
+`npm run build` / a green CI syntax check. For a DB change that means applying the migration to a
+real Postgres (`supabase start` locally, or a preview branch) and running the actual scenario:
+insert rows that should trip a trigger or constraint, run a query or update as the affected role
+(`set role authenticated; select set_config('request.jwt.claims', ...)`) to prove an RLS policy
+now allows or blocks what it's supposed to. If docker is unavailable in the session but the user's
+account is already in the `docker` group (`getent group docker`), the shell just started before
+that took effect — use `newgrp docker <<'EOF' ... EOF` rather than reporting the environment as
+broken or asking the user to "grant access" again. Passing CI's syntax/lint checks is necessary,
+not sufficient — say explicitly what was and wasn't verified rather than presenting a build pass
+as proof the acceptance criteria are met.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
