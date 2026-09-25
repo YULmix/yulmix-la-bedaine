@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
+import FeedbackModal from './components/FeedbackModal';
+import ResolutionBanner from './components/ResolutionBanner';
 import HomeView from './views/HomeView';
 import AdminView from './views/AdminView';
 import EventDetailsView from './views/EventDetailsView';
@@ -201,6 +203,7 @@ function App() {
   }
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
+      <ResolutionBanner isAuthenticated={isAuthenticated} />
       <Header isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} user={user} isAdmin={isAdmin} />
       
       <Routes>
@@ -316,11 +319,13 @@ function App() {
       </footer>
       
       {/* Event Modal */}
-      <EventModal 
+      <EventModal
         event={selectedEvent}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
+
+      {isAuthenticated && <FeedbackModal userId={user?.id} />}
     </div>
   );
 }

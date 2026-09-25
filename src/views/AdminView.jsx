@@ -39,6 +39,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     pricePerPointOverride: ''
   });
   const [simulationResult, setSimulationResult] = useState(null);
+  const [feedbackItems, setFeedbackItems] = useState([]);
+  const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
 
   // Fetch all events, parties, profiles
   useEffect(() => {
@@ -102,11 +104,41 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .order('created_at', { ascending: false });
       if (profilesError) throw profilesError;
       setProfiles(profilesData || []);
+
+      await fetchFeedback();
     } catch (err) {
       console.error('Error fetching admin data:', err);
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFeedback = async () => {
+    try {
+      const { data: feedbackData, error: feedbackError } = await supabase
+        .from('app_feedback')
+        .select('*, profiles(email, full_name)')
+        .order('created_at', { ascending: false });
+      if (feedbackError) throw feedbackError;
+      setFeedbackItems(feedbackData || []);
+    } catch (err) {
+      console.error('Error fetching feedback:', err);
+    }
+  };
+
+  const handleResolveFeedback = async (feedbackId) => {
+    try {
+      const { error: resolveError } = await supabase
+        .from('app_feedback')
+        .update({ is_resolved: true, resolved_at: new Date().toISOString() })
+        .eq('id', feedbackId);
+      if (resolveError) throw resolveError;
+      addToast(fr.adminFeedbackResolve, 'success');
+      fetchFeedback();
+    } catch (err) {
+      console.error('Error resolving feedback:', err);
+      addToast(err.message || 'Erreur', 'error');
     }
   };
 
@@ -1366,6 +1398,51 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           </div>
         </div>
       )}
+
+      {/* User Feedback */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">{fr.adminFeedbackSectionTitle}</h2>
+          <label className="flex items-center space-x-2 text-sm text-gray-600">
+            <input type="checkbox" checked={showResolvedFeedback} onChange={(e) => setShowResolvedFeedback(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
+            <span>{fr.adminFeedbackShowResolved}</span>
+          </label>
+        </div>
+        {(() => {
+          const visibleFeedback = feedbackItems.filter(item => showResolvedFeedback || !item.is_resolved);
+          if (visibleFeedback.length === 0) {
+            return <p className="text-gray-500">{fr.adminFeedbackEmpty}</p>;
+          }
+          return (
+            <div className="space-y-4">
+              {visibleFeedback.map(item => (
+                <div key={item.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{item.profiles?.full_name || item.profiles?.email || 'Utilisateur inconnu'}</p>
+                      <p className="text-xs text-gray-500">{new Date(item.created_at).toLocaleString('fr-CA')}</p>
+                    </div>
+                    {item.is_resolved ? (
+                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{fr.adminFeedbackResolved}</span>
+                    ) : (
+                      <button
+                        onClick={() => handleResolveFeedback(item.id)}
+                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      >
+                        {fr.adminFeedbackResolve}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.content}</p>
+                  {item.screenshot_url && (
+                    <img src={item.screenshot_url} alt={fr.feedbackScreenshotAlt} className="mt-3 max-h-48 rounded-lg border border-gray-200" />
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
 
       {/* User Profile Modal */}
       {userProfileModal && (
