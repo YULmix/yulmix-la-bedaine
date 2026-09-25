@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import RegistrationForm from '../components/RegistrationForm';
 import RegistrationSummary from './RegistrationSummary';
 import fr from '../locales/fr.json';
+import { getGoogleMapsUrl } from '../lib/venue';
 
 const HomeView = ({ activeEvent, isAuthenticated }) => {
   const [userRegistration, setUserRegistration] = useState(null);
@@ -139,7 +140,11 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
         <p className="text-blue-100 mb-4">{activeEvent.description}</p>
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="bg-white/20 px-3 py-1 rounded-full">{formatDate(activeEvent.reg_start_date)}</div>
-          <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.venue_address}</div>
+          {activeEvent.venue_address && (
+            <a href={getGoogleMapsUrl(activeEvent.venue_address)} target="_blank" rel="noopener noreferrer" className="bg-white/20 px-3 py-1 rounded-full underline hover:bg-white/30 transition-colors">
+              {activeEvent.venue_address}
+            </a>
+          )}
           <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} jour(s)</div>
           <Link
             to="/event-details"
