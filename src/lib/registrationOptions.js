@@ -53,7 +53,8 @@ export const ACCOMMODATION_OPTIONS = [
   { value: 'camping', label: fr.accommodationCamping },
   { value: 'floor', label: fr.accommodationFloor },
   { value: 'bed', label: fr.accommodationBed },
-  { value: 'sofa', label: fr.accommodationSofa }
+  { value: 'sofa', label: fr.accommodationSofa },
+  { value: 'outside_other', label: fr.accommodationOutsideOther }
 ];
 
 export const BED_REASON_OPTIONS = [

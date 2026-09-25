@@ -43,6 +43,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         participation: attendee.participation || 'Whole',
         isNewMember: attendee.is_new_member || false,
         sleepingPreference: attendee.sleeping_preference || '',
+        sleepingPreferenceOther: attendee.sleeping_preference_other || '',
         dietaryNeeds: attendee.dietary_needs || '',
         bedReason: attendee.bed_reason || '',
         dietaryOther: attendee.dietary_other || '',
@@ -70,7 +71,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
       if (userRegistration.is_waitlisted) setIsWaitlisted(userRegistration.is_waitlisted);
     } else {
       // Start with one empty attendee
-      setAttendees([{ id: 'attendee-1', name: '', type: 'Adult', participation: 'Whole', isNewMember: false, sleepingPreference: '', dietaryNeeds: '', bedReason: '', dietaryOther: '' }]);
+      setAttendees([{ id: 'attendee-1', name: '', type: 'Adult', participation: 'Whole', isNewMember: false, sleepingPreference: '', sleepingPreferenceOther: '', dietaryNeeds: '', bedReason: '', dietaryOther: '' }]);
     }
   }, [userRegistration]);
 
@@ -79,8 +80,9 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
     if (sameForEveryone && attendees.length > 0) {
       const firstAttendee = attendees[0];
       // Check if any attendee differs from first attendee
-      const needsSync = attendees.some(att => 
+      const needsSync = attendees.some(att =>
         att.sleepingPreference !== firstAttendee.sleepingPreference ||
+        att.sleepingPreferenceOther !== firstAttendee.sleepingPreferenceOther ||
         att.dietaryNeeds !== firstAttendee.dietaryNeeds ||
         att.bedReason !== firstAttendee.bedReason ||
         att.dietaryOther !== firstAttendee.dietaryOther
@@ -89,6 +91,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
         setAttendees(attendees.map(att => ({
           ...att,
           sleepingPreference: firstAttendee.sleepingPreference,
+          sleepingPreferenceOther: firstAttendee.sleepingPreferenceOther,
           dietaryNeeds: firstAttendee.dietaryNeeds,
           bedReason: firstAttendee.bedReason,
           dietaryOther: firstAttendee.dietaryOther
@@ -216,6 +219,7 @@ const handleRemoveAttendee = (id) => {
         participation: attendee.participation,
         is_new_member: attendee.isNewMember,
         sleeping_preference: attendee.sleepingPreference,
+        sleeping_preference_other: attendee.sleepingPreferenceOther,
         dietary_needs: attendee.dietaryNeeds,
         bed_reason: attendee.bedReason,
         dietary_other: attendee.dietaryOther,
@@ -451,6 +455,12 @@ const handleRemoveAttendee = (id) => {
                             <option value="">Sélectionnez</option>
                             {BED_REASON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </select>
+                        </div>
+                      )}
+                      {attendee.sleepingPreference === 'outside_other' && (
+                        <div className="mt-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
+                          <input type="text" value={attendee.sleepingPreferenceOther} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreferenceOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.accommodationOutsideOtherPlaceholder} />
                         </div>
                       )}
                     </div>

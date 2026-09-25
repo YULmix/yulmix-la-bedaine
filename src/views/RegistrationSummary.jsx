@@ -258,6 +258,9 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                     <p className="font-medium">
                       {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference, 'Non spécifié')}
                     </p>
+                    {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other && (
+                      <p className="text-xs text-gray-500">{attendee.sleeping_preference_other}</p>
+                    )}
                   </div>
                 </div>
               ))}
