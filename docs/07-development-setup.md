@@ -158,6 +158,42 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm test` | Jest, default (unit) suite | ✅ passes — excludes the RLS integration suite, see below |
 | `npm run test:rls` | Jest, RLS suite only, `--config jest.rls.config.js` | needs a local Supabase instance; fails on `ECONNREFUSED` without one (not on a jsdom artifact — see below) |
 | `npm run test:e2e` | Playwright, real Chromium against `npm run dev` | needs a local Supabase instance; fails cleanly if it isn't running — see below |
+| `npm run lint` | ESLint, whole repo | repo-wide `local/no-literal-ui-strings` is a **warning** — there's a pre-existing backlog (see `eslint.config.js`), not something a single PR is expected to clear |
+| `npm run lint:diff -- <baseRef>` | Fails on any `local/no-literal-ui-strings` warning on a line *added* since `baseRef` (default `origin/main`) | what CI's "Lint changed files for new hardcoded UI strings" step runs; needs the commit(s) to already exist (`baseRef...HEAD`) |
+| `npm run lint:diff:staged -- <baseRef>` | Same rule, but against the **staged** snapshot instead of `HEAD` | what the `lint-diff-staged` pre-commit hook runs — see below; this is what lets it catch a violation *before* the commit exists, not one commit later |
+
+## Pre-commit hooks
+
+The repo ships a [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) that runs
+`npm run build`, `npm run test:pricing`, `npm test` and `npm run lint:diff:staged` before each
+commit — the same checklist [`CLAUDE.md`](../CLAUDE.md) documents doing by hand, just automatic.
+Each hook is scoped to only run when it's relevant (e.g. `build` only fires when `src/` or
+`package.json` changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle.
+
+The `lint-diff-staged` hook exists because `npm run lint:diff` alone doesn't work as a pre-commit
+check: it diffs `baseRef...HEAD`, and at pre-commit time `HEAD` is the *previous* commit — the one
+being made isn't in it yet, so a violation would only surface on the *next* commit's lint run, or
+not until CI. `scripts/lint-diff.mjs --staged` fixes this by diffing the staged index against
+`merge-base(baseRef, HEAD)` and linting the staged blob content directly (`git show :<file>` piped
+into `eslint --stdin`), so it sees the commit that's actually about to be made.
+
+Setup (once per clone):
+
+```bash
+pip install pre-commit   # or: pipx install pre-commit / brew install pre-commit
+pre-commit install --hook-type pre-commit
+```
+
+A blocked commit prints exactly what CI's `lint:diff` step would have said, e.g.:
+
+```
+src/views/HomeView.jsx:129:10 Literal UI string "..." must come from src/locales/fr.json ...
+lint-diff: 1 new literal UI string(s) introduced in this diff. Move them into src/locales/fr.json.
+```
+
+Fix the string (move it into `fr.json` or `registrationOptions.js`) and re-commit — pre-commit
+re-runs on the corrected staged snapshot. `git commit --no-verify` skips the hooks entirely; per
+[`CLAUDE.md`](../CLAUDE.md#the-rules-that-actually-matter) don't reach for that as a shortcut.
 
 Build output, for reference — code splitting is configured in `vite.config.js` so Supabase, the
 router and Lucide are separate chunks:

@@ -1,0 +1,43 @@
+# https://pre-commit.com — local, Node-based hooks; no external repos to fetch.
+#
+# Setup (once per clone):
+#   pip install pre-commit   # or: pipx install pre-commit / brew install pre-commit
+#   pre-commit install --hook-type pre-commit
+#
+# See docs/07-development-setup.md#pre-commit-hooks for what each hook checks and why.
+repos:
+  - repo: local
+    hooks:
+      - id: build
+        name: npm run build
+        entry: npm run build
+        language: system
+        pass_filenames: false
+        files: ^(src/|package(-lock)?\.json|vite\.config\.js|index\.html)
+
+      - id: test-pricing
+        name: npm run test:pricing
+        entry: npm run test:pricing
+        language: system
+        pass_filenames: false
+        files: ^src/lib/pricingEngine
+
+      - id: test
+        name: npm test
+        entry: npm test
+        language: system
+        pass_filenames: false
+        files: ^(src/|jest\.config)
+
+      # The literal-UI-string rule (local/no-literal-ui-strings) is repo-wide "warn" — there's
+      # a pre-existing backlog (see eslint.config.js) — but a hard failure for lines this commit
+      # actually adds, mirroring the "Lint changed files for new hardcoded UI strings" CI step.
+      # Uses --staged (not plain `npm run lint:diff`) because at pre-commit time HEAD doesn't yet
+      # include the commit being made; --staged diffs the staged snapshot instead so a violation
+      # is caught before the commit exists, not one commit later.
+      - id: lint-diff-staged
+        name: npm run lint:diff:staged (new hardcoded UI strings)
+        entry: npm run lint:diff:staged
+        language: system
+        pass_filenames: false
+        files: \.jsx$
