@@ -323,7 +323,10 @@ const handleRemoveAttendee = (id) => {
         counts: counts,
         calculated_amount_owed: estimatedBalance,
         status: REGISTRATION_STATUS.REGISTERED,
-        payment_status: adminMode && userRegistration ? userRegistration.payment_status : PAYMENT_STATUS.UNPAID,
+        // A self-edit of an existing registration must not reset payment_status to unpaid — that
+        // would silently un-grandfather calculated_amount_owed on the next save (issue #31), since
+        // the server-side trigger keys the grandfathering off the row's own persisted status.
+        payment_status: userRegistration ? userRegistration.payment_status : PAYMENT_STATUS.UNPAID,
         is_waitlisted: isWaitlisted,
         logistics: logistics,
         transport: transport,
