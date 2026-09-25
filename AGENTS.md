@@ -64,6 +64,13 @@ don't find that out by pushing to `main` and having to redo the commit on a bran
 process fix discovered while working an issue belongs in the same branch/PR as that issue unless
 it's unrelated enough to need its own.
 
+### Procedure: don't delete a branch tied to an open PR
+
+Never delete a local or remote branch that has an open, unmerged PR on it, even after copying its
+commits elsewhere (e.g. cherry-picking onto the branch you should have used) — ask first. It
+leaves the PR without a branch to keep iterating on, and "the commits are safe on the remote" is
+not the same as leaving the person's working state alone.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
