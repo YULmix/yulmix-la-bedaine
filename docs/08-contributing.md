@@ -12,11 +12,12 @@ project will not sustain.
    Postgres. A check in React is a convenience.
 3. **Never render a raw database value.** Map it through `src/lib/registrationOptions.js`.
 4. **Schema changes are migrations.** Every schema change is a new file in `supabase/migrations/`
-   (`supabase migration new <name>`), reviewed in the PR and applied to production with
-   `supabase db push` after merge. Never paste SQL into the dashboard or run
+   (`supabase migration new <name>`), reviewed in the PR, and applied to production by CI when the
+   PR merges, after an automatic backup. Merging a migration *is* shipping it. There are no
+   down-migrations: fix a bad one with a new migration. Never paste SQL into the dashboard or run
    `supabase db query --linked` to change production. See
    [Development setup → Database migrations](./07-development-setup.md#database-migrations) and
-   [ADR 0013](./adr/0013-supabase-migrations.md).
+   ADRs [0013](./adr/0013-supabase-migrations.md) and [0014](./adr/0014-ci-applies-migrations-on-merge.md).
 5. **Pricing changes come with a test.** `src/lib/pricingEngine.js` is pure; keep it that way, and
    add a case to its test file for any rule change.
 6. **UTF-8 without BOM.** Check before committing; Windows editors add BOMs silently.
@@ -44,7 +45,8 @@ The current history (*"head assets"* ×3) is not a model to follow.
 - [ ] `npm test` passes (includes `npm run test:pricing`).
 - [ ] New/changed UI text is in `fr.json`, not inline.
 - [ ] Schema change is a migration under `supabase/migrations/`, and this repo's docs are updated.
-- [ ] After merge, whoever merged a migration has run `supabase db push` (or said who will).
+- [ ] Migration PR: squawk is green (or each ignored finding is explained), and after merge the
+      *Apply migrations to production* job passed.
 - [ ] Manually exercised as **both** a member and an admin — the two roles see genuinely different
       screens and the RLS boundary between them is the thing most likely to break.
 - [ ] No new `console.log` of session or personal data.
@@ -103,7 +105,7 @@ None of this exists yet. It is ordered by value per hour of setup.
    indentation mid-function.
 7. **A PR template** carrying the definition-of-done checklist above, and the migration reminder.
 8. ~~**Migrations.**~~ **Done** — `supabase/migrations/`, seeded from production; see
-   [ADR 0013](./adr/0013-supabase-migrations.md).
+   ADRs [0013](./adr/0013-supabase-migrations.md) and [0014](./adr/0014-ci-applies-migrations-on-merge.md).
 9. **A staging Supabase project**, so schema changes and RLS edits are not tested against the data of
    ninety friends.
 10. **GitHub Issues (or beads tasks, if adopted)** as the actual work tracker — see

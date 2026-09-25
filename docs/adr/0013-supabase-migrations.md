@@ -1,5 +1,9 @@
 # Schema changes are Supabase CLI migrations, applied by a person after review
 
+**Partly superseded by [ADR 0014](./0014-ci-applies-migrations-on-merge.md)** (September 2026):
+merged migrations are now applied to production by CI, after a backup, not by a person. The rest
+of this decision stands.
+
 `supabase/migrations/` is the source of truth for the database schema. This supersedes
 [ADR 0002](./0002-single-schema-file-no-migrations.md): the single hand-edited `schema.sql` is gone,
 and so is the practice of pasting SQL snippets into the Supabase SQL editor or running them with

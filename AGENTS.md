@@ -33,9 +33,10 @@ Full detail in [Contributing](./docs/08-contributing.md); the ones most likely t
   identifier, column, and filename is English. Never render a raw database value — map it through
   `src/lib/registrationOptions.js`.
 - **Schema changes are migrations, never hand-run SQL.** Add a file with
-  `supabase migration new <name>` under `supabase/migrations/`; it's reviewed in the PR and a
-  person applies it with `supabase db push` after merge
-  ([ADR 0013](./docs/adr/0013-supabase-migrations.md)). Do not change production with
+  `supabase migration new <name>` under `supabase/migrations/`; it's reviewed in the PR and CI
+  applies it to production on merge, after a backup
+  ([ADR 0014](./docs/adr/0014-ci-applies-migrations-on-merge.md)). Don't run `supabase db push`
+  yourself, and fix a bad migration with a new one (no down-migrations). Do not change production with
   `supabase db query --linked` or the SQL editor (read-only `SELECT`s are fine), and never edit
   the baseline or any already-applied migration. `supabase/legacy/` is history, not a template.
 - **Pricing changes come with a test.** `src/lib/pricingEngine.js` is pure; add a case to

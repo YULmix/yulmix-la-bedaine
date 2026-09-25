@@ -251,7 +251,7 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
 ## Extending the model — the checklist
 
 1. Add a migration (`supabase migration new <name>`) with the `ALTER TABLE`, and check it locally
-   with `supabase db reset`. It reaches production only through `supabase db push` after review;
+   with `supabase db reset`. It reaches production when its PR merges (CI runs `supabase db push`);
    see [Development setup → Database migrations](./07-development-setup.md#database-migrations).
 2. If it is user-visible, add an RLS consideration: does the new column leak anything a member
    should not see? `admin_notes` is the precedent for organiser-only data.

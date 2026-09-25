@@ -61,35 +61,87 @@ supabase db reset                           # local: rebuild from all migrations
 - If you changed the local database interactively (Studio, `psql`), `supabase db diff -f <name>`
   writes the difference to a new migration. Read the output before committing it.
 
-CI (`.github/workflows/deploy.yml`, job *Migrations apply cleanly*) starts an empty local database
-and applies every migration on each PR. A migration that doesn't parse, or depends on something
-that doesn't exist, fails there before review.
+Every PR that touches `supabase/migrations/` gets two checks in `.github/workflows/deploy.yml`:
+
+- *Migrations apply cleanly* starts an empty local database and applies every migration. A
+  migration that doesn't parse, or depends on something that doesn't exist, fails here.
+- *Lint migrations (squawk)* runs [Squawk](https://squawkhq.com) on the migration files the PR adds
+  or changes, and comments its findings on the PR. It blocks statements that would break the app
+  still running while the new one deploys: dropping or renaming a column or table, changing a
+  column's type, adding a `NOT NULL` column without a default. Rules about lock duration on big
+  tables are off (`.squawk.toml` says why). To accept a finding on purpose, put
+  `-- squawk-ignore <rule>` on the line above the statement and explain why in the PR.
 
 ### Applying to production
 
-Production is **not** migrated by CI. After a PR with a migration merges, someone with access to
-the Supabase project applies it from an up-to-date `main`:
+**Merging is applying.** Nobody runs `db push` day to day
+([ADR 0014](./adr/0014-ci-applies-migrations-on-merge.md)). When a push to `main` brings new
+migration files, the workflow runs, in order:
+
+```mermaid
+flowchart LR
+  Build["Build & test, migrations apply cleanly"] --> Backup["Back up production: roles, schema, data, encrypted artifact"]
+  Backup --> Migrate["supabase db push"]
+  Migrate --> Deploy["Deploy frontend to Vercel"]
+```
+
+A push that touches no migration skips the backup and migrate jobs and goes straight to the Vercel
+deploy. If the backup or `db push` fails, the Vercel deploy for that push doesn't run either, so no
+code that needs the missing schema ships. Each migration file runs in its own transaction, so a
+failed file leaves nothing half-applied.
+
+Once it has run, check the app as both a member and an admin.
+
+**When a migration fails in CI.** Read the *Apply migrations to production* job log. Either
+re-run the failed jobs (for a transient error such as a network timeout), or fix it in a new PR. A
+migration whose push failed was never applied, so it may be fixed in place. The next push to `main`
+retries anything still pending, even a frontend-only push, because the workflow compares against
+the last fully successful run, not the previous commit. Merge the fix before anything else.
+
+**Fix forward.** There are no down-migrations. If an applied migration turns out wrong, write a new
+migration that corrects it and merge it like any other. Never edit an applied migration: `db push`
+won't re-run it, so the edit silently does nothing in production. If data was lost, restore it from
+the backup the workflow took just before the push (next section).
+
+**Removing things takes two PRs.** The frontend deploys a minute or two after the migration runs,
+and the old frontend keeps running until then. To drop or rename something the frontend reads,
+first merge a PR that stops reading it, then a PR that drops it.
+
+### Backups
+
+Every migrate run is preceded by a dump of production (roles, schema, all data including
+`auth.users`), uploaded as the workflow artifact `supabase-backup-<commit sha>` and kept 90 days.
+This repository is public and artifacts are downloadable by any signed-in GitHub user, so the dump
+is encrypted with the `SUPABASE_BACKUP_PASSPHRASE` secret first. To use one, download it from the
+run's *Summary* page (or `gh run download <run id>`), then:
+
+```bash
+gpg -d supabase-backup-<sha>.tar.gz.gpg | tar -xzf -   # asks for the passphrase
+# → roles.sql, schema.sql, data.sql, migration-list.txt
+```
+
+Read what you need from it. Putting rows back into production is itself a change: do it through a
+reviewed migration or script, not by replaying the whole dump over live data.
+
+### Running `db push` by hand (recovery only)
+
+For when CI can't do it, for example GitHub Actions is down during an event, or a secret has
+expired. Take a backup first, then push from an up-to-date `main`:
 
 ```bash
 git switch main && git pull
 supabase link --project-ref ceacurlofmasyvhsoska   # once per machine
+supabase db dump --linked -f schema.sql && supabase db dump --linked --data-only --use-copy -f data.sql
 supabase migration list --linked                   # what production has vs. what's in the repo
 supabase db push --linked --dry-run                # shows which files would run; runs nothing
 supabase db push --linked                          # applies them, records them in production's history
 ```
 
-Then check the app as both a member and an admin.
+Keep those dump files off the repository and delete them once you're done: they hold personal data.
 
-**One-time step before the first push.** Before migrations were adopted, production had no
-migration history table. It already contains everything in the baseline, so tell it so, once:
-
-```bash
-supabase migration repair --status applied 20260924233313 --linked
-```
-
-Without this, `db push` tries to run the baseline against production and fails on objects that
-already exist. `migration list --linked` should then show the baseline as applied on both sides.
-This writes only to `supabase_migrations.schema_migrations` and changes no app table.
+Production's migration history was started on 2026-09-24 by marking the baseline as already
+applied (`supabase migration repair --status applied 20260924233313 --linked`). That was a one-time
+step. Don't repeat it.
 
 **Do not** use `supabase db query --linked` or the SQL editor to change production's schema. It
 creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for read-only
@@ -185,8 +237,9 @@ owner. See [Live environment audit](./11-live-environment.md#deployment) for how
 
 Until that's reconnected, `.github/workflows/deploy.yml` deploys straight from CI using the Vercel
 CLI: on every push and PR it runs `npm run build` and `npm run test:pricing`; on push to `main` it
-also runs `vercel pull` / `vercel build` / `vercel deploy --prebuilt --prod`. This is the CI gate
-that used to be missing, whichever way the Git integration ends up.
+also runs `vercel pull` / `vercel build` / `vercel deploy --prebuilt --prod`, after applying any new
+migrations ([Database migrations](#applying-to-production)). This is the CI gate that used to be
+missing, whichever way the Git integration ends up.
 
 It needs three repo secrets, set once by someone with access to the `yulm-ix` Vercel account:
 
@@ -198,8 +251,20 @@ It needs three repo secrets, set once by someone with access to the `yulm-ix` Ve
 
 Set them with `gh secret set <name>`, typed or pasted directly into that command — never handed to
 an AI assistant, since that would force rotating them. The workflow pulls the app's own
-`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from the Vercel project itself, so nothing
-Supabase-related needs to be duplicated here.
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from the Vercel project itself, so those aren't
+duplicated here.
+
+Applying migrations needs two more, set once by someone with access to the "YULmix - La Bedaine"
+Supabase project, **before** the first migration PR merges (without them the backup job fails, and
+that blocks the deploy):
+
+| Secret | Value |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | a personal access token from `supabase.com/dashboard/account/tokens` |
+| `SUPABASE_BACKUP_PASSPHRASE` | a long random string, also kept in a password manager: it's the only way to decrypt a backup |
+
+No database password is needed: given only the access token, the Supabase CLI logs in through a
+temporary role it creates via the Management API.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.

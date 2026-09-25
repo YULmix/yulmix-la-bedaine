@@ -13,6 +13,20 @@ name: Build, test, deploy
 #   gh secret set VERCEL_TOKEN     # from vercel.com/account/tokens
 #   gh secret set VERCEL_ORG_ID    # team_2Dq8V0ST1KNITgzIndZyh3IX
 #   gh secret set VERCEL_PROJECT_ID  # prj_hAUPlcsCKxYEW6URcw08AuyE8G8J
+#
+# Database migrations (see docs/07-development-setup.md#database-migrations):
+# when a push to main brings new files under supabase/migrations/, the
+# `backup` and `migrate` jobs dump production, then `supabase db push` it,
+# before the Vercel deploy. One-time setup, done by someone with access to
+# the "YULmix - La Bedaine" Supabase project, run locally, never pasted to
+# an AI assistant, and BEFORE merging any migration (without them the
+# backup job fails, and a failed backup blocks the deploy):
+#   gh secret set SUPABASE_ACCESS_TOKEN       # from supabase.com/dashboard/account/tokens
+#   gh secret set SUPABASE_BACKUP_PASSPHRASE  # any long random string; also keep it in a
+#                                             # password manager: it is the only way to
+#                                             # decrypt a backup artifact
+# No database password is needed: with only the access token, the Supabase
+# CLI logs in through a temporary role it creates via the Management API.
 
 on:
   push:
@@ -23,6 +37,12 @@ on:
 # One production deploy at a time; queue rather than cancel one mid-flight.
 # Each PR's previews get their own group, so a new push cancels that PR's
 # stale preview build instead of piling up.
+#
+# The group covers the whole run, so backup → migrate → deploy of one push
+# finishes before the next push's run starts: two `db push`es never overlap,
+# and a newer migration never lands between an older push's migrate and its
+# deploy. Don't give backup/migrate a job-level group of their own: a job
+# asking for the group its own run already holds would wait forever.
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || 'production-deploy' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -34,6 +54,11 @@ env:
   # Pinned deliberately, not floating on @latest, so a Vercel CLI release
   # doesn't silently change deploy behaviour. Bump on purpose.
   VERCEL_CLI_VERSION: '59'
+  # Same rule for the database tooling.
+  SUPABASE_CLI_VERSION: '2.114.0'
+  SQUAWK_VERSION: '2.66.0'
+  # Not a secret: it is in every Supabase URL the app ships.
+  SUPABASE_PROJECT_REF: ceacurlofmasyvhsoska
 
 jobs:
   build-and-test:
@@ -70,31 +95,209 @@ jobs:
 
   # Replays supabase/migrations/ against an empty, throwaway Postgres on the
   # runner, so a migration that doesn't parse or doesn't apply fails here, in
-  # review, instead of on production. This job NEVER touches the production
-  # database: no Supabase credentials are available to it, and applying
-  # merged migrations to production stays a deliberate, manual
-  # `supabase db push` (see docs/07-development-setup.md#database-migrations
-  # and docs/adr/0013-supabase-migrations.md).
+  # review, instead of on production. This job never touches the production
+  # database (no Supabase credentials are passed to it); `migrate` below does,
+  # and only after this job has passed on the same commit.
   migrations:
     name: Migrations apply cleanly
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
         with:
-          # Pinned like VERCEL_CLI_VERSION above; bump on purpose.
-          version: 2.114.0
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # Starts only the local Postgres container and applies every migration.
       - run: supabase db start
 
       - run: supabase migration list --local
 
+  # Decides whether this run has database work to do. Runs alongside
+  # build-and-test, so it adds nothing to the critical path of an ordinary
+  # frontend-only change; everything database-related below is skipped
+  # unless it says "true".
+  #
+  # On a pull request: the migration files this PR adds or changes (squawk
+  # lints only those, never the whole history).
+  #
+  # On a push to main: whether supabase/migrations/ changed since the last
+  # push run that fully succeeded, NOT just since the previous commit. That
+  # covers the cases a plain `before..after` diff would miss: a migrate that
+  # failed (the next push, even a frontend-only one, retries it before
+  # deploying), and a queued run that GitHub cancelled because a newer push
+  # arrived (its migration still gets applied by the newer run). If the
+  # history can't be read, it answers "true": an unneeded `db push` is a
+  # no-op, a missed one ships code against a schema that isn't there.
+  changes:
+    name: Detect migration changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # gh run list
+    outputs:
+      migrations: ${{ steps.detect.outputs.migrations }}
+      files: ${{ steps.detect.outputs.files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff supabase/migrations/
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ]; then
+            files=$(git diff --diff-filter=ACMR --name-only "origin/$BASE_REF...HEAD" -- 'supabase/migrations/*.sql' | tr '\n' ' ')
+            # db push never re-runs a file production already recorded, so
+            # editing an applied migration silently does nothing. Only a
+            # migration whose push failed (never applied) may be fixed in place.
+            git diff --diff-filter=MDR --name-only "origin/$BASE_REF...HEAD" -- supabase/migrations/ \
+              | while read -r f; do
+                  echo "::warning file=$f::Edits/deletes an existing migration. Fine only if it was never applied to production; otherwise add a new migration instead."
+                done
+            changed=$([ -n "${files// /}" ] && echo true || echo false)
+          else
+            last=$(gh run list --workflow deploy.yml --branch main --event push --status success \
+              --limit 1 --json headSha --jq '.[0].headSha // empty' || true)
+            if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null; then
+              echo "Comparing against $last, the last fully successful push to main."
+              files=$(git diff --name-only "$last" HEAD -- supabase/migrations/ | tr '\n' ' ')
+              changed=$([ -n "${files// /}" ] && echo true || echo false)
+            else
+              echo "::notice::No usable last-successful run; assuming migrations may be pending."
+              files=''
+              changed=true
+            fi
+          fi
+          echo "migrations=$changed" | tee -a "$GITHUB_OUTPUT"
+          echo "files=$files" | tee -a "$GITHUB_OUTPUT"
+
+  # Flags migrations that lock or break things (dropped/renamed columns,
+  # NOT NULL without a default, …) and comments the findings on the PR.
+  # Blocking. Rules that only matter for large, busy tables are turned off
+  # in .squawk.toml; to accept a finding on purpose, put
+  # `-- squawk-ignore <rule>` above the statement and say why in the PR.
+  squawk:
+    name: Lint migrations (squawk)
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # squawk's PR comment
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sbdchd/squawk-action@f972c01c35289cf7611464dae9a214bb84cce5e4 # v2.2.0
+        with:
+          version: ${{ env.SQUAWK_VERSION }}
+          config: .squawk.toml
+          files: ${{ needs.changes.outputs.files }}
+          fail-on-violations: 'true'
+          # A fork PR's token can't comment; squawk still fails the check.
+          upload-to-github: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+  # Everything production holds, taken right before `migrate` changes it.
+  # The data includes auth.users and payments, and artifacts on this public
+  # repo are downloadable by any signed-in GitHub user, so the dump is
+  # encrypted before upload. Decrypt with:
+  #   gpg -d supabase-backup-<sha>.tar.gz.gpg | tar -xzf -
+  backup:
+    name: Back up production database
+    needs: [build-and-test, migrations, changes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Dump roles, schema and data
+        run: |
+          mkdir backup
+          supabase db dump --linked --role-only -f backup/roles.sql
+          supabase db dump --linked -f backup/schema.sql
+          supabase db dump --linked --data-only --use-copy -f backup/data.sql
+          supabase migration list --linked > backup/migration-list.txt
+          ls -l backup
+
+      - name: Encrypt
+        env:
+          PASSPHRASE: ${{ secrets.SUPABASE_BACKUP_PASSPHRASE }}
+        run: |
+          [ -n "$PASSPHRASE" ] || { echo "::error::SUPABASE_BACKUP_PASSPHRASE is not set"; exit 1; }
+          tar -C backup -czf - . \
+            | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+                --passphrase-fd 3 --output "supabase-backup-$GITHUB_SHA.tar.gz.gpg" 3<<<"$PASSPHRASE"
+          rm -rf backup
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.sha }}
+          path: supabase-backup-${{ github.sha }}.tar.gz.gpg
+          if-no-files-found: error
+          # The maximum GitHub allows for a public repo. Long enough to notice a
+          # bad migration after a quiet stretch; take a manual dump if a
+          # backup needs to outlive it.
+          retention-days: 90
+          compression-level: 0 # already compressed and encrypted
+
+  # Applies every migration production hasn't recorded yet. Each file runs in
+  # its own transaction, so a failing file leaves production as it was
+  # before that file, and the deploy below does not run.
+  migrate:
+    name: Apply migrations to production
+    needs: [changes, backup]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Show what will run
+        run: supabase db push --linked --dry-run
+
+      - name: supabase db push
+        run: supabase db push --linked --yes
+
+      - run: supabase migration list --linked
+
+  # Runs on every push to main, migration or not. The explicit condition is
+  # needed because GitHub skips a job whose `needs` were skipped unless its
+  # `if:` says otherwise, and `migrate` is skipped on every frontend-only
+  # push. `!cancelled()` (not `always()`, which also fires on cancellation)
+  # lifts that default; the rest puts back what must hold:
+  #   - no migrations pending          → deploy (migrate/backup skipped)
+  #   - migrations pending, migrate ok → deploy
+  #   - migrations pending, backup or migrate failed/skipped → no deploy
+  #   - change detection itself failed → no deploy (fail closed)
   deploy:
     name: Deploy to production
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, changes, migrate]
+    if: >-
+      !cancelled()
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.build-and-test.result == 'success'
+      && needs.changes.result == 'success'
+      && (needs.changes.outputs.migrations != 'true' || needs.migrate.result == 'success')
     runs-on: ubuntu-latest
     environment:
       name: production
