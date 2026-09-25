@@ -238,6 +238,11 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                 <div key={index} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
                     <p className="font-medium text-gray-800">{attendee.name}</p>
+                    {attendee.assigned_bed && (
+                      <p className="text-sm text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md inline-flex items-center gap-1.5 mt-1">
+                        <span className="font-medium">{fr.confirmedAssignmentLabel}</span> {attendee.assigned_bed}
+                      </p>
+                    )}
                     <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
                       <span>Type: {attendee.type === 'Adult' ? 'Adulte' : attendee.type === 'Teenager' ? 'Adolescent' : 'Enfant'}</span>
                       <span>Participation: {attendee.participation === 'Whole' ? 'Complète' : 'Partielle'}</span>
@@ -253,13 +258,6 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                     <p className="font-medium">
                       {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference, 'Non spécifié')}
                     </p>
-                    {attendee.assigned_bed && (
-                      <p className="mt-1">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                          {attendee.assigned_bed}
-                        </span>
-                      </p>
-                    )}
                   </div>
                 </div>
               ))}
