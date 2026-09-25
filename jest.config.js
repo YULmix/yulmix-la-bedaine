@@ -11,6 +11,7 @@ export default {
     'node_modules/(?!(@supabase/supabase-js)/)',
   ],
   setupFiles: ['<rootDir>/src/__tests__/setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setupAfterEnv.js'],
   testMatch: [
     '**/__tests__/**/*.test.js',
     '**/?(*.)+(spec|test).js'

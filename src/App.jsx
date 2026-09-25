@@ -73,71 +73,18 @@ function App() {
           setOtherEvents(events.slice(1));
         }
       } else {
-        // No events in database, use demo data
-        const demoEvents = createDemoEvents();
-        setActiveEvent(demoEvents.active);
-        setOtherEvents(demoEvents.others);
+        // No events in database: render the empty state, not fabricated data.
+        setActiveEvent(null);
+        setOtherEvents([]);
       }
     } catch (error) {
       console.error('Erreur lors du chargement des événements:', error);
-      // Fallback to demo data
-      const demoEvents = createDemoEvents();
-      setActiveEvent(demoEvents.active);
-      setOtherEvents(demoEvents.others);
+      // A failed query is not "no events" — don't claim one is active when we don't know.
+      setActiveEvent(null);
+      setOtherEvents([]);
     }
   };
 
-  const createDemoEvents = () => {
-    const now = new Date();
-    const activeEvent = {
-      id: 'demo-active-event',
-      theme: 'Weekend en montagne',
-      description: 'Weekend de détente et activités en montagne avec tout le groupe. Un événement exceptionnel pour se retrouver entre amis et profiter de la nature.',
-      venue_address: 'Chalet des Laurentides, QC',
-      duration_days: 3,
-      points_of_contact: 'Registration (Simon), Volunteering (Dave), Food/Special Activities (Melina / MC / Gary), Neighbors / Parking (Khaled), Pharma / First Aid / Bed Assignments (Mach)',
-      z_intent_months: 2,
-      x_reg_close_weeks: 1,
-      reg_start_date: '2026-05-01',
-      status: 'ACTIVE',
-      is_active: true,
-      is_reg_open: true,
-      total_cost: 2500.00,
-      cost_breakdown: [{ category: 'Chalet', amount: 1500 }, { category: 'Food', amount: 1000 }],
-      selling_price_whole_event: 75.00,
-      estimated_individual_cost_whole_event: 65.50,
-      max_attendees: 90,
-      external_links: [],
-      instructions: 'Apportez vos vêtements chauds et votre bonne humeur. Le chalet fournit draps et couvertures.',
-      created_at: new Date().toISOString()
-    };
-    const otherEvents = [
-      {
-        id: 'demo-event-1',
-        theme: 'Soirée été',
-        description: 'Soirée estivale avec barbecue et musique en plein air.',
-        venue_address: 'Parc Lafontaine, Montréal, QC',
-        duration_days: 1,
-        status: 'ARCHIVED',
-        is_active: false,
-        is_reg_open: false,
-        created_at: new Date(Date.now() - 86400000).toISOString()
-      },
-      {
-        id: 'demo-event-2',
-        theme: 'Retraite d\'hiver',
-        description: 'Retraite en montagne pour les skieurs et amateurs de sports d\'hiver.',
-        venue_address: 'Chalet du Mont, Val-Morin, QC',
-        duration_days: 2,
-        status: 'DRAFT',
-        is_active: false,
-        is_reg_open: false,
-        created_at: new Date(Date.now() - 172800000).toISOString()
-      }
-    ];
-
-    return { active: activeEvent, others: otherEvents };
-  };
   // Protected Route component for admin access
   const ProtectedRoute = ({ children, adminOnly = false }) => {
     if (loading) {
