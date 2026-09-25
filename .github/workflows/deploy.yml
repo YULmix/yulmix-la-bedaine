@@ -21,7 +21,12 @@ name: Build, test, deploy
 # the "YULmix - La Bedaine" Supabase project, run locally, never pasted to
 # an AI assistant, and BEFORE merging any migration (without them the
 # backup job fails, and a failed backup blocks the deploy):
-#   gh secret set SUPABASE_ACCESS_TOKEN       # from supabase.com/dashboard/account/tokens
+#   gh secret set SUPABASE_ACCESS_TOKEN --env supabase-production
+#                                             # from supabase.com/dashboard/account/tokens.
+#                                             # Set as an environment secret, not a repo
+#                                             # secret: the "supabase-production" environment
+#                                             # is branch-restricted to main, so no workflow
+#                                             # run on any other branch can read this token.
 #   gh secret set SUPABASE_BACKUP_PASSPHRASE  # any long random string; also keep it in a
 #                                             # password manager: it is the only way to
 #                                             # decrypt a backup artifact
@@ -212,6 +217,10 @@ jobs:
     needs: [build-and-test, migrations, changes]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
+    # Branch-restricted to main (see the one-time setup comment above) so
+    # SUPABASE_ACCESS_TOKEN, an account-wide credential, isn't readable by a
+    # workflow run on any other branch.
+    environment: supabase-production
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
@@ -261,6 +270,7 @@ jobs:
     needs: [changes, backup]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
+    environment: supabase-production
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:

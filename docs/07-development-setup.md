@@ -260,11 +260,15 @@ that blocks the deploy):
 
 | Secret | Value |
 |---|---|
-| `SUPABASE_ACCESS_TOKEN` | a personal access token from `supabase.com/dashboard/account/tokens` |
+| `SUPABASE_ACCESS_TOKEN` | a personal access token from `supabase.com/dashboard/account/tokens` — set with `gh secret set SUPABASE_ACCESS_TOKEN --env supabase-production`, **not** a plain repo secret |
 | `SUPABASE_BACKUP_PASSPHRASE` | a long random string, also kept in a password manager: it's the only way to decrypt a backup |
 
-No database password is needed: given only the access token, the Supabase CLI logs in through a
-temporary role it creates via the Management API.
+`SUPABASE_ACCESS_TOKEN` is account-wide, so it lives in the `supabase-production` GitHub
+Environment, which is branch-restricted to `main` — a workflow run on any other branch can't read
+it, even though the repo itself is public. This is a branch policy, not a reviewer gate: nothing
+pauses for approval, it just narrows which branch can see the secret. No database password is
+needed: given only the access token, the Supabase CLI logs in through a temporary role it creates
+via the Management API.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.
