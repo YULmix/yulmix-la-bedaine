@@ -259,12 +259,34 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
     
     try {
+      const isPriceChange = 'selling_price_whole_event' in eventChanges
+        && eventChanges.selling_price_whole_event !== editingEvent.selling_price_whole_event;
+
       const { error } = await supabase
         .from('events')
         .update(eventChanges)
         .eq('id', editingEvent.id);
       if (error) throw error;
-      addToast('Métadonnées de l\'événement mises à jour', 'success');
+
+      if (isPriceChange) {
+        const { count, error: countError } = await supabase
+          .from('user_parties')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', editingEvent.id)
+          .eq('payment_status', PAYMENT_STATUS.UNPAID);
+        if (!countError) {
+          addToast(
+            count > 0
+              ? `Prix mis à jour — ${count} inscription(s) non payée(s) recalculée(s)`
+              : 'Prix mis à jour — aucune inscription non payée à recalculer',
+            'success'
+          );
+        } else {
+          addToast('Métadonnées de l\'événement mises à jour', 'success');
+        }
+      } else {
+        addToast('Métadonnées de l\'événement mises à jour', 'success');
+      }
       setEventChanges({});
       setEditingEvent(null);
       fetchAllData();
