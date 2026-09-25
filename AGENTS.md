@@ -83,7 +83,10 @@ Before calling an issue fixed, actually exercise the behavior the issue describe
 real Postgres (`supabase start` locally, or a preview branch) and running the actual scenario:
 insert rows that should trip a trigger or constraint, run a query or update as the affected role
 (`set role authenticated; select set_config('request.jwt.claims', ...)`) to prove an RLS policy
-now allows or blocks what it's supposed to. If docker is unavailable in the session but the user's
+now allows or blocks what it's supposed to, or drive it through a real browser with
+`npm run test:e2e` (see [Development setup](./docs/07-development-setup.md#scripts)) against the
+seeded `member@test.local` / `admin@test.local` users — the concrete mechanism for the "exercise
+the change as both a member and an admin" rule below, not just an aspiration. If docker is unavailable in the session but the user's
 account is already in the `docker` group (`getent group docker`), the shell just started before
 that took effect — use `newgrp docker <<'EOF' ... EOF` rather than reporting the environment as
 broken or asking the user to "grant access" again. Passing CI's syntax/lint checks is necessary,
@@ -97,7 +100,10 @@ as proof the acceptance criteria are met.
 - `npm test` — must pass (the RLS suite is deliberately excluded; see
   [Development setup](./docs/07-development-setup.md#scripts)).
 - Exercise the change as **both** a member and an admin — RLS means the two roles genuinely see
-  different things, and that boundary is the one most likely to break silently.
+  different things, and that boundary is the one most likely to break silently. `npm run test:e2e`
+  (Playwright, against a local Supabase and the seeded test users) is how to actually do this in a
+  real browser rather than asserting it by reading the code — see
+  [Development setup](./docs/07-development-setup.md#scripts).
 
 ## Deployment
 

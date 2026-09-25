@@ -41,3 +41,7 @@ supabase/.temp/
 
 # Vercel CLI local project link
 .vercel/
+
+# Playwright
+/playwright-report/
+/test-results/
