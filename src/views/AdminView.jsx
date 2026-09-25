@@ -165,7 +165,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const handleActivateEvent = async (event) => {
     const alreadyActive = events.find(e => e.is_active);
     if (alreadyActive && alreadyActive.id !== event.id) {
-      addToast('Un événement est déjà actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
+      addToast(fr.eventAlreadyActiveError, 'error');
       return;
     }
     try {
@@ -175,17 +175,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .eq('id', event.id);
       if (error) {
         if (error.code === '23505') {
-          addToast('Un événement est déjà actif. Veuillez l\'archiver avant d\'en activer un nouveau.', 'error');
+          addToast(fr.eventAlreadyActiveError, 'error');
         } else {
           throw error;
         }
       } else {
-        addToast(`Événement "${event.theme}" activé`, 'success');
+        addToast(fr.eventActivatedToast.replace('{theme}', event.theme), 'success');
         fetchAllData();
       }
     } catch (err) {
       console.error('Error activating event:', err);
-      addToast(err.message || 'Erreur lors de l\'activation', 'error');
+      addToast(err.message || fr.eventActivationError, 'error');
     }
   };
 
@@ -196,11 +196,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .update({ is_active: false, status: 'ARCHIVED' })
         .eq('id', event.id);
       if (error) throw error;
-      addToast(`Événement "${event.theme}" Archivé`, 'success');
+      addToast(fr.eventArchivedToast.replace('{theme}', event.theme), 'success');
       fetchAllData();
     } catch (err) {
       console.error('Error archiving event:', err);
-      addToast(err.message || 'Erreur lors de l\'archivage', 'error');
+      addToast(err.message || fr.eventArchivingError, 'error');
     }
   };
 
@@ -253,7 +253,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     
     // If no changes were made, just close the modal with info message
     if (Object.keys(eventChanges).length === 0) {
-      addToast('Aucune modification apportée', 'info');
+      addToast(fr.noChangesMade, 'info');
       setEditingEvent(null);
       return;
     }
@@ -277,29 +277,29 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         if (!countError) {
           addToast(
             count > 0
-              ? `Prix mis à jour — ${count} inscription(s) non payée(s) recalculée(s)`
-              : 'Prix mis à jour — aucune inscription non payée à recalculer',
+              ? fr.eventRepricedCountToast.replace('{count}', count)
+              : fr.eventRepricedNoneToast,
             'success'
           );
         } else {
-          addToast('Métadonnées de l\'événement mises à jour', 'success');
+          addToast(fr.eventMetadataUpdatedToast, 'success');
         }
       } else {
-        addToast('Métadonnées de l\'événement mises à jour', 'success');
+        addToast(fr.eventMetadataUpdatedToast, 'success');
       }
       setEventChanges({});
       setEditingEvent(null);
       fetchAllData();
     } catch (err) {
       console.error('Error updating event:', err);
-      addToast(err.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.message || fr.updateError, 'error');
     }
   };
 
   // Admin checkbox toggle (prevent self-escalation)
   const handleAdminToggle = async (profile, checked) => {
     if (profile.id === currentUserId) {
-      addToast('Vous ne pouvez pas modifier votre propre statut administrateur.', 'warning');
+      addToast(fr.selfAdminToggleError, 'warning');
       return;
     }
     try {
@@ -308,14 +308,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         new_is_admin: checked
       });
       if (error) throw error;
-      addToast(`Statut admin ${checked ? 'activé' : 'désactivé'} pour ${profile.email}`, 'success');
+      addToast(
+        (checked ? fr.adminStatusEnabledToast : fr.adminStatusDisabledToast).replace('{email}', profile.email),
+        'success'
+      );
       fetchAllData();
     } catch (err) {
       console.error('Error updating admin status:', err);
       if (err.code === 'PGRST202') {
-        addToast('La fonction de gestion des administrateurs n\'est pas encore déployée. Contactez le support technique.', 'error');
+        addToast(fr.adminToggleNotDeployedError, 'error');
       } else {
-        addToast(err.message || 'Erreur lors de la mise à jour', 'error');
+        addToast(err.message || fr.updateError, 'error');
       }
     }
   };
@@ -323,21 +326,23 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   // Payment status toggle
   const handlePaymentToggle = async (party, newStatus) => {
     const action = getPaymentStatusShortLabel(newStatus);
-    const confirmMessage = `Voulez-vous marquer le paiement comme ${action} pour ${party.profiles?.full_name || 'cet utilisateur'}?`;
-    
+    const confirmMessage = fr.paymentToggleConfirm
+      .replace('{action}', action)
+      .replace('{name}', party.profiles?.full_name || fr.defaultUserFallback);
+
     if (!window.confirm(confirmMessage)) return;
-    
+
     try {
       const { error } = await supabase
         .from('user_parties')
         .update({ payment_status: newStatus })
         .eq('id', party.id);
       if (error) throw error;
-      addToast(`Statut de paiement mis à jour: ${action}`, 'success');
+      addToast(fr.paymentStatusUpdatedToast.replace('{action}', action), 'success');
       fetchParties(activeEventState.id);
     } catch (err) {
       console.error('Error updating payment status:', err);
-      addToast(err.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.message || fr.updateError, 'error');
     }
   };
 
@@ -351,7 +356,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
   const handleAdminSave = async () => {
-    addToast('Modifications enregistrées', 'success');
+    addToast(fr.changesSavedToast, 'success');
     closePartyEdit();
     fetchParties(activeEventState.id);
   };
@@ -451,7 +456,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       setUserEventHistory(history || []);
     } catch (err) {
       console.error('Error fetching user event history:', err);
-      addToast('Erreur lors de la récupération de l\'historique', 'error');
+      addToast(fr.historyFetchError, 'error');
       setUserEventHistory([]);
     }
   };
@@ -511,7 +516,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
       if (error) throw error;
 
-      addToast('Assignations logistiques mises à jour', 'success');
+      addToast(fr.logisticsUpdatedToast, 'success');
 
       // Clear changes and refresh
       setLogisticsChanges(prev => {
@@ -523,7 +528,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchParties(activeEventState.id);
     } catch (error) {
       console.error('Error saving logistics:', error);
-      addToast('Erreur lors de la sauvegarde', 'error');
+      addToast(fr.saveError, 'error');
     }
   };
 
@@ -595,7 +600,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   // Data export functions
   const exportToCSV = () => {
     if (!parties.length) {
-      addToast('Aucune donnée à exporter', 'warning');
+      addToast(fr.noDataToExport, 'warning');
       return;
     }
     
@@ -677,7 +682,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   const copyToClipboardForSheets = () => {
     if (!parties.length) {
-      addToast('Aucune donnée à copier', 'warning');
+      addToast(fr.noDataToCopy, 'warning');
       return;
     }
     
@@ -747,7 +752,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       addToast(fr.exportCopyToast, 'success');
     }).catch(err => {
       console.error('Failed to copy:', err);
-      addToast('Erreur lors de la copie', 'error');
+      addToast(fr.copyError, 'error');
     });
   };
 
@@ -755,7 +760,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-          <p>Accès réservé aux administrateurs.</p>
+          <p>{fr.adminAccessRestricted}</p>
         </div>
       </div>
     );
@@ -764,7 +769,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <p className="text-gray-600">Chargement du tableau de bord...</p>
+        <p className="text-gray-600">{fr.adminDashboardLoading}</p>
       </div>
     );
   }
@@ -772,8 +777,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Admin</h1>
-        <p className="text-gray-600">Gestion des événements, inscriptions et utilisateurs</p>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">{fr.adminPageTitle}</h1>
+        <p className="text-gray-600">{fr.adminPageSubtitle}</p>
       </div>
 
       {/* Toasts */}
@@ -791,7 +796,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
       {/* Event Management */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Gestion des événements</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.adminEventsManagementTitle}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {events.map(event => (
             <div key={event.id} className="border border-gray-200 rounded-lg p-4">
@@ -802,7 +807,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                   event.status === 'ARCHIVED' ? 'bg-gray-100 text-gray-800' :
                   'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {event.status === 'ACTIVE' ? 'En cours' : event.status === 'ARCHIVED' ? 'Archivé' : 'Brouillon'}
+                  {event.status === 'ACTIVE' ? fr.eventStatusActive : event.status === 'ARCHIVED' ? fr.eventStatusArchived : fr.draft}
                 </span>
               </div>
               <p className="text-sm text-gray-600 mb-3">{event.description?.substring(0, 100)}...</p>
@@ -812,7 +817,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                     onClick={() => handleActivateEvent(event)}
                     className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                   >
-                    Activer
+                    {fr.activateEventButton}
                   </button>
                 )}
                 {event.is_active && (
@@ -820,7 +825,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                     onClick={() => handleArchiveEvent(event)}
                     className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
                   >
-                    Archiver
+                    {fr.archiveEventButton}
                   </button>
                 )}
                 {event.is_active && (
@@ -831,7 +836,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                     }}
                     className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
                   >
-                    Modifier
+                    {fr.edit}
                   </button>
                 )}
               </div>
@@ -844,7 +849,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Modifier les métadonnées de l'événement</h2>
+              <h2 className="text-xl font-bold text-gray-800">{fr.editEventMetadataTitle}</h2>
               <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
               </button>
@@ -921,7 +926,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExpenseCategoryLabel}</label>
                 <select value={eventChanges.expense_category ?? editingEvent.expense_category ?? ''} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <option value="">-- Sélectionner --</option>
+                  <option value="">{fr.selectPlaceholder}</option>
                   <option value="Chalet">{fr.eventExpenseCategoryChalet}</option>
                   <option value="Food">{fr.eventExpenseCategoryFood}</option>
                   <option value="Music">{fr.eventExpenseCategoryMusic}</option>
@@ -983,8 +988,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               </div>
             </div>
             <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end space-x-3">
-              <button onClick={() => setEditingEvent(null)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Annuler</button>
-              <button onClick={saveEventChanges} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enregistrer</button>
+              <button onClick={() => setEditingEvent(null)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">{fr.cancel}</button>
+              <button onClick={saveEventChanges} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{fr.save}</button>
             </div>
           </div>
         </div>
@@ -993,25 +998,25 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {activeEventState && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-800">Tableau de bord</h2>
-            <div className="text-sm text-gray-500">Événement actif: <strong>{activeEventState.theme}</strong></div>
+            <h2 className="text-xl font-semibold text-gray-800">{fr.dashboard}</h2>
+            <div className="text-sm text-gray-500">{fr.activeEventLabel} <strong>{activeEventState.theme}</strong></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
               <div className="text-3xl font-bold text-blue-700">{parties.reduce((sum, p) => sum + (p.counts?.adult_whole || 0) + (p.counts?.adult_main || 0), 0)}</div>
-              <div className="text-sm text-blue-600 mt-1">Adultes</div>
+              <div className="text-sm text-blue-600 mt-1">{fr.adultsStatLabel}</div>
             </div>
             <div className="bg-green-50 border border-green-100 rounded-lg p-4">
               <div className="text-3xl font-bold text-green-700">{parties.reduce((sum, p) => sum + (p.counts?.teen_whole || 0) + (p.counts?.teen_main || 0), 0)}</div>
-              <div className="text-sm text-green-600 mt-1">Adolescents</div>
+              <div className="text-sm text-green-600 mt-1">{fr.teenagersStatLabel}</div>
             </div>
             <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
               <div className="text-3xl font-bold text-purple-700">{parties.reduce((sum, p) => sum + (p.counts?.kids || 0), 0)}</div>
-              <div className="text-sm text-purple-600 mt-1">Enfants</div>
+              <div className="text-sm text-purple-600 mt-1">{fr.kidsStatLabel}</div>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
               <div className="text-3xl font-bold text-amber-700">{parties.length}</div>
-              <div className="text-sm text-amber-600 mt-1">Groupes inscrits</div>
+              <div className="text-sm text-amber-600 mt-1">{fr.registeredGroupsStatLabel}</div>
             </div>
 </div>
            {/* Cost vs Price Display */}
@@ -1024,7 +1029,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                    <span className="text-xl font-bold text-blue-700">
                      {activeEventState?.estimated_individual_cost_whole_event 
                        ? formatCurrency(activeEventState.estimated_individual_cost_whole_event)
-                       : 'Non spécifié'}
+                       : fr.notSpecified}
                    </span>
                  </div>
                  {activeEventState?.selling_price_whole_event ? (() => {
@@ -1063,7 +1068,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                     <span className="text-xl font-bold text-purple-700">
                       {activeEventState?.total_cost 
                         ? formatCurrency(activeEventState.total_cost)
-                        : 'Non spécifié'}
+                        : fr.notSpecified}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -1090,7 +1095,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div>
-              <h3 className="text-lg font-medium text-gray-700 mb-3">Hébergement</h3>
+              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.accommodation}</h3>
               <div className="space-y-2">
                 {ACCOMMODATION_OPTIONS.map(opt => {
                   const count = parties.reduce((sum, p) => sum + (p.attendees || []).filter(a => a.sleeping_preference === opt.value).length, 0);
@@ -1104,7 +1109,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               </div>
             </div>
             <div>
-              <h3 className="text-lg font-medium text-gray-700 mb-3">Préférences alimentaires</h3>
+              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.foodPreferences}</h3>
               <div className="space-y-2">
                 {DIETARY_OPTIONS.filter(opt => opt.value !== 'none').map(opt => {
                   const count = parties.filter(p => {
@@ -1144,7 +1149,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                         onClick={() => openUserProfile(profile)}
                         className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
                       >
-                        {profile.full_name || 'Non spécifié'}
+                        {profile.full_name || fr.notSpecified}
                       </button>
                       <p className="text-sm text-gray-500">{profile.email}</p>
                     </div>
@@ -1225,17 +1230,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 {/* Admin User & Party Management */}
       {activeEventState && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">Gestion des utilisateurs et inscriptions</h2>
+          <h2 className="text-xl font-semibold text-gray-800 mb-6">{fr.adminUsersManagementTitle}</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nom</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Courriel</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Admin</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Statut de paiement</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Montant dû</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableName}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableEmail}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.adminTableHeader}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.paymentStatus}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.amountDue}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.actionsTableHeader}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -1249,7 +1254,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                           onClick={() => openUserProfile(profile)}
                           className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
                         >
-                          {profile.full_name || 'Non spécifié'}
+                          {profile.full_name || fr.notSpecified}
                         </button>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
@@ -1280,7 +1285,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                           onClick={() => openPartyEdit(party)}
                           className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
                         >
-                          Modifier l'inscription
+                          {fr.editRegistrationButton}
                         </button>
                       </td>
                     </tr>
@@ -1353,26 +1358,26 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           
 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioSellingPriceOverride} ($ CAD)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioSellingPriceOverride} {fr.currencyCadSuffix}</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 value={scenarioValues.sellingPriceOverride}
                 onChange={(e) => handleScenarioChange('sellingPriceOverride', e.target.value)}
-                placeholder={activeEventState?.selling_price_whole_event || 'Prix de vente actuel'}
+                placeholder={activeEventState?.selling_price_whole_event || fr.currentSellingPricePlaceholder}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioPricePerPointOverride} ($ CAD)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioPricePerPointOverride} {fr.currencyCadSuffix}</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 value={scenarioValues.pricePerPointOverride}
                 onChange={(e) => handleScenarioChange('pricePerPointOverride', e.target.value)}
-                placeholder={activeEventState?.selling_price_whole_event ? (activeEventState.selling_price_whole_event / 2).toFixed(2) : 'Prix par point actuel'}
+                placeholder={activeEventState?.selling_price_whole_event ? (activeEventState.selling_price_whole_event / 2).toFixed(2) : fr.currentPricePerPointPlaceholder}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -1406,12 +1411,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {activeEventState && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.dataExportTitle}</h2>
-          <p className="text-sm text-gray-600 mb-6">Exportez les données d'inscription dans différents formats.</p>
+          <p className="text-sm text-gray-600 mb-6">{fr.dataExportDescription}</p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-700 mb-3">Export CSV</h3>
-              <p className="text-sm text-gray-600 mb-4">Téléchargez un fichier CSV compatible avec la plupart des logiciels.</p>
+              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.exportCsvSectionTitle}</h3>
+              <p className="text-sm text-gray-600 mb-4">{fr.exportCsvSectionDescription}</p>
               <button
                 onClick={exportToCSV}
                 disabled={!parties.length}
@@ -1426,8 +1431,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             </div>
             
             <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-700 mb-3">Copie pour Google Sheets</h3>
-              <p className="text-sm text-gray-600 mb-2">Copiez les données dans le presse-papiers pour les coller directement dans Google Sheets ou Excel.</p>
+              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.exportGoogleSheetsSectionTitle}</h3>
+              <p className="text-sm text-gray-600 mb-2">{fr.exportGoogleSheetsSectionDescription}</p>
               <p className="text-xs text-gray-500 mb-4">{fr.exportCopyTSVSubtext}</p>
               <button
                 onClick={copyToClipboardForSheets}
@@ -1509,7 +1514,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-500 mb-1">{fr.userProfileFullName}</h3>
-                    <p className="text-gray-800">{userProfileModal.full_name || 'Non spécifié'}</p>
+                    <p className="text-gray-800">{userProfileModal.full_name || fr.notSpecified}</p>
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -1555,14 +1560,14 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(history.calculated_amount_owed)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.is_waitlisted ? 'Oui' : 'Non'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-800">{history.is_waitlisted ? fr.userProfileYes : fr.userProfileNo}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">Aucun historique d'événement trouvé.</p>
+                  <p className="text-gray-500 text-center py-8">{fr.noEventHistoryFound}</p>
                 )}
               </div>
             </div>
@@ -1575,7 +1580,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Édition admin de l'inscription</h2>
+              <h2 className="text-xl font-bold text-gray-800">{fr.adminEditRegistrationTitle}</h2>
               <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
               </button>
