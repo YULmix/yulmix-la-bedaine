@@ -71,6 +71,20 @@ commits elsewhere (e.g. cherry-picking onto the branch you should have used) —
 leaves the PR without a branch to keep iterating on, and "the commits are safe on the remote" is
 not the same as leaving the person's working state alone.
 
+### Procedure: verify acceptance criteria, don't assume them
+
+Before calling an issue fixed, actually exercise the behavior the issue describes — not just
+`npm run build` / a green CI syntax check. For a DB change that means applying the migration to a
+real Postgres (`supabase start` locally, or a preview branch) and running the actual scenario:
+insert rows that should trip a trigger or constraint, run a query or update as the affected role
+(`set role authenticated; select set_config('request.jwt.claims', ...)`) to prove an RLS policy
+now allows or blocks what it's supposed to. If docker is unavailable in the session but the user's
+account is already in the `docker` group (`getent group docker`), the shell just started before
+that took effect — use `newgrp docker <<'EOF' ... EOF` rather than reporting the environment as
+broken or asking the user to "grant access" again. Passing CI's syntax/lint checks is necessary,
+not sufficient — say explicitly what was and wasn't verified rather than presenting a build pass
+as proof the acceptance criteria are met.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
