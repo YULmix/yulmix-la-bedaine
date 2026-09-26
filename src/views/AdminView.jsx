@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -13,6 +13,9 @@ import {
   getPaymentStatusShortLabel
 } from '../lib/registrationOptions';
 import { simulateEventPricing, calculateEstimatedCostPerParticipant, calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints } from '../lib/pricingEngine';
+import { formatCurrency, formatDate } from '../lib/format';
+import { useToasts } from '../hooks/useToasts';
+import ToastContainer from '../components/Toast';
 
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [events, setEvents] = useState([]);
@@ -24,7 +27,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingParty, setEditingParty] = useState(null);
   const [eventChanges, setEventChanges] = useState({});
-  const [toasts, setToasts] = useState([]);
+  const { toasts, addToast, removeToast } = useToasts(1699);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [realtimeChannel, setRealtimeChannel] = useState(null);
   const [userProfileModal, setUserProfileModal] = useState(null);
@@ -36,6 +39,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     teenWhole: 0,
     teenMain: 0,
     kids: 0,
+    newMembers: 0,
     sellingPriceOverride: '',
     pricePerPointOverride: ''
   });
@@ -361,44 +365,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     fetchParties(activeEventState.id);
   };
 
-  // Aggregate totals calculations
-  const aggregateTotals = useCallback(() => {
-    if (!parties.length) return { adults: 0, teens: 0, kids: 0, sleeping: {}, dietary: {} };
-    const totals = {
-      adult_whole: 0,
-      adult_main: 0,
-      teen_whole: 0,
-      teen_main: 0,
-      kids: 0,
-    };
-    return totals;
-  }, [parties]);
-
-  const addToast = (message, type = 'info') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 1699);
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-CA', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
 
   // Calculate rounded party total using current pricing with rounding up
   const calculateRoundedPartyTotal = (party) => {
@@ -561,6 +527,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     addAttendees('adult', 'Main', scenarioValues.adultMain);
     addAttendees('teen', 'Whole', scenarioValues.teenWhole);
     addAttendees('teen', 'Main', scenarioValues.teenMain);
+
+    // Newcomers pay flat newbie rates (see getFinalPoints), which overstates revenue if left
+    // out of the simulation entirely. Mark the first N point-earning attendees as new members.
+    for (let i = 0; i < Math.min(scenarioValues.newMembers, attendees.length); i++) {
+      attendees[i].isNewMember = true;
+    }
 
     // Kids don't count for points but we include them
     for (let i = 0; i < scenarioValues.kids; i++) {
@@ -781,19 +753,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <p className="text-gray-600">{fr.adminPageSubtitle}</p>
       </div>
 
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map(toast => (
-          <div key={toast.id} className={`px-4 py-3 rounded-lg shadow-lg ${
-            toast.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-            toast.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-            'bg-blue-100 text-blue-800 border border-blue-200'
-          }`}>
-            {toast.message}
-          </div>
-        ))}
-      </div>
-
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
       {/* Event Management */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.adminEventsManagementTitle}</h2>
@@ -1118,10 +1078,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.foodPreferences}</h3>
               <div className="space-y-2">
                 {DIETARY_OPTIONS.filter(opt => opt.value !== 'none').map(opt => {
-                  const count = parties.filter(p => {
-                    const req = p.logistics?.food_requests?.requests;
-                    return req && req.includes(opt.value);
-                  }).length;
+                  const count = parties.reduce((sum, p) => sum + (p.attendees || []).filter(a => a.dietary_needs === opt.value).length, 0);
                   return count > 0 ? (
                     <div key={opt.value} className="flex justify-between items-center">
                       <span className="text-gray-700">{opt.label}</span>
@@ -1309,7 +1266,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           <h2 className="text-xl font-semibold text-gray-800 mb-2">{fr.scenarioSimulatorTitle}</h2>
           <p className="text-sm text-gray-600 mb-6">{fr.scenarioSimulatorSubtitle}</p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioAdultWholeCount}</label>
               <input
@@ -1360,8 +1317,18 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioNewMembersCount}</label>
+              <input
+                type="number"
+                min="0"
+                value={scenarioValues.newMembers}
+                onChange={(e) => handleScenarioChange('newMembers', parseInt(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
           </div>
-          
+
 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioSellingPriceOverride} {fr.currencyCadSuffix}</label>

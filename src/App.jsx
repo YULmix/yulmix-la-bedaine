@@ -10,6 +10,7 @@ import EventDetailsView from './views/EventDetailsView';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 import { getGoogleMapsUrl } from './lib/venue';
+import { formatDate } from './lib/format';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -109,7 +110,7 @@ function App() {
       return (
         <div className="container mx-auto px-4 py-8">
           <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-            <p>Accès réservé aux administrateurs.</p>
+            <p>{fr.adminOnlyAccessMessage}</p>
           </div>
         </div>
       );
@@ -124,15 +125,6 @@ function App() {
   };
 
   
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-CA', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
 
   const getStatusLabel = (status) => {
     const statusMap = {
@@ -217,7 +209,7 @@ function App() {
               {/* Other Events */}
               {otherEvents.length > 0 && (
                 <>
-                  <h2 className="text-2xl font-bold text-gray-800 mb-6">Autres événements</h2>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-6">{fr.otherEventsTitle}</h2>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {otherEvents.map((event) => (
@@ -271,8 +263,8 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                     </svg>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun autre événement</h3>
-                  <p className="text-gray-500">Les événements précédents seront affichés ici.</p>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">{fr.noOtherEventsTitle}</h3>
+                  <p className="text-gray-500">{fr.noOtherEventsMessage}</p>
                 </div>
               )}
               
@@ -286,7 +278,7 @@ function App() {
                   </div>
                   <h2 className="text-2xl font-bold text-gray-800 mb-4">{fr.pleaseSignInHome}</h2>
                   <p className="text-gray-600 max-w-2xl mx-auto mb-8">
-                    Utilisez le bouton "Se connecter" en haut à droite pour accéder aux événements.
+                    {fr.pleaseSignInHomeInstructions}
                   </p>
                 </div>
               )}

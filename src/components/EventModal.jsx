@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import fr from '../locales/fr.json';
 import { getGoogleMapsUrl } from '../lib/venue';
+import { formatCurrency, formatDate } from '../lib/format';
 
 const EventModal = ({ event, isOpen, onClose }) => {
   if (!isOpen) return null;
@@ -49,24 +50,6 @@ const EventModal = ({ event, isOpen, onClose }) => {
     return match ? match[1].trim() : "";
   }
 
-  const formatCurrency = (amount) => {
-    if (!amount) return "";
-    return new Intl.NumberFormat('fr-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-CA', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
 
   const getStatusLabel = (status) => {
     const statusMap = {
@@ -106,14 +89,14 @@ const EventModal = ({ event, isOpen, onClose }) => {
               {/* Additional event info */}
               {eventData.duration_days && (
                 <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Durée</h4>
-                  <p className="text-gray-700">{eventData.duration_days} jour(s)</p>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventDurationTitle}</h4>
+                  <p className="text-gray-700">{eventData.duration_days} {fr.daysSuffix}</p>
                 </div>
               )}
               
               {eventData.points_of_contact && (
                 <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Points de contact</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventPointsOfContactLabel}</h4>
                   <p className="text-gray-700 whitespace-pre-line">{eventData.points_of_contact}</p>
                 </div>
               )}
@@ -147,30 +130,30 @@ const EventModal = ({ event, isOpen, onClose }) => {
               {/* Financial info */}
               {eventData.estimated_individual_cost_whole_event && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Coût individuel estimé</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventEstimatedIndividualCostTitle}</h4>
                   <p className="text-gray-700">{formatCurrency(eventData.estimated_individual_cost_whole_event)}</p>
                 </div>
               )}
               
               {eventData.max_attendees && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Capacité maximale</h4>
-                  <p className="text-gray-700">{eventData.max_attendees} participants</p>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventDurationCapacityTitle}</h4>
+                  <p className="text-gray-700">{eventData.max_attendees} {fr.participantsSuffix}</p>
                 </div>
               )}
               
               {eventData.status && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Statut</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.status}</h4>
                   <p className="text-gray-700">{getStatusLabel(eventData.status)}</p>
                 </div>
               )}
               
               {eventData.is_reg_open !== undefined && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Inscriptions</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventRegistrationsTitle}</h4>
                   <p className={`px-3 py-1 rounded-full text-sm font-semibold ${eventData.is_reg_open ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {eventData.is_reg_open ? 'Inscriptions ouvertes' : 'Inscriptions fermées'}
+                    {eventData.is_reg_open ? fr.eventRegOpenLabel : fr.eventRegClosedLabel}
                   </p>
                 </div>
               )}
