@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
+import { formatCurrency } from '../lib/format';
+import { useToasts } from '../hooks/useToasts';
+import ToastContainer from './Toast';
 import {
   TIER_OPTIONS,
   ACCOMMODATION_OPTIONS,
@@ -32,7 +35,7 @@ const [sameForEveryone, setSameForEveryone] = useState(true);
   const [musicRequests, setMusicRequests] = useState('');
   const [messageToOrganizers, setMessageToOrganizers] = useState('');
   const [isWaitlisted, setIsWaitlisted] = useState(false);
-  const [toasts, setToasts] = useState([]);
+  const { toasts, addToast, removeToast } = useToasts();
   // Initialize with existing registration or default attendee
   useEffect(() => {
     if (userRegistration && userRegistration.attendees) {
@@ -178,17 +181,6 @@ const handleRemoveAttendee = (id) => {
       ));
     }
   };
-  const addToast = (message, type = 'info') => {
-    const id = Date.now();
-    const newToast = { id, message, type };
-    setToasts(prev => [...prev, newToast]);
-    setTimeout(() => removeToast(id), 5000);
-  };
-
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!event || !event.id) {
@@ -365,59 +357,37 @@ const handleRemoveAttendee = (id) => {
       setIsSubmitting(false);
     }
   };
-    const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
 
-    
-      return (
+  return (
     <div className="bg-white rounded-xl shadow-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Inscription à l'événement</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">{fr.registrationFormTitle}</h2>
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">{error}</div>}
-      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">✓ Votre inscription a été enregistrée avec succès!</div>}
-      {/* Toast notifications */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map(toast => (
-          <div key={toast.id} className={`px-4 py-3 rounded-lg shadow-lg border ${toast.type === 'success' ? 'bg-green-100 border-green-300 text-green-800' : toast.type === 'error' ? 'bg-red-100 border-red-300 text-red-800' : toast.type === 'warning' ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'bg-blue-100 border-blue-300 text-blue-800'}`}>
-            <div className="flex justify-between items-center">
-              <span>{toast.message}</span>
-              <button onClick={() => removeToast(toast.id)} className="ml-4 text-gray-500 hover:text-gray-700">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">{fr.registrationSavedSuccessMessage}</div>}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
           {/* Attendee list */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-700">Participants de votre groupe</h3>
-              <button type="button" onClick={handleAddAttendee} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">+ Ajouter un participant</button>
+              <h3 className="text-lg font-semibold text-gray-700">{fr.groupParticipantsTitle}</h3>
+              <button type="button" onClick={handleAddAttendee} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">{fr.addParticipantButton}</button>
             </div>
             <div className="space-y-4">
               {attendees.map((attendee, index) => (
                 <div key={attendee.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-3">
-                    <h4 className="font-medium text-gray-700">Participant #{index + 1}</h4>
+                    <h4 className="font-medium text-gray-700">{fr.participantNumberLabel}{index + 1}</h4>
                     {attendees.length > 1 && (
-                      <button type="button" onClick={() => handleRemoveAttendee(attendee.id)} className="text-red-600 hover:text-red-800 text-sm">Supprimer</button>
+                      <button type="button" onClick={() => handleRemoveAttendee(attendee.id)} className="text-red-600 hover:text-red-800 text-sm">{fr.delete}</button>
                     )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nom complet</label>
-                      <input type="text" value={attendee.name} onChange={(e) => handleAttendeeChange(attendee.id, 'name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Jean Tremblay" required />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{fr.fullNameLabel}</label>
+                      <input type="text" value={attendee.name} onChange={(e) => handleAttendeeChange(attendee.id, 'name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.fullNamePlaceholder} required />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Type de participation</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{fr.participationTypeLabel}</label>
                       <select value={TIER_OPTIONS.find(opt => opt.type === attendee.type && opt.participation === attendee.participation)?.value || 'adult-whole'} onChange={(e) => handleTierChange(attendee.id, e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         {TIER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
@@ -455,14 +425,14 @@ const handleRemoveAttendee = (id) => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.accommodation}</label>
                       <select value={attendee.sleepingPreference} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreference', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Sélectionnez</option>
+                        <option value="">{fr.selectGenericPlaceholder}</option>
                         {ACCOMMODATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                       {attendee.sleepingPreference === 'bed' && (
                         <div className="mt-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">{fr.bedReason}</label>
                           <select value={attendee.bedReason} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReason', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            <option value="">Sélectionnez</option>
+                            <option value="">{fr.selectGenericPlaceholder}</option>
                             {BED_REASON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </select>
                           {attendee.bedReason === 'other' && (
@@ -483,13 +453,13 @@ const handleRemoveAttendee = (id) => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.dietaryNeeds}</label>
                       <select value={attendee.dietaryNeeds} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryNeeds', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Sélectionnez</option>
+                        <option value="">{fr.selectGenericPlaceholder}</option>
                         {DIETARY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                       {attendee.dietaryNeeds === 'other' && (
                         <div className="mt-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                          <input type="text" value={attendee.dietaryOther} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Spécifiez vos restrictions..." />
+                          <input type="text" value={attendee.dietaryOther} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.dietaryOtherPlaceholder} />
                         </div>
                       )}
                     </div>
@@ -533,7 +503,7 @@ const handleRemoveAttendee = (id) => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportType}</label>
                 <select value={transportType} onChange={(e) => setTransportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <option value="">Sélectionnez</option>
+                  <option value="">{fr.selectGenericPlaceholder}</option>
                   {TRANSPORT_TYPES.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </div>
@@ -554,19 +524,19 @@ const handleRemoveAttendee = (id) => {
           {/* Music requests and message */}
           <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.musicRequests}</h3>
-            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Artistes, genres, chansons spécifiques..." />
+            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.musicRequestsPlaceholder} />
           </div>
           <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.messageToOrganizers}</h3>
-            <textarea value={messageToOrganizers} onChange={(e) => setMessageToOrganizers(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Questions, commentaires, besoins spéciaux..." />
+            <textarea value={messageToOrganizers} onChange={(e) => setMessageToOrganizers(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.messageToOrganizersPlaceholder} />
           </div>
 {/* Summary section */}
           <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">Résumé de votre inscription</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.registrationFormSummaryTitle}</h3>
             <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
               <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
                 <div className="text-3xl font-bold text-purple-600">{formatCurrency(estimatedBalance)}</div>
-                <div className="text-sm text-gray-600 mt-1">Montant estimé dû</div>
+                <div className="text-sm text-gray-600 mt-1">{fr.estimatedAmountDueLabel}</div>
               </div>
             </div>
             <div className="mt-6 text-sm text-gray-600">
@@ -576,17 +546,17 @@ const handleRemoveAttendee = (id) => {
 
           {/* Submit button */}
           <div className="flex justify-end space-x-4">
-            <button type="button" onClick={handleAddAttendee} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Ajouter un autre participant</button>
+            <button type="button" onClick={handleAddAttendee} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">{fr.addAnotherParticipantButton}</button>
             {onCancel && (
-              <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+              <button type="button" onClick={onCancel} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">{fr.cancel}</button>
             )}
             {adminMode ? (
               <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                {isSubmitting ? 'Mise à jour en cours...' : 'Enregistrer (mode admin)'}
+                {isSubmitting ? fr.updatingInProgress : fr.saveAdminModeButton}
               </button>
             ) : (
               <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                {isSubmitting ? 'Enregistrement en cours...' : 'Enregistrer l\'inscription'}
+                {isSubmitting ? fr.savingInProgress : fr.saveRegistrationButton}
               </button>
             )}
           </div>

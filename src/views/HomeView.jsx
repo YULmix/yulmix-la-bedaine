@@ -5,6 +5,7 @@ import RegistrationForm from '../components/RegistrationForm';
 import RegistrationSummary from './RegistrationSummary';
 import fr from '../locales/fr.json';
 import { getGoogleMapsUrl } from '../lib/venue';
+import { formatDate } from '../lib/format';
 
 const HomeView = ({ activeEvent, isAuthenticated }) => {
   const [userRegistration, setUserRegistration] = useState(null);
@@ -13,38 +14,40 @@ const HomeView = ({ activeEvent, isAuthenticated }) => {
 const [isEditingRegistration, setIsEditingRegistration] = useState(false);
 
   // Fetch user registration for the active event
+  const fetchUserRegistration = async () => {
+    if (!activeEvent?.id) return;
+
+    setLoadingRegistration(true);
+    setError(null);
+
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) return;
+
+      const { data: registration, error: regError } = await supabase
+        .from('user_parties')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('event_id', activeEvent.id)
+        .maybeSingle();
+
+      if (regError) throw regError;
+
+      setUserRegistration(registration || null);
+    } catch (err) {
+      console.error('Erreur lors de la récupération de l\'inscription:', err);
+      setError(err.message);
+    } finally {
+      setLoadingRegistration(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated || !activeEvent?.id) {
       setUserRegistration(null);
       return;
     }
-
-    const fetchUserRegistration = async () => {
-      setLoadingRegistration(true);
-      setError(null);
-      
-      try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        if (!user) return;
-
-        const { data: registration, error: regError } = await supabase
-          .from('user_parties')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('event_id', activeEvent.id)
-          .maybeSingle();
-
-        if (regError) throw regError;
-        
-        setUserRegistration(registration || null);
-      } catch (err) {
-        console.error('Erreur lors de la récupération de l\'inscription:', err);
-        setError(err.message);
-      } finally {
-        setLoadingRegistration(false);
-      }
-    };
 
     fetchUserRegistration();
   }, [isAuthenticated, activeEvent]);
@@ -76,24 +79,6 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
     return 'OTHER';
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-CA', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
   const handleSignIn = async () => {
     try {
       console.log('OAuth redirectTo:', window.location.origin);
@@ -119,8 +104,8 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
           </svg>
         </div>
-        <h3 className="text-xl font-semibold text-gray-700 mb-2">Aucun événement en cours</h3>
-        <p className="text-gray-500">Aucun événement n'est actuellement actif. Revenez plus tard!</p>
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">{fr.noActiveEventTitle}</h3>
+        <p className="text-gray-500">{fr.noActiveEventMessage}</p>
       </div>
     );
   }
@@ -131,7 +116,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
       {loadingRegistration && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">Chargement de votre inscription...</p>
+          <p className="mt-4 text-gray-600">{fr.loadingRegistrationMessage}</p>
         </div>
       )}
       {/* Event header */}
@@ -145,7 +130,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
               {activeEvent.venue_address}
             </a>
           )}
-          <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} jour(s)</div>
+          <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} {fr.daysSuffix}</div>
           <Link
             to="/event-details"
             className="bg-[#fb951a] hover:bg-[#e08213] px-3 py-1 rounded-full text-white font-medium transition-colors duration-200 shadow-sm"
@@ -166,7 +151,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
             </div>
             <div className="ml-3">
               <p className="text-sm text-yellow-700">
-                <strong>Phase d'intention:</strong> Indiquez votre intention de participer et la composition de votre groupe pour aider à la planification.
+                <strong>{fr.intentPhaseLabel}</strong> {fr.intentPhaseMessage}
               </p>
             </div>
           </div>
@@ -179,6 +164,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
           event={activeEvent}
           onEdit={() => setIsEditingRegistration(true)}
           onBackToHome={() => {/* nothing */}}
+          onDeleted={() => setUserRegistration(null)}
         />
       )}
 
@@ -189,10 +175,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
           userRegistration={userRegistration}
           onRegistrationSuccess={() => {
             setIsEditingRegistration(false);
-            // Refresh registration data
-            if (activeEvent?.id) {
-              window.location.reload();
-            }
+            fetchUserRegistration();
           }}
           onCancel={() => setIsEditingRegistration(false)}
         />
@@ -204,10 +187,7 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
           event={activeEvent}
           userRegistration={userRegistration}
           onRegistrationSuccess={() => {
-            // Refresh registration data
-            if (activeEvent?.id) {
-              window.location.reload();
-            }
+            fetchUserRegistration();
           }}
         />
       )}
@@ -220,13 +200,13 @@ const [isEditingRegistration, setIsEditingRegistration] = useState(false);
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">Connectez-vous pour vous inscrire</h3>
-          <p className="text-gray-500 mb-6">Vous devez être connecté pour voir les détails de l'événement et vous inscrire.</p>
-          <button 
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">{fr.signInToRegisterTitle}</h3>
+          <p className="text-gray-500 mb-6">{fr.signInToRegisterMessage}</p>
+          <button
             onClick={handleSignIn}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
-            Se connecter
+            {fr.signIn}
           </button>
         </div>
       )}

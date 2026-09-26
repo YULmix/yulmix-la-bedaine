@@ -41,6 +41,15 @@ export const getRegistrationStatusLabel = (status) => REGISTRATION_STATUS_LABELS
 export const getPaymentStatusLabel = (status) => PAYMENT_STATUS_LABELS[status] || status;
 export const getPaymentStatusShortLabel = (status) => PAYMENT_STATUS_SHORT_LABELS[status] || status;
 
+const ATTENDEE_TYPE_LABELS = {
+  Adult: fr.attendeeTypeAdult,
+  Teenager: fr.attendeeTypeTeenager,
+  Kid: fr.attendeeTypeKid
+};
+
+export const getAttendeeTypeLabel = (type) => ATTENDEE_TYPE_LABELS[type] || type;
+export const getParticipationSummaryLabel = (participation) => participation === 'Whole' ? fr.participationWhole : fr.participationPartial;
+
 export const TIER_OPTIONS = [
   { value: 'adult-whole', label: 'Adulte - Fin de semaine complète', type: 'Adult', participation: 'Whole' },
   { value: 'adult-main', label: 'Adulte - Événement principal', type: 'Adult', participation: 'Main' },

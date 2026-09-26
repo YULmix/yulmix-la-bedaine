@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
+import { formatCurrency, formatDateTime } from '../lib/format';
 import {
   ACCOMMODATION_OPTIONS,
   DIETARY_OPTIONS,
@@ -12,38 +13,18 @@ import {
   REGISTRATION_STATUS,
   PAYMENT_STATUS,
   getRegistrationStatusLabel,
-  getPaymentStatusLabel
+  getPaymentStatusLabel,
+  getAttendeeTypeLabel,
+  getParticipationSummaryLabel
 } from '../lib/registrationOptions';
 
-const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
+const RegistrationSummary = ({ registration, event, onEdit, onBackToHome, onDeleted }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [editHistory, setEditHistory] = useState([]);
   const [showEditHistory, setShowEditHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   
-  // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2
-    }).format(amount);
-  };
-
-  // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-CA', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   // Handle registration deletion
   const handleDeleteRegistration = async () => {
     if (!window.confirm(fr.deleteRegistrationConfirm)) {
@@ -61,9 +42,8 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
 
       if (deleteError) throw deleteError;
 
-      // Show success message and reload page
       alert(fr.deleteRegistrationSuccess);
-      window.location.reload();
+      onDeleted?.();
     } catch (err) {
       console.error('Error deleting registration:', err);
       setError(fr.deleteRegistrationError);
@@ -209,7 +189,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
         <div>
           <h2 className="text-2xl font-bold text-gray-800">{fr.registrationSummary}</h2>
           <p className="text-gray-600 mt-2">
-            Événement: <span className="font-semibold">{event?.theme || 'N/A'}</span>
+            {fr.eventLabel} <span className="font-semibold">{event?.theme || fr.notAvailable}</span>
           </p>
         </div>
         <div className="flex space-x-4">
@@ -244,8 +224,8 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                       </p>
                     )}
                     <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
-                      <span>Type: {attendee.type === 'Adult' ? 'Adulte' : attendee.type === 'Teenager' ? 'Adolescent' : 'Enfant'}</span>
-                      <span>Participation: {attendee.participation === 'Whole' ? 'Complète' : 'Partielle'}</span>
+                      <span>{fr.typeLabel} {getAttendeeTypeLabel(attendee.type)}</span>
+                      <span>{fr.participationLabel} {getParticipationSummaryLabel(attendee.participation)}</span>
                       {attendee.is_new_member && (
                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
                            {fr.firstTimeAttendee}
@@ -254,7 +234,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-gray-500">Hébergement</p>
+                    <p className="text-sm text-gray-500">{fr.accommodation}</p>
                     <p className="font-medium">
                       {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference, 'Non spécifié')}
                     </p>
@@ -273,9 +253,9 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">{fr.foodRequirements}</h4>
                 <div className="space-y-2">
-                  <p><span className="text-gray-600">Demandes:</span> {getDietaryRequestsLabel(logistics.food_requests?.requests, 'Aucune')}</p>
+                  <p><span className="text-gray-600">{fr.foodRequestsLabel}</span> {getDietaryRequestsLabel(logistics.food_requests?.requests, fr.noneFallback)}</p>
                   {logistics.food_requests?.notes && (
-                    <p><span className="text-gray-600">Notes:</span> {logistics.food_requests.notes}</p>
+                    <p><span className="text-gray-600">{fr.notesLabel}</span> {logistics.food_requests.notes}</p>
                   )}
                 </div>
               </div>
@@ -288,10 +268,10 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
             <div className="bg-white rounded-lg p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.transportSummary}</h3>
               <div className="space-y-3">
-                <p><span className="text-gray-600">Type:</span> {getOptionLabel(TRANSPORT_TYPES, transport.type, 'Non spécifié')}</p>
-                <p><span className="text-gray-600">Sièges:</span> {transport.seats || 0}</p>
-                <p><span className="text-gray-600">Arrivée:</span> {transport.arrival ? formatDate(transport.arrival) : 'Non spécifié'}</p>
-                <p><span className="text-gray-600">Départ:</span> {transport.departure ? formatDate(transport.departure) : 'Non spécifié'}</p>
+                <p><span className="text-gray-600">{fr.typeLabel}</span> {getOptionLabel(TRANSPORT_TYPES, transport.type, fr.notSpecified)}</p>
+                <p><span className="text-gray-600">{fr.transportSeatsLabel}</span> {transport.seats || 0}</p>
+                <p><span className="text-gray-600">{fr.transportArrivalLabel}</span> {transport.arrival ? formatDateTime(transport.arrival) : fr.notSpecified}</p>
+                <p><span className="text-gray-600">{fr.transportDepartureLabel}</span> {transport.departure ? formatDateTime(transport.departure) : fr.notSpecified}</p>
               </div>
             </div>
 
@@ -310,7 +290,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                   ))}
                 </ul>
               ) : (
-                <p className="text-gray-500">Aucun bénévolat sélectionné</p>
+                <p className="text-gray-500">{fr.noVolunteeringSelectedMessage}</p>
               )}
               {volunteeringSelections.includes('other') && logistics.volunteering_other && (
                 <p className="text-sm text-gray-500 mt-2">{logistics.volunteering_other}</p>
@@ -323,7 +303,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
         <div className="space-y-8">
           {/* Status card */}
           <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">Statut</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.status}</h3>
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-500">{fr.registrationStatus}</p>
@@ -349,19 +329,19 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
               </div>
               {registration.is_waitlisted && (
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-                  <p className="font-medium">Sur liste d'attente</p>
-                  <p className="text-sm mt-1">Vous êtes sur la liste d'attente pour cet événement.</p>
+                  <p className="font-medium">{fr.waitlistedBadge}</p>
+                  <p className="text-sm mt-1">{fr.waitlistedMessage}</p>
                 </div>
               )}
             </div>
           </div>
 {/* Edit history */}
           <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">Historique</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.editHistoryTitle}</h3>
             <div className="space-y-3">
               <div>
                 <p className="text-sm text-gray-500">{fr.lastEdited}</p>
-                <p className="font-medium">{registration.last_edited_at ? formatDate(registration.last_edited_at) : 'Jamais modifié'}</p>
+                <p className="font-medium">{registration.last_edited_at ? formatDateTime(registration.last_edited_at) : fr.neverEditedMessage}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">{fr.editCount}</p>
@@ -374,7 +354,7 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                     className="w-full mt-4 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
                       disabled={loadingHistory}
                   >
-                    {loadingHistory ? 'Chargement...' : showEditHistory ? "Masquer l'historique" : fr.viewEditHistory}
+                    {loadingHistory ? fr.loadingLabel : showEditHistory ? fr.hideEditHistoryButton : fr.viewEditHistory}
                   </button>
                   {showEditHistory && (
                     <div className="mt-4 space-y-3">
@@ -382,13 +362,13 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                         <div key={edit.id} className="border border-gray-200 rounded-lg p-4">
                           <div className="flex justify-between items-start mb-3">
                                 <div>
-                                  <p className="font-medium text-gray-700">{formatDate(edit.edited_at)}</p>
-                                  <p className="text-xs text-gray-500 mt-1">Modification #{editHistory.length - editHistory.indexOf(edit)}</p>
+                                  <p className="font-medium text-gray-700">{formatDateTime(edit.edited_at)}</p>
+                                  <p className="text-xs text-gray-500 mt-1">{fr.editNumberLabel}{editHistory.length - editHistory.indexOf(edit)}</p>
                                 </div>
-                                <p className="text-sm text-gray-500">par {edit.edited_by ? edit.edited_by.substring(0, 8) + '...' : 'Système'}</p>
+                                <p className="text-sm text-gray-500">{fr.editedByPrefix} {edit.edited_by ? edit.edited_by.substring(0, 8) + '...' : fr.systemActorLabel}</p>
                               </div>
                               <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-100">
-                                <div className="font-medium text-gray-800 mb-2">Changements apportés:</div>
+                                <div className="font-medium text-gray-800 mb-2">{fr.changesAppliedLabel}</div>
                                 <div className="space-y-2">
                                   {formatChangeDescription(edit.changes)
                                     .split('\n')
@@ -405,11 +385,11 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
                                       onClick={() => {
                                         const details = JSON.stringify(edit.changes, null, 2);
                                         navigator.clipboard.writeText(details);
-                                        alert('Détails copiés dans le presse-papiers');
+                                        alert(fr.copyJsonDetailsSuccessMessage);
                                       }}
                                       className="text-xs text-blue-600 hover:text-blue-800"
                                     >
-                                      Copier les détails JSON
+                                      {fr.copyJsonDetailsButton}
                                     </button>
                                   </div>
                                 )}
@@ -430,13 +410,13 @@ const RegistrationSummary = ({ registration, event, onEdit, onBackToHome }) => {
               <div className="space-y-4">
                 {registration.music_requests && (
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Demandes musicales</p>
+                    <p className="text-sm text-gray-500 mb-1">{fr.musicRequests}</p>
                     <p className="text-gray-800">{registration.music_requests}</p>
                   </div>
                 )}
                 {registration.message_to_organizers && (
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Message aux organisateurs</p>
+                    <p className="text-sm text-gray-500 mb-1">{fr.messageToOrganizers}</p>
                     <p className="text-gray-800">{registration.message_to_organizers}</p>
                   </div>
                 )}
