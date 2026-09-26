@@ -17,20 +17,3 @@
 - Schema Change Protocol: Whenever you add a migration, you MUST explicitly alert the user in your final response with:
   1. A summary of what database entities changed (new columns, policies, triggers, or views).
   2. The migration file's path, and a reminder that it reaches production only when a person runs 'supabase db push' after the PR merges.
-
-# SYSTEM OS (WINDOWS POWERSHELL 5.1 RULES)
-- Shell Environment: Windows running Windows PowerShell 5.1 (NOT cmd.exe, NOT PowerShell 7).
-- Execution & Chaining:
-  - The operators '&&', '||', and ';' are invalid statement separators in PowerShell 5.1. Never chain commands. Run each command as a single, standalone tool call.
-  - The terminal session opens in the project root workspace; never run 'cd <directory>' prior to commands.
-  - Never wrap shell commands in JSON array brackets (e.g., ["command"]). Run plain, standard PowerShell commands directly
-- Cmdlet Compatibility:
-  - Do not use PowerShell 7+ specific parameters (e.g., 'Get-Content -AsByteStream' does NOT exist in 5.1; do not use it).
-  - Never use Command Prompt (cmd.exe) switches ('/b', '/s', '/q', '/y'). To list files bare/names-only, use 'Get-ChildItem -Name'.
-  - Do not use inline environment variable setters ('NODE_ENV=dev command') or Unix redirection ('2>nul', '> /dev/null'). Use '2>$null' or '| Out-Null'.
-- File Operations & Tool Discipline:
-  - NEVER use PowerShell cmdlets (Get-Content, Set-Content, Out-File, Add-Content) or terminal pipelines to inspect, search, or edit code.
-  - Always use built-in agent tools: 'read_file', 'write_to_file', 'replace_in_file', and 'list_files'.
-  - Dev Server: Never use 'Start-Process' to run npm or node scripts. Instruct the user to run 'npm run dev' directly.
-  - Always run 'npm run build' after substantial file changes to verify compilation.
-  - Assistant Communication: Respond and communicate with the user strictly in English (or French when translating UI elements). Never output Chinese characters (Hanzi) or switch conversational responses to Chinese, even in internal thinking summaries.
