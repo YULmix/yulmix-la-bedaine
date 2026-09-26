@@ -36,6 +36,7 @@ erDiagram
     int z_intent_months "intent window, months"
     int x_reg_close_weeks "reg close, weeks"
     date reg_start_date
+    date event_start_date "when the event itself starts; nullable"
     text status "DRAFT|ACTIVE|ARCHIVED"
     bool is_active "partial unique: only one TRUE"
     bool is_reg_open
@@ -217,6 +218,7 @@ flowchart TD
     U2["BEFORE INSERT/UPDATE OF attendees,status → enforce_capacity_and_waitlist()"]
     U3["BEFORE UPDATE → increment_edit_count()"]
     U4["AFTER UPDATE → log_registration_edit()"]
+    U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
   end
 ```
 
@@ -238,6 +240,22 @@ values, which no row has any more, so it counts zero existing attendees
 Two properties worth knowing: waitlisting is **all-or-nothing per party** (a party of 4 that
 straddles the cap goes entirely to the waitlist), and nothing ever moves a party *off* the waitlist
 when someone else cancels — that is a manual admin action today, and there is no UI for it.
+
+### Registration close date
+
+`enforce_registration_lock_after_close_date` (added for
+[#38](https://github.com/YULmix/yulmix-la-bedaine/issues/38)) is the only place the "registration
+close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — is actually enforced.
+It does **not** block new registrations, edits, or adding participants; it only blocks, once the
+close date has passed and the caller isn't an admin:
+
+- `DELETE` on `user_parties` (a member un-registering their whole party).
+- `UPDATE` on `user_parties` where the new `attendees` array is shorter than the stored one
+  (a member removing a participant).
+
+The amount already owed is never reimbursed by this trigger — it just stops the row (or the
+attendee list) from shrinking. If either `event_start_date` or `x_reg_close_weeks` is null, the
+trigger is a no-op, since there is nothing to compute the close date from.
 
 ## Views
 

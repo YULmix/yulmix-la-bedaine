@@ -83,6 +83,14 @@ const EventDetailsView = ({ activeEvent }) => {
 
           {/* Right column */}
           <div className="space-y-6">
+            {/* Date de début de l'événement */}
+            {activeEvent.event_start_date && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">{fr.eventStartDateLabel}</h3>
+                <p className="text-gray-800">{formatDate(activeEvent.event_start_date)}</p>
+              </div>
+            )}
+
             {/* Date de début des inscriptions */}
             <div>
               <h3 className="text-lg font-semibold text-gray-700 mb-2">{fr.eventRegStartDateLabel}</h3>

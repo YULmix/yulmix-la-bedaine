@@ -106,6 +106,7 @@
   "eventRegCloseWeeksLabel": "Fermeture des inscriptions avant l'événement (semaines)",
   "eventRegOpenLabel": "Inscriptions ouvertes",
   "eventRegStartDateLabel": "Date de début des inscriptions",
+  "eventStartDateLabel": "Date de début de l'événement",
   "eventSellingPriceLabel": "Prix de vente (weekend complet)",
   "eventTotalCostLabel": "Coût total (CAD)",
   "eventVenueAddressLabel": "Adresse du lieu",

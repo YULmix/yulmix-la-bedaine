@@ -885,6 +885,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 <input type="date" value={eventChanges.reg_start_date ?? editingEvent.reg_start_date} onChange={e => handleEventFieldChange('reg_start_date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
               </div>
 
+              {/* 5b. Date de début de l'événement */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventStartDateLabel}</label>
+                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+
               {/* 6. Délai d'intention avant inscription (mois) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventIntentMonthsLabel}</label>
