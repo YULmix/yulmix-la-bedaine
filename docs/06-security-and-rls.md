@@ -95,6 +95,10 @@ Notes on specific choices:
   applies, so this isn't an open door. New tables are not auto-exposed (see
   `auto_expose_new_tables` in `supabase/config.toml`), so a migration adding a table must grant
   access explicitly, and should add its RLS policies in the same file.
+- **`anon`/`authenticated` no longer have `CREATE` on the `public` schema** (only `USAGE`, since
+  [#45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)). The baseline migration's
+  `GRANT ALL ON SCHEMA "public"` carried that forward from production; `service_role` keeps `ALL`,
+  since it's the trusted server-side key and already bypasses RLS.
 
 ## The gap that matters most
 

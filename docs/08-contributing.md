@@ -78,9 +78,11 @@ This codebase was built mostly by prompting, and that will continue. What makes 
 - **File agent-discovered issues in the tracker, not in a doc.** If an agent surfaces a new defect or
   gap, the output is a GitHub issue (or beads task), not another paragraph appended to a Markdown
   file — see [Tracking work](#tracking-work) above.
-- **Shared rules go in a committed file; personal shell setup does not.** `.clinerules` currently
-  mixes both. Project conventions (this document's ground rules) should live in a committed
-  `AGENTS.md`/`CLAUDE.md`; "my shell is PowerShell 5.1" belongs in the individual's own config.
+- **Shared rules go in a committed file; personal shell setup does not.** `.clinerules` used to mix
+  both (a Windows/PowerShell-specific section was split out and dropped, since it didn't apply to
+  every contributor). Project conventions (this document's ground rules) should live in a committed
+  `AGENTS.md`/`CLAUDE.md`/`.clinerules`; personal shell or OS setup belongs in the individual's own
+  config, never in a tracked file.
 - **Verify, don't trust.** An agent will report "build passes, all tests green" because the pricing
   script exits 0 while `npm test` is red. Run the commands.
 - **Small scopes.** "Fix the counts trigger and its callers" is a good task. "Refactor AdminView" is
@@ -96,7 +98,7 @@ None of this exists yet. It is ordered by value per hour of setup.
 3. **Gate the Vercel deploy on CI**: production is deployed on Vercel today, but nothing stops a
    broken build or a failing test suite from reaching it. Deploy from CI after tests pass, not
    straight from Vercel's git integration.
-4. **`.nvmrc`** pinning Node 20.
+4. ~~**`.nvmrc`**~~ **Done** — pins Node 24, matching `.github/workflows/deploy.yml`'s `node-version`.
 5. **ESLint** with `eslint-plugin-react-hooks`. The `fetchPartiesForActiveEvent` reference to an
    undefined function (`AdminView.jsx:403`) is a plain `no-undef` — a linter would have refused it.
    The hooks rules also catch the `useEffect` dependency patterns that cause the current re-render
@@ -131,7 +133,3 @@ supabase/
   tests/                   RLS seed data + intended workflow
 docs/                      this documentation
 ```
-
-Files that should be deleted rather than maintained: `src/App.jsx.backup`,
-`src/locales/fr_broken.json`, `src/locales/fr_fixed.json`, `src/locales/fr_temp.json`,
-and `netlify.toml` (production runs on Vercel; `vercel.json` is the one that matters).
