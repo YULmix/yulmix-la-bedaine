@@ -18,7 +18,7 @@ const AdminUserManagement = ({
   onPaymentToggle,
   onEditParty
 }) => (
-  <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 mb-8">
+  <div className="bg-indigo-50 rounded-xl shadow-lg p-4 md:p-6 mb-8">
     <h2 className="text-xl font-semibold text-gray-800 mb-4 lg:mb-6">{fr.adminUsersManagementTitle}</h2>
     <div className={`hidden lg:grid ${GRID_COLUMNS} lg:gap-4 px-4 py-3 border-b border-gray-200 text-sm font-medium text-gray-700`}>
       <span>{fr.logisticsTableName}</span>

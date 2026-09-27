@@ -767,14 +767,14 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">{fr.adminPageTitle}</h1>
-        <p className="text-gray-600">{fr.adminPageSubtitle}</p>
+      <div className="mb-8"> 
+        <h1 className="text-3xl font-bold mb-2">{fr.adminPageTitle}</h1>
+        <p className="text-gray-100">{fr.adminPageSubtitle}</p>
       </div>
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       {/* Event Management */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+      <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.adminEventsManagementTitle}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {events.map(event => (
@@ -826,8 +826,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {/* Inline event metadata editing modal */}
       {editingEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+          <div className="bg-indigo-50 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-indigo-50 border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">{fr.editEventMetadataTitle}</h2>
               <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
@@ -837,55 +837,55 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 1. Thème */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventTitle}</label>
-                <input type="text" value={eventChanges.theme ?? editingEvent.theme} onChange={e => handleEventFieldChange('theme', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="text" value={eventChanges.theme ?? editingEvent.theme} onChange={e => handleEventFieldChange('theme', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 2. Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventDescriptionLabel}</label>
-                <textarea value={eventChanges.description ?? editingEvent.description} onChange={e => handleEventFieldChange('description', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <textarea value={eventChanges.description ?? editingEvent.description} onChange={e => handleEventFieldChange('description', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 3. Adresse du lieu */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventVenueAddressLabel}</label>
-                <input type="text" value={eventChanges.venue_address ?? editingEvent.venue_address} onChange={e => handleEventFieldChange('venue_address', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="text" value={eventChanges.venue_address ?? editingEvent.venue_address} onChange={e => handleEventFieldChange('venue_address', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 4. Durée (jours) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventDurationLabel}</label>
-                <input type="number" value={eventChanges.duration_days ?? editingEvent.duration_days} onChange={e => handleEventFieldChange('duration_days', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" value={eventChanges.duration_days ?? editingEvent.duration_days} onChange={e => handleEventFieldChange('duration_days', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 5. Date de début des inscriptions */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventRegStartDateLabel}</label>
-                <input type="date" value={eventChanges.reg_start_date ?? editingEvent.reg_start_date} onChange={e => handleEventFieldChange('reg_start_date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="date" value={eventChanges.reg_start_date ?? editingEvent.reg_start_date} onChange={e => handleEventFieldChange('reg_start_date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 5b. Date de début de l'événement */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventStartDateLabel}</label>
-                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 6. Délai d'intention avant inscription (mois) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventIntentMonthsLabel}</label>
-                <input type="number" value={eventChanges.z_intent_months ?? editingEvent.z_intent_months} onChange={e => handleEventFieldChange('z_intent_months', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" value={eventChanges.z_intent_months ?? editingEvent.z_intent_months} onChange={e => handleEventFieldChange('z_intent_months', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 7. Fermeture des inscriptions avant l'événement (semaines) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventRegCloseWeeksLabel}</label>
-                <input type="number" value={eventChanges.x_reg_close_weeks ?? editingEvent.x_reg_close_weeks} onChange={e => handleEventFieldChange('x_reg_close_weeks', parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" value={eventChanges.x_reg_close_weeks ?? editingEvent.x_reg_close_weeks} onChange={e => handleEventFieldChange('x_reg_close_weeks', parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 8. Inscriptions ouvertes */}
               <div>
                 <div className="flex items-center">
-                  <input type="checkbox" id="is_reg_open" checked={eventChanges.is_reg_open ?? editingEvent.is_reg_open ?? false} onChange={e => handleEventFieldChange('is_reg_open', e.target.checked)} className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                  <input type="checkbox" id="is_reg_open" checked={eventChanges.is_reg_open ?? editingEvent.is_reg_open ?? false} onChange={e => handleEventFieldChange('is_reg_open', e.target.checked)} className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
                   <label htmlFor="is_reg_open" className="ml-2 block text-sm font-medium text-gray-700">{fr.eventRegOpenLabel}</label>
                 </div>
               </div>
@@ -893,24 +893,24 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 9. Points de contact */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventPointsOfContactLabel}</label>
-                <textarea value={eventChanges.points_of_contact ?? editingEvent.points_of_contact} onChange={e => handleEventFieldChange('points_of_contact', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <textarea value={eventChanges.points_of_contact ?? editingEvent.points_of_contact} onChange={e => handleEventFieldChange('points_of_contact', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 {/* 10. Nombre maximum de participants */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventMaxAttendeesLabel}</label>
-                <input type="number" value={eventChanges.max_attendees ?? editingEvent.max_attendees} onChange={e => handleEventFieldChange('max_attendees', parseInt(e.target.value) || 90)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" value={eventChanges.max_attendees ?? editingEvent.max_attendees} onChange={e => handleEventFieldChange('max_attendees', parseInt(e.target.value) || 90)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 11. Coût total (CAD) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventTotalCostLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.total_cost ?? editingEvent.total_cost} onChange={e => handleEventFieldChange('total_cost', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" step="0.01" value={eventChanges.total_cost ?? editingEvent.total_cost} onChange={e => handleEventFieldChange('total_cost', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 12. Catégorie de dépense */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExpenseCategoryLabel}</label>
-                <select value={eventChanges.expense_category ?? editingEvent.expense_category ?? ''} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <select value={eventChanges.expense_category ?? editingEvent.expense_category ?? ''} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
                   <option value="">{fr.selectPlaceholder}</option>
                   <option value="Chalet">{fr.eventExpenseCategoryChalet}</option>
                   <option value="Food">{fr.eventExpenseCategoryFood}</option>
@@ -925,8 +925,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventCostBreakdownLabel}</label>
                 {(eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? []).map((row, index) => (
                   <div key={index} className="flex gap-2 mb-2">
-                    <input type="text" placeholder={fr.eventCostBreakdownCategoryPlaceholder} value={row.category || ''} onChange={e => handleCostBreakdownChange(index, 'category', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                    <input type="number" step="0.01" placeholder={fr.eventCostBreakdownAmountPlaceholder} value={row.amount || ''} onChange={e => handleCostBreakdownChange(index, 'amount', parseFloat(e.target.value) || 0)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                    <input type="text" placeholder={fr.eventCostBreakdownCategoryPlaceholder} value={row.category || ''} onChange={e => handleCostBreakdownChange(index, 'category', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
+                    <input type="number" step="0.01" placeholder={fr.eventCostBreakdownAmountPlaceholder} value={row.amount || ''} onChange={e => handleCostBreakdownChange(index, 'amount', parseFloat(e.target.value) || 0)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
                     <button type="button" onClick={() => removeCostBreakdownRow(index)} className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">
                       {fr.eventCostBreakdownRemoveRow}
                     </button>
@@ -940,13 +940,13 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 {/* 14. Prix de vente (weekend complet) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventSellingPriceLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.selling_price_whole_event ?? editingEvent.selling_price_whole_event} onChange={e => handleEventFieldChange('selling_price_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" step="0.01" value={eventChanges.selling_price_whole_event ?? editingEvent.selling_price_whole_event} onChange={e => handleEventFieldChange('selling_price_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 15. Coût de revient estimé (weekend complet) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventEstimatedCostLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.estimated_individual_cost_whole_event ?? editingEvent.estimated_individual_cost_whole_event} onChange={e => handleEventFieldChange('estimated_individual_cost_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" step="0.01" value={eventChanges.estimated_individual_cost_whole_event ?? editingEvent.estimated_individual_cost_whole_event} onChange={e => handleEventFieldChange('estimated_individual_cost_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 16. Liens externes */}
@@ -954,8 +954,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExternalLinksLabel}</label>
                 {(eventChanges.external_links ?? editingEvent?.external_links ?? []).map((row, index) => (
                   <div key={index} className="flex gap-2 mb-2">
-                    <input type="text" placeholder={fr.eventExternalLinksLabelPlaceholder} value={row.label || ''} onChange={e => handleExternalLinksChange(index, 'label', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                    <input type="url" placeholder={fr.eventExternalLinksUrlPlaceholder} value={row.url || ''} onChange={e => handleExternalLinksChange(index, 'url', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                    <input type="text" placeholder={fr.eventExternalLinksLabelPlaceholder} value={row.label || ''} onChange={e => handleExternalLinksChange(index, 'label', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
+                    <input type="url" placeholder={fr.eventExternalLinksUrlPlaceholder} value={row.url || ''} onChange={e => handleExternalLinksChange(index, 'url', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
                     <button type="button" onClick={() => removeExternalLinksRow(index)} className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">
                       {fr.eventExternalLinksRemoveRow}
                     </button>
@@ -969,10 +969,10 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 17. Instructions */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventInstructionsLabel}</label>
-                <textarea value={eventChanges.instructions ?? editingEvent.instructions} onChange={e => handleEventFieldChange('instructions', e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <textarea value={eventChanges.instructions ?? editingEvent.instructions} onChange={e => handleEventFieldChange('instructions', e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
             </div>
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end space-x-3">
+            <div className="sticky bottom-0 bg-indigo-50 border-t px-6 py-4 flex justify-end space-x-3">
               <button onClick={() => setEditingEvent(null)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">{fr.cancel}</button>
               <button onClick={saveEventChanges} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{fr.save}</button>
             </div>
@@ -980,14 +980,14 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         </div>
       )}
       {/* Real-time Aggregate Dashboard */}
-      {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+      {activeEventState && (  
+        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold text-gray-800">{fr.dashboard}</h2>
             <div className="text-sm text-gray-500">{fr.activeEventLabel} <strong>{activeEventState.theme}</strong></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+            <div className="bg-blue-100 border border-blue-200 rounded-lg p-4">
               <div className="text-3xl font-bold text-blue-700">{parties.reduce((sum, p) => sum + (p.counts?.adult_whole || 0) + (p.counts?.adult_main || 0), 0)}</div>
               <div className="text-sm text-blue-600 mt-1">{fr.adultsStatLabel}</div>
             </div>
@@ -995,7 +995,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <div className="text-3xl font-bold text-green-700">{parties.reduce((sum, p) => sum + (p.counts?.teen_whole || 0) + (p.counts?.teen_main || 0), 0)}</div>
               <div className="text-sm text-green-600 mt-1">{fr.teenagersStatLabel}</div>
             </div>
-            <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+            <div className="bg-purple-100 border border-purple-200 rounded-lg p-4">
               <div className="text-3xl font-bold text-purple-700">{parties.reduce((sum, p) => sum + (p.counts?.kids || 0), 0)}</div>
               <div className="text-sm text-purple-600 mt-1">{fr.kidsStatLabel}</div>
             </div>
@@ -1006,7 +1006,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 </div>
            {/* Cost vs Price Display */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 mt-8">
-             <div className="bg-blue-50 border border-blue-100 rounded-lg p-6">
+             <div className="bg-blue-100 border border-blue-200 rounded-lg p-6">
                <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.costVsPriceTitle}</h3>
                <div className="space-y-4">
                  <div className="flex justify-between items-center">
@@ -1045,7 +1045,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                </div>
              </div>
 {/* Budget Metrics */}
-              <div className="bg-purple-50 border border-purple-100 rounded-lg p-6">
+              <div className="bg-purple-100 border border-purple-200 rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.budgetTitle}</h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -1163,7 +1163,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
 {/* Scenario Simulator */}
       {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-2">{fr.scenarioSimulatorTitle}</h2>
           <p className="text-sm text-gray-600 mb-6">{fr.scenarioSimulatorSubtitle}</p>
           
@@ -1175,7 +1175,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 min="0"
                 value={scenarioValues.adultWhole}
                 onChange={(e) => handleScenarioChange('adultWhole', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1185,7 +1185,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 min="0"
                 value={scenarioValues.adultMain}
                 onChange={(e) => handleScenarioChange('adultMain', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1195,7 +1195,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 min="0"
                 value={scenarioValues.teenWhole}
                 onChange={(e) => handleScenarioChange('teenWhole', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1205,7 +1205,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 min="0"
                 value={scenarioValues.teenMain}
                 onChange={(e) => handleScenarioChange('teenMain', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1215,7 +1215,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 min="0"
                 value={scenarioValues.kids}
                 onChange={(e) => handleScenarioChange('kids', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1240,7 +1240,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 value={scenarioValues.sellingPriceOverride}
                 onChange={(e) => handleScenarioChange('sellingPriceOverride', e.target.value)}
                 placeholder={activeEventState?.selling_price_whole_event || fr.currentSellingPricePlaceholder}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
             <div>
@@ -1252,7 +1252,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 value={scenarioValues.pricePerPointOverride}
                 onChange={(e) => handleScenarioChange('pricePerPointOverride', e.target.value)}
                 placeholder={activeEventState?.selling_price_whole_event ? (activeEventState.selling_price_whole_event / 2).toFixed(2) : fr.currentPricePerPointPlaceholder}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
               />
             </div>
           </div>
@@ -1283,7 +1283,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
 {/* Data Export */}
       {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.dataExportTitle}</h2>
           <p className="text-sm text-gray-600 mb-6">{fr.dataExportDescription}</p>
           
@@ -1325,11 +1325,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       )}
 
       {/* User Feedback */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+      <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold text-gray-800">{fr.adminFeedbackSectionTitle}</h2>
           <label className="flex items-center space-x-2 text-sm text-gray-600">
-            <input type="checkbox" checked={showResolvedFeedback} onChange={(e) => setShowResolvedFeedback(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
+            <input type="checkbox" checked={showResolvedFeedback} onChange={(e) => setShowResolvedFeedback(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
             <span>{fr.adminFeedbackShowResolved}</span>
           </label>
         </div>
@@ -1372,8 +1372,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {/* User Profile Modal */}
       {userProfileModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <div className="bg-indigo-50 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-indigo-50 border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
               <h2 className="text-lg md:text-xl font-bold text-gray-800">{fr.userProfileModalTitle}</h2>
               <button onClick={closeUserProfile} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
@@ -1453,8 +1453,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       {/* God-Mode editing modal */}
       {editingParty && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
-          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <div className="bg-indigo-50 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-indigo-50 border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
               <h2 className="text-lg md:text-xl font-bold text-gray-800">{fr.adminEditRegistrationTitle}</h2>
               <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕

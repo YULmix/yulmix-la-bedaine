@@ -3,7 +3,7 @@ import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../..
 
 // Shared by the bed input and notes textarea. text-base below md keeps iOS Safari from
 // zooming the page when the field gets focus (it does for anything under 16px).
-const FIELD_CLASS = 'w-full px-3 py-2 md:px-2 md:py-1 border border-gray-300 rounded text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+const FIELD_CLASS = 'w-full px-3 py-2 md:px-2 md:py-1 border border-gray-300 rounded text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50';
 
 // Per-party sleeping assignments and private admin notes. Unsaved edits live in the parent
 // (`logisticsChanges`) so they survive switching admin tabs.
@@ -18,7 +18,7 @@ const AdminLogisticsView = ({
   onSave,
   onOpenUserProfile
 }) => (
-  <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 mb-8">
+  <div className="bg-indigo-50 rounded-xl shadow-lg p-4 md:p-6 mb-8">
     <h2 className="text-xl font-semibold text-gray-800 mb-2 md:mb-4">{fr.logisticsViewTitle}</h2>
     <p className="text-sm text-gray-600 mb-4">{fr.logisticsViewDescription}</p>
 
@@ -31,7 +31,7 @@ const AdminLogisticsView = ({
         const notesId = `admin-notes-${party.id}`;
 
         return (
-          <div key={party.id} className="border border-gray-200 rounded-lg p-3 md:p-4">
+          <div key={party.id} className="border border-gray-200 rounded-lg p-3 md:p-4 bg-teal-50/50">
             <div className="mb-3 min-w-0">
               <button
                 onClick={() => onOpenUserProfile(profile)}

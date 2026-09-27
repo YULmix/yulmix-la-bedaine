@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/* Dark theme base with Tailwind v4's @theme directive */
+@theme {
+  /* Extended color palette for dark mode */
+  --color-canvas: #111317;
+  --color-surface: #1E2228;
+  --color-surface-elevated: #242830;
+  --color-surface-floating: #2B303A;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+}
+
+/* Dark mode application */
+html {
+  background-color: #111317;
+  color: #F8FAFC;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1E2228;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2D323B;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
