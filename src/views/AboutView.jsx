@@ -28,9 +28,9 @@ const AboutView = () => {
                 {fr.aboutYulmixContent}
                </p>
                <p className="mb-4">
-                <a href="https://www.mixcloud.com/https://www.mixcloud.com/yulmix/" target="_blank" rel="noopener noreferrer">{fr.listenToYulmixOnMixcloud}</a>
+                <a href="https://www.mixcloud.com/yulmix/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 transition-colors">{fr.listenToYulmixOnMixcloud}</a>
               </p>
-              <iframe width="100%" height="60" src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&light=1&feed=%2Fyulmix%2F&utm_medium=share&utm_source=embed&utm_content=profile&utm_term=VXNlcjoxNzM5NTI3OQ%3D%3D" frameborder="0" allow="encrypted-media; fullscreen; autoplay; idle-detection; speaker-selection; web-share;" ></iframe>
+              <iframe width="100%" height="60" src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&light=1&feed=%2Fyulmix%2F&utm_medium=share&utm_source=embed&utm_content=profile&utm_term=VXNlcjoxNzM5NTI3OQ%3D%3D" frameBorder="0" allow="encrypted-media; fullscreen; autoplay; idle-detection; speaker-selection; web-share;" ></iframe>
             </div>
           </div>
 

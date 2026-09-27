@@ -438,7 +438,7 @@ const handleRemoveAttendee = (id) => {
                           {attendee.bedReason === 'other' && (
                             <div className="mt-3">
                               <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                              <input type="text" value={attendee.bedReasonOther} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReasonOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 g-white/50" placeholder={fr.bedReasonOtherPlaceholder} />
+                              <input type="text" value={attendee.bedReasonOther} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReasonOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.bedReasonOtherPlaceholder} />
                             </div>
                           )}
                         </div>
@@ -513,7 +513,7 @@ const handleRemoveAttendee = (id) => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportArrival}</label>
-                <input type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" />
+                <input type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportDeparture}</label>
@@ -524,7 +524,7 @@ const handleRemoveAttendee = (id) => {
           {/* Music requests and message */}
           <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.musicRequests}</h3>
-            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" placeholder={fr.musicRequestsPlaceholder} />
+            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.musicRequestsPlaceholder} />
           </div>
           <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.messageToOrganizers}</h3>

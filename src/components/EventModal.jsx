@@ -65,7 +65,7 @@ const EventModal = ({ event, isOpen, onClose }) => {
       <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">{fr.eventDetails}</h2>
+          <h2 className="text-2xl font-bold text-slate-100">{fr.eventDetails}</h2>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-200 p-2 rounded-full hover:bg-slate-800"
@@ -76,27 +76,27 @@ const EventModal = ({ event, isOpen, onClose }) => {
 
         {/* Content */}
         <div className="p-6">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6">{eventData.title}</h3>
+          <h3 className="text-2xl font-bold text-slate-50 mb-6">{eventData.title}</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.description}</h4>
-              <p className="text-gray-700 mb-6">{eventData.description}</p>
+              <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.description}</h4>
+              <p className="text-slate-300 mb-6">{eventData.description}</p>
               
-              <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.instructions}</h4>
-              <p className="text-gray-700">{eventData.instructions}</p>
+              <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.instructions}</h4>
+              <p className="text-slate-300">{eventData.instructions}</p>
               
               {/* Additional event info */}
               {eventData.duration_days && (
                 <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventDurationTitle}</h4>
-                  <p className="text-gray-700">{eventData.duration_days} {fr.daysSuffix}</p>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventDurationTitle}</h4>
+                  <p className="text-slate-300">{eventData.duration_days} {fr.daysSuffix}</p>
                 </div>
               )}
               
               {eventData.points_of_contact && (
                 <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventPointsOfContactLabel}</h4>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventPointsOfContactLabel}</h4>
                   <p className="text-slate-300 whitespace-pre-line">{eventData.points_of_contact}</p>
                 </div>
               )}
@@ -104,8 +104,8 @@ const EventModal = ({ event, isOpen, onClose }) => {
             
             <div className="space-y-6">
               <div>
-                <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.venue}</h4>
-                <p className="text-gray-700">{eventData.venue}</p>
+                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.venue}</h4>
+                <p className="text-slate-300">{eventData.venue}</p>
                 {eventData.address && (
                   <a href={getGoogleMapsUrl(eventData.address)} target="_blank" rel="noopener noreferrer" className="text-slate-400 text-sm mt-1 underline hover:text-blue-500 transition-colors inline-block">
                     {eventData.address}
@@ -114,44 +114,44 @@ const EventModal = ({ event, isOpen, onClose }) => {
               </div>
               
               <div>
-                <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.dates}</h4>
-                <p className="text-gray-700">
+                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.dates}</h4>
+                <p className="text-slate-300">
                   {formatDate(eventData.startDate)} - {formatDate(eventData.endDate)}
                 </p>
               </div>
               
               <div>
-                <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.contact}</h4>
-                <p className="text-gray-700">{eventData.contactName}</p>
-                {eventData.contactEmail && <p className="text-gray-700">{eventData.contactEmail}</p>}
-                {eventData.contactPhone && <p className="text-gray-700">{eventData.contactPhone}</p>}
+                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.contact}</h4>
+                <p className="text-slate-300">{eventData.contactName}</p>
+                {eventData.contactEmail && <p className="text-slate-300">{eventData.contactEmail}</p>}
+                {eventData.contactPhone && <p className="text-slate-300">{eventData.contactPhone}</p>}
               </div>
               
               {/* Financial info */}
               {eventData.estimated_individual_cost_whole_event && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventEstimatedIndividualCostTitle}</h4>
-                  <p className="text-gray-700">{formatCurrency(eventData.estimated_individual_cost_whole_event)}</p>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventEstimatedIndividualCostTitle}</h4>
+                  <p className="text-slate-300">{formatCurrency(eventData.estimated_individual_cost_whole_event)}</p>
                 </div>
               )}
               
               {eventData.max_attendees && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventDurationCapacityTitle}</h4>
-                  <p className="text-gray-700">{eventData.max_attendees} {fr.participantsSuffix}</p>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventDurationCapacityTitle}</h4>
+                  <p className="text-slate-300">{eventData.max_attendees} {fr.participantsSuffix}</p>
                 </div>
               )}
               
               {eventData.status && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.status}</h4>
-                  <p className="text-gray-700">{getStatusLabel(eventData.status)}</p>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.status}</h4>
+                  <p className="text-slate-300">{getStatusLabel(eventData.status)}</p>
                 </div>
               )}
               
               {eventData.is_reg_open !== undefined && (
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventRegistrationsTitle}</h4>
+                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventRegistrationsTitle}</h4>
                   <p className={`px-3 py-1 rounded-full text-sm font-semibold border ${eventData.is_reg_open ? 'bg-green-900/30 text-green-300 border-green-800/30' : 'bg-red-900/30 text-red-300 border-red-800/30'}`}>
                     {eventData.is_reg_open ? fr.eventRegOpenLabel : fr.eventRegClosedLabel}
                   </p>

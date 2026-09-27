@@ -753,19 +753,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <p className="text-gray-100">{fr.adminPageSubtitle}</p>
       </div>
 
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map(toast => (
-          <div key={toast.id} className={`px-4 py-3 rounded-lg shadow-lg ${
-            toast.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-            toast.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-            'bg-blue-100 text-blue-800 border border-blue-200'
-          }`}>
-            {toast.message}
-          </div>
-        ))}
-      </div>
-
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       {/* Event Management */}
       <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
@@ -861,7 +848,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 5b. Date de début de l'événement */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventStartDateLabel}</label>
-                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 6. Délai d'intention avant inscription (mois) */}
@@ -892,7 +879,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 {/* 10. Nombre maximum de participants */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventMaxAttendeesLabel}</label>
-                <input type="number" value={eventChanges.max_attendees ?? editingEvent.max_attendees} onChange={e => handleEventFieldChange('max_attendees', parseInt(e.target.value) || 90)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" />
+                <input type="number" value={eventChanges.max_attendees ?? editingEvent.max_attendees} onChange={e => handleEventFieldChange('max_attendees', parseInt(e.target.value) || 90)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
 
               {/* 11. Coût total (CAD) */}
@@ -920,7 +907,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 {(eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? []).map((row, index) => (
                   <div key={index} className="flex gap-2 mb-2">
                     <input type="text" placeholder={fr.eventCostBreakdownCategoryPlaceholder} value={row.category || ''} onChange={e => handleCostBreakdownChange(index, 'category', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                    <input type="number" step="0.01" placeholder={fr.eventCostBreakdownAmountPlaceholder} value={row.amount || ''} onChange={e => handleCostBreakdownChange(index, 'amount', parseFloat(e.target.value) || 0)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" />
+                    <input type="number" step="0.01" placeholder={fr.eventCostBreakdownAmountPlaceholder} value={row.amount || ''} onChange={e => handleCostBreakdownChange(index, 'amount', parseFloat(e.target.value) || 0)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
                     <button type="button" onClick={() => removeCostBreakdownRow(index)} className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">
                       {fr.eventCostBreakdownRemoveRow}
                     </button>
@@ -963,7 +950,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               {/* 17. Instructions */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventInstructionsLabel}</label>
-                <textarea value={eventChanges.instructions ?? editingEvent.instructions} onChange={e => handleEventFieldChange('instructions', e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" />
+                <textarea value={eventChanges.instructions ?? editingEvent.instructions} onChange={e => handleEventFieldChange('instructions', e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
             </div>
             <div className="sticky bottom-0 bg-indigo-50 border-t px-6 py-4 flex justify-end space-x-3">
@@ -981,7 +968,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             <div className="text-sm text-gray-500">{fr.activeEventLabel} <strong>{activeEventState.theme}</strong></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-blue-100 border border-blue-150 rounded-lg p-4">
+            <div className="bg-blue-100 border border-blue-200 rounded-lg p-4">
               <div className="text-3xl font-bold text-blue-700">{parties.reduce((sum, p) => sum + (p.counts?.adult_whole || 0) + (p.counts?.adult_main || 0), 0)}</div>
               <div className="text-sm text-blue-600 mt-1">{fr.adultsStatLabel}</div>
             </div>
@@ -989,7 +976,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <div className="text-3xl font-bold text-green-700">{parties.reduce((sum, p) => sum + (p.counts?.teen_whole || 0) + (p.counts?.teen_main || 0), 0)}</div>
               <div className="text-sm text-green-600 mt-1">{fr.teenagersStatLabel}</div>
             </div>
-            <div className="bg-purple-100 border border-purple-150 rounded-lg p-4">
+            <div className="bg-purple-100 border border-purple-200 rounded-lg p-4">
               <div className="text-3xl font-bold text-purple-700">{parties.reduce((sum, p) => sum + (p.counts?.kids || 0), 0)}</div>
               <div className="text-sm text-purple-600 mt-1">{fr.kidsStatLabel}</div>
             </div>
@@ -1000,7 +987,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 </div>
            {/* Cost vs Price Display */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 mt-8">
-             <div className="bg-blue-100 border border-blue-150 rounded-lg p-6">
+             <div className="bg-blue-100 border border-blue-200 rounded-lg p-6">
                <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.costVsPriceTitle}</h3>
                <div className="space-y-4">
                  <div className="flex justify-between items-center">
@@ -1039,7 +1026,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                </div>
              </div>
 {/* Budget Metrics */}
-              <div className="bg-purple-100 border border-purple-150 rounded-lg p-6">
+              <div className="bg-purple-100 border border-purple-200 rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.budgetTitle}</h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
