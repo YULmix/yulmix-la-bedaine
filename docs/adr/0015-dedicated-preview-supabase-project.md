@@ -44,8 +44,9 @@ within the org's free-tier project-count limit.
 - Preview only has fake data, so preview builds can't exercise scenarios that need real volume
   or history. That's an acceptable trade for no longer touching production. `npm run
   db:preview:reset` (added later, see [Development setup](../07-development-setup.md#resetting-the-preview-database))
-  wipes Preview and reseeds it with fake users, demo events and registrations, and pre-creates a
-  local, gitignored allowlist of organisers as admins.
+  (or the **Reset Preview DB** GitHub workflow) wipes Preview and reloads generated fake users,
+  events and registrations; every account created afterwards is an admin, via a trigger that only
+  the Preview seed installs.
 - The Preview project is on the free tier and will pause after a week of inactivity, the same as
   any other free Supabase project. A paused project makes the next preview build fail until it's
   resumed from the dashboard (or by pinging its API, which auto-resumes it) — worth knowing if

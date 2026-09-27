@@ -1,57 +1,84 @@
 #!/usr/bin/env node
-// Resets and seeds the PREVIEW Supabase project (ADR 0015) so a branch's preview deployment
-// can be tested against known data. Never production.
+// Resets the PREVIEW Supabase database (ADR 0015) and fills it with generated fake data, so a
+// branch's preview deployment can be tested. Never production.
 //
 // Usage:
-//   npm run db:preview:reset             wipe Preview, re-apply supabase/migrations/, seed the
-//                                        fake users + demo data, then grant the admin allowlist
-//   npm run db:preview:admins            only (re)apply the admin allowlist, no reset
-//   ... -- --dry-run                     print what would run (password redacted), touch nothing
-//   ... -- --yes                         skip the "type the project ref" confirmation
+//   npm run db:preview:reset                 wipe Preview, re-apply this branch's migrations,
+//                                            load supabase/seed.sql + generated demo data
+//   npm run db:local:demo                    same data into the LOCAL Supabase instead
+//   npm run db:seed:generate                 only write the generated SQL, to inspect it
+// Options (after `--`, e.g. `npm run db:preview:reset -- --seed 7`):
+//   --seed <n>    one-off seed instead of supabase/preview-seed.json's "seed"
+//   --dry-run     (reset) print what would run, generate the SQL, touch no database
+//   --yes         (reset) skip the "type the project ref" confirmation (used by CI)
 //
-// Needs two local-only, gitignored files (see docs/07-development-setup.md):
-//   .env.preview.local            PREVIEW_DB_URL=<Preview's session pooler connection string>
-//   supabase/preview-admins.local one email per line (optionally "email, Full Name"), # comments
+// The knobs (how many members, registrations, past events, paid share...) live in
+// supabase/preview-seed.json; see docs/07-development-setup.md. The generated SQL is written to
+// supabase/seeds/preview.generated.sql (gitignored) on every run.
 //
-// What a reset does (Supabase CLI `db reset --db-url`): drops everything in `public`, truncates
-// every `auth` table (all users, including real Google sign-ins, are gone), re-applies every
-// migration, then runs supabase/seed.sql and supabase/seeds/preview.sql.
+// A reset (`supabase db reset --db-url`) drops everything in `public` and truncates every `auth`
+// table: all users are deleted. The generated seed ends by installing a Preview-only trigger that
+// makes every account created afterwards an admin, so people signing in with Google on a preview
+// deployment are admins; the seeded fake users stay regular members.
 //
-// Admins: since the reset deletes every user, each allowlisted email gets a pre-created,
-// email-confirmed auth user with profiles.is_admin = true. Signing in with Google under that same
-// (verified) email later links to that user via Supabase's automatic identity linking, so the
-// admin flag is already there on first sign-in. Allowlisted users who already exist are just
-// promoted.
-//
-// Connection: only ever an explicit --db-url, never `--linked` (the CLI's linked project in this
-// repo is production). `--project-ref` isn't used either: it needs IPv6 to reach the direct host,
-// and its IPv4 fallback is the pooler URL cached in supabase/.temp/, which is production's, so
-// the CLI rejects it for Preview. The session pooler URL works over IPv4 and names its target.
+// Connection: only ever an explicit PREVIEW_DB_URL (env or .env.preview.local), never `--linked`
+// (the CLI's linked project in this repo is production). `--project-ref` isn't used either: it
+// needs IPv6 to reach the direct host, and its IPv4 fallback is the pooler URL cached in
+// supabase/.temp/, which is production's, so the CLI rejects it for Preview.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { generatePreviewSeed } from './preview-seed/generate.mjs';
 
 const PREVIEW_REF = 'uacfrldoiixfstigosqv';
 const PRODUCTION_REF = 'ceacurlofmasyvhsoska';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ENV_FILE = join(ROOT, '.env.preview.local');
-const ADMINS_FILE = join(ROOT, 'supabase', 'preview-admins.local');
-// Relative to supabase/, as `db reset --sql-paths` expects. Order matters: seed.sql creates the
-// test users that preview.sql's registrations belong to.
-const SEED_PATHS = ['./seed.sql', './seeds/preview.sql'];
+const CONFIG_FILE = join(ROOT, 'supabase', 'preview-seed.json');
+const GENERATED_FILE = join(ROOT, 'supabase', 'seeds', 'preview.generated.sql');
+// Relative to supabase/, as `db reset --sql-paths` expects. seed.sql first: it creates the
+// fixed test users the generated data refers to.
+const SEED_PATHS = ['./seed.sql', './seeds/preview.generated.sql'];
 
 const args = process.argv.slice(2);
-const command = args.find((a) => !a.startsWith('--'));
+const command = args[0];
 const dryRun = args.includes('--dry-run');
 const assumeYes = args.includes('--yes');
+const seedArg = args.indexOf('--seed');
 
 function fail(message) {
   console.error(`\n✖ ${message}`);
   process.exit(1);
+}
+
+function seedOverride() {
+  if (seedArg === -1) return undefined;
+  const raw = args[seedArg + 1];
+  if (raw === undefined || raw === '') return undefined; // CI passes an empty input as ""
+  const seed = Number(raw);
+  if (!Number.isInteger(seed) || seed < 0) fail(`--seed must be a non-negative integer, got "${raw}".`);
+  return seed;
+}
+
+function generate() {
+  let config;
+  try {
+    config = JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
+  } catch (error) {
+    fail(`Could not read ${CONFIG_FILE}: ${error.message}`);
+  }
+  let sql;
+  try {
+    sql = generatePreviewSeed(config, seedOverride());
+  } catch (error) {
+    fail(error.message);
+  }
+  mkdirSync(dirname(GENERATED_FILE), { recursive: true });
+  writeFileSync(GENERATED_FILE, sql, 'utf8');
+  console.log(`Generated ${GENERATED_FILE} (seed ${seedOverride() ?? config.seed}).`);
 }
 
 function readEnvFile(path) {
@@ -93,68 +120,6 @@ function redact(dbUrl) {
   return url.toString();
 }
 
-// "email" or "email, Full Name" per line; blank lines and # comments ignored.
-function readAdmins() {
-  if (!existsSync(ADMINS_FILE)) {
-    console.warn(`! ${ADMINS_FILE} not found: only the seeded admin@test.local will be an admin.`);
-    return [];
-  }
-  const admins = [];
-  readFileSync(ADMINS_FILE, 'utf8').split(/\r?\n/).forEach((line, index) => {
-    const content = line.replace(/#.*/, '').trim();
-    if (!content) return;
-    const [email, ...nameParts] = content.split(',').map((part) => part.trim());
-    if (!/^[^\s@',]+@[^\s@',]+\.[^\s@',]+$/.test(email)) {
-      fail(`${ADMINS_FILE}:${index + 1}: "${email}" is not an email address.`);
-    }
-    admins.push({ email: email.toLowerCase(), fullName: nameParts.join(', ') });
-  });
-  return admins;
-}
-
-const sqlLiteral = (value) => `'${String(value).replace(/'/g, "''")}'`;
-
-// Idempotent: creates the auth user if missing (handle_new_user() then creates the profile), and
-// promotes it. Run as the postgres role, so prevent_self_privilege_escalation (keyed on auth.uid())
-// doesn't apply. Empty-string token columns match seed.sql: GoTrue can't scan NULLs there.
-// One DO block on purpose: `supabase db query` runs a single prepared statement.
-function adminsSql(admins) {
-  const rows = admins.map(({ email, fullName }) => `(${sqlLiteral(email)}, ${sqlLiteral(fullName)})`);
-  return `-- Generated by scripts/preview-db.mjs from supabase/preview-admins.local. Preview only.
-DO $$
-DECLARE
-  admin record;
-  v_user_id uuid;
-BEGIN
-  FOR admin IN SELECT * FROM (VALUES
-    ${rows.join(',\n    ')}
-  ) AS allowlist(email, full_name) LOOP
-    SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = admin.email;
-    IF v_user_id IS NULL THEN
-      v_user_id := gen_random_uuid();
-      INSERT INTO auth.users (
-        instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-        raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-        confirmation_token, email_change, email_change_token_new, recovery_token
-      ) VALUES (
-        '00000000-0000-0000-0000-000000000000', v_user_id, 'authenticated', 'authenticated',
-        admin.email, '', now(),
-        '{"provider":"email","providers":["email"]}', jsonb_build_object('full_name', admin.full_name),
-        now(), now(), '', '', '', ''
-      );
-      INSERT INTO auth.identities (id, user_id, provider_id, identity_data, provider, created_at, updated_at)
-      VALUES (
-        gen_random_uuid(), v_user_id, v_user_id::text,
-        jsonb_build_object('sub', v_user_id::text, 'email', admin.email, 'email_verified', true),
-        'email', now(), now()
-      );
-    END IF;
-    UPDATE public.profiles SET is_admin = true WHERE id = v_user_id;
-  END LOOP;
-END $$;
-`;
-}
-
 function runSupabase(cliArgs, dbUrl) {
   const shown = cliArgs.map((a) => (a === dbUrl ? redact(dbUrl) : a));
   console.log(`\n$ supabase ${shown.join(' ')}`);
@@ -172,40 +137,32 @@ async function confirm(what) {
   if (answer.trim() !== PREVIEW_REF) fail('Confirmation did not match. Nothing was changed.');
 }
 
-function grantAdmins(dbUrl, admins) {
-  if (admins.length === 0) return;
-  const sql = adminsSql(admins);
-  if (dryRun) {
-    console.log('\n--- admin allowlist SQL ---\n' + sql);
-  }
-  const dir = mkdtempSync(join(tmpdir(), 'preview-admins-'));
-  const file = join(dir, 'preview-admins.sql');
-  try {
-    writeFileSync(file, sql, 'utf8');
-    runSupabase(['db', 'query', '--db-url', dbUrl, '--file', file], dbUrl);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+const seedArgs = SEED_PATHS.flatMap((path) => ['--sql-paths', path]);
 
 async function main() {
-  if (!['reset', 'admins'].includes(command)) {
-    fail('Usage: node scripts/preview-db.mjs <reset|admins> [--dry-run] [--yes]');
+  switch (command) {
+    case 'generate':
+      generate();
+      break;
+    case 'local':
+      generate();
+      runSupabase(['db', 'reset', '--local', ...seedArgs]);
+      console.log('\n✔ Local database reset with the generated demo data.');
+      break;
+    case 'reset': {
+      const dbUrl = previewDbUrl();
+      console.log(`Target: Preview project ${PREVIEW_REF} (${redact(dbUrl)})${dryRun ? ' [dry run]' : ''}`);
+      generate();
+      await confirm('This DELETES all data and all users on the Preview database, then re-seeds it.');
+      runSupabase(['db', 'reset', '--db-url', dbUrl, ...seedArgs, '--yes'], dbUrl);
+      console.log(dryRun
+        ? `\nDry run: nothing was changed. Inspect ${GENERATED_FILE}.`
+        : '\n✔ Preview database reset. Anyone who signs in from now on is an admin.');
+      break;
+    }
+    default:
+      fail('Usage: node scripts/preview-db.mjs <reset|local|generate> [--seed <n>] [--dry-run] [--yes]');
   }
-  const dbUrl = previewDbUrl();
-  const admins = readAdmins();
-  console.log(`Target: Preview project ${PREVIEW_REF} (${redact(dbUrl)})${dryRun ? ' [dry run]' : ''}`);
-  console.log(`Admin allowlist: ${admins.length ? admins.map((a) => a.email).join(', ') : '(none)'}`);
-
-  if (command === 'reset') {
-    await confirm('This DELETES all data and all users on the Preview database, then re-seeds it.');
-    const seedArgs = SEED_PATHS.flatMap((path) => ['--sql-paths', path]);
-    runSupabase(['db', 'reset', '--db-url', dbUrl, ...seedArgs, '--yes'], dbUrl);
-  } else {
-    await confirm('This creates/promotes the allowlisted users as admins on the Preview database.');
-  }
-  grantAdmins(dbUrl, admins);
-  console.log(dryRun ? '\nDry run: nothing was changed.' : '\n✔ Preview database is ready.');
 }
 
 await main();

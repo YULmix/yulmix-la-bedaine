@@ -1,7 +1,0 @@
-# Copy to supabase/preview-admins.local (gitignored) and list who should be an admin on the
-# PREVIEW Supabase project after `npm run db:preview:reset` / `npm run db:preview:admins`.
-# One email per line, optionally followed by ", Full Name". Lines starting with # are ignored.
-# Use the email of the Google account you sign in with.
-#
-# organiser@example.com, Prénom Nom
-# someone.else@example.com
