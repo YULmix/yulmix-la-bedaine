@@ -44,8 +44,8 @@ const AboutView = () => {
                 {fr.aboutLaBedaineContent}
               </p>
             </div>
-            <div class="h-64 w-full overflow-hidden rounded-xl">
-              <img src="/banniere_bedaine.jpg" alt={fr.aboutLaBedaineTitle} class="h-full w-full object-cover object-center"/>
+            <div className="h-64 w-full overflow-hidden rounded-xl">
+              <img src="/banniere_bedaine.jpg" alt={fr.aboutLaBedaineTitle} className="h-full w-full object-cover object-center" />
             </div>
           </div>
         </div>
