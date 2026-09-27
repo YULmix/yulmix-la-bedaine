@@ -357,9 +357,9 @@ const handleRemoveAttendee = (id) => {
       setIsSubmitting(false);
     }
   };
-
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
+    
+      return (
+    <div className="bg-indigo-50 rounded-xl shadow-lg p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">{fr.registrationFormTitle}</h2>
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">{error}</div>}
       {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">{fr.registrationSavedSuccessMessage}</div>}
@@ -384,17 +384,17 @@ const handleRemoveAttendee = (id) => {
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.fullNameLabel}</label>
-                      <input type="text" value={attendee.name} onChange={(e) => handleAttendeeChange(attendee.id, 'name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.fullNamePlaceholder} required />
+                      <input type="text" value={attendee.name} onChange={(e) => handleAttendeeChange(attendee.id, 'name', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder="Jean Tremblay" required />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.participationTypeLabel}</label>
-                      <select value={TIER_OPTIONS.find(opt => opt.type === attendee.type && opt.participation === attendee.participation)?.value || 'adult-whole'} onChange={(e) => handleTierChange(attendee.id, e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <select value={TIER_OPTIONS.find(opt => opt.type === attendee.type && opt.participation === attendee.participation)?.value || 'adult-whole'} onChange={(e) => handleTierChange(attendee.id, e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
                         {TIER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     </div>
                     <div className="flex items-end">
                       <label className="flex items-center space-x-2">
-                        <input type="checkbox" checked={attendee.isNewMember} onChange={(e) => handleAttendeeChange(attendee.id, 'isNewMember', e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
+                        <input type="checkbox" checked={attendee.isNewMember} onChange={(e) => handleAttendeeChange(attendee.id, 'isNewMember', e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 bg-white/50" />
                         <span className="text-sm text-gray-700"> {fr.firstTimeAttendee}</span>
                       </label>
                     </div>
@@ -409,36 +409,36 @@ const handleRemoveAttendee = (id) => {
             </div>
           </div>
           {/* Logistics per attendee */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
+          <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.accommodationSectionTitle}</h3>
             <div className="mb-4">
               <label className="flex items-center space-x-2">
-                <input type="checkbox" checked={sameForEveryone} onChange={(e) => setSameForEveryone(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
+                <input type="checkbox" checked={sameForEveryone} onChange={(e) => setSameForEveryone(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500  bg-white/50" />
                 <span className="text-sm text-gray-700">{fr.sameForEveryone}</span>
               </label>
             </div>
             <div className="space-y-6">
               {attendees.map((attendee, index) => (
-                <div key={`logistics-${attendee.id}`} className="p-4 border border-gray-100 rounded-lg bg-gray-50">
+                <div key={`logistics-${attendee.id}`} className="p-4 border border-gray-100 rounded-lg bg-indigo-50">
                   <div className="text-sm font-medium text-gray-800 mb-2">{attendee.name || `Participant ${index + 1}`}</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.accommodation}</label>
-                      <select value={attendee.sleepingPreference} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreference', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <select value={attendee.sleepingPreference} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreference', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
                         <option value="">{fr.selectGenericPlaceholder}</option>
                         {ACCOMMODATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                       {attendee.sleepingPreference === 'bed' && (
                         <div className="mt-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">{fr.bedReason}</label>
-                          <select value={attendee.bedReason} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReason', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                          <select value={attendee.bedReason} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReason', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300  bg-white/50">
                             <option value="">{fr.selectGenericPlaceholder}</option>
                             {BED_REASON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </select>
                           {attendee.bedReason === 'other' && (
                             <div className="mt-3">
                               <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                              <input type="text" value={attendee.bedReasonOther} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReasonOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.bedReasonOtherPlaceholder} />
+                              <input type="text" value={attendee.bedReasonOther} onChange={(e) => handleAttendeeChange(attendee.id, 'bedReasonOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 g-white/50" placeholder={fr.bedReasonOtherPlaceholder} />
                             </div>
                           )}
                         </div>
@@ -446,20 +446,20 @@ const handleRemoveAttendee = (id) => {
                       {attendee.sleepingPreference === 'outside_other' && (
                         <div className="mt-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                          <input type="text" value={attendee.sleepingPreferenceOther} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreferenceOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.accommodationOutsideOtherPlaceholder} />
+                          <input type="text" value={attendee.sleepingPreferenceOther} onChange={(e) => handleAttendeeChange(attendee.id, 'sleepingPreferenceOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.accommodationOutsideOtherPlaceholder} />
                         </div>
                       )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{fr.dietaryNeeds}</label>
-                      <select value={attendee.dietaryNeeds} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryNeeds', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <select value={attendee.dietaryNeeds} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryNeeds', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
                         <option value="">{fr.selectGenericPlaceholder}</option>
                         {DIETARY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                       {attendee.dietaryNeeds === 'other' && (
                         <div className="mt-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                          <input type="text" value={attendee.dietaryOther} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.dietaryOtherPlaceholder} />
+                          <input type="text" value={attendee.dietaryOther} onChange={(e) => handleAttendeeChange(attendee.id, 'dietaryOther', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.dietaryOtherPlaceholder} />
                         </div>
                       )}
                     </div>
@@ -473,7 +473,7 @@ const handleRemoveAttendee = (id) => {
             </div>
           </div>
           {/* Volunteering */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
+          <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.volunteering}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {VOLUNTEERING_OPTIONS.map(option => (
@@ -484,7 +484,7 @@ const handleRemoveAttendee = (id) => {
                     } else {
                       setVolunteeringSelections(volunteeringSelections.filter(v => v !== option.value));
                     }
-                  }} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500" />
+                  }} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 bg-white/50" />
                   <span className="text-sm text-gray-700">{option.label}</span>
                 </label>
               ))}
@@ -492,43 +492,43 @@ const handleRemoveAttendee = (id) => {
             {volunteeringSelections.includes('other') && (
               <div className="mt-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.pleaseSpecify}</label>
-                <input type="text" value={volunteeringOtherDetail} onChange={(e) => setVolunteeringOtherDetail(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.volunteeringOtherPlaceholder} />
+                <input type="text" value={volunteeringOtherDetail} onChange={(e) => setVolunteeringOtherDetail(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.volunteeringOtherPlaceholder} />
               </div>
             )}
           </div>
           {/* Transport */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
+          <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.transport}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportType}</label>
-                <select value={transportType} onChange={(e) => setTransportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <select value={transportType} onChange={(e) => setTransportType(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
                   <option value="">{fr.selectGenericPlaceholder}</option>
                   {TRANSPORT_TYPES.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportSeats}</label>
-                <input type="number" min="0" max="20" value={transportSeats} onChange={(e) => setTransportSeats(parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="number" min="0" max="20" value={transportSeats} onChange={(e) => setTransportSeats(parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportArrival}</label>
-                <input type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{fr.transportDeparture}</label>
-                <input type="datetime-local" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="datetime-local" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
               </div>
             </div>
           </div>
           {/* Music requests and message */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
+          <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.musicRequests}</h3>
-            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.musicRequestsPlaceholder} />
+            <textarea value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300" placeholder={fr.musicRequestsPlaceholder} />
           </div>
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6">
+          <div className="bg-teal-50/50 rounded-lg p-6 border border-gray-200 mt-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">{fr.messageToOrganizers}</h3>
-            <textarea value={messageToOrganizers} onChange={(e) => setMessageToOrganizers(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder={fr.messageToOrganizersPlaceholder} />
+            <textarea value={messageToOrganizers} onChange={(e) => setMessageToOrganizers(e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" placeholder={fr.messageToOrganizersPlaceholder} />
           </div>
 {/* Summary section */}
           <div className="bg-gray-50 rounded-lg p-6">

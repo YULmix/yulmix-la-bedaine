@@ -46,7 +46,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
   };
 
   return (
-    <header className="bg-blue-600 text-white p-4">
+    <header className="bg-indigo-900 text-white p-4">
       <div className="container mx-auto flex justify-between items-center">
         <h1 
           className="text-2xl font-bold cursor-pointer"
@@ -64,18 +64,18 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
           </button>
           
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white text-gray-800 rounded-lg shadow-lg py-2 z-50">
+            <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-700 text-slate-100 rounded-lg shadow-lg shadow-slate-950/50 py-2 z-50">
               {!isAuthenticated ? (
                 <>
                   <button
                     onClick={() => handleSignIn('google')}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-100"
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800"
                   >
                     {fr.signInWithGoogle}
                   </button>
                   <button
                     onClick={() => handleSignIn('facebook')}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-100"
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800"
                   >
                     {fr.signInWithFacebook}
                   </button>
@@ -85,14 +85,14 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
                   {isAdmin && (
                     <button
                       onClick={() => { navigate('/admin'); setIsDropdownOpen(false); }}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-100 text-blue-600"
+                      className="w-full px-4 py-3 text-left hover:bg-slate-800 text-blue-400"
                     >
                       {fr.adminNavLink}
                     </button>
                   )}
                   <button
                     onClick={handleSignOut}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-100 text-red-600"
+                    className="w-full px-4 py-3 text-left hover:bg-slate-800 text-red-400"
                   >
                     {fr.signOut}
                   </button>

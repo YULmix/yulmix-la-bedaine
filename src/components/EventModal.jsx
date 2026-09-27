@@ -62,13 +62,13 @@ const EventModal = ({ event, isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+        <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-800">{fr.eventDetails}</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
+            className="text-slate-400 hover:text-slate-200 p-2 rounded-full hover:bg-slate-800"
           >
             <X size={24} />
           </button>
@@ -97,7 +97,7 @@ const EventModal = ({ event, isOpen, onClose }) => {
               {eventData.points_of_contact && (
                 <div className="mt-6">
                   <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventPointsOfContactLabel}</h4>
-                  <p className="text-gray-700 whitespace-pre-line">{eventData.points_of_contact}</p>
+                  <p className="text-slate-300 whitespace-pre-line">{eventData.points_of_contact}</p>
                 </div>
               )}
             </div>
@@ -107,7 +107,7 @@ const EventModal = ({ event, isOpen, onClose }) => {
                 <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.venue}</h4>
                 <p className="text-gray-700">{eventData.venue}</p>
                 {eventData.address && (
-                  <a href={getGoogleMapsUrl(eventData.address)} target="_blank" rel="noopener noreferrer" className="text-gray-600 text-sm mt-1 underline hover:text-blue-600 transition-colors inline-block">
+                  <a href={getGoogleMapsUrl(eventData.address)} target="_blank" rel="noopener noreferrer" className="text-slate-400 text-sm mt-1 underline hover:text-blue-500 transition-colors inline-block">
                     {eventData.address}
                   </a>
                 )}
@@ -152,7 +152,7 @@ const EventModal = ({ event, isOpen, onClose }) => {
               {eventData.is_reg_open !== undefined && (
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-2">{fr.eventRegistrationsTitle}</h4>
-                  <p className={`px-3 py-1 rounded-full text-sm font-semibold ${eventData.is_reg_open ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  <p className={`px-3 py-1 rounded-full text-sm font-semibold border ${eventData.is_reg_open ? 'bg-green-900/30 text-green-300 border-green-800/30' : 'bg-red-900/30 text-red-300 border-red-800/30'}`}>
                     {eventData.is_reg_open ? fr.eventRegOpenLabel : fr.eventRegClosedLabel}
                   </p>
                 </div>
@@ -162,7 +162,7 @@ const EventModal = ({ event, isOpen, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end">
+        <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700 px-6 py-4 flex justify-end">
           <button
             onClick={onClose}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

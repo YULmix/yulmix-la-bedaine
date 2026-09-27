@@ -98,20 +98,20 @@ const FeedbackModal = ({ userId }) => {
 
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-800">{fr.feedbackModalTitle}</h2>
-              <button onClick={handleClose} className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-xl shadow-slate-950/50">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700">
+              <h2 className="text-lg font-semibold text-slate-100">{fr.feedbackModalTitle}</h2>
+              <button onClick={handleClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-full hover:bg-slate-800">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+                <div className="bg-red-900/30 border border-red-800/30 text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>
               )}
               {success && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{fr.feedbackSuccess}</div>
+                <div className="bg-green-900/30 border border-green-800/30 text-green-300 px-4 py-3 rounded-lg text-sm">{fr.feedbackSuccess}</div>
               )}
 
               <textarea
@@ -121,21 +121,21 @@ const FeedbackModal = ({ userId }) => {
                 rows={5}
                 required
                 placeholder={fr.feedbackPlaceholder}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-100 placeholder:text-slate-400"
               />
 
               {uploadingScreenshot && (
-                <p className="text-sm text-gray-500">{fr.feedbackScreenshotUploading}</p>
+                <p className="text-sm text-slate-400">{fr.feedbackScreenshotUploading}</p>
               )}
 
               {screenshotUrl && !uploadingScreenshot && (
                 <div className="relative inline-block">
-                  <img src={screenshotUrl} alt={fr.feedbackScreenshotAlt} className="max-h-40 rounded-lg border border-gray-200" />
+                  <img src={screenshotUrl} alt={fr.feedbackScreenshotAlt} className="max-h-40 rounded-lg border border-slate-700 bg-slate-800/50" />
                   <button
                     type="button"
                     onClick={() => setScreenshotUrl(null)}
                     aria-label={fr.feedbackRemoveScreenshot}
-                    className="absolute -top-2 -right-2 bg-gray-800 text-white rounded-full p-1 hover:bg-gray-900"
+                    className="absolute -top-2 -right-2 bg-slate-900 text-slate-100 rounded-full p-1 hover:bg-slate-800 border border-slate-600"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -143,7 +143,7 @@ const FeedbackModal = ({ userId }) => {
               )}
 
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={handleClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                <button type="button" onClick={handleClose} className="px-4 py-2 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-800 font-medium">
                   {fr.feedbackCancel}
                 </button>
                 <button
