@@ -1,0 +1,22 @@
+{
+  "seed": 20260927,
+  "members": 40,
+  "activeEvent": {
+    "registrations": 40,
+    "maxAttendees": 70,
+    "sellingPrice": 260,
+    "paidShare": 0.5
+  },
+  "pastEvents": {
+    "count": 2,
+    "registrationsEach": 15,
+    "sellingPrice": 220
+  },
+  "parties": {
+    "minSize": 1,
+    "maxSize": 4,
+    "newMemberShare": 0.15,
+    "teenShare": 0.2,
+    "kidShare": 0.2
+  }
+}

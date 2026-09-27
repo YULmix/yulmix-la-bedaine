@@ -13,7 +13,10 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "lint:diff": "node scripts/lint-diff.mjs",
-    "lint:diff:staged": "node scripts/lint-diff.mjs --staged"
+    "lint:diff:staged": "node scripts/lint-diff.mjs --staged",
+    "db:preview:reset": "node scripts/preview-db.mjs reset",
+    "db:local:demo": "node scripts/preview-db.mjs local",
+    "db:seed:generate": "node scripts/preview-db.mjs generate"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -25,6 +28,7 @@
   "devDependencies": {
     "@babel/preset-env": "^7.26.0",
     "@babel/preset-react": "^7.29.7",
+    "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^6.1.5",
