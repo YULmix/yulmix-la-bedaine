@@ -161,6 +161,9 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm run lint` | ESLint, whole repo | repo-wide `local/no-literal-ui-strings` is a **warning** — there's a pre-existing backlog (see `eslint.config.js`), not something a single PR is expected to clear |
 | `npm run lint:diff -- <baseRef>` | Fails on any `local/no-literal-ui-strings` warning on a line *added* since `baseRef` (default `origin/main`) | what CI's "Lint changed files for new hardcoded UI strings" step runs; needs the commit(s) to already exist (`baseRef...HEAD`) |
 | `npm run lint:diff:staged -- <baseRef>` | Same rule, but against the **staged** snapshot instead of `HEAD` | what the `lint-diff-staged` pre-commit hook runs — see below; this is what lets it catch a violation *before* the commit exists, not one commit later |
+| `npm run db:preview:reset` | Wipes the **Preview** Supabase database, re-applies migrations, loads generated fake data; new sign-ins become admins | Preview only, never production — see [Resetting the Preview database](#resetting-the-preview-database) |
+| `npm run db:local:demo` | Same generated fake data, into the local Supabase | local only |
+| `npm run db:seed:generate` | Only writes the generated SQL to `supabase/seeds/preview.generated.sql` | touches no database |
 
 ## Pre-commit hooks
 
@@ -299,6 +302,8 @@ browser-install strategy and runtime cost for CI runners are worked out.
 | `.env` | no (gitignored) | your local Supabase credentials |
 | `.env.test.example` | yes | template for `.env.test` |
 | `.env.test` | **yes — should not be** | placeholders only today; gitignore it before someone adds a real key |
+| `.env.preview.local` | no (gitignored) | `PREVIEW_DB_URL`, for `npm run db:preview:reset` |
+| `supabase/preview-seed.json` | yes | knobs for the generated fake data |
 
 ## Deploying
 
@@ -309,6 +314,68 @@ rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel proj
 [ADR 0015](./adr/0015-dedicated-preview-supabase-project.md). Its schema has to be kept in sync
 with `supabase/migrations/` by hand for now (`supabase db push --project-ref
 uacfrldoiixfstigosqv`); there's no CI automation for it yet.
+
+### Resetting the Preview database
+
+To test a branch's preview deployment against known data, reset the Preview database from that
+branch. It's shared by every preview deployment, and a reset applies *that branch's* migrations,
+so other open PRs' previews may not match its schema until someone resets from their branch.
+One tester at a time.
+
+**From GitHub (no local setup):** Actions tab → **Reset Preview DB** → **Run workflow**, pick
+the branch, optionally type a seed number. It uses the `PREVIEW_DB_URL` repo secret
+(`.github/workflows/preview-db-reset.yml`).
+
+**From your machine:** put `PREVIEW_DB_URL=<connection string>` in `.env.preview.local`
+(gitignored). Get it from the Supabase dashboard → project **YULmix - La Bedaine (Preview)** →
+**Connect** → method **Session pooler** (not "Direct connection": that host is IPv6-only on the
+free tier and GitHub runners can't reach it), with the database password filled in
+(percent-encoded). The same URL goes into the `PREVIEW_DB_URL` repo secret. Then
+`npm run db:preview:reset` and type the Preview project ref to confirm.
+
+What a reset does (`scripts/preview-db.mjs`):
+
+1. Generates fake data into `supabase/seeds/preview.generated.sql` (gitignored) from
+   `supabase/preview-seed.json`.
+2. Runs `supabase db reset --db-url <Preview>`: drops everything in `public`, **deletes every
+   user** (all `auth` tables are truncated), re-applies `supabase/migrations/`, then loads
+   `supabase/seed.sql` (`member@test.local` / `admin@test.local`) and the generated file.
+3. The generated file ends by installing a Preview-only trigger: **every account created from
+   then on is an admin**, so whoever signs in with Google on a preview deployment can use the
+   admin screens. The seeded users stay regular members (except `admin@test.local`). No migration
+   knows about this trigger, so it never reaches production.
+
+#### Choosing the fake data
+
+Edit `supabase/preview-seed.json` (changes go through a PR like any other file):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `seed` | `20260927` | Random seed. Same config + same seed = exactly the same data, so a bug seen on Preview stays reproducible after a reset. Override once with `--seed <n>` or the workflow's seed field. |
+| `members` | `40` | Fake members, on top of the two test accounts. All `…@test.local`, password `password123`. |
+| `activeEvent.registrations` | `40` | Registrations on the active event (registration open, event ~8 weeks out). Test Member is always one of them. At most `members + 1`. |
+| `activeEvent.maxAttendees` | `70` | Capacity; every attendee counts, kids included. Parties arriving once it's full are waitlisted. `0` = no limit. |
+| `activeEvent.sellingPrice` | `260` | Whole-event selling price ($). |
+| `activeEvent.paidShare` | `0.5` | Share of active-event registrations already paid (0–1). |
+| `pastEvents.count` | `2` | Archived past editions, for profile history. |
+| `pastEvents.registrationsEach` | `15` | Registrations per past edition, all paid. |
+| `pastEvents.sellingPrice` | `220` | Past editions' selling price ($). |
+| `parties.minSize` / `maxSize` | `1` / `4` | People per registration. |
+| `parties.newMemberShare` | `0.15` | Chance an adult or teen is a new member (priced at the main-event rate). |
+| `parties.teenShare` / `kidShare` | `0.2` / `0.2` | Chance each extra person is a teen / a kid (the registrant is always an adult). |
+
+Names come from [faker](https://fakerjs.dev/) with a French-Canadian locale; free text (notes,
+messages, allergies) is picked from French phrase lists in `scripts/preview-seed/generate.mjs`.
+Amounts, counts and waitlisting are computed by the database triggers, as for real registrations.
+
+To look at the data without touching any database: `npm run db:seed:generate` (add
+`-- --seed <n>` for another variant) and open `supabase/seeds/preview.generated.sql`. To load it
+into your **local** Supabase instead: `npm run db:local:demo` (a plain `supabase db reset` goes
+back to just the two test users, which is what the e2e tests expect).
+
+Safety: the script only connects through `PREVIEW_DB_URL` and refuses the URL unless it names
+the Preview project (`uacfrldoiixfstigosqv`) and not production. It never uses the CLI's linked
+project, which is production.
 
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
 be deleted (see [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).

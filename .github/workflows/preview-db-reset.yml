@@ -1,0 +1,62 @@
+# Manual "Reset Preview DB" button: wipes the Preview Supabase project (ADR 0015, never
+# production), re-applies the chosen branch's migrations and loads generated fake data from
+# supabase/preview-seed.json. Afterwards, anyone who signs in on a preview deployment is an admin.
+#
+# Run it from the Actions tab → "Reset Preview DB" → "Run workflow", picking the branch you're
+# testing. Needs the PREVIEW_DB_URL repo secret (Preview's session pooler connection string).
+# See docs/07-development-setup.md#resetting-the-preview-database.
+name: Reset Preview DB
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Optional seed number for different fake data (blank = the one in supabase/preview-seed.json)'
+        required: false
+        default: ''
+
+# One reset at a time; a second run waits instead of wiping the database mid-seed.
+concurrency:
+  group: preview-db-reset
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_CLI_VERSION: '2.114.0'
+
+jobs:
+  reset:
+    name: Reset and seed Preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # The script refuses any URL that isn't the Preview project.
+      - name: Reset Preview database
+        run: npm run db:preview:reset -- --yes --seed "$SEED"
+        env:
+          PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
+          SEED: ${{ inputs.seed }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Preview database reset from \`${GITHUB_REF_NAME}\`"
+            echo ""
+            echo "Seed: ${SEED:-default from supabase/preview-seed.json}. Anyone who signs in on a preview deployment from now on is an admin."
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SEED: ${{ inputs.seed }}
