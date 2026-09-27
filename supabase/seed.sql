@@ -1,5 +1,6 @@
--- Local dev/test users. Applied only by `supabase db reset` against the local database
--- (see supabase/config.toml [db.seed]) — never run against a hosted project.
+-- Local dev/test users. Applied by `supabase db reset` against the local database (see
+-- supabase/config.toml [db.seed]), and by `npm run db:preview:reset` against the Preview project
+-- (scripts/preview-db.mjs). Never run against production.
 --
 -- Password for both: "password123"
 --

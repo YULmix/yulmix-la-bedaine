@@ -161,6 +161,8 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm run lint` | ESLint, whole repo | repo-wide `local/no-literal-ui-strings` is a **warning** — there's a pre-existing backlog (see `eslint.config.js`), not something a single PR is expected to clear |
 | `npm run lint:diff -- <baseRef>` | Fails on any `local/no-literal-ui-strings` warning on a line *added* since `baseRef` (default `origin/main`) | what CI's "Lint changed files for new hardcoded UI strings" step runs; needs the commit(s) to already exist (`baseRef...HEAD`) |
 | `npm run lint:diff:staged -- <baseRef>` | Same rule, but against the **staged** snapshot instead of `HEAD` | what the `lint-diff-staged` pre-commit hook runs — see below; this is what lets it catch a violation *before* the commit exists, not one commit later |
+| `npm run db:preview:reset` | Wipes the **Preview** Supabase database, re-applies migrations, seeds fake users + demo data, grants the local admin allowlist | Preview only, never production — see [Resetting the Preview database](#resetting-the-preview-database) |
+| `npm run db:preview:admins` | Only (re)applies the admin allowlist to Preview, no reset | same |
 
 ## Pre-commit hooks
 
@@ -290,6 +292,8 @@ browser-install strategy and runtime cost for CI runners are worked out.
 | `.env` | no (gitignored) | your local Supabase credentials |
 | `.env.test.example` | yes | template for `.env.test` |
 | `.env.test` | **yes — should not be** | placeholders only today; gitignore it before someone adds a real key |
+| `.env.preview.local` | no (gitignored) | `PREVIEW_DB_URL`, for `npm run db:preview:*` |
+| `supabase/preview-admins.local` | no (gitignored) | admin allowlist for the Preview database; template: `supabase/preview-admins.example` |
 
 ## Deploying
 
@@ -300,6 +304,37 @@ rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel proj
 [ADR 0015](./adr/0015-dedicated-preview-supabase-project.md). Its schema has to be kept in sync
 with `supabase/migrations/` by hand for now (`supabase db push --project-ref
 uacfrldoiixfstigosqv`); there's no CI automation for it yet.
+
+### Resetting the Preview database
+
+To test a branch's preview deployment against known data, reset the Preview database. It's
+shared by every preview deployment, so tell the others first.
+
+1. One-time setup, both files gitignored:
+   - `.env.preview.local` containing `PREVIEW_DB_URL=<connection string>`. Get it from the
+     Supabase dashboard → project **YULmix - La Bedaine (Preview)** → **Connect** → **Session
+     pooler**, with the database password filled in (percent-encoded).
+   - `supabase/preview-admins.local`: copy `supabase/preview-admins.example` and list the Google
+     account emails that should be admins, one per line (`email` or `email, Full Name`).
+2. `npm run db:preview:reset`, then type the Preview project ref to confirm. Add `-- --dry-run`
+   to see the commands and the generated admin SQL without running anything.
+
+What it does (`scripts/preview-db.mjs`):
+
+- Runs `supabase db reset --db-url <Preview>`. That drops everything in `public`, **deletes every
+  user** (all `auth` tables are truncated), re-applies `supabase/migrations/`, and runs
+  `supabase/seed.sql` (the `member@test.local` / `admin@test.local` test users) and
+  `supabase/seeds/preview.sql` (more fake members, an open active event with registrations, an
+  archived past event). Because it replays every migration, it also brings Preview's schema up to
+  date.
+- Pre-creates each allowlisted email as a confirmed user with `is_admin = true`. When that person
+  later signs in with Google using the same email, Supabase links the Google identity to this
+  user, so they're already an admin. `npm run db:preview:admins` applies the allowlist without a
+  reset, e.g. after adding someone; people who already exist are promoted.
+
+Safety: the script only connects through `PREVIEW_DB_URL` and refuses the URL unless it names
+the Preview project (`uacfrldoiixfstigosqv`) and not production. It never uses the CLI's linked
+project, which is production.
 
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
 be deleted (see [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).

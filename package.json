@@ -13,7 +13,9 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "lint:diff": "node scripts/lint-diff.mjs",
-    "lint:diff:staged": "node scripts/lint-diff.mjs --staged"
+    "lint:diff:staged": "node scripts/lint-diff.mjs --staged",
+    "db:preview:reset": "node scripts/preview-db.mjs reset",
+    "db:preview:admins": "node scripts/preview-db.mjs admins"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
