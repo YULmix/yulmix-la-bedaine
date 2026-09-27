@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
+import AdminLogisticsView from '../components/admin/AdminLogisticsView';
+import AdminUserManagement from '../components/admin/AdminUserManagement';
 import {
   ACCOMMODATION_OPTIONS,
-  BED_REASON_OPTIONS,
   DIETARY_OPTIONS,
   TIER_OPTIONS,
   getOptionLabel,
@@ -17,7 +19,24 @@ import { formatCurrency, formatDate } from '../lib/format';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
+// Admin sub-navigation tabs; the id is what appears in the URL (?tab=<id>).
+const ADMIN_TABS = [
+  { id: 'users', labelKey: 'adminTabUsers' },
+  { id: 'logistics', labelKey: 'adminTabLogistics' }
+];
+const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
+
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = ADMIN_TABS.some(tab => tab.id === requestedTab) ? requestedTab : DEFAULT_ADMIN_TAB;
+  const selectTab = (tabId) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tabId);
+      return next;
+    });
+  };
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -153,7 +172,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .from('user_parties')
         .select(`
           *,
-          profiles!inner(email, full_name, is_admin)
+          profiles!inner(id, email, full_name, is_admin, created_at)
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: true });
@@ -806,7 +825,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       </div>
       {/* Inline event metadata editing modal */}
       {editingEvent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">{fr.editEventMetadataTitle}</h2>
@@ -1091,173 +1110,55 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           </div>
         </div>
       )}
-{/* Dedicated Logistics View */}
+      {/* Sub-navigation: one data-dense panel at a time, synced to ?tab= */}
       {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.logisticsViewTitle}</h2>
-          <p className="text-sm text-gray-600 mb-4">{fr.logisticsViewDescription}</p>
-
-          <div className="space-y-4">
-            {parties.map(party => {
-              const profile = party.profiles || {};
-              const partyAttendees = party.attendees || [];
-              const changes = logisticsChanges[party.id] || {};
-              const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
-
+        <>
+          <div role="tablist" aria-label={fr.adminTabsAriaLabel} className="flex gap-1 mb-6 border-b border-gray-200">
+            {ADMIN_TABS.map(tab => {
+              const isActive = tab.id === activeTab;
               return (
-                <div key={party.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 mb-3">
-                    <div>
-                      <button
-                        onClick={() => openUserProfile(profile)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                      >
-                        {profile.full_name || fr.notSpecified}
-                      </button>
-                      <p className="text-sm text-gray-500">{profile.email}</p>
-                    </div>
-                    {hasChanges && (
-                      <button
-                        onClick={() => saveLogisticsChanges(party.id)}
-                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 self-start"
-                      >
-                        {fr.saveAssignments}
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableAttendee}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingPref}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.bedReason}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingAssigned}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {partyAttendees.map((attendee, index) => {
-                          const assignedValue = changes.attendees && changes.attendees[index] !== undefined
-                            ? changes.attendees[index]
-                            : (attendee.assigned_bed || '');
-
-                          return (
-                            <tr key={index}>
-                              <td className="px-4 py-2 text-sm text-gray-800">{attendee.name || `${fr.participantFallback} #${index + 1}`}</td>
-                              <td className="px-4 py-2 text-sm text-gray-800">
-                                {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
-                                {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other && (
-                                  <span className="block text-xs text-gray-500">{attendee.sleeping_preference_other}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-gray-800">
-                                {getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason)}
-                                {attendee.bed_reason === 'other' && attendee.bed_reason_other && (
-                                  <span className="block text-xs text-gray-500">{attendee.bed_reason_other}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2">
-                                <input
-                                  type="text"
-                                  value={assignedValue}
-                                  onChange={(e) => handleAssignedBedChange(party.id, index, e.target.value)}
-                                  placeholder={fr.assignedBedPlaceholder}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-500 uppercase mb-1">{fr.logisticsTableAdminNotes}</label>
-                    <textarea
-                      value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                      onChange={(e) => handleAdminNotesChange(party.id, e.target.value)}
-                      rows="2"
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder={fr.adminNotesPlaceholder}
-                    />
-                  </div>
-                </div>
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`admin-tab-${tab.id}`}
+                  aria-selected={isActive}
+                  aria-controls={`admin-tabpanel-${tab.id}`}
+                  onClick={() => selectTab(tab.id)}
+                  className={`flex-1 md:flex-none min-h-11 px-3 md:px-4 py-2 -mb-px text-sm font-medium text-center leading-tight md:whitespace-nowrap border-b-2 ${
+                    isActive
+                      ? 'border-blue-600 text-blue-700'
+                      : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
+                  }`}
+                >
+                  {fr[tab.labelKey]}
+                </button>
               );
             })}
           </div>
-        </div>
-      )}
-
-{/* Admin User & Party Management */}
-      {activeEventState && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">{fr.adminUsersManagementTitle}</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableName}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableEmail}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.adminTableHeader}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.paymentStatus}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.amountDue}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.actionsTableHeader}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {parties.map(party => {
-                  const profile = party.profiles || {};
-                  const isCurrentAdmin = profile.id === currentUserId;
-                  return (
-                    <tr key={party.id}>
-                      <td className="px-4 py-3 text-sm text-gray-800">
-                        <button 
-                          onClick={() => openUserProfile(profile)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {profile.full_name || fr.notSpecified}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={!!profile.is_admin}
-                          onChange={e => handleAdminToggle(profile, e.target.checked)}
-                          disabled={isCurrentAdmin}
-                          className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handlePaymentToggle(party, party.payment_status === PAYMENT_STATUS.PAID ? PAYMENT_STATUS.UNPAID : PAYMENT_STATUS.PAID)}
-                          className={`px-3 py-1 text-xs rounded-full font-medium ${
-                            party.payment_status === PAYMENT_STATUS.PAID
-                              ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                              : 'bg-red-100 text-red-800 hover:bg-red-200'
-                          }`}
-                        >
-                          {getPaymentStatusShortLabel(party.payment_status)}
-                        </button>
-                      </td>
-<td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(getRoundedPartyTotal(party))}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => openPartyEdit(party)}
-                          className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
-                        >
-                          {fr.editRegistrationButton}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
+            {activeTab === 'logistics' ? (
+              <AdminLogisticsView
+                parties={parties}
+                logisticsChanges={logisticsChanges}
+                onAssignedBedChange={handleAssignedBedChange}
+                onAdminNotesChange={handleAdminNotesChange}
+                onSave={saveLogisticsChanges}
+                onOpenUserProfile={openUserProfile}
+              />
+            ) : (
+              <AdminUserManagement
+                parties={parties}
+                currentUserId={currentUserId}
+                getRoundedPartyTotal={getRoundedPartyTotal}
+                onOpenUserProfile={openUserProfile}
+                onAdminToggle={handleAdminToggle}
+                onPaymentToggle={handlePaymentToggle}
+                onEditParty={openPartyEdit}
+              />
+            )}
           </div>
-        </div>
+        </>
       )}
 
 {/* Scenario Simulator */}
@@ -1470,15 +1371,15 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
       {/* User Profile Modal */}
       {userProfileModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">{fr.userProfileModalTitle}</h2>
+            <div className="sticky top-0 bg-white border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800">{fr.userProfileModalTitle}</h2>
               <button onClick={closeUserProfile} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-4 md:p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="space-y-4">
                   <div>
@@ -1505,39 +1406,40 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
               <div>
                 <h3 className="text-lg font-medium text-gray-700 mb-4">{fr.userProfileEventHistory}</h3>
                 {userEventHistory.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableEvent}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableDate}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableStatus}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTablePayment}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableAmount}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableWaitlisted}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {userEventHistory.map((history, index) => (
-                          <tr key={index}>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.event_theme}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{formatDate(history.registration_date)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.registration_status}</td>
-                            <td className="px-4 py-3">
+                  // Cards on phones, six-column grid from md up (one markup, like the admin tabs)
+                  <div>
+                    <div className="hidden md:grid md:grid-cols-6 md:gap-4 px-4 py-3 border-b border-gray-200 text-sm font-medium text-gray-700">
+                      <span>{fr.eventHistoryTableEvent}</span>
+                      <span>{fr.eventHistoryTableDate}</span>
+                      <span>{fr.eventHistoryTableStatus}</span>
+                      <span>{fr.eventHistoryTablePayment}</span>
+                      <span>{fr.eventHistoryTableAmount}</span>
+                      <span>{fr.eventHistoryTableWaitlisted}</span>
+                    </div>
+                    <ul className="space-y-3 md:space-y-0 md:divide-y md:divide-gray-200">
+                      {userEventHistory.map((history, index) => (
+                        <li key={index} className="border border-gray-200 rounded-lg p-3 md:border-0 md:rounded-none md:grid md:grid-cols-6 md:gap-4 md:items-center md:px-4 md:py-3 text-sm text-gray-800">
+                          <div className="flex justify-between items-start gap-3 mb-2 md:contents">
+                            <span className="font-medium md:font-normal">{history.event_theme}</span>
+                            <span className="text-gray-500 md:text-gray-800 whitespace-nowrap md:whitespace-normal">{formatDate(history.registration_date)}</span>
+                          </div>
+                          <div className="md:contents grid grid-cols-2 gap-x-3 gap-y-1">
+                            <span><span className="text-gray-500 md:hidden">{fr.eventHistoryTableStatus} : </span>{history.registration_status}</span>
+                            <span>
                               <span className={`px-2 py-1 text-xs rounded-full ${
-                                history.payment_status === PAYMENT_STATUS.PAID 
+                                history.payment_status === PAYMENT_STATUS.PAID
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-red-100 text-red-800'
                               }`}>
                                 {getPaymentStatusShortLabel(history.payment_status)}
                               </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(history.calculated_amount_owed)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.is_waitlisted ? fr.userProfileYes : fr.userProfileNo}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            </span>
+                            <span><span className="text-gray-500 md:hidden">{fr.eventHistoryTableAmount} : </span>{formatCurrency(history.calculated_amount_owed)}</span>
+                            <span><span className="text-gray-500 md:hidden">{fr.eventHistoryTableWaitlisted} : </span>{history.is_waitlisted ? fr.userProfileYes : fr.userProfileNo}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ) : (
                   <p className="text-gray-500 text-center py-8">{fr.noEventHistoryFound}</p>
@@ -1550,15 +1452,15 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
       {/* God-Mode editing modal */}
       {editingParty && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">{fr.adminEditRegistrationTitle}</h2>
+            <div className="sticky top-0 bg-white border-b px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800">{fr.adminEditRegistrationTitle}</h2>
               <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
                 ✕
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-4 md:p-6">
               <RegistrationForm
                 event={activeEventState}
                 userRegistration={editingParty}

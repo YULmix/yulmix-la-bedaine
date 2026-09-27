@@ -278,6 +278,15 @@ if Supabase isn't running.
    `node_modules`, cached under `~/.cache/ms-playwright`).
 3. `npm run test:e2e`.
 
+`e2e/admin-tabs.spec.js` covers the admin sub-navigation tabs. The seed has no events, so it
+creates its own active event and member registration (`e2e/support/testData.js`, signed in as the
+seeded admin; refuses any non-local URL) and archives it again afterwards. It also runs in a second
+project, `mobile-chrome` (Pixel 7 viewport), which checks the admin screens on a phone: no
+horizontal page overflow, 44px tab targets, controls within the viewport. That project depends on
+`chromium` because both mutate the same single active event; use `--project=mobile-chrome --no-deps`
+to run it alone. Set `E2E_SCREENSHOT_DIR=<dir>` to save full-page mobile screenshots for a visual
+check.
+
 Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
 "For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
 browser-install strategy and runtime cost for CI runners are worked out.

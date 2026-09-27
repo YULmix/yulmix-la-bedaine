@@ -34,7 +34,8 @@ flowchart TD
   HOME --> FORM["RegistrationForm"]
   ADMIN --> FORM
   ADMIN --> PROFILEMODAL["user profile modal<br/>+ user_event_history (inline)"]
-  ADMIN --> LOGISTICS["logistics table (inline)"]
+  ADMIN -->|"?tab=users"| USERS["AdminUserManagement<br/>parties, admin flag, payment"]
+  ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView<br/>bed assignments, admin notes"]
   ADMIN --> SIM["scenario simulator (inline)"]
   ADMIN --> EXPORT["CSV / TSV export (inline)"]
 ```
@@ -43,18 +44,21 @@ Sizes, as a blunt signal of where the complexity is:
 
 | File | Lines |
 |---|---|
-| `src/views/AdminView.jsx` | 1364 |
+| `src/views/AdminView.jsx` | 1482 |
 | `src/components/RegistrationForm.jsx` | 576 |
 | `src/views/RegistrationSummary.jsx` | 461 |
 | `src/App.jsx` | 381 |
 | `src/views/HomeView.jsx` | 240 |
 | `src/lib/pricingEngine.js` | 210 |
 
-`AdminView` is eight screens in one file (event list, metadata editor, aggregates, cost-vs-price,
-logistics table, user table, profile modal, simulator, export). It is the obvious first
-refactoring target and the most likely source of merge conflicts once more than one person is
-committing — splitting it is tracked as
-[issue #29](https://github.com/YULmix/yulmix-la-bedaine/issues/29), not cleanup.
+`AdminView` still holds most admin screens in one file (event list, metadata editor, aggregates,
+cost-vs-price, profile modal, simulator, export, feedback). The user table and the logistics view
+were split out into `src/components/admin/` and sit behind a sub-navigation tab bar whose active
+tab is the `?tab=` query param (`users` by default, or `logistics`), so tabs are deep-linkable.
+Tabs are declared in the `ADMIN_TABS` array; `AdminView` keeps all state and the modals (profile
+history, god-mode edit), so unsaved logistics edits survive a tab switch. Moving the remaining
+sections into tabs, including a "Vue d'ensemble" tab, is tracked as
+[issue #83](https://github.com/YULmix/yulmix-la-bedaine/issues/83).
 
 ## State and data ownership
 
