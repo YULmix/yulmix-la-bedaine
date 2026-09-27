@@ -1,15 +1,21 @@
+import { useMemo, useState } from 'react';
+import { BedDouble, Save } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
+import { Button, Card, EmptyState, Input, Tag, Textarea } from '../ui';
+import { FilterPills } from './AdminUserManagement';
 
-// Shared by the bed input and notes textarea. text-base below md keeps iOS Safari from
-// zooming the page when the field gets focus (it does for anything under 16px).
-const FIELD_CLASS = 'w-full px-3 py-2 md:px-2 md:py-1 border border-gray-300 rounded text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50';
+const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
+const hasUnassigned = party => (party.attendees || []).some(a => !a.assigned_bed);
+
+const FILTERS = [
+  { id: 'all', labelKey: 'filterAll', test: () => true },
+  { id: 'bed', labelKey: 'filterBedRequested', test: wantsBed },
+  { id: 'unassigned', labelKey: 'filterUnassigned', test: hasUnassigned }
+];
 
 // Per-party sleeping assignments and private admin notes. Unsaved edits live in the parent
 // (`logisticsChanges`) so they survive switching admin tabs.
-//
-// One markup for all screen sizes: each attendee is a stacked card on mobile and a row of a
-// four-column grid from md up, where the column headers appear and the inline labels hide.
 const AdminLogisticsView = ({
   parties,
   logisticsChanges,
@@ -17,108 +23,112 @@ const AdminLogisticsView = ({
   onAdminNotesChange,
   onSave,
   onOpenUserProfile
-}) => (
-  <div className="bg-indigo-50 rounded-xl shadow-lg p-4 md:p-6 mb-8">
-    <h2 className="text-xl font-semibold text-gray-800 mb-2 md:mb-4">{fr.logisticsViewTitle}</h2>
-    <p className="text-sm text-gray-600 mb-4">{fr.logisticsViewDescription}</p>
+}) => {
+  const [filter, setFilter] = useState('all');
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])), [parties]);
+  const activeFilter = FILTERS.find(f => f.id === filter) || FILTERS[0];
+  const visible = parties.filter(activeFilter.test);
 
-    <div className="space-y-4">
-      {parties.map(party => {
-        const profile = party.profiles || {};
-        const partyAttendees = party.attendees || [];
-        const changes = logisticsChanges[party.id] || {};
-        const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
-        const notesId = `admin-notes-${party.id}`;
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-ink">{fr.logisticsViewTitle}</h2>
+        <p className="mt-2 max-w-prose text-muted">{fr.logisticsViewDescription}</p>
+      </div>
 
-        return (
-          <div key={party.id} className="border border-gray-200 rounded-lg p-3 md:p-4 bg-teal-50/50">
-            <div className="mb-3 min-w-0">
-              <button
-                onClick={() => onOpenUserProfile(profile)}
-                className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-left py-1"
-              >
-                {profile.full_name || fr.notSpecified}
-              </button>
-              <p className="text-sm text-gray-500 break-all">{profile.email}</p>
-            </div>
+      <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
-            <div className="hidden md:grid md:grid-cols-4 md:gap-4 px-2 pb-2 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase">
-              <span>{fr.logisticsTableAttendee}</span>
-              <span>{fr.logisticsTableSleepingPref}</span>
-              <span>{fr.bedReason}</span>
-              <span>{fr.logisticsTableSleepingAssigned}</span>
-            </div>
-            <ul className="space-y-3 md:space-y-0 md:divide-y md:divide-gray-100">
-              {partyAttendees.map((attendee, index) => {
-                const assignedValue = changes.attendees && changes.attendees[index] !== undefined
-                  ? changes.attendees[index]
-                  : (attendee.assigned_bed || '');
-                const attendeeName = attendee.name || `${fr.participantFallback} #${index + 1}`;
-                const bedInputId = `assigned-bed-${party.id}-${index}`;
+      {visible.length === 0 && <EmptyState icon={BedDouble} title={fr.noMatchingParties} />}
 
-                return (
-                  <li key={index} className="rounded-lg bg-gray-50 p-3 md:bg-transparent md:rounded-none md:grid md:grid-cols-4 md:gap-4 md:items-center md:px-2 md:py-2 text-sm text-gray-800">
-                    <div className="font-medium md:font-normal mb-1 md:mb-0">{attendeeName}</div>
-                    <div className="mb-1 md:mb-0">
-                      <span className="text-gray-500 md:hidden">{fr.logisticsTableSleepingPref} : </span>
-                      {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
-                      {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other && (
-                        <span className="block text-xs text-gray-500">{attendee.sleeping_preference_other}</span>
-                      )}
-                    </div>
-                    <div className="mb-2 md:mb-0">
-                      <span className="text-gray-500 md:hidden">{fr.bedReason} : </span>
-                      {getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason)}
-                      {attendee.bed_reason === 'other' && attendee.bed_reason_other && (
-                        <span className="block text-xs text-gray-500">{attendee.bed_reason_other}</span>
-                      )}
-                    </div>
-                    <div>
-                      <label htmlFor={bedInputId} className="block text-xs font-medium text-gray-500 uppercase mb-1 md:sr-only">
-                        {fr.logisticsTableSleepingAssigned}
-                      </label>
-                      <input
-                        id={bedInputId}
-                        type="text"
-                        value={assignedValue}
-                        onChange={(e) => onAssignedBedChange(party.id, index, e.target.value)}
-                        placeholder={fr.assignedBedPlaceholder}
-                        className={FIELD_CLASS}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+      <ul className="grid gap-4 xl:grid-cols-2">
+        {visible.map(party => {
+          const profile = party.profiles || {};
+          const partyAttendees = party.attendees || [];
+          const changes = logisticsChanges[party.id] || {};
+          const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
+          const notesId = `admin-notes-${party.id}`;
 
-            <div className="mt-3">
-              <label htmlFor={notesId} className="block text-xs font-medium text-gray-500 uppercase mb-1">{fr.logisticsTableAdminNotes}</label>
-              <textarea
-                id={notesId}
-                value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                onChange={(e) => onAdminNotesChange(party.id, e.target.value)}
-                rows="2"
-                className={FIELD_CLASS}
-                placeholder={fr.adminNotesPlaceholder}
-              />
-            </div>
+          return (
+            <li key={party.id}>
+              <Card className={`h-full p-4 sm:p-5 ${hasChanges ? 'border-warn/50' : ''}`}>
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <button
+                      onClick={() => onOpenUserProfile(profile)}
+                      className="max-w-full truncate text-left text-lg font-semibold text-ink underline decoration-edge underline-offset-4 hover:decoration-neon"
+                    >
+                      {profile.full_name || fr.notSpecified}
+                    </button>
+                    <p className="truncate text-sm text-faint">{profile.email}</p>
+                  </div>
+                  {hasChanges && <Tag tone="warn">{fr.unsavedTag}</Tag>}
+                </div>
 
-            {/* Below the fields it saves, so on a phone it's right under the thumb after editing */}
-            {hasChanges && (
-              <div className="mt-3 flex md:justify-end">
-                <button
-                  onClick={() => onSave(party.id)}
-                  className="w-full md:w-auto px-4 py-3 md:px-3 md:py-1 bg-blue-600 text-white text-sm font-medium rounded-lg md:rounded hover:bg-blue-700"
-                >
-                  {fr.saveAssignments}
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </div>
-);
+                <ul className="space-y-3">
+                  {partyAttendees.map((attendee, index) => {
+                    const assignedValue = changes.attendees && changes.attendees[index] !== undefined
+                      ? changes.attendees[index]
+                      : (attendee.assigned_bed || '');
+                    const attendeeName = attendee.name || `${fr.participantFallback} #${index + 1}`;
+                    const bedInputId = `assigned-bed-${party.id}-${index}`;
+                    const reason = attendee.bed_reason === 'other' && attendee.bed_reason_other
+                      ? attendee.bed_reason_other
+                      : attendee.bed_reason ? getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason) : '';
+                    const preference = attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other
+                      ? attendee.sleeping_preference_other
+                      : getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference);
+
+                    return (
+                      <li key={index} className="grid gap-2 rounded-control bg-night/60 p-3 sm:grid-cols-[1fr_12rem] sm:items-center">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-ink">{attendeeName}</p>
+                          <p className="text-sm text-muted">
+                            {preference}
+                            {reason && <span className="text-faint">{`, ${reason}`}</span>}
+                          </p>
+                        </div>
+                        <div>
+                          <label htmlFor={bedInputId} className="sr-only">{`${fr.logisticsTableSleepingAssigned}, ${attendeeName}`}</label>
+                          <Input
+                            id={bedInputId}
+                            value={assignedValue}
+                            onChange={(e) => onAssignedBedChange(party.id, index, e.target.value)}
+                            placeholder={fr.assignedBedPlaceholder}
+                            className="font-data"
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="mt-4">
+                  <label htmlFor={notesId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableAdminNotes}</label>
+                  <Textarea
+                    id={notesId}
+                    value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
+                    onChange={(e) => onAdminNotesChange(party.id, e.target.value)}
+                    rows={2}
+                    placeholder={fr.adminNotesPlaceholder}
+                  />
+                </div>
+
+                {/* Below the fields it saves, so on a phone it's right under the thumb after editing */}
+                {hasChanges && (
+                  <div className="mt-4 flex sm:justify-end">
+                    <Button onClick={() => onSave(party.id)} className="w-full sm:w-auto">
+                      <Save aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+                      {fr.saveAssignments}
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
 
 export default AdminLogisticsView;

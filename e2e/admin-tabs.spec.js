@@ -1,4 +1,4 @@
-// Admin sub-navigation tabs (issue #29): /admin?tab=users | /admin?tab=logistics.
+// Admin sub-navigation tabs (issues #29, #83): /admin?tab=overview | users | logistics | events | tools.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
@@ -12,10 +12,12 @@ import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
 
-const USERS_TAB = 'Gestion des utilisateurs';
-const LOGISTICS_TAB = 'Vue logistique';
-const USERS_HEADING = 'Gestion des utilisateurs et inscriptions';
-const LOGISTICS_HEADING = 'Vue logistique (assignation)';
+const OVERVIEW_TAB = fr.adminTabOverview;
+const USERS_TAB = fr.adminTabUsers;
+const LOGISTICS_TAB = fr.adminTabLogistics;
+const USERS_HEADING = fr.adminUsersManagementTitle;
+const LOGISTICS_HEADING = fr.logisticsViewTitle;
+const TAB_COUNT = 5;
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in
@@ -35,12 +37,21 @@ test.afterAll(async () => {
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
 const panel = (page) => page.getByRole('tabpanel');
 const bedInputs = (page) => panel(page).getByPlaceholder(fr.assignedBedPlaceholder);
-// Modals have no dialog role; find the overlay by its title.
-const modal = (page, title) => page.locator('div.fixed.inset-0').filter({ has: page.getByRole('heading', { name: title }) });
+// Modals are native <dialog>s, labelled by their title.
+const modal = (page, title) => page.getByRole('dialog', { name: title });
+const closeModal = (dialog) => dialog.getByRole('button', { name: fr.close, exact: true }).click();
 
 async function openAdmin(page, query = '') {
   await page.goto('/admin' + query);
   await expect(page.getByRole('tablist')).toBeVisible();
+}
+
+async function expectOverviewTabActive(page) {
+  await expect(tab(page, OVERVIEW_TAB)).toHaveAttribute('aria-selected', 'true');
+  await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'false');
+  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(panel(page).getByText(fr.kpiPeople, { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: USERS_HEADING })).toHaveCount(0);
 }
 
 async function expectUsersTabActive(page) {
@@ -71,7 +82,7 @@ async function expectProfileModalWorks(page) {
   // History actually loads for this member (needs profile.id in the parties query).
   await expect(profile.getByText(E2E_EVENT_THEME)).toBeVisible();
   await expect(page.getByText(fr.historyFetchError)).toHaveCount(0);
-  await profile.getByRole('button', { name: '✕' }).click();
+  await closeModal(profile);
   await expect(profile).toHaveCount(0);
 }
 
@@ -93,16 +104,18 @@ async function expectWithinViewportWidth(page, locator) {
 
 async function expectMobileTabBarUsable(page) {
   const tablist = page.getByRole('tablist');
-  // Both tabs fit without scrolling the tab bar itself.
+  // All tabs fit without scrolling the tab bar itself (it's the fixed bottom bar on phones).
   const { scrollWidth, clientWidth } = await tablist.evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth
   }));
   expect(scrollWidth, 'tab bar needs horizontal scrolling').toBeLessThanOrEqual(clientWidth);
-  for (const name of [USERS_TAB, LOGISTICS_TAB]) {
-    await expectWithinViewportWidth(page, tab(page, name));
-    const box = await tab(page, name).boundingBox();
-    expect(box.height, `"${name}" tab is shorter than a 44px touch target`).toBeGreaterThanOrEqual(44);
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(TAB_COUNT);
+  for (let i = 0; i < TAB_COUNT; i++) {
+    await expectWithinViewportWidth(page, tabs.nth(i));
+    const box = await tabs.nth(i).boundingBox();
+    expect(box.height, `tab ${i} is shorter than a 44px touch target`).toBeGreaterThanOrEqual(44);
   }
 }
 
@@ -118,9 +131,17 @@ test.describe('admin tabs', () => {
     await loginAs(page, TEST_USERS.admin);
   });
 
-  test('no tab param or an unknown one shows the users tab', async ({ page }) => {
+  test('no tab param or an unknown one shows the overview tab', async ({ page }) => {
     await openAdmin(page);
-    await expect(page.getByRole('tab')).toHaveCount(2);
+    await expect(page.getByRole('tab')).toHaveCount(TAB_COUNT);
+    await expectOverviewTabActive(page);
+
+    await openAdmin(page, '?tab=bogus');
+    await expectOverviewTabActive(page);
+  });
+
+  test('users tab lists the seeded party with its controls', async ({ page }) => {
+    await openAdmin(page, '?tab=users');
     await expectUsersTabActive(page);
     // One party seeded -> exactly one of each per-party control (markup is cards/grid, not a table).
     await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
@@ -128,9 +149,17 @@ test.describe('admin tabs', () => {
     await expect(panel(page).getByRole('checkbox', { name: 'Admin' })).not.toBeChecked();
     await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(1);
     await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(1);
+  });
 
-    await openAdmin(page, '?tab=bogus');
-    await expectUsersTabActive(page);
+  test('payment toggle asks for confirmation and cancelling writes nothing', async ({ page }) => {
+    await openAdmin(page, '?tab=users');
+    await panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
+    const confirm = modal(page, fr.markPaid);
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: fr.cancel, exact: true }).click();
+    await expect(confirm).toHaveCount(0);
+    const party = await getParty(seeded.partyId);
+    expect(party.payment_status).toBe('unpaid');
   });
 
   test('clicking tabs switches panels and syncs ?tab=', async ({ page }) => {
@@ -182,7 +211,7 @@ test.describe('admin tabs', () => {
     await expect(edit.locator('input').first()).toBeVisible();
     const names = await edit.locator('input').evaluateAll((els) => els.map((el) => el.value));
     expect(names).toEqual(expect.arrayContaining(E2E_ATTENDEES.map((a) => a.name)));
-    await edit.getByRole('button', { name: '✕' }).click();
+    await closeModal(edit);
     await expect(edit).toHaveCount(0);
   });
 
@@ -204,14 +233,14 @@ test.describe('admin tabs', () => {
     await expect(profile.getByText(E2E_EVENT_THEME)).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-modal-profile');
-    await profile.getByRole('button', { name: '✕' }).click();
+    await closeModal(profile);
 
     await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
     const edit = modal(page, fr.adminEditRegistrationTitle);
     await expect(edit).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-modal-edit');
-    await edit.getByRole('button', { name: '✕' }).click();
+    await closeModal(edit);
 
     await tab(page, LOGISTICS_TAB).click();
     await expectLogisticsTabActive(page);

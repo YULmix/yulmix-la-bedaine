@@ -1,38 +1,150 @@
+@import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
 
-/* Dark theme base with Tailwind v4's @theme directive */
+/*
+ * Design tokens. The source of truth is .ulpi/design/DESIGN.md (locked); these values are
+ * derived from it. Components use the semantic utilities these generate (bg-surface,
+ * text-muted, border-edge, rounded-card, font-display...), never raw colors.
+ */
 @theme {
-  /* Extended color palette for dark mode */
-  --color-canvas: #111317;
-  --color-surface: #1E2228;
-  --color-surface-elevated: #242830;
-  --color-surface-floating: #2B303A;
-  --color-text-primary: #F8FAFC;
-  --color-text-secondary: #94A3B8;
+  --color-night: oklch(0.15 0.03 282);
+  --color-surface: oklch(0.195 0.034 282);
+  --color-raised: oklch(0.24 0.038 282);
+  --color-line: oklch(0.33 0.04 282);
+  --color-edge: oklch(0.5 0.04 282);
+  --color-ink: oklch(0.965 0.012 282);
+  --color-muted: oklch(0.78 0.03 282);
+  --color-faint: oklch(0.66 0.035 282);
+  --color-neon: oklch(0.76 0.17 352);
+  --color-ok: oklch(0.82 0.14 160);
+  --color-warn: oklch(0.86 0.14 85);
+  --color-bad: oklch(0.72 0.17 25);
+  --color-info: oklch(0.82 0.1 225);
+
+  --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-data: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 1.1;
+  --text-display-lg: clamp(2.5rem, 7vw, 4.5rem);
+  --text-display-lg--line-height: 0.95;
+
+  --radius-control: 12px;
+  --radius-card: 20px;
+
+  --shadow-pop: 0 16px 48px -12px oklch(0.05 0.03 282 / 0.7);
+  --shadow-glow: 0 0 0 1px oklch(0.76 0.17 352 / 0.4), 0 12px 48px -16px oklch(0.76 0.17 352 / 0.45);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-rise: rise 450ms var(--ease-out) both;
+  --animate-stamp: stamp 450ms var(--ease-out) both;
+  --animate-sheet: sheet 300ms var(--ease-out) both;
+  --animate-step: step 250ms var(--ease-out) both;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes stamp {
+    from { opacity: 0; transform: scale(1.4) rotate(-14deg); }
+    to { opacity: 1; transform: scale(1) rotate(-6deg); }
+  }
+  @keyframes sheet {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes step {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: none; }
+  }
 }
 
-/* Dark mode application */
-html {
-  background-color: #111317;
-  color: #F8FAFC;
+@utility font-display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
-/* Custom scrollbar for dark theme */
+@utility font-data {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tinted fills for semantic states: text/outline in the color, background at ~14%. */
+@utility tint-ok { background-color: color-mix(in oklab, var(--color-ok) 14%, transparent); }
+@utility tint-warn { background-color: color-mix(in oklab, var(--color-warn) 14%, transparent); }
+@utility tint-bad { background-color: color-mix(in oklab, var(--color-bad) 14%, transparent); }
+@utility tint-info { background-color: color-mix(in oklab, var(--color-info) 14%, transparent); }
+@utility tint-neon { background-color: color-mix(in oklab, var(--color-neon) 12%, transparent); }
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-night);
+    color: var(--color-ink);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-night);
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-neon);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-neon) 40%, transparent);
+  }
+
+  input, textarea, select {
+    font-size: 1rem;
+  }
+
+  input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+  }
+
+  dialog::backdrop {
+    background: oklch(0.08 0.03 282 / 0.75);
+    backdrop-filter: blur(2px);
+  }
+
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #1E2228;
-  border-radius: 4px;
+  background: var(--color-night);
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #2D323B;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #374151;
+  background: var(--color-line);
+  border-radius: 9999px;
 }

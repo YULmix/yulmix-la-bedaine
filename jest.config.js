@@ -4,6 +4,7 @@ export default {
     '^.+\\.(js|jsx)$': 'babel-jest',
   },
   moduleNameMapper: {
+    '\\.(png|jpe?g|webp|svg)$': '<rootDir>/src/__tests__/fileStub.js',
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^(\\.{1,2}/.*)\\.jsx$': '$1',
   },

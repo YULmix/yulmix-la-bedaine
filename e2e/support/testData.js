@@ -96,7 +96,7 @@ export async function seedActiveEventWithMemberParty() {
 export async function getParty(partyId) {
   const db = await adminClient();
   return check(
-    await db.from('user_parties').select('attendees, admin_notes').eq('id', partyId).single(),
+    await db.from('user_parties').select('attendees, admin_notes, payment_status').eq('id', partyId).single(),
     'read e2e party'
   );
 }

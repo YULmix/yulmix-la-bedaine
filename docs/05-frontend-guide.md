@@ -10,9 +10,11 @@ no component library.
 
 | Path | Screen | Guard |
 |---|---|---|
-| `/` | `HomeView` + inline "other events" grid (in `App.jsx`) | Content differs for signed-out visitors; no redirect |
+| `/` | `HomeView` (poster, phase track, the registration pass or an invite, past editions) | Content differs for signed-out visitors; no redirect |
+| `/inscription` | `RegistrationPage`: the 4-step registration form, create or edit | Authenticated |
 | `/event-details` | `EventDetailsView` | Authenticated |
-| `/admin` | `AdminView` | Authenticated **and** admin |
+| `/admin` | `AdminView`, tabs `?tab=overview\|users\|logistics\|events\|tools` | Authenticated **and** admin |
+| `/a-propos` | `AboutView` | None |
 
 `ProtectedRoute` (`src/App.jsx:140`) renders a spinner while auth resolves, redirects
 unauthenticated users to `/`, and shows an "Accès réservé aux administrateurs" panel for
@@ -23,42 +25,42 @@ non-admins. It is a UX guard only — the real boundary is RLS.
 ```mermaid
 flowchart TD
   MAIN["main.jsx<br/>BrowserRouter + StrictMode"] --> APP["App.jsx"]
-  APP --> HEADER["Header<br/>OAuth in/out, admin link"]
-  APP --> FOOTER["footer (inline)"]
+  APP --> HEADER["Header<br/>nav, account menu"]
   APP --> MODAL["EventModal<br/>past/other event details"]
+  APP --> FEEDBACK["FeedbackModal"]
   APP -->|route /| HOME["HomeView"]
+  APP -->|route /inscription| REGPAGE["RegistrationPage"]
   APP -->|route /event-details| DETAILS["EventDetailsView"]
   APP -->|route /admin| ADMIN["AdminView"]
 
-  HOME --> SUMMARY["RegistrationSummary<br/>read-only view + edit history"]
-  HOME --> FORM["RegistrationForm"]
-  ADMIN --> FORM
-  ADMIN --> PROFILEMODAL["user profile modal<br/>+ user_event_history (inline)"]
-  ADMIN -->|"?tab=users"| USERS["AdminUserManagement<br/>parties, admin flag, payment"]
-  ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView<br/>bed assignments, admin notes"]
-  ADMIN --> SIM["scenario simulator (inline)"]
-  ADMIN --> EXPORT["CSV / TSV export (inline)"]
+  HOME --> SUMMARY["RegistrationSummary<br/>Pass + group, logistics, edit history"]
+  HOME --> PAST["PastEditions"]
+  REGPAGE --> FORM["RegistrationForm<br/>4 steps + sticky total"]
+  ADMIN -->|"god-mode dialog"| FORM
+  ADMIN --> PROFILE["UserProfileDialog"]
+  ADMIN -->|"?tab=overview"| OVERVIEW["AdminOverview"]
+  ADMIN -->|"?tab=users"| USERS["AdminUserManagement"]
+  ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView"]
+  ADMIN -->|"?tab=events"| EVENTS["AdminEvents"]
+  ADMIN -->|"?tab=tools"| TOOLS["AdminTools<br/>simulator, export, feedback"]
 ```
 
 Sizes, as a blunt signal of where the complexity is:
 
 | File | Lines |
 |---|---|
-| `src/views/AdminView.jsx` | 1482 |
-| `src/components/RegistrationForm.jsx` | 576 |
-| `src/views/RegistrationSummary.jsx` | 461 |
-| `src/App.jsx` | 381 |
-| `src/views/HomeView.jsx` | 240 |
+| `src/views/AdminView.jsx` | 1000 |
+| `src/components/RegistrationForm.jsx` | 667 |
+| `src/App.jsx` | 299 |
+| `src/views/RegistrationSummary.jsx` | 244 |
 | `src/lib/pricingEngine.js` | 210 |
 
-`AdminView` still holds most admin screens in one file (event list, metadata editor, aggregates,
-cost-vs-price, profile modal, simulator, export, feedback). The user table and the logistics view
-were split out into `src/components/admin/` and sit behind a sub-navigation tab bar whose active
-tab is the `?tab=` query param (`users` by default, or `logistics`), so tabs are deep-linkable.
-Tabs are declared in the `ADMIN_TABS` array; `AdminView` keeps all state and the modals (profile
-history, god-mode edit), so unsaved logistics edits survive a tab switch. Moving the remaining
-sections into tabs, including a "Vue d'ensemble" tab, is tracked as
-[issue #83](https://github.com/YULmix/yulmix-la-bedaine/issues/83).
+`AdminView` keeps all admin state, data fetching and write handlers; each tab is a component in
+`src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
+`AdminEvents`, `AdminTools`, `UserProfileDialog`). The active tab is the `?tab=` query param
+(`overview` by default), so tabs are deep-linkable; tabs are declared in the `ADMIN_TABS` array.
+Because state lives in `AdminView`, unsaved logistics edits survive a tab switch. On phones the
+tab list is a fixed bottom bar; from `md` up it's a row of pills.
 
 ## State and data ownership
 
@@ -146,27 +148,34 @@ otherwise.
 
 ## Styling
 
-Tailwind v4 through the Vite plugin; `src/index.css` contains only `@import "tailwindcss";`.
-Do not add `tailwind.config.js` or `postcss.config.js` — the v4 plugin does not use them and
-`.clinerules` forbids them.
+Tailwind v4 through the Vite plugin. Do not add `tailwind.config.js` or `postcss.config.js`: the
+v4 plugin does not use them and `.clinerules` forbids them.
 
-There is no design system: colours and spacing are chosen per component (`bg-blue-600` headers,
-`bg-gradient-to-r from-blue-600 to-purple-600` event banners, white `rounded-xl shadow-lg` cards).
-If the look is going to be worked on, agree a small token set first.
+The visual language is locked in [`.ulpi/design/DESIGN.md`](../.ulpi/design/DESIGN.md) (palette,
+type, radii, motion, voice) and the screens are specified in
+[`.ulpi/design/redesign.md`](../.ulpi/design/redesign.md). Read DESIGN.md before touching the UI.
+
+- Tokens live in the `@theme` block of `src/index.css` (`bg-surface`, `text-muted`, `border-edge`,
+  `text-neon`, `rounded-card`, `font-display`, `font-data`...). Use them; never raw Tailwind
+  palette colors like `bg-blue-600`.
+- Build screens from the primitives in `src/components/ui/` (`Button`, `Field`, `Input`,
+  `ChipGroup`, `Toggle`, `Tag`, `Card`, `Dialog`, `ConfirmDialog`, `Notice`, `EmptyState`,
+  `Skeleton`...). Dialogs are native `<dialog>` elements; never `window.confirm` / `alert`.
+- Brand pieces (`PosterHeader`, `PhaseTrack`, `Pass`) are in `src/components/brand/`.
+- Icons: `lucide-react` only. Fonts are self-hosted via `@fontsource-variable/archivo` and
+  `@fontsource-variable/jetbrains-mono`.
+- Dark theme only.
 
 ## Patterns to follow
 
-**Toasts.** Every screen that writes data defines its own local `toasts` array plus `addToast`,
-auto-dismissing after 5s with a manual "X" (`src/components/RegistrationForm.jsx:174`,
-`src/views/AdminView.jsx:304`). Two identical implementations; a third should become a shared
-component instead.
+**Toasts.** Screens that write data use the shared `useToasts` hook and render `ToastContainer`
+(`src/components/Toast.jsx`), a bottom-center stack above the sticky bars.
 
 **Option lists.** Add new choices to `src/lib/registrationOptions.js`, never inline in JSX.
 `getOptionLabel(options, value, fallback)` and `getDietaryRequestsLabel(csv)` handle display.
 
-**Destructive or consequential actions** get a confirmation. Payment toggle uses
-`window.confirm` (`src/views/AdminView.jsx:254`); event archiving currently does not, and the
-requirements say it should.
+**Destructive or consequential actions** get a confirmation through `ConfirmDialog` (payment
+toggle, event archiving, deleting a registration). Focus starts on Cancel.
 
 **Supabase errors** are logged with `message`, `code`, `details`, `hint` before being surfaced in
 French. Keep that — PostgREST errors are otherwise very hard to diagnose from a screenshot.
