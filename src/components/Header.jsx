@@ -73,12 +73,6 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
                   >
                     {fr.signInWithGoogle}
                   </button>
-                  <button
-                    onClick={() => handleSignIn('facebook')}
-                    className="w-full px-4 py-3 text-left hover:bg-slate-800"
-                  >
-                    {fr.signInWithFacebook}
-                  </button>
                 </>
               ) : (
                 <>
