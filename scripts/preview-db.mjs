@@ -111,6 +111,10 @@ function previewDbUrl() {
     fail(`PREVIEW_DB_URL must point at the Preview project (${PREVIEW_REF}): user "postgres.${PREVIEW_REF}" ` +
       `on the pooler, or host "db.${PREVIEW_REF}.supabase.co".`);
   }
+  if (isPreviewDirect) {
+    console.warn('! PREVIEW_DB_URL is the direct connection, which is IPv6-only on the free tier and fails on\n' +
+      '  IPv4-only networks (and GitHub runners). Prefer the Session pooler URL (dashboard → Connect).');
+  }
   return raw;
 }
 

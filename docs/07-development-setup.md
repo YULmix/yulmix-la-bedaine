@@ -319,7 +319,9 @@ the branch, optionally type a seed number. It uses the `PREVIEW_DB_URL` repo sec
 
 **From your machine:** put `PREVIEW_DB_URL=<connection string>` in `.env.preview.local`
 (gitignored). Get it from the Supabase dashboard → project **YULmix - La Bedaine (Preview)** →
-**Connect** → **Session pooler**, with the database password filled in (percent-encoded). Then
+**Connect** → method **Session pooler** (not "Direct connection": that host is IPv6-only on the
+free tier and GitHub runners can't reach it), with the database password filled in
+(percent-encoded). The same URL goes into the `PREVIEW_DB_URL` repo secret. Then
 `npm run db:preview:reset` and type the Preview project ref to confirm.
 
 What a reset does (`scripts/preview-db.mjs`):
