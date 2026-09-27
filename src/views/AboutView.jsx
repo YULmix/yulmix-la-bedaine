@@ -13,7 +13,6 @@ const AboutView = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-white">
         <h1 className="text-3xl font-bold mb-2">{fr.aboutPageTitle}</h1>
-        <p className="text-blue-100">Découvrez l'histoire et les valeurs derrière YULMix et La Bédaine</p>
       </div>
 
       {/* Main content - two columns for desktop, stacked for mobile */}
@@ -29,7 +28,7 @@ const AboutView = () => {
                 {fr.aboutYulmixContent}
                </p>
                <p className="mb-4">
-                <a href="https://www.mixcloud.com/https://www.mixcloud.com/yulmix/" target="_blank" rel="noopener noreferrer">Écoutez YULmix sur Mixcloud</a>
+                <a href="https://www.mixcloud.com/https://www.mixcloud.com/yulmix/" target="_blank" rel="noopener noreferrer">{fr.listenToYulmixOnMixcloud}</a>
               </p>
               <iframe width="100%" height="60" src="https://player-widget.mixcloud.com/widget/iframe/?hide_cover=1&mini=1&light=1&feed=%2Fyulmix%2F&utm_medium=share&utm_source=embed&utm_content=profile&utm_term=VXNlcjoxNzM5NTI3OQ%3D%3D" frameborder="0" allow="encrypted-media; fullscreen; autoplay; idle-detection; speaker-selection; web-share;" ></iframe>
             </div>
@@ -46,11 +45,7 @@ const AboutView = () => {
               </p>
             </div>
             <div class="h-64 w-full overflow-hidden rounded-xl">
-              <img
-                src="/banniere_bedaine.jpg"
-                alt="Bedaine"
-                class="h-full w-full object-cover object-center"
-              />
+              <img src="/banniere_bedaine.jpg" alt="Bedaine" class="h-full w-full object-cover object-center"/>
             </div>
           </div>
         </div>
@@ -58,9 +53,10 @@ const AboutView = () => {
         {/* Additional info */}
         <div className="mt-8 pt-8 border-t border-slate-700">
           <div className="bg-slate-800/20 rounded-lg p-6 border border-slate-700/50">
-            <h3 className="text-lg font-semibold text-slate-200 mb-4">Notre engagement</h3>
+            <h3 className="text-lg font-semibold text-slate-200 mb-4">{fr.ourCommitmentTitle}</h3>
             <p className="text-slate-300 leading-relaxed">
-              Ces deux initiatives partagent une même philosophie : créer des espaces inclusifs où la musique, la convivialité et le partage sont au cœur de l'expérience. Chaque événement est pensé pour favoriser les rencontres et la créativité dans un cadre sécuritaire et respectueux.
+              {fr.ourCommitmentContent}
+              
             </p>
           </div>
         </div>

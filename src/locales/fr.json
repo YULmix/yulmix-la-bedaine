@@ -355,5 +355,8 @@
   "eventRepricedCountToast": "Prix mis à jour — {count} inscription(s) non payée(s) recalculée(s)",
   "eventRepricedNoneToast": "Prix mis à jour — aucune inscription non payée à recalculer",
   "paymentToggleConfirm": "Voulez-vous marquer le paiement comme {action} pour {name}?",
-  "defaultUserFallback": "cet utilisateur"
+  "defaultUserFallback": "cet utilisateur",
+  "ourCommitmentTitle": "Notre engagement",
+  "ourCommitmentContent": "Ces deux initiatives partagent une même philosophie : créer des espaces inclusifs où la musique, la convivialité et le partage sont au cœur de l'expérience. Chaque événement est pensé pour favoriser les rencontres et la créativité dans un cadre sécuritaire et respectueux.",
+  "listenToYulmixOnMixcloud": "Écoutez YULmix sur Mixcloud"
 }
