@@ -98,14 +98,14 @@ as proof the acceptance criteria are met.
 After pushing to a PR branch, wait for its checks (`gh pr checks <number> --watch`) before
 reporting the work as done or asking for review. If a check fails, read the log
 (`gh run view <run-id> --log-failed`), fix it on the same branch, push, and check again. A PR
-reported as ready while CI is red, or before CI has run, isn't done. Local checks don't cover CI
-exactly: `Build & test` also runs `npm run lint`, `npm run lint:diff`, and the Deno tests and type
-check for `supabase/functions/`.
+reported as ready while CI is red, or before CI has run, isn't done. The pre-commit hooks run the
+same checks as CI's `Build & test` job, but not everything CI does: it also replays the migrations
+on a fresh Postgres and deploys a preview.
 
 ## Verifying your work
 
 - `npm run build` — must pass.
-- `npm run lint` — must pass (CI runs it; the pre-commit hook doesn't).
+- `npm run lint` — must pass.
 - `npm run test:pricing` — must pass; add cases for pricing changes.
 - `npm test` — must pass (the RLS suite is deliberately excluded; see
   [Development setup](./docs/07-development-setup.md#scripts)).
