@@ -18,5 +18,10 @@
     "newMemberShare": 0.15,
     "teenShare": 0.2,
     "kidShare": 0.2
+  },
+  "emails": {
+    "failed": 2,
+    "pending": 1,
+    "promotedShare": 0.1
   }
 }
