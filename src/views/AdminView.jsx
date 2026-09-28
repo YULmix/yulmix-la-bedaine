@@ -17,7 +17,8 @@ import {
   getOptionLabel,
   PAYMENT_STATUS,
   REGISTRATION_STATUS,
-  getPaymentStatusShortLabel
+  getPaymentStatusShortLabel,
+  isActiveRegistration
 } from '../lib/registrationOptions';
 import { simulateEventPricing } from '../lib/pricingEngine';
 import { useToasts } from '../hooks/useToasts';
@@ -318,7 +319,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           .from('user_parties')
           .select('id', { count: 'exact', head: true })
           .eq('event_id', editingEvent.id)
-          .eq('payment_status', PAYMENT_STATUS.UNPAID);
+          .eq('payment_status', PAYMENT_STATUS.UNPAID)
+          .neq('status', REGISTRATION_STATUS.CANCELLED);
         if (!countError) {
           addToast(
             count > 0
@@ -439,6 +441,10 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       return party.calculated_amount_owed || 0;
     }
   };
+
+  // Cancelled parties owe nothing and count for nothing (no refunds, #101). Only the users tab
+  // (its "Annulées" filter) and the god-mode edit still see them; everything else uses this.
+  const activeParties = useMemo(() => parties.filter(isActiveRegistration), [parties]);
 
   // Memoize per-party rounded totals so the pricing engine only reruns when the
   // parties list or selling price actually changes, not on every render.
@@ -619,7 +625,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   // Data export functions
   const exportToCSV = () => {
-    if (!parties.length) {
+    if (!activeParties.length) {
       addToast(fr.noDataToExport, 'warning');
       return;
     }
@@ -638,7 +644,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fr.exportAmountOwed
     ];
     
-    const rows = parties.map(party => {
+    const rows = activeParties.map(party => {
       const profile = party.profiles || {};
       const counts = party.counts || {};
 
@@ -658,7 +664,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     });
     
     // Add totals row
-    const totals = parties.reduce((acc, party) => {
+    const totals = activeParties.reduce((acc, party) => {
       const counts = party.counts || {};
       return {
         adultWhole: acc.adultWhole + (counts.adult_whole || 0),
@@ -701,7 +707,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
   const copyToClipboardForSheets = () => {
-    if (!parties.length) {
+    if (!activeParties.length) {
       addToast(fr.noDataToCopy, 'warning');
       return;
     }
@@ -720,7 +726,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fr.exportAmountOwed
     ];
     
-    const rows = parties.map(party => {
+    const rows = activeParties.map(party => {
       const profile = party.profiles || {};
       const counts = party.counts || {};
 
@@ -740,7 +746,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     });
     
     // Add totals row
-    const totals = parties.reduce((acc, party) => {
+    const totals = activeParties.reduce((acc, party) => {
       const counts = party.counts || {};
       return {
         adultWhole: acc.adultWhole + (counts.adult_whole || 0),
@@ -842,7 +848,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
                 result={simulationResult}
               />
             )}
-            {activeEventState && <DataExport hasData={parties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
+            {activeEventState && <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
           </div>
           <FeedbackInbox
             items={feedbackItems}
@@ -859,7 +865,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     if (activeTab === 'logistics') {
       return (
         <AdminLogisticsView
-          parties={parties}
+          parties={activeParties}
           logisticsChanges={logisticsChanges}
           onAssignedBedChange={handleAssignedBedChange}
           onAdminNotesChange={handleAdminNotesChange}

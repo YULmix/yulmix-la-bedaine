@@ -188,7 +188,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | `events.status` | `DRAFT`, `ACTIVE`, `ARCHIVED` | Mirrored by `is_active`; the two can drift |
 | `events.expense_category` | `Chalet`, `Food`, `Music`, `Tech`, `Accessories` | Unused by the UI |
 | `user_parties.payment_status` | `unpaid`, `paid` | English values — see [ADR 0012](./adr/0012-migrate-status-columns-to-english.md), which migrated this from French |
-| `user_parties.status` | `registered`, `pending`, `cancelled` | RLS and a view treat `registered`/`pending` as editable; `cancelled` is specified but never written |
+| `user_parties.status` | `registered`, `pending`, `cancelled` | RLS and a view treat `registered`/`pending` as editable; `cancelled` is written when a member un-registers (#35). A cancelled party owes nothing (no refunds): the admin totals, logistics and exports leave it out, and the users tab lists it only under "Annulées" (#101) |
 
 ## Derived state: who computes what
 

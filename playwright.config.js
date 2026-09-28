@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -92,6 +92,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /email-log\.spec\.js/,
       dependencies: ['member-account-deletion']
+    },
+    {
+      // Reseeds the same shared active event, so it runs after email-log, on its own.
+      name: 'admin-cancelled-parties',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-cancelled-parties\.spec\.js/,
+      dependencies: ['email-log']
     }
   ],
   webServer: {
