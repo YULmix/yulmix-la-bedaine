@@ -124,3 +124,45 @@ export const getDietaryRequestsLabel = (requestsString, fallback = 'Aucune') => 
     .map(v => getOptionLabel(DIETARY_OPTIONS, v, v))
     .join(', ');
 };
+// Transactional emails (email_log, #12 / #93). template and status are raw DB values.
+const EMAIL_TEMPLATE_LABELS = {
+  registration: fr.emailTemplateRegistration,
+  waitlist: fr.emailTemplateWaitlist,
+  promotion: fr.emailTemplatePromotion,
+  payment: fr.emailTemplatePayment,
+  accommodation: fr.emailTemplateAccommodation
+};
+
+// Every email_log.status (admins), plus 'not_sent', the member-facing status my_party_emails()
+// returns for a failed send.
+export const EMAIL_STATUS = {
+  SENT: 'sent',
+  FAILED: 'failed',
+  PENDING: 'pending',
+  DRY_RUN: 'dry_run',
+  BACKFILLED: 'backfilled',
+  NOT_SENT: 'not_sent'
+};
+
+// The ones an organiser has to follow up by hand: refused by Resend, or claimed and never finished.
+export const EMAIL_PROBLEM_STATUSES = [EMAIL_STATUS.FAILED, EMAIL_STATUS.PENDING];
+
+const EMAIL_STATUS_LABELS = {
+  [EMAIL_STATUS.SENT]: fr.emailStatusSent,
+  [EMAIL_STATUS.FAILED]: fr.emailStatusFailed,
+  [EMAIL_STATUS.PENDING]: fr.emailStatusPending,
+  [EMAIL_STATUS.DRY_RUN]: fr.emailStatusDryRun,
+  [EMAIL_STATUS.BACKFILLED]: fr.emailStatusBackfilled,
+  [EMAIL_STATUS.NOT_SENT]: fr.emailStatusNotSent
+};
+
+const EMAIL_STATUS_TONES = {
+  [EMAIL_STATUS.SENT]: 'ok',
+  [EMAIL_STATUS.FAILED]: 'bad',
+  [EMAIL_STATUS.PENDING]: 'warn',
+  [EMAIL_STATUS.NOT_SENT]: 'bad'
+};
+
+export const getEmailTemplateLabel = (template) => EMAIL_TEMPLATE_LABELS[template] || template;
+export const getEmailStatusLabel = (status) => EMAIL_STATUS_LABELS[status] || status;
+export const getEmailStatusTone = (status) => EMAIL_STATUS_TONES[status] || 'neutral';

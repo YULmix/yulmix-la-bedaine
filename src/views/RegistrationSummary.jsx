@@ -7,6 +7,7 @@ import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhas
 import { describeChanges } from '../lib/editHistory';
 import { initials } from '../lib/eventDisplay';
 import Pass from '../components/brand/Pass';
+import MyPartyEmails from '../components/MyPartyEmails';
 import { Button, Card, ConfirmDialog, Tag } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
@@ -101,6 +102,8 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
           </Button>
         )}
       />
+
+      <MyPartyEmails registration={registration} />
 
       <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         <Card className="p-5 sm:p-6">
