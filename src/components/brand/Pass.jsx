@@ -34,11 +34,13 @@ const STAMP_TONES = {
   intent: 'border-info text-info'
 };
 
+// The amount label comes from the same decision as the stamp, so the two can't disagree: an
+// intent or waitlisted party is only an estimate (they're told not to pay yet), a paid one has paid.
 const getStamp = (registration, isIntent) => {
-  if (isIntent) return { tone: 'intent', label: fr.stampIntent };
-  if (registration.is_waitlisted) return { tone: 'waitlist', label: fr.stampWaitlist };
-  if (registration.payment_status === PAYMENT_STATUS.PAID) return { tone: 'paid', label: fr.stampPaid };
-  return { tone: 'unpaid', label: fr.stampUnpaid };
+  if (isIntent) return { tone: 'intent', label: fr.stampIntent, amountLabel: fr.estimatedAmountDueLabel };
+  if (registration.is_waitlisted) return { tone: 'waitlist', label: fr.stampWaitlist, amountLabel: fr.estimatedAmountDueLabel };
+  if (registration.payment_status === PAYMENT_STATUS.PAID) return { tone: 'paid', label: fr.stampPaid, amountLabel: fr.amountPaid };
+  return { tone: 'unpaid', label: fr.stampUnpaid, amountLabel: fr.amountDue };
 };
 
 // Signature element (DESIGN.md): the member's registration as a wristband / ticket stub.
@@ -82,7 +84,7 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
         <span aria-hidden="true" className="absolute -bottom-3 -left-3 hidden size-6 rounded-full border border-neon/40 bg-night md:block" />
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm text-muted">{fr.amountDue}</p>
+            <p className="text-sm text-muted">{stamp.amountLabel}</p>
             <p className="font-data text-3xl font-medium text-ink">{formatCurrency(registration.calculated_amount_owed || 0)}</p>
           </div>
           <span

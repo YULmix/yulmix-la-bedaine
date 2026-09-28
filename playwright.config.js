@@ -47,7 +47,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /member-cancellation\.spec\.js/
+      testIgnore: /member-(cancellation|pass)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -64,6 +64,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-cancellation\.spec\.js/,
       dependencies: ['mobile-chrome']
+    },
+    {
+      // Reseeds the same shared active event, so it runs last, on its own.
+      name: 'member-pass',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-pass\.spec\.js/,
+      dependencies: ['member-cancellation']
     }
   ],
   webServer: {
