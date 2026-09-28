@@ -8,9 +8,13 @@ enforced.
 
 ## Authentication
 
-- Google and Facebook OAuth through Supabase (`src/components/Header.jsx:16`), redirecting to
+- Google OAuth through Supabase (`handleSignIn` in `src/components/Header.jsx`), redirecting to
   `window.location.origin`. Redirect URLs must be registered in the Supabase dashboard for each
   environment (localhost:5173 and the production domain).
+- Facebook sign-in was removed from the UI
+  ([#21](https://github.com/YULmix/yulmix-la-bedaine/issues/21)): Meta refused the redirect
+  because the app's domains were never registered with it. Bringing it back means registering the
+  Supabase callback and app domains in the Meta app, then re-adding the menu item.
 - No email/password, no magic links. There is no account-creation form to secure.
 - On first sign-in, `handle_new_user` (AFTER INSERT on `auth.users`) creates the `profiles` row and
   sets `is_admin` only for the root-admin email.

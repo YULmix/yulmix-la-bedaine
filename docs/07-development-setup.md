@@ -31,7 +31,7 @@ immediately and loudly rather than at the first query.
 ## Supabase setup
 
 1. Create a project; copy the URL and anon key into `.env`.
-2. Enable the **Google** and **Facebook** providers, and register the redirect URLs
+2. Enable the **Google** provider, and register the redirect URLs
    (`http://localhost:5173` and the production origin) under
    *Authentication → URL Configuration*.
 3. Apply the schema from `supabase/migrations/`. For a local database, `supabase start` applies
@@ -273,7 +273,7 @@ a member and an admin actually see and can do — not just what the code implies
 covers the ground the "exercise the change as both a member and an admin" rule in
 [Contributing](./08-contributing.md) otherwise leaves as an unverified aspiration.
 
-There is no email/password sign-in UI (`Header.jsx` only offers Google/Facebook OAuth), so the
+There is no email/password sign-in UI (`Header.jsx` only offers Google OAuth), so the
 suite can't log in through the form. Instead `e2e/support/auth.js` calls Supabase's password grant
 directly for the seeded `member@test.local` / `admin@test.local` users
 (`supabase/seed.sql`), then hands the resulting tokens to the app's own Supabase client via

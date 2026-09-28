@@ -20,7 +20,7 @@ flowchart TD
   end
 
   subgraph Supabase["Supabase project (managed)"]
-    AUTH["Auth: Google + Facebook OAuth"]
+    AUTH["Auth: Google OAuth"]
     PG[("Postgres<br/>public schema")]
     RLS["Row Level Security policies<br/>+ SECURITY DEFINER functions"]
     RT["Realtime (postgres_changes)"]

@@ -43,7 +43,7 @@ flowchart TD
   RA -->|"grants/revokes admin"| A
 ```
 
-- **Member** — signs in with Google or Facebook, registers a *party* (themselves plus partner,
+- **Member** — signs in with Google, registers a *party* (themselves plus partner,
   kids, teens, friends), states logistics preferences, sees what they owe and whether they've paid.
 - **New member** — someone attending for the first time. Gets a deliberate discount so the group
   keeps recruiting (see [pricing](./04-pricing-and-business-rules.md#new-member-rule)).

@@ -1,5 +1,5 @@
 // Logs a Playwright page in as one of the seeded local test users (supabase/seed.sql)
-// without going through the UI, which only offers Google/Facebook OAuth. We get a real
+// without going through the UI, which only offers Google OAuth. We get a real
 // session via Supabase's password grant, then hand it to the app's own supabase client
 // (exposed on window in dev builds, see src/lib/supabase.js) rather than poking at
 // localStorage directly, so this doesn't depend on the auth-js storage format.
