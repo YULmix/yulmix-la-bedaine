@@ -256,12 +256,15 @@ regardless of whether Supabase was even reachable.
 With the environment issue fixed, `npm run test:rls` fails cleanly on `ECONNREFUSED` in this repo
 today — the honest failure, because no Supabase instance is running here. To make it actually pass:
 
-1. A local Supabase: `supabase start`. It uses the committed `supabase/config.toml` and applies
-   `supabase/migrations/`, so the local schema matches production's.
-2. `.env.test` with a real local service-role key (and that file should be gitignored, see
-   [security](./06-security-and-rls.md#secrets)).
-3. Seed data: `supabase/tests/seed_test_data.sql` defines a `seed_test_data()` function the suite
-   calls, falling back to inline seeding.
+1. A local Supabase: `supabase start` (or `supabase db reset` for a fresh one with the seeded
+   `member@test.local` / `admin@test.local` users). It uses the committed `supabase/config.toml`
+   and applies `supabase/migrations/`, so the local schema matches production's.
+2. Nothing to configure: `jest.rls.config.js` reads the URL, anon key and service-role key from
+   `supabase status`, as `playwright.config.js` does. `.env.test` is only the fallback when that
+   command fails; a hand-copied one goes stale when the local keys change, and every request then
+   fails with `PGRST301` ("None of the keys was able to decode the JWT").
+3. Seed data: each `describe` block creates the rows it needs (as the signed-in admin, since
+   `service_role` can only read `events`) and deletes them afterwards.
 
 `supabase/tests/README.md` documents the intended workflow, in PowerShell — the project was
 developed on Windows. The commands are shell-agnostic enough to translate.
@@ -341,7 +344,7 @@ a host that only exists in the local stack.
 | `.env.example` | yes | template for `.env` |
 | `.env` | no (gitignored) | your local Supabase credentials |
 | `.env.test.example` | yes | template for `.env.test` |
-| `.env.test` | **yes — should not be** | placeholders only today; gitignore it before someone adds a real key |
+| `.env.test` | no (gitignored) | fallback keys for `npm run test:rls` when `supabase status` can't answer |
 | `.env.preview.local` | no (gitignored) | `PREVIEW_DB_URL`, for `npm run db:preview:reset` |
 | `supabase/preview-seed.json` | yes | knobs for the generated fake data |
 

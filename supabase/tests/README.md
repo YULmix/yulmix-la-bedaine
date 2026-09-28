@@ -18,13 +18,8 @@ Automated testing suite for Row Level Security (RLS) policies in the La Bédaine
    ```
 
 3. **Environment Configuration**
-   - Copy `.env.test.example` to `.env.test`
-   - Update with your local Supabase credentials:
-     ```env
-     VITE_SUPABASE_URL=http://localhost:54321
-     VITE_SUPABASE_ANON_KEY=your-anon-key
-     SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-     ```
+   None: `jest.rls.config.js` reads the URL and keys from `supabase status`. A gitignored
+   `.env.test` (copied from `.env.test.example`) is only the fallback when that command fails.
 
 ## Running Tests
 
@@ -54,24 +49,21 @@ npm test -- -t "EVENTS: Public can read ACTIVE and ARCHIVED events"
 
 ## Test Data
 
-Test data lives in `supabase/tests/seed_test_data.sql`. The suite seeds inline if it can't find a `seed_test_data()` function. The data:
-
-1. Clears existing test data (identified by specific UUIDs)
-2. Creates:
-   - Regular user (`user@test.com`)
-   - Admin user (`admin@test.com`)
-   - DRAFT, ACTIVE, and ARCHIVED events
-   - User and admin registrations
-   - Sample feedback entries
+Each `describe` block creates the rows it needs in `beforeAll`/`beforeEach` and deletes them
+afterwards. It signs in as the seeded `member@test.local` / `admin@test.local` users
+(`supabase db reset` creates them) and seeds as the admin: `service_role` can only read `events`.
+Check the `error` supabase-js returns when seeding; it doesn't throw.
 
 ## Adding New Tests
 
-1. Create test file in `src/__tests__/`
-2. Use the existing test UUIDs to avoid conflicts
-3. Follow the pattern:
+1. Add a `describe` block to `src/__tests__/rlsPolicies.test.js`, with its own fixed UUIDs for the
+   rows it creates, so blocks don't collide.
+2. Act as a real role with `signIn('member@test.local')` / `signIn('admin@test.local')`, or an
+   anon client for signed-out access:
    ```javascript
    test('POLICY: Description', async () => {
-     const client = createAuthenticatedClient(TEST_UUIDS.USER_ID);
+     const member = await signIn('member@test.local');
+     const { data, error } = await member.from('events').select('id');
      // Test assertions
    });
    ```
@@ -79,16 +71,14 @@ Test data lives in `supabase/tests/seed_test_data.sql`. The suite seeds inline i
 ## Troubleshooting
 
 ### "SUPABASE_SERVICE_ROLE_KEY is required"
-- Get service role key from Supabase dashboard: Settings > API
-- Add to `.env.test`
+- The local Supabase isn't running: `supabase start`.
 
-### "seed_test_data function not found"
-- The suite falls back to inline seeding. To load the seed script yourself, run it with `psql`
-  against the local `DB URL` printed by `supabase status`. Never run it against production.
+### PGRST301 "None of the keys was able to decode the JWT"
+- The keys don't match the running instance. `npm run test:rls` takes them from `supabase status`;
+  this only happens if that fails and a stale `.env.test` is used instead.
 
 ### Connection Errors
 - Verify Supabase is running: `supabase status`
-- Check `.env.test` URLs match local instance
 
 ## Continuous Integration
 

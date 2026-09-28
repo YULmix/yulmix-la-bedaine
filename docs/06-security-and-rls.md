@@ -139,13 +139,11 @@ keeping the two implementations in step — the cost of having no backend of our
 | Thing | Where it belongs | Status |
 |---|---|---|
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | build-time env; public by design | fine |
-| `SUPABASE_SERVICE_ROLE_KEY` | local `.env.test` and CI secrets **only** | `.env.test` is committed but contains only placeholders — verified, no leak |
+| `SUPABASE_SERVICE_ROLE_KEY` | local only (`supabase status`, or a gitignored `.env.test`) and CI secrets | never in the repo |
 | OAuth client secrets | Supabase dashboard | never in the repo |
 | `RESEND_API_KEY` | Supabase Edge Function secrets, **production project only** (`supabase secrets set`) | a "Sending access" key restricted to `yulmix.com`; never in the repo, Vercel, or Preview ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) |
 
-Care needed: `.gitignore` covers `.env`, `.env.*.local` — but **`.env.test` is tracked**. It is
-harmless today. The moment someone pastes a real service-role key into it, the key is in git history
-forever. Add `.env.test` to `.gitignore` and keep only `.env.test.example`.
+`.gitignore` covers every `.env*` file; only the `.example` templates are tracked.
 
 Any `VITE_`-prefixed variable is inlined into the public bundle. Never prefix a secret with `VITE_`.
 
