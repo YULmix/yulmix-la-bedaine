@@ -23,7 +23,7 @@ enforced.
 | Role | How you get it | What it means |
 |---|---|---|
 | Anonymous | no session | `SELECT` on ACTIVE/ARCHIVED events only |
-| Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback |
+| Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback. A soft-deleted account (#36) keeps only read access to its own profile row |
 | Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `admin_notes` |
 | Root admin | email = `yulmixalabedaine@gmail.com` | always admin, cannot be demoted |
 
@@ -65,12 +65,12 @@ Derived from production's schema as captured in the baseline migration
 
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
-| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — `is_admin` changes are blocked by triggers, see below | *no policy* → denied |
+| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own (active account) or admin — `is_admin` and `deleted_at` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
 | `email_log` | admin only | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
 | `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
-| `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
-| `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
+| `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
+| `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
 Notes on specific choices:
 
@@ -86,6 +86,13 @@ Notes on specific choices:
   revoke can't narrow a table-level grant, so it did nothing. The real guards are
   `trg_prevent_self_privilege_escalation` and `trg_protect_root_admin`, and changing someone
   else's admin flag goes through `admin_set_is_admin()`.
+- **A deleted account keeps no member access** (#36). `delete_my_account()` is the only way to
+  set `profiles.deleted_at`. The `protect_profile_deleted_at` trigger keeps the stored value on any
+  direct write by `authenticated`/`anon`. Every member-side policy on `profiles` (UPDATE),
+  `user_parties`, `app_feedback` and `registration_edits` also requires `is_account_active()`, and
+  `is_admin()` is false for a deleted profile, so a deleted admin loses admin access too. The
+  `user_parties` cells above read "own" for active accounts only. See
+  [Data model](./03-data-model.md#account-deletion-36).
 - **A registration's admin-only fields are protected by a trigger, not by the policies** (#94).
   RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
   whatever a non-admin end user sends for `payment_status`, `admin_notes` and

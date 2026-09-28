@@ -15,6 +15,7 @@ import {
   ACCOMMODATION_OPTIONS,
   getOptionLabel,
   PAYMENT_STATUS,
+  REGISTRATION_STATUS,
   getPaymentStatusShortLabel
 } from '../lib/registrationOptions';
 import { simulateEventPricing } from '../lib/pricingEngine';
@@ -134,6 +135,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, email, full_name, is_admin')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
       if (profilesError) throw profilesError;
       setProfiles(profilesData || []);
@@ -181,12 +183,16 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .from('user_parties')
         .select(`
           *,
-          profiles!inner(id, email, full_name, is_admin, created_at)
+          profiles!inner(id, email, full_name, is_admin, created_at, deleted_at)
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      setParties(partiesData || []);
+      // A deleted account's registrations for events to come were cancelled with it (#36): it's no
+      // longer a member of this edition. Its other registrations stay, as history.
+      setParties((partiesData || []).filter(party =>
+        !(party.profiles?.deleted_at && party.status === REGISTRATION_STATUS.CANCELLED)
+      ));
     } catch (err) {
       console.error('Error fetching parties:', err);
       setError(err.message);

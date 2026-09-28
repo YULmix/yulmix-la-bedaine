@@ -117,3 +117,54 @@ export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {
     );
   }
 }
+
+// Throwaway members, for specs that do something a shared test user can't undo (deleting an
+// account, #36). Created with the auth admin API, which needs the service role key: that works
+// locally even though the service role has no grants on the public tables.
+function authAdmin() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) throw new Error('E2E_SUPABASE_SERVICE_ROLE_KEY missing; see playwright.config.js');
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/.test(url)) {
+    throw new Error(`Refusing to create e2e users against non-local Supabase URL ${url}`);
+  }
+  return createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } }).auth.admin;
+}
+
+export async function createThrowawayMember(label) {
+  const email = `e2e-${label}-${Date.now()}@test.local`;
+  const password = 'password123';
+  const fullName = `E2E ${label} ${Date.now()}`;
+  const { data, error } = await authAdmin().createUser({
+    email, password, email_confirm: true, user_metadata: { full_name: fullName }
+  });
+  if (error) throw new Error(`create throwaway member: ${error.message}`);
+  return { id: data.user.id, email, password, fullName };
+}
+
+// Test cleanup only. The registrations go first, deleted by the admin: that also removes their
+// registration_edits rows, whose edited_by references auth.users without a cascade, and an admin is
+// exempt from the close-date lock that would refuse the cascade from auth.users.
+export async function deleteThrowawayMember(userId) {
+  if (!userId) return;
+  const db = await adminClient();
+  check(await db.from('user_parties').delete().eq('user_id', userId), 'delete throwaway parties');
+  const { error } = await authAdmin().deleteUser(userId);
+  if (error) throw new Error(`delete throwaway member: ${error.message}`);
+}
+
+export async function addParty(userId, eventId) {
+  const db = await adminClient();
+  return check(
+    await db.from('user_parties')
+      .insert({ user_id: userId, event_id: eventId, attendees: E2E_ATTENDEES, status: 'registered' })
+      .select('id')
+      .single(),
+    'create throwaway party'
+  ).id;
+}
+
+export async function getProfile(userId) {
+  const db = await adminClient();
+  return check(await db.from('profiles').select('deleted_at').eq('id', userId).single(), 'read e2e profile');
+}

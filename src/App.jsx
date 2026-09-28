@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
-import { LockKeyhole } from 'lucide-react';
+import { LockKeyhole, UserX } from 'lucide-react';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
@@ -66,6 +66,8 @@ const SignedOutHome = () => (
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Soft-deleted account (#36): the database gives it no member access; the app shows why.
+  const [isDeleted, setIsDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -103,6 +105,24 @@ function App() {
     } catch (error) {
       console.error('Error fetching admin status:', error);
       setIsAdmin(false);
+    }
+  };
+
+  // A deleted member can still read their own profile row; everything else is closed to them.
+  // If the lookup fails, the database still refuses a deleted account everything; only the
+  // explanation is missing, so treat it as active rather than signing the user out.
+  const fetchAccountStatus = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('deleted_at')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      setIsDeleted(!!data?.deleted_at);
+    } catch (error) {
+      console.error('Error fetching account status:', error);
+      setIsDeleted(false);
     }
   };
 
@@ -175,9 +195,10 @@ function App() {
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
         if (session?.user) {
-          await fetchAdminStatus(session.user.id);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
         } else {
           setIsAdmin(false);
+          setIsDeleted(false);
         }
         setLoading(false);
       }
@@ -191,7 +212,7 @@ function App() {
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
         if (session?.user) {
-          await fetchAdminStatus(session.user.id);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
@@ -220,11 +241,23 @@ function App() {
         setIsAuthenticated={setIsAuthenticated}
         user={user}
         isAdmin={isAdmin}
+        isDeleted={isDeleted}
         onOpenFeedback={() => setIsFeedbackOpen(true)}
       />
 
       {/* overflow-x-clip: step/tab slide-ins translate content sideways; without it mobile browsers widen the layout viewport mid-animation. clip (not hidden) keeps position: sticky working. */}
       <div id="main" className="flex flex-1 flex-col overflow-x-clip">
+        {isAuthenticated && isDeleted ? (
+          <PageMain>
+            <EmptyState
+              icon={UserX}
+              title={fr.accountDeletedTitle}
+              action={<Button variant="secondary" onClick={() => supabase.auth.signOut()}>{fr.signOut}</Button>}
+            >
+              {fr.accountDeletedMessage}
+            </EmptyState>
+          </PageMain>
+        ) : (
         <Routes>
           <Route path="/" element={
             isAuthenticated ? (
@@ -269,6 +302,7 @@ function App() {
             </PageMain>
           } />
         </Routes>
+        )}
       </div>
 
       <footer className="border-t border-line pb-24 md:pb-0">
@@ -276,7 +310,7 @@ function App() {
           <p>© {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}</p>
           <div className="flex gap-5">
             <Link to="/a-propos" className="inline-flex min-h-11 items-center hover:text-ink">{fr.about}</Link>
-            {isAuthenticated && (
+            {isAuthenticated && !isDeleted && (
               <button onClick={() => setIsFeedbackOpen(true)} className="inline-flex min-h-11 items-center hover:text-ink">{fr.reportProblem}</button>
             )}
           </div>
@@ -289,7 +323,7 @@ function App() {
         onClose={() => setIsModalOpen(false)}
       />
 
-      {isAuthenticated && (
+      {isAuthenticated && !isDeleted && (
         <FeedbackModal userId={user?.id} open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       )}
     </div>

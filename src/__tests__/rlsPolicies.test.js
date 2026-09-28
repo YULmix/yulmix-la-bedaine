@@ -584,6 +584,135 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   });
 });
 
+// #36: "Supprimer mon compte" is a soft delete through delete_my_account(). Each test uses its
+// own throwaway user (created with the service role's auth admin API), since a deleted account
+// can't be restored through the API and the seeded member is shared by every other suite.
+describe('🗑️ soft account deletion (#36)', () => {
+  jest.setTimeout(30000);
+
+  const UPCOMING_EVENT_ID = 'a0000000-a000-a000-a000-a00000000361';
+  const LOCKED_EVENT_ID = 'a0000000-a000-a000-a000-a00000000362';
+  const PAST_EVENT_ID = 'a0000000-a000-a000-a000-a00000000363';
+  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
+  const ONE_ATTENDEE = [{ name: 'Del', type: 'Adult', participation: 'Whole', is_new_member: false }];
+
+  let adminAuthClient;
+  const createdUserIds = [];
+
+  // A fresh member, signed in. Returns { id, client }.
+  const newMember = async (label) => {
+    const email = `del36-${label}-${Date.now()}@test.local`;
+    const { data, error } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (error) throw error;
+    createdUserIds.push(data.user.id);
+    return { id: data.user.id, client: await signIn(email) };
+  };
+  const register = async (userId, eventId) => {
+    const { data, error } = await adminAuthClient.from('user_parties')
+      .insert({ user_id: userId, event_id: eventId, attendees: ONE_ATTENDEE, status: 'registered' })
+      .select('id').single();
+    if (error) throw error;
+    return data.id;
+  };
+  const partiesOf = async (userId) => (await adminAuthClient.from('user_parties')
+    .select('event_id, status').eq('user_id', userId).order('event_id')).data;
+  const deletedAtOf = async (userId) => (await adminAuthClient.from('profiles')
+    .select('deleted_at').eq('id', userId).single()).data?.deleted_at;
+
+  beforeAll(async () => {
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert([
+      { id: UPCOMING_EVENT_ID, theme: 'Deletion Upcoming', status: 'ACTIVE', event_start_date: isoDay(60), x_reg_close_weeks: 1 },
+      { id: LOCKED_EVENT_ID, theme: 'Deletion Locked', status: 'ACTIVE', event_start_date: isoDay(3), x_reg_close_weeks: 1 },
+      { id: PAST_EVENT_ID, theme: 'Deletion Past', status: 'ARCHIVED', event_start_date: isoDay(-300), x_reg_close_weeks: 1 }
+    ]);
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    // Test cleanup only. The registrations go first, deleted by the admin: that also removes their
+    // registration_edits rows, whose edited_by references auth.users without a cascade, and an
+    // admin is exempt from the close-date lock that would refuse the cascade from auth.users.
+    for (const id of createdUserIds) {
+      const { error: partiesError } = await adminAuthClient.from('user_parties').delete().eq('user_id', id);
+      if (partiesError) throw partiesError;
+      const { error } = await adminClient.auth.admin.deleteUser(id);
+      if (error) throw error;
+    }
+  });
+
+  test('deleting cancels registrations to come, keeps past ones, and deletes no row', async () => {
+    const member = await newMember('ok');
+    await register(member.id, UPCOMING_EVENT_ID);
+    await register(member.id, PAST_EVENT_ID);
+
+    const { error } = await member.client.rpc('delete_my_account');
+    expect(error).toBeNull();
+
+    expect(await deletedAtOf(member.id)).not.toBeNull();
+    expect(await partiesOf(member.id)).toEqual([
+      { event_id: UPCOMING_EVENT_ID, status: 'cancelled' },
+      { event_id: PAST_EVENT_ID, status: 'registered' }
+    ]);
+  });
+
+  test('past the close date of an event they are registered for, deletion is refused and nothing changes', async () => {
+    const member = await newMember('locked');
+    await register(member.id, UPCOMING_EVENT_ID);
+    await register(member.id, LOCKED_EVENT_ID);
+
+    const { error } = await member.client.rpc('delete_my_account');
+    // A code for the app to translate, not French text (see src/lib/dbErrors.js).
+    expect(error?.message).toBe('account_deletion_locked');
+    expect(JSON.parse(error.details)).toEqual({ event: 'Deletion Locked', close_date: isoDay(3 - 7) });
+
+    expect(await deletedAtOf(member.id)).toBeNull();
+    expect((await partiesOf(member.id)).map(p => p.status)).toEqual(['registered', 'registered']);
+  });
+
+  test('a member cannot set deleted_at directly, on their own profile or another one', async () => {
+    const member = await newMember('direct');
+    const other = await newMember('other');
+
+    await member.client.from('profiles').update({ deleted_at: new Date().toISOString() }).eq('id', member.id);
+    await member.client.from('profiles').update({ deleted_at: new Date().toISOString() }).eq('id', other.id);
+
+    expect(await deletedAtOf(member.id)).toBeNull();
+    expect(await deletedAtOf(other.id)).toBeNull();
+  });
+
+  test('a deleted account keeps no member access, but can read that it was deleted', async () => {
+    const member = await newMember('after');
+    await register(member.id, PAST_EVENT_ID);
+    await member.client.rpc('delete_my_account');
+
+    const { data: ownParties } = await member.client.from('user_parties').select('id');
+    expect(ownParties).toEqual([]);
+
+    const { error: insertError } = await member.client.from('user_parties')
+      .insert({ user_id: member.id, event_id: UPCOMING_EVENT_ID, attendees: ONE_ATTENDEE });
+    expect(insertError).not.toBeNull();
+
+    const { error: feedbackError } = await member.client.from('app_feedback').insert({ user_id: member.id, content: 'x' });
+    expect(feedbackError).not.toBeNull();
+
+    const { data: ownProfile } = await member.client.from('profiles').select('deleted_at').eq('id', member.id).single();
+    expect(ownProfile.deleted_at).not.toBeNull();
+  });
+
+  test('an admin no longer lists the deleted member, but still sees their history', async () => {
+    const member = await newMember('history');
+    await register(member.id, PAST_EVENT_ID);
+    await member.client.rpc('delete_my_account');
+
+    const { data: activeProfiles } = await adminAuthClient.from('profiles').select('id').is('deleted_at', null).eq('id', member.id);
+    expect(activeProfiles).toEqual([]);
+
+    const { data: history } = await adminAuthClient.from('user_event_history').select('event_id').eq('user_id', member.id);
+    expect(history).toEqual([{ event_id: PAST_EVENT_ID }]);
+  });
+});
+
 // Manual seeding if function doesn't exist
 async function seedTestDataManually() {
   // Clear existing test data
