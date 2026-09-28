@@ -22,7 +22,12 @@ name: Build, test, deploy
 # an AI assistant, and BEFORE merging any migration (without them the
 # backup job fails, and a failed backup blocks the deploy):
 #   gh secret set SUPABASE_ACCESS_TOKEN --env supabase-production
-#                                             # from supabase.com/dashboard/account/tokens.
+#                                             # from supabase.com/dashboard/account/tokens:
+#                                             # a scoped token with exactly the permissions
+#                                             # in docs/07-development-setup.md
+#                                             # ("SUPABASE_ACCESS_TOKEN permissions"),
+#                                             # Edge Functions ones included (job
+#                                             # "Deploy Edge Functions").
 #                                             # Set as an environment secret, not a repo
 #                                             # secret: the "supabase-production" environment
 #                                             # is branch-restricted to main, so no workflow
