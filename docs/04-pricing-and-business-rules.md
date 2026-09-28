@@ -68,11 +68,16 @@ discount. Kids stay free.
 ## What a party owes
 
 ```
-amount_owed(party) = ceil( Σ share(attendee) × locked_selling_price_whole_event )   -- up to the dollar
+price(attendee)    = ceil( share(attendee) × locked_selling_price_whole_event )   -- up to the dollar
+amount_owed(party) = Σ price(attendee)
 ```
 
-with each share computed from the party's `locked_ratio_main_whole`. A registration made while the
-event had no price (≤ 0) owes `0,00 $` until the event gets one (see below).
+with each share computed from the party's `locked_ratio_main_whole`. Each attendee is rounded on
+their own, and the party owes the sum of those rounded prices (#120), so the per-attendee lines in
+the registration form always add up to its total: two adults on the main event at 200 $ are
+108 + 108 = 216 $, not `ceil(2 × 107,50) = 215 $`.
+
+A registration made while the event had no price (≤ 0) owes `0,00 $` until the event gets one (see below).
 
 ### The locked price
 
@@ -98,16 +103,21 @@ they never recompute it at today's price.
 
 ### Worked example
 
-`selling_price_whole_event = 200 $`, `ratio_main_whole = 0.6`. A party of four: a returning adult
-(whole), a new adult (whole), a teen (main), a kid.
+`selling_price_whole_event = 205 $`, `ratio_main_whole = 0.6`. A party of five: a returning adult
+(whole), a new adult (whole), a teen (main), a new teen (whole), a kid.
 
-| Attendee | Share | Cost |
-|---|---|---|
-| Adult, whole | 1 | 200,00 $ |
-| New adult, whole → main | 0.6 | 120,00 $ |
-| Teen, main | ½ × 0.6 = 0.3 | 60,00 $ |
-| Kid | 0 | 0,00 $ |
-| | | **380,00 $ owed** |
+| Attendee | Share | Share × price | Price |
+|---|---|---|---|
+| Adult, whole | 1 | 205,00 $ | 205,00 $ |
+| New adult, whole → main | 0.6 | 123,00 $ | 123,00 $ |
+| Teen, main | ½ × 0.6 = 0.3 | 61,50 $ | 62,00 $ |
+| New teen, whole → main | ½ × 0.6 = 0.3 | 61,50 $ | 62,00 $ |
+| Kid | 0 | 0,00 $ | 0,00 $ |
+| | | | **452,00 $ owed** |
+
+Rounding the total instead of each line would give `ceil(451,00) = 451 $`, a dollar less than the
+lines add up to. This case is in `pricingEngine.test.js` and, against the SQL function, in the RLS
+suite and `e2e/attendee-price-rounding.spec.js`.
 
 ### Grandfathering
 
@@ -166,8 +176,10 @@ price, which get this one.
 - Money is stored as `NUMERIC(10,2)`. The database computes amounts in exact `NUMERIC`; the engine
   works in floating point and trims float noise before rounding up, so an exact amount (0.5375 ×
   160 = 86) is not bumped a dollar.
-- A party's amount rounds **up to the dollar**; the break-even price rounds **up to $10**. The
-  $10 rounding never applies to what a member is charged.
+- Each attendee's price rounds **up to the dollar** (`attendeePrice` in the engine, the loop in
+  `calculate_party_amount_owed`), and a party's amount is the sum of those rounded prices, never
+  rounded again. `attendeePrice` is the only place the UI rounds an attendee's price. The
+  break-even price rounds **up to $10**; that rounding never applies to what a member is charged.
 - All display goes through `formatCurrency` in `src/lib/format.js` (`fr-CA`, e.g. `355,00 $`).
 
 ## Changing the rules safely

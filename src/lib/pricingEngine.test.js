@@ -7,6 +7,7 @@
 
 import {
   DEFAULT_PRICE_RATIOS,
+  attendeePrice,
   calculateBreakEvenPrice,
   partyPricingOf,
   priceRatiosOf,
@@ -221,6 +222,37 @@ describe('pricingEngine — per-event main-event ratio (#109)', () => {
     expect(priceRatiosOf({})).toEqual(DEFAULT_PRICE_RATIOS);
     expect(priceRatiosOf({ ratio_main_whole: 0 })).toEqual(DEFAULT_PRICE_RATIOS);
     expect(priceRatiosOf({ ratio_main_whole: 1.5 })).toEqual(DEFAULT_PRICE_RATIOS);
+  });
+});
+
+describe('pricingEngine — each attendee rounded up to the dollar (#120)', () => {
+  const owed = (attendees, basePrice, ratios) =>
+    simulateEventPricing([{ id: 'p', attendees }], basePrice, ratios).calculated_amount_owed;
+
+  test('an attendee\'s price is their share × the base price, rounded up', () => {
+    expect(attendeePrice({ type: 'Adult', participation: 'Main' }, 85)).toBe(46); // 45.6875
+    expect(attendeePrice({ type: 'Teenager', participation: 'Main' }, 200)).toBe(54); // 53.75
+    expect(attendeePrice({ type: 'Kid', participation: 'Whole' }, 200)).toBe(0);
+  });
+
+  test('a party owes the sum of its rounded lines, not the rounded sum', () => {
+    const adultMain = { type: 'Adult', participation: 'Main' };
+    // 108 + 108, where rounding the total would give ceil(215) = 215.
+    expect(owed([adultMain, adultMain], 200)).toBe(216);
+  });
+
+  test('matches calculate_party_amount_owed for a mixed party whose lines round up (same case checked in SQL)', () => {
+    const ratios = { mainWhole: 0.6 };
+    const attendees = [
+      { type: 'Adult', participation: 'Whole' },
+      { type: 'Adult', participation: 'Main' },
+      { type: 'Teenager', participation: 'Main' },
+      { type: 'Teenager', participation: 'Whole', is_new_member: true },
+      { type: 'Kid', participation: 'Whole' }
+    ];
+    const lines = attendees.map((attendee) => attendeePrice(attendee, 205, ratios));
+    expect(lines).toEqual([205, 123, 62, 62, 0]); // teens: 0.3 × 205 = 61.50 → 62
+    expect(owed(attendees, 205, ratios)).toBe(452); // the rounded sum would be 451
   });
 });
 

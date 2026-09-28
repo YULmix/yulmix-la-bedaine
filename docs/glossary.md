@@ -97,8 +97,8 @@ _Avoid_: base cost, cost price — and do not conflate it with the base price. O
 the other a decision.
 
 **Amount owed** (fr. *montant dû*, column `user_parties.calculated_amount_owed`)
-What a party owes, in CAD: the sum of its attendees' individual costs. Snapshotted onto the row
-at save time, not computed on read.
+What a party owes, in CAD: the sum of its attendees' individual prices, each rounded up to the
+dollar on its own (#120). Snapshotted onto the row at save time, not computed on read.
 
 **Locked price** (fr. *prix garanti*, columns `user_parties.locked_selling_price_whole_event` and
 `locked_ratio_main_whole`)
