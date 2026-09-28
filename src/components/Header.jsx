@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -7,6 +7,13 @@ import { initials } from '../lib/eventDisplay';
 import { dbErrorMessage } from '../lib/dbErrors';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
+
+// Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
+// false in production builds, which then drop these imports and the whole chunk.
+const previewTool = (name) => lazy(() => import('../preview/TestAccounts').then(m => ({ default: m[name] })));
+const TestAccountMenuItem = __PREVIEW_TOOLS__ ? previewTool('TestAccountMenuItem') : null;
+const TestAccountPicker = __PREVIEW_TOOLS__ ? previewTool('TestAccountPicker') : null;
+const TestAccountMarker = __PREVIEW_TOOLS__ ? previewTool('TestAccountMarker') : null;
 
 const MENU_ITEM = 'flex w-full min-h-11 items-center gap-3 rounded-control px-3 text-left text-base text-ink hover:bg-raised focus-visible:bg-raised';
 
@@ -39,6 +46,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
 
   const userDisplayName = user
     ? (user.user_metadata?.full_name || user.email || fr.profile)
@@ -98,6 +106,9 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-night/85 backdrop-blur-md">
+      {TestAccountMarker && isAuthenticated && (
+        <Suspense fallback={null}><TestAccountMarker email={user?.email} /></Suspense>
+      )}
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 md:px-6">
         <Link to="/" className="mr-auto flex items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
           <img src={yulmixLogo} alt="" aria-hidden="true" className="h-7 w-auto" />
@@ -145,6 +156,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
               {!isAuthenticated ? (
                 <>
                   <button role="menuitem" onClick={() => handleSignIn('google')} className={MENU_ITEM}>{fr.signInWithGoogle}</button>
+                  {TestAccountMenuItem && (
+                    <Suspense fallback={null}>
+                      <TestAccountMenuItem className={MENU_ITEM} onSelect={() => { menu.setOpen(false); setSwitchingAccount(true); }} />
+                    </Suspense>
+                  )}
                 </>
               ) : (
                 <>
@@ -164,6 +180,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
                       {fr.reportProblem}
                     </button>
                   )}
+                  {TestAccountMenuItem && (
+                    <Suspense fallback={null}>
+                      <TestAccountMenuItem className={MENU_ITEM} onSelect={() => { menu.setOpen(false); setSwitchingAccount(true); }} />
+                    </Suspense>
+                  )}
                   <div className="my-1 h-px bg-line" />
                   {!isDeleted && (
                     <button role="menuitem" onClick={() => { menu.setOpen(false); setConfirmingDelete(true); }} className={cx(MENU_ITEM, 'text-muted')}>
@@ -181,6 +202,17 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
           )}
         </div>
       </div>
+
+      {TestAccountPicker && switchingAccount && (
+        <Suspense fallback={null}>
+          <TestAccountPicker
+            open
+            onClose={() => setSwitchingAccount(false)}
+            currentEmail={isAuthenticated ? user?.email : null}
+            isAdmin={isAuthenticated && isAdmin}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         open={confirmingDelete}
