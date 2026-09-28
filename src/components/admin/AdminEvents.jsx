@@ -1,7 +1,7 @@
 import { Archive, CalendarPlus, Pencil, Plus, Power, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
-import { Button, Card, Dialog, EmptyState, Field, Input, Select, Tag, Textarea, Toggle } from '../ui';
+import { Button, Card, Dialog, EmptyState, Field, Input, Tag, Textarea, Toggle } from '../ui';
 
 const STATUS = {
   ACTIVE: { tone: 'ok', key: 'eventStatusActive' },
@@ -94,14 +94,12 @@ const RowListEditor = ({ label, rows, fields, onChange, onAdd, onRemove, addLabe
   </div>
 );
 
-// The 17 event fields, grouped into four fieldsets so the dialog reads top-down.
+// The event's descriptive fields, grouped into fieldsets so the dialog reads top-down. Money
+// (price, ratios, budget) is edited in the Budget tab (#109).
 export const EventEditDialog = ({
   event,
   changes,
   onChange,
-  onCostBreakdownChange,
-  onAddCostRow,
-  onRemoveCostRow,
   onLinkChange,
   onAddLinkRow,
   onRemoveLinkRow,
@@ -145,39 +143,6 @@ export const EventEditDialog = ({
               <Field label={fr.eventMaxAttendeesLabel}>{({ id }) => <Input id={id} type="number" inputMode="numeric" value={value('max_attendees')} onChange={num('max_attendees', parseInt, 90)} />}</Field>
             </div>
             <Toggle label={fr.eventRegOpenLabel} checked={!!value('is_reg_open', false)} onChange={checked => onChange('is_reg_open', checked)} />
-          </Fieldset>
-
-          <Fieldset legend={fr.eventFieldsetMoney}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={fr.eventSellingPriceLabel} hint={fr.sellingPriceHint}>{({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} type="number" step="0.01" inputMode="decimal" className="font-data" value={value('selling_price_whole_event')} onChange={num('selling_price_whole_event', parseFloat, 0)} />}</Field>
-              <Field label={fr.eventEstimatedCostLabel} hint={fr.estimatedCostHint}>{({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} type="number" step="0.01" inputMode="decimal" className="font-data" value={value('estimated_individual_cost_whole_event')} onChange={num('estimated_individual_cost_whole_event', parseFloat, 0)} />}</Field>
-              <Field label={fr.eventTotalCostLabel}>{({ id }) => <Input id={id} type="number" step="0.01" inputMode="decimal" className="font-data" value={value('total_cost')} onChange={num('total_cost', parseFloat, 0)} />}</Field>
-              <Field label={fr.eventExpenseCategoryLabel}>
-                {({ id }) => (
-                  <Select id={id} value={value('expense_category')} onChange={e => onChange('expense_category', e.target.value)}>
-                    <option value="">{fr.selectPlaceholder}</option>
-                    <option value="Chalet">{fr.eventExpenseCategoryChalet}</option>
-                    <option value="Food">{fr.eventExpenseCategoryFood}</option>
-                    <option value="Music">{fr.eventExpenseCategoryMusic}</option>
-                    <option value="Tech">{fr.eventExpenseCategoryTech}</option>
-                    <option value="Accessories">{fr.eventExpenseCategoryAccessories}</option>
-                  </Select>
-                )}
-              </Field>
-            </div>
-            <RowListEditor
-              label={fr.eventCostBreakdownLabel}
-              rows={value('cost_breakdown', [])}
-              fields={[
-                { key: 'category', placeholder: fr.eventCostBreakdownCategoryPlaceholder, className: 'flex-1' },
-                { key: 'amount', placeholder: fr.eventCostBreakdownAmountPlaceholder, type: 'number', step: '0.01', className: 'w-32 font-data' }
-              ]}
-              onChange={onCostBreakdownChange}
-              onAdd={onAddCostRow}
-              onRemove={onRemoveCostRow}
-              addLabel={fr.eventCostBreakdownAddRow}
-              removeLabel={fr.eventCostBreakdownRemoveRow}
-            />
           </Fieldset>
 
           <Fieldset legend={fr.eventFieldsetMembers}>

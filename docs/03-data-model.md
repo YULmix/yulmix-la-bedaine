@@ -12,6 +12,7 @@ erDiagram
   AUTH_USERS ||--|| PROFILES : "trigger on insert"
   PROFILES ||--o{ USER_PARTIES : "registers"
   EVENTS ||--o{ USER_PARTIES : "receives"
+  EVENTS ||--o| EVENT_BUDGETS : "budgeted by (admin-only)"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
@@ -42,15 +43,19 @@ erDiagram
     text status "DRAFT|ACTIVE|ARCHIVED"
     bool is_active "partial unique: only one TRUE"
     bool is_reg_open
-    numeric total_cost "internal estimate"
-    jsonb cost_breakdown
-    text expense_category
-    numeric selling_price_whole_event "drives what members owe"
-    numeric estimated_individual_cost_whole_event
+    numeric selling_price_whole_event "base price: drives what members owe"
+    numeric ratio_main_whole "main-event share, default 0.5375 (#109)"
     int max_attendees
     jsonb external_links
     text instructions
     timestamptz created_at
+  }
+  EVENT_BUDGETS {
+    uuid event_id PK
+    jsonb lines "category, description, amount"
+    numeric contingency_pct "default 20"
+    numeric total_cost "trigger: sum of lines"
+    timestamptz updated_at
   }
   USER_PARTIES {
     uuid id PK
@@ -170,14 +175,20 @@ Derived, never authored. Exists so admin dashboards can aggregate without unpack
 `type` is `offer` (has room in a car) or `need` (looking for a lift). The schema default is the
 string `"None"`, which is not one of the two option values — harmless today, confusing later.
 
-### `events.cost_breakdown` and `events.external_links`
+### `event_budgets.lines` and `events.external_links`
 
 ```json
-// cost_breakdown
-[{ "category": "Chalet", "amount": 1500 }, { "category": "Food", "amount": 1000 }]
+// event_budgets.lines (admin-only, #109). Checked by a trigger, which also sets total_cost.
+[{ "category": "Chalet", "description": "Location du chalet", "amount": 1500 },
+ { "category": "Food", "description": "Épicerie", "amount": 1000 }]
 // external_links — labels are free text; "Liste d'achats" is the one users look for
 [{ "label": "Liste d'achats", "url": "https://…" }]
 ```
+
+`event_budgets` has one row per event (`event_id` is the primary key): `lines`, `contingency_pct`
+(default 20) and `total_cost`, always the sum of the lines. Admins only, for reading too: it is the
+simulation the organisers set the price from, and never feeds an amount (see
+[Pricing](./04-pricing-and-business-rules.md#the-budget-and-the-break-even-price)).
 
 ## Enumerations
 
@@ -186,7 +197,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | Column | Allowed values | Notes |
 |---|---|---|
 | `events.status` | `DRAFT`, `ACTIVE`, `ARCHIVED` | Mirrored by `is_active`; the two can drift |
-| `events.expense_category` | `Chalet`, `Food`, `Music`, `Tech`, `Accessories` | Unused by the UI |
+| `event_budgets.lines[].category` | `Chalet`, `Food`, `Music`, `Tech`, `Accessories`, `Other` | Checked by the `enforce_event_budget` trigger, not a column constraint (the values live in jsonb) |
 | `user_parties.payment_status` | `unpaid`, `paid` | English values — see [ADR 0012](./adr/0012-migrate-status-columns-to-english.md), which migrated this from French |
 | `user_parties.status` | `registered`, `pending`, `cancelled` | RLS and a view treat `registered`/`pending` as editable; `cancelled` is written when a member un-registers (#35). A cancelled party owes nothing (no refunds): the admin totals, logistics and exports leave it out, and the users tab lists it only under "Annulées" (#101) |
 

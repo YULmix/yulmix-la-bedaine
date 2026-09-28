@@ -20,7 +20,7 @@ The spreadsheet worked but had structural limits the app is meant to fix:
 | Prices recomputed by hand, formulas drift | A single [pricing engine](./04-pricing-and-business-rules.md) with tests |
 | No history — last year's numbers are a separate tab, or lost | `events` are archived, never deleted; `user_event_history` view spans years |
 | No enforcement: two active weekends, duplicate signups, over-capacity | DB constraints: one active event, one registration per user per event, capacity/waitlist trigger |
-| Cost vs. price confusion in the same cells | Two explicit columns: internal `total_cost` estimate vs. admin-set `selling_price_whole_event` |
+| Cost vs. price confusion in the same cells | An admin-only budget and break-even simulator (Budget tab) vs. the admin-set base price `selling_price_whole_event` |
 | Chasing payments in a chat thread | `payment_status` per registration, visible to the person who owes |
 
 ## Actors

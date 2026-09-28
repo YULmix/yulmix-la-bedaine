@@ -4,7 +4,7 @@ import {
   Tent, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { calculatePricePerPointFromSellingPrice, getFinalPoints, simulateEventPricing } from '../lib/pricingEngine';
+import { getPriceShare, priceRatiosOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { plural } from '../lib/eventDisplay';
@@ -190,7 +190,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     }
   }, [sameForEveryone, attendees]);
 
-  const pricePerPoint = calculatePricePerPointFromSellingPrice(event?.selling_price_whole_event || 0);
+  const basePrice = Number(event?.selling_price_whole_event) || 0;
+  const ratios = useMemo(() => priceRatiosOf(event), [event]);
 
   const estimatedBalance = useMemo(() => {
     if (!event) return 0;
@@ -200,9 +201,10 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         is_paid: false,
         attendees: attendees.map(a => ({ type: a.type, participation: a.participation, isNewMember: a.isNewMember }))
       }],
-      event.selling_price_whole_event || 0
+      basePrice,
+      ratios
     ).calculated_amount_owed;
-  }, [attendees, event]);
+  }, [attendees, event, basePrice, ratios]);
 
   const isWaitlisted = !!(event?.max_attendees && attendees.length > event.max_attendees);
 
@@ -455,8 +457,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                         {fr.participantNumberLabel}{index + 1}
                       </h3>
                       <div className="flex items-center gap-2">
-                        {pricePerPoint > 0 && (
-                          <span className="font-data text-sm text-ink">{formatCurrency(getFinalPoints(attendee) * pricePerPoint)}</span>
+                        {basePrice > 0 && (
+                          <span className="font-data text-sm text-ink">{formatCurrency(getPriceShare(attendee, ratios) * basePrice)}</span>
                         )}
                         {attendees.length > 1 && (
                           <Button
@@ -614,7 +616,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                       {attendee.name || `${fr.participantNumberLabel}${index + 1}`}
                       {attendee.isNewMember && <Check aria-label={fr.firstTimeTag} className="ml-2 inline size-4 text-neon" />}
                     </span>
-                    {pricePerPoint > 0 && <span className="font-data text-sm text-muted">{formatCurrency(getFinalPoints(attendee) * pricePerPoint)}</span>}
+                    {basePrice > 0 && <span className="font-data text-sm text-muted">{formatCurrency(getPriceShare(attendee, ratios) * basePrice)}</span>}
                   </li>
                 ))}
               </ul>

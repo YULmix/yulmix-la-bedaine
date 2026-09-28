@@ -93,6 +93,16 @@ export const VOLUNTEERING_OPTIONS = [
   { value: 'other', label: fr.volunteeringOther }
 ];
 
+// event_budgets.lines[].category values (#109), matching the check in enforce_event_budget().
+export const BUDGET_CATEGORIES = [
+  { value: 'Chalet', label: fr.eventExpenseCategoryChalet },
+  { value: 'Food', label: fr.eventExpenseCategoryFood },
+  { value: 'Music', label: fr.eventExpenseCategoryMusic },
+  { value: 'Tech', label: fr.eventExpenseCategoryTech },
+  { value: 'Accessories', label: fr.eventExpenseCategoryAccessories },
+  { value: 'Other', label: fr.budgetCategoryOther }
+];
+
 export const TRANSPORT_TYPES = [
   { value: 'offer', label: fr.transportTypeOffer },
   { value: 'need', label: fr.transportTypeNeed }

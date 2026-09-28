@@ -1,145 +1,125 @@
 # Pricing and business rules
 
-This is the part of the app that has to be right. Everything here is implemented in
-`src/lib/pricingEngine.js` and covered by `src/lib/pricingEngine.test.js` (5/5 passing when run as
-`npm run test:pricing`).
+This is the part of the app that has to be right. The authoritative amount is computed in the
+database (`calculate_party_amount_owed`, set on every `user_parties` write by a trigger);
+`src/lib/pricingEngine.js` computes the same thing for the live estimates in the UI and the admin
+simulator. The two must agree: `src/lib/pricingEngine.test.js` covers the rules
+(`npm run test:pricing`), and #109 checked the pair against every seeded party.
 
-## The core idea: two unrelated numbers
-
-The single most important distinction in the domain, and the one the spreadsheet blurred:
+## The core idea: the budget informs, the base price decides
 
 ```mermaid
 flowchart LR
-  subgraph Internal["Internal — organisers only, never shown to members"]
-    TC["events.total_cost<br/>what the weekend really costs"]
-    CONT["× 1.20 contingency"]
-    BC["base price per point<br/>rounded UP to nearest $10"]
-    TC --> CONT --> BC
+  subgraph Internal["Budget tab: admins only, never shown to members"]
+    B["event_budgets.lines<br/>categorized costs"]
+    T["total_cost = Σ lines"]
+    C["× (1 + contingency %)"]
+    H["expected headcount<br/>(pre-filled from registrations)"]
+    BE["break-even base price<br/>rounded UP to $10"]
+    B --> T --> C --> BE
+    H --> BE
   end
-  subgraph External["External — what members actually pay"]
-    SP["events.selling_price_whole_event<br/>set by an admin, by judgement"]
-    PPP["price per point = selling_price / 2.0"]
+  subgraph External["What members pay"]
+    SP["events.selling_price_whole_event<br/>(base price)"]
+    R["events.ratio_main_whole"]
     OWED["user_parties.calculated_amount_owed"]
-    SP --> PPP --> OWED
+    SP --> OWED
+    R --> OWED
   end
-  BC -.->|"informs the admin's decision,<br/>never feeds the calculation"| SP
+  BE -.->|"an admin decides, with<br/>'Appliquer comme prix de base'"| SP
 ```
 
-The base cost is a **break-even yardstick**. The selling price is a **decision**. They are
-connected only by an organiser looking at both numbers side by side in the admin dashboard
-("Coût de revient estimé par participant" vs "Prix de vente fixé", `src/views/AdminView.jsx:897`).
+The budget is a **simulation tool**. Saving it changes no amount. Only two numbers on the event
+drive what members owe: the **base price** (`selling_price_whole_event`, what an adult pays for
+the whole weekend) and the **main-event ratio** (`ratio_main_whole`). Changing either reprices
+every unpaid registration of the event (#32, #109); paid ones keep their amount.
 
 Why it matters: if the price were derived from the cost, every new registration would silently
-change what everyone owes. Members would be quoted a number, then invoiced a different one. See
+change what everyone owes. See
 [ADR 0007](./adr/0007-selling-price-not-cost-drives-member-pricing.md).
 
-## Points
+## Price shares
 
-The weighting that spreads the weekend across attendees by how much of it they consume:
+Every price is a share of the base price:
 
-| Tier | French label | Points | Share of adult-whole price |
+| Tier | French label | Share of the base price | Default |
 |---|---|---|---|
-| Adult, whole event | Adulte - Fin de semaine complète | **2.0** | 100% |
-| Adult, main event | Adulte - Événement principal | **1.5** | 75% |
-| Teenager, whole event | Ado - Fin de semaine complète | **1.0** | 50% |
-| Teenager, main event | Ado - Événement principal | **0.5** | 25% |
-| Kid / after-party | Enfant | **0.0** | Free |
+| Adult, whole event | Adulte - Fin de semaine complète | 1 | 100 % |
+| Adult, main event | Adulte - Événement principal | `ratio_main_whole` | 53.75 % |
+| Teenager, whole event | Ado - Fin de semaine complète | ½ | 50 % |
+| Teenager, main event | Ado - Événement principal | ½ × `ratio_main_whole` | 26.875 % |
+| Kid / after-party | Enfant | 0 | free |
 
-`calculateBasePoints(type, participation)` — `src/lib/pricingEngine.js:33`.
+- `ratio_main_whole` is set per event, `0 < ratio ≤ 1` (a database check). Its default, 0.5375,
+  reproduces the point weights used before #109 (2.0 / 1.075 / 1.0 / 0.5375 points at
+  `selling_price / 2` per point).
+- Teens always pay half the adult price of the same tier. That is fixed in code, not a setting.
+- `getPriceShare(attendee, ratios)` in the engine; the `CASE` in `calculate_party_amount_owed`.
 
-Note the defaulting: any non-`Whole` participation for an adult returns 1.5, and any non-`Whole`
-for a teenager returns 0.5. Anything that is not `Adult` or `Teenager` is 0.0. So an unknown or
-missing `type` silently prices as free — worth a guard if tiers ever grow.
+### New members
 
-## What a member owes
+A first Bédaine (`is_new_member`) pays the **main-event** share of their age, whatever tier they
+picked: an adult pays `ratio_main_whole`, a teen `½ × ratio_main_whole`. There is no other
+discount. Kids stay free.
+
+## What a party owes
 
 ```
-price_per_point       = selling_price_whole_event / 2.0
-attendee_cost         = final_points(attendee) × price_per_point
-                        × 0.70 if attendee.is_new_member
-amount_owed(party)    = Σ attendee_cost
+amount_owed(party) = ceil( Σ share(attendee) × selling_price_whole_event )   -- up to the dollar
 ```
 
-Zero guard: if `selling_price_whole_event` is missing, ≤ 0 or not finite, the price per point is
-`0`, so everyone owes `0,00 $` rather than the app crashing on a freshly drafted event
-(`src/lib/pricingEngine.js:74`).
-
-### New member rule
-
-A first-time attendee gets two stacked reductions, in this order
-(`getFinalPoints`, `src/lib/pricingEngine.js:88`, then the ×0.7 at `:172`):
-
-1. **Downgrade to the main-event equivalent.** Adult-whole → 1.5 pts; teen-whole → 0.5 pts.
-   Main-event tiers and kids are unchanged.
-2. **Then 30% off** the resulting amount.
-
-So a new-member adult attending the whole weekend pays `1.5 × price_per_point × 0.70`
-= **52.5%** of what a returning adult pays for the same weekend.
-
-> The requirements flag *"Validate the rebate for new members"* as an open investigation. The code
-> implements the rule as specified; what is unvalidated is whether 52.5% is the intended generosity.
-> That is a decision for the group, not a bug.
+If `selling_price_whole_event` is missing or ≤ 0, everyone owes `0,00 $`.
 
 ### Worked example
 
-Event with `selling_price_whole_event = 200 $`, so `price_per_point = 100 $`.
+`selling_price_whole_event = 200 $`, `ratio_main_whole = 0.6`. A party of four: a returning adult
+(whole), a new adult (whole), a teen (main), a kid.
 
-A party of four: one returning adult (whole), one new-member adult (whole), one teen (main), one kid.
-
-| Attendee | Points | New member | Cost |
-|---|---|---|---|
-| Adult, whole | 2.0 | no | `2.0 × 100` = **200,00 $** |
-| Adult, whole | 2.0 → 1.5 | yes | `1.5 × 100 × 0.70` = **105,00 $** |
-| Teen, main | 0.5 | no | `0.5 × 100` = **50,00 $** |
-| Kid | 0.0 | — | **0,00 $** |
-| | | | **355,00 $ CAD owed** |
+| Attendee | Share | Cost |
+|---|---|---|
+| Adult, whole | 1 | 200,00 $ |
+| New adult, whole → main | 0.6 | 120,00 $ |
+| Teen, main | ½ × 0.6 = 0.3 | 60,00 $ |
+| Kid | 0 | 0,00 $ |
+| | | **380,00 $ owed** |
 
 ### Grandfathering
 
-Once a party's payment is recorded, its amount is frozen: `simulateEventPricing` returns the
-stored historical amount for any party flagged as paid, regardless of later selling-price changes
-(`src/lib/pricingEngine.js:145`). Nobody gets a supplementary invoice after settling.
+Once a party is marked paid, its amount is frozen: the trigger keeps the stored
+`calculated_amount_owed` on every later update (#31), and a price or ratio change skips paid rows.
+Nobody gets a supplementary invoice after settling.
 
-> **Implementation note:** the engine reads `party.is_paid` / `party.historical_owed`, which are
-> *simulation* field names. The database column is `payment_status = 'paid'` and the stored amount
-> is `calculated_amount_owed`. Nothing in the app maps one to the other, so grandfathering is
-> currently only exercised by the simulator and the tests — a paid member who re-opens and saves
-> their registration after a price change **will** have their amount recomputed. See
-> [issue #31](https://github.com/YULmix/yulmix-la-bedaine/issues/31).
+## The budget and the break-even price
 
-## The internal base cost
+The **Budget** admin tab (`?tab=budget`, active event only) holds the event's
+`event_budgets` row, which only admins can read or write (RLS, #109):
 
-Used only to tell organisers whether the price covers reality
-(`calculatePricePerPointFromTotalCost`, `src/lib/pricingEngine.js:57`):
+- **Lines**: category (`Chalet`, `Food`, `Music`, `Tech`, `Accessories`, `Other`), description,
+  amount. `total_cost` is always their sum, computed by a trigger.
+- **Contingency**: a percentage, default 20.
+
+From these and an expected headcount, the simulator computes the **break-even base price**
+(`calculateBreakEvenPrice`):
 
 ```
-contingency_cost      = total_cost × 1.20
-raw_price_per_point   = contingency_cost / total_points_across_all_attendees
-base_price_per_point  = ceil(raw_price_per_point / 10) × 10      -- always rounds UP
+break_even = roundUpTo10( total_cost × (1 + contingency / 100) / Σ share(expected attendees) )
 ```
 
-Rounding up to the nearest $10 is deliberate and asymmetric: `$70.01 → $80`, `$71 → $80`,
-`$70.00 → $70`. Organisers would rather over-collect slightly than chase a shortfall.
+Rounding up to $10 is deliberate and asymmetric: `$70.01 → $80`, `$70.00 → $70`. It returns 0
+when there is no budget or nobody who pays. The overview shows the same number for the people
+registered so far.
 
-Zero guards: returns `0` if `total_cost` ≤ 0 or `total_points` is 0, so a new draft event with no
-registrations does not divide by zero.
+## Simulator
 
-There is a second, simpler helper, `calculateEstimatedCostPerParticipant(totalCost, parties)`
-(`src/lib/pricingEngine.js:196`): `total_cost ÷ headcount excluding kids`, straight from the
-`counts` JSONB. Note it does **not** apply the contingency and does **not** weight by points, so it
-answers a different question than the base price per point. Both are shown to admins; be precise
-about which one you mean.
+The simulator (in the Budget tab) takes:
 
-## Scenario simulator
+- the expected headcount per group (adults and teens by tier, new adults, new teens, kids),
+  pre-filled from the active registrations and never saved;
+- a base price and a main-event ratio to try, without saving.
 
-`simulateEventPricing(attendeeParties, sellingPriceWholeEvent, priceOverride = null)` is pure: it
-returns `{ totalPoints, basePricePerPoint, calculated_amount_owed, parties, … }` and mutates
-nothing. The admin sandbox (`src/views/AdminView.jsx:418`) builds synthetic one-attendee parties
-from four headcount inputs and optional price overrides, so organisers can answer
-"what if 60 adults and 10 teens come, at $180?" before committing a price.
-
-Limitation worth knowing: the simulator never sets `isNewMember`, so it always models a
-zero-newcomer crowd — it over-estimates revenue whenever newcomers are expected.
+It shows the break-even base price, the projected revenue and margin at the tried values, and the
+tier prices they give. **"Appliquer comme prix de base"** saves the tried base price and ratio
+after a confirmation that names the number of unpaid registrations that will be repriced.
 
 ## Capacity and the waitlist
 
@@ -154,22 +134,21 @@ zero-newcomer crowd — it over-estimates revenue whenever newcomers are expecte
 
 ## Rounding and money presentation
 
-- Money is stored as `NUMERIC(10,2)`; amounts owed are computed in floating point in JS and written
-  as-is. Test tolerance is `< 0.01`.
-- All display goes through `Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' })`,
-  producing `355,00 $`. Four separate components define their own `formatCurrency` with identical
-  bodies — a good first extraction into `src/lib/format.js`.
-- The only deliberate rounding rule in the domain is *round up to the nearest $10*, and it applies
-  **only** to the internal base cost, never to what a member is charged.
+- Money is stored as `NUMERIC(10,2)`. The database computes amounts in exact `NUMERIC`; the engine
+  works in floating point and trims float noise before rounding up, so an exact amount (0.5375 ×
+  160 = 86) is not bumped a dollar.
+- A party's amount rounds **up to the dollar**; the break-even price rounds **up to $10**. The
+  $10 rounding never applies to what a member is charged.
+- All display goes through `formatCurrency` in `src/lib/format.js` (`fr-CA`, e.g. `355,00 $`).
 
 ## Changing the rules safely
 
-The pricing engine is pure and tested; keep it that way.
-
-1. Change `src/lib/pricingEngine.js`.
-2. Add or amend a case in `src/lib/pricingEngine.test.js` and run `npm run test:pricing`.
-3. Grep for callers: `RegistrationForm` (live total + the value written to the DB), `AdminView`
-   (simulator + cost-vs-price panel). There are no others.
-4. Ask whether already-registered parties should be repriced. Today nothing recomputes stored
-   amounts in bulk — changing the selling price leaves every existing `calculated_amount_owed`
-   stale until each member re-saves. That is a real operational gap, not a documented feature.
+1. Change `calculate_party_amount_owed` in a new migration **and** `src/lib/pricingEngine.js`, in
+   the same PR.
+2. Add or amend a case in `src/lib/pricingEngine.test.js` and run `npm run test:pricing`. Check the
+   same case against the SQL function on a local Supabase (`select calculate_party_amount_owed(…)`).
+3. Callers of the engine: `RegistrationForm` (live estimate), `AdminView` (per-party totals),
+   `AdminOverview` (tier prices, break-even), `AdminBudget` (simulator).
+4. Existing registrations: a change to the base price or the ratio reprices unpaid ones through the
+   `trg_reprice_unpaid_on_price_change` trigger. A change to the rules themselves (a new migration)
+   does not: decide whether it should, and touch the rows in that migration if so.

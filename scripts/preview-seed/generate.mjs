@@ -56,7 +56,14 @@ const FEEDBACK = [
   'Ce serait pratique de pouvoir télécharger la liste des participants de ma chambre.',
   'La page met du temps à charger sur mon vieux téléphone.'
 ];
-const COST_CATEGORIES = [['Chalet', 0.55], ['Food', 0.25], ['Music', 0.1], ['Tech', 0.05], ['Accessories', 0.05]];
+// Budget lines (event_budgets, admin-only, #109): category, description, share of the total cost.
+const COST_CATEGORIES = [
+  ['Chalet', 'Location du chalet', 0.55],
+  ['Food', 'Épicerie et repas', 0.25],
+  ['Music', 'Sono et DJ', 0.1],
+  ['Tech', 'Éclairage et rallonges', 0.05],
+  ['Accessories', 'Décorations', 0.05]
+];
 
 const ACTIVE_EVENT_START_DAYS = 56; // about 8 weeks out
 const ACTIVE_REG_OPENED_DAYS_AGO = 14;
@@ -222,9 +229,7 @@ function generateEvent(faker, { id, theme, active, startDays, sellingPrice, maxA
     startDays,
     regStartDays: active ? -ACTIVE_REG_OPENED_DAYS_AGO : startDays - 60,
     sellingPrice,
-    estimatedCost: Math.round(sellingPrice * 0.9),
-    totalCost,
-    costBreakdown: COST_CATEGORIES.map(([category, share]) => ({ category, amount: Math.round(totalCost * share) })),
+    budgetLines: COST_CATEGORIES.map(([category, description, share]) => ({ category, description, amount: Math.round(totalCost * share) })),
     maxAttendees,
     instructions: active ? faker.helpers.arrayElement(INSTRUCTIONS) : 'Événement terminé.'
   };
@@ -335,17 +340,19 @@ WHERE u.id IN (${members.map((m) => `${lit(m.id)}`).join(', ')});
 INSERT INTO public.events (
   id, theme, description, venue_address, duration_days, points_of_contact,
   z_intent_months, x_reg_close_weeks, reg_start_date, event_start_date,
-  status, is_active, is_reg_open, total_cost, cost_breakdown, expense_category,
-  selling_price_whole_event, estimated_individual_cost_whole_event, max_attendees,
+  status, is_active, is_reg_open, selling_price_whole_event, max_attendees,
   external_links, instructions, created_at
 ) VALUES
 ${events.map((e) => `  (${lit(e.id)}, ${lit(e.theme)}, ${lit(e.description)}, ${lit(e.venue)}, 3,
    'Inscriptions (Simon), Bénévolat (Dave), Nourriture (Melina), Stationnement (Khaled), Premiers soins (Mach)',
    2, ${REG_CLOSE_WEEKS}, ${dateExpr(e.regStartDays)}, ${dateExpr(e.startDays)},
-   ${lit(e.active ? 'ACTIVE' : 'ARCHIVED')}, ${e.active}, ${e.active}, ${e.totalCost}, ${jsonb(e.costBreakdown)}, 'Chalet',
-   ${e.sellingPrice}, ${e.estimatedCost}, ${e.maxAttendees},
+   ${lit(e.active ? 'ACTIVE' : 'ARCHIVED')}, ${e.active}, ${e.active}, ${e.sellingPrice}, ${e.maxAttendees},
    ${jsonb([{ label: 'Liste d\'achats', url: 'https://example.com/bedaine/liste-achats' }])}, ${lit(e.instructions)},
    now() + make_interval(days => ${e.regStartDays - 16}))`).join(',\n')};
+
+-- Budgets (total_cost is computed by the event_budgets trigger)
+INSERT INTO public.event_budgets (event_id, lines) VALUES
+${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
 `);
 
   if (registrations.length) {

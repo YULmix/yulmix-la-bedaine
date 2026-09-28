@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
+import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
 import AdminOverview from '../components/admin/AdminOverview';
 import AdminLogisticsView from '../components/admin/AdminLogisticsView';
 import AdminUserManagement from '../components/admin/AdminUserManagement';
+import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList, EventEditDialog } from '../components/admin/AdminEvents';
-import { DataExport, FeedbackInbox, ScenarioSimulator } from '../components/admin/AdminTools';
+import { DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
 import PartyEmailLog from '../components/admin/PartyEmailLog';
 import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
@@ -20,7 +21,7 @@ import {
   getPaymentStatusShortLabel,
   isActiveRegistration
 } from '../lib/registrationOptions';
-import { simulateEventPricing } from '../lib/pricingEngine';
+import { priceRatiosOf, simulateEventPricing } from '../lib/pricingEngine';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
@@ -30,6 +31,7 @@ const ADMIN_TABS = [
   { id: 'overview', labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard },
   { id: 'users', labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList },
   { id: 'logistics', labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
+  { id: 'budget', labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote },
   { id: 'events', labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
   { id: 'tools', labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
 ];
@@ -61,17 +63,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [userProfileModal, setUserProfileModal] = useState(null);
   const [userEventHistory, setUserEventHistory] = useState([]);
   const [logisticsChanges, setLogisticsChanges] = useState({});
-  const [scenarioValues, setScenarioValues] = useState({
-    adultWhole: 0,
-    adultMain: 0,
-    teenWhole: 0,
-    teenMain: 0,
-    kids: 0,
-    newMembers: 0,
-    sellingPriceOverride: '',
-    pricePerPointOverride: ''
-  });
-  const [simulationResult, setSimulationResult] = useState(null);
+  // The active event's admin-only budget (event_budgets row, null if never saved) and its unsaved
+  // edits, kept here so they survive switching tabs.
+  const [budget, setBudget] = useState(null);
+  const [budgetDraft, setBudgetDraft] = useState(null);
+  const [savingBudget, setSavingBudget] = useState(false);
   const [feedbackItems, setFeedbackItems] = useState([]);
   const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
   const [pendingPayment, setPendingPayment] = useState(null);
@@ -130,7 +126,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       const activeEv = eventsData?.find(e => e.is_active) || eventsData?.[0];
       setActiveEventState(activeEv);
       if (activeEv) {
-        await fetchParties(activeEv.id);
+        await Promise.all([fetchParties(activeEv.id), fetchBudget(activeEv.id)]);
       }
 
       // Fetch all profiles for admin checkbox
@@ -176,6 +172,73 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     } catch (err) {
       console.error('Error resolving feedback:', err);
       addToast(err.message || fr.error, 'error');
+    }
+  };
+
+  const fetchBudget = async (eventId) => {
+    const { data, error: budgetError } = await supabase
+      .from('event_budgets')
+      .select('*')
+      .eq('event_id', eventId)
+      .maybeSingle();
+    if (budgetError) throw budgetError;
+    setBudget(data);
+    // A draft belongs to one event: drop it if another event became the active one.
+    setBudgetDraft(prev => (prev?.eventId === eventId ? prev : null));
+  };
+
+  // Lines and contingency go to event_budgets; the database checks them and computes the total.
+  const saveBudget = async (lines, contingency) => {
+    setSavingBudget(true);
+    try {
+      const { data, error: saveError } = await supabase
+        .from('event_budgets')
+        .upsert({
+          event_id: activeEventState.id,
+          lines: lines.map(line => ({
+            category: line.category,
+            description: (line.description || '').trim(),
+            amount: Math.max(Number(line.amount) || 0, 0)
+          })),
+          contingency_pct: Math.min(Math.max(Number(contingency) || 0, 0), 100)
+        })
+        .select()
+        .single();
+      if (saveError) throw saveError;
+      setBudget(data);
+      setBudgetDraft(null);
+      addToast(fr.budgetSavedToast, 'success');
+    } catch (err) {
+      console.error('Error saving budget:', err);
+      addToast(fr.saveError, 'error');
+    } finally {
+      setSavingBudget(false);
+    }
+  };
+
+  // New base price and main-event ratio. The database reprices every unpaid registration (#32, #109).
+  const applyPricing = async (pricing) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('events')
+        .update(pricing)
+        .eq('id', activeEventState.id);
+      if (updateError) throw updateError;
+      const { count, error: countError } = await supabase
+        .from('user_parties')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', activeEventState.id)
+        .eq('payment_status', PAYMENT_STATUS.UNPAID)
+        .neq('status', REGISTRATION_STATUS.CANCELLED);
+      addToast(
+        countError ? fr.eventMetadataUpdatedToast
+          : count > 0 ? fr.eventRepricedCountToast.replace('{count}', count) : fr.eventRepricedNoneToast,
+        'success'
+      );
+      await fetchAllData();
+    } catch (err) {
+      console.error('Error applying pricing:', err);
+      addToast(fr.updateError, 'error');
     }
   };
 
@@ -254,32 +317,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const handleEventFieldChange = (field, value) => {
     setEventChanges(prev => ({ ...prev, [field]: value }));
   };
-  // Helper for updating cost breakdown array
-  const handleCostBreakdownChange = (index, field, value) => {
-    const current = eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? [];
-    const updated = [...current];
-    if (!updated[index]) updated[index] = {};
-    updated[index][field] = value;
-    handleEventFieldChange('cost_breakdown', updated);
-  };
-
-  const addCostBreakdownRow = () => {
-    const current = eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? [];
-    handleEventFieldChange('cost_breakdown', [...current, { category: '', amount: 0 }]);
-  };
-
-  const removeCostBreakdownRow = (index) => {
-    const current = eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? [];
-    const updated = current.filter((_, i) => i !== index);
-    handleEventFieldChange('cost_breakdown', updated);
-  };
-
   // Helper for updating external links array
   const handleExternalLinksChange = (index, field, value) => {
     const current = eventChanges.external_links ?? editingEvent?.external_links ?? [];
-    const updated = [...current];
-    if (!updated[index]) updated[index] = {};
-    updated[index][field] = value;
+    // Copy the row: editing it in place would change the loaded event too.
+    const updated = current.map((row, i) => (i === index ? { ...row, [field]: value } : row));
     handleEventFieldChange('external_links', updated);
   };
 
@@ -305,35 +347,12 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
     
     try {
-      const isPriceChange = 'selling_price_whole_event' in eventChanges
-        && eventChanges.selling_price_whole_event !== editingEvent.selling_price_whole_event;
-
       const { error } = await supabase
         .from('events')
         .update(eventChanges)
         .eq('id', editingEvent.id);
       if (error) throw error;
-
-      if (isPriceChange) {
-        const { count, error: countError } = await supabase
-          .from('user_parties')
-          .select('id', { count: 'exact', head: true })
-          .eq('event_id', editingEvent.id)
-          .eq('payment_status', PAYMENT_STATUS.UNPAID)
-          .neq('status', REGISTRATION_STATUS.CANCELLED);
-        if (!countError) {
-          addToast(
-            count > 0
-              ? fr.eventRepricedCountToast.replace('{count}', count)
-              : fr.eventRepricedNoneToast,
-            'success'
-          );
-        } else {
-          addToast(fr.eventMetadataUpdatedToast, 'success');
-        }
-      } else {
-        addToast(fr.eventMetadataUpdatedToast, 'success');
-      }
+      addToast(fr.eventMetadataUpdatedToast, 'success');
       setEventChanges({});
       setEditingEvent(null);
       fetchAllData();
@@ -431,7 +450,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       // Simulate pricing for this single party
       const simulation = simulateEventPricing(
         [partyForSimulation],
-        activeEventState.selling_price_whole_event
+        Number(activeEventState.selling_price_whole_event),
+        priceRatiosOf(activeEventState)
       );
       
       // Return the calculated amount (already rounded up by pricing engine)
@@ -454,7 +474,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       totals.set(party.id, calculateRoundedPartyTotal(party));
     });
     return totals;
-  }, [parties, activeEventState?.selling_price_whole_event]);
+  }, [parties, activeEventState?.selling_price_whole_event, activeEventState?.ratio_main_whole]);
 
   const getRoundedPartyTotal = useCallback(
     (party) => roundedPartyTotals.get(party.id) ?? (party.calculated_amount_owed || 0),
@@ -550,66 +570,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       console.error('Error saving logistics:', error);
       addToast(fr.saveError, 'error');
     }
-  };
-
-  // Scenario simulator
-  const handleScenarioChange = (field, value) => {
-    setScenarioValues(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const runSimulation = () => {
-    // Build a single synthetic party holding every simulated attendee, so the pricing
-    // engine's per-party rounding is applied once to the total rather than once per
-    // attendee (which would inflate the projected total).
-    const attendees = [];
-
-    const addAttendees = (type, participation, count) => {
-      for (let i = 0; i < count; i++) {
-        attendees.push({
-          id: `attendee-${attendees.length}`,
-          type: type === 'adult' ? 'Adult' : type === 'teen' ? 'Teenager' : 'Kid',
-          participation: participation === 'Whole' ? 'Whole' : 'Main',
-          isNewMember: false
-        });
-      }
-    };
-
-    addAttendees('adult', 'Whole', scenarioValues.adultWhole);
-    addAttendees('adult', 'Main', scenarioValues.adultMain);
-    addAttendees('teen', 'Whole', scenarioValues.teenWhole);
-    addAttendees('teen', 'Main', scenarioValues.teenMain);
-
-    // Newcomers pay flat newbie rates (see getFinalPoints), which overstates revenue if left
-    // out of the simulation entirely. Mark the first N point-earning attendees as new members.
-    for (let i = 0; i < Math.min(scenarioValues.newMembers, attendees.length); i++) {
-      attendees[i].isNewMember = true;
-    }
-
-    // Kids don't count for points but we include them
-    for (let i = 0; i < scenarioValues.kids; i++) {
-      attendees.push({
-        id: `attendee-kid-${i}`,
-        type: 'Kid',
-        participation: 'After-Party',
-        isNewMember: false
-      });
-    }
-
-    const syntheticParties = [{ id: 'sim-party', attendees }];
-
-    const sellingPrice = scenarioValues.sellingPriceOverride
-      ? parseFloat(scenarioValues.sellingPriceOverride) 
-      : activeEventState?.selling_price_whole_event || 0;
-    
-    const priceOverride = scenarioValues.pricePerPointOverride 
-      ? parseFloat(scenarioValues.pricePerPointOverride) 
-      : null;
-    
-    const result = simulateEventPricing(syntheticParties, sellingPrice, priceOverride);
-    setSimulationResult(result);
   };
 
   // Summarize per-attendee accommodation info for the party-level export rows
@@ -839,15 +799,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       return (
         <div className="grid gap-6 xl:grid-cols-2">
           <div className="space-y-6">
-            {activeEventState && (
-              <ScenarioSimulator
-                event={activeEventState}
-                values={scenarioValues}
-                onChange={handleScenarioChange}
-                onRun={runSimulation}
-                result={simulationResult}
-              />
-            )}
             {activeEventState && <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
           </div>
           <FeedbackInbox
@@ -874,6 +825,20 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
+    if (activeTab === 'budget') {
+      return (
+        <AdminBudget
+          event={activeEventState}
+          budget={budget}
+          draft={budgetDraft}
+          parties={activeParties}
+          onDraftChange={draft => setBudgetDraft({ ...draft, eventId: activeEventState.id })}
+          onSaveBudget={saveBudget}
+          savingBudget={savingBudget}
+          onApplyPricing={applyPricing}
+        />
+      );
+    }
     if (activeTab === 'users') {
       return (
         <AdminUserManagement
@@ -887,7 +852,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
-    return <AdminOverview event={activeEventState} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} onOpenParty={openPartyEdit} />;
+    return <AdminOverview event={activeEventState} budget={budget} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} onOpenParty={openPartyEdit} />;
   };
 
   const unsavedLogistics = Object.keys(logisticsChanges).length;
@@ -907,7 +872,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         aria-label={fr.adminTabsAriaLabel}
         onKeyDown={handleTabKeyDown}
         className={cx(
-          'fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
+          'fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
           'md:static md:mb-8 md:flex md:gap-1 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none'
         )}
       >
@@ -949,9 +914,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         event={editingEvent}
         changes={eventChanges}
         onChange={handleEventFieldChange}
-        onCostBreakdownChange={handleCostBreakdownChange}
-        onAddCostRow={addCostBreakdownRow}
-        onRemoveCostRow={removeCostBreakdownRow}
         onLinkChange={handleExternalLinksChange}
         onAddLinkRow={addExternalLinksRow}
         onRemoveLinkRow={removeExternalLinksRow}

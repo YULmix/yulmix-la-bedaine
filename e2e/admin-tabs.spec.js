@@ -17,7 +17,7 @@ const USERS_TAB = fr.adminTabUsers;
 const LOGISTICS_TAB = fr.adminTabLogistics;
 const USERS_HEADING = fr.adminUsersManagementTitle;
 const LOGISTICS_HEADING = fr.logisticsViewTitle;
-const TAB_COUNT = 5;
+const TAB_COUNT = 6;
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in

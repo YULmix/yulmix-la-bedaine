@@ -64,6 +64,7 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     is_active: true,
     is_reg_open: true,
     selling_price_whole_event: 200,
+    ratio_main_whole: 0.5375,
     max_attendees: 90,
     event_start_date: null,
     x_reg_close_weeks: 1,
@@ -99,10 +100,29 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
   return { eventId, partyId: party.id };
 }
 
+// The event's admin-only budget row (#109), or null.
+export async function getBudget(eventId) {
+  const db = await adminClient();
+  return check(await db.from('event_budgets').select('*').eq('event_id', eventId).maybeSingle(), 'read e2e budget');
+}
+
+export async function deleteBudget(eventId) {
+  const db = await adminClient();
+  check(await db.from('event_budgets').delete().eq('event_id', eventId), 'delete e2e budget');
+}
+
+export async function getEvent(eventId) {
+  const db = await adminClient();
+  return check(
+    await db.from('events').select('selling_price_whole_event, ratio_main_whole').eq('id', eventId).single(),
+    'read e2e event'
+  );
+}
+
 export async function getParty(partyId) {
   const db = await adminClient();
   return check(
-    await db.from('user_parties').select('attendees, admin_notes, payment_status, status').eq('id', partyId).single(),
+    await db.from('user_parties').select('attendees, admin_notes, payment_status, status, calculated_amount_owed').eq('id', partyId).single(),
     'read e2e party'
   );
 }
