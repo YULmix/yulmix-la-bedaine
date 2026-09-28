@@ -68,7 +68,7 @@ Derived from production's schema as captured in the baseline migration
 | `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — `is_admin` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
 | `email_log` | admin only | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
-| `user_parties` | own or admin | own or admin | own **while status is `'Enregistré'`/`'En attente'`** (stale French values, so in practice **admin only**, see [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)), or admin | own (**no status gate** in production), or admin |
+| `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)) | admin only (#35: cancelling is a status change, never a delete) |
 | `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
 | `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
 
@@ -76,14 +76,11 @@ Notes on specific choices:
 
 - **DRAFT events are admin-only**, which is what lets organisers plan next year's weekend in the open
   without members seeing half-finished prices.
-- **The `user_parties` UPDATE and DELETE status gates** are meant to make cancellation final:
-  once a registration leaves `registered`/`pending`, the member can no longer edit or delete it,
-  and only an admin can. In production, the UPDATE gate still compares against the pre-migration
-  French values, so members cannot edit their registration at all. The DELETE policy has no gate,
-  so a member can delete even a *paid* registration through the API, and `RegistrationSummary.jsx`
-  does call delete. Both are tracked in
-  [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49). A proper cancellation flow
-  (`status = 'cancelled'` instead of a row delete) is still the right long-term fix.
+- **Cancellation is a status change, not a delete** (#35). A member moves their own registration
+  to `cancelled` ("Se désinscrire"); the row, its history and its email log stay. Members can't
+  delete rows at all; admins can. Registering again reuses the cancelled row (one row per member
+  and event), so the UPDATE policy lets a member act on their own cancelled row. After the
+  registration close date, the close-date trigger refuses a member's cancellation.
 - **`is_admin` is protected by triggers, not by column privileges.** `authenticated` holds table-level
   `UPDATE` on `profiles`. The old `schema.sql` had a `REVOKE UPDATE (is_admin)`, but a column-level
   revoke can't narrow a table-level grant, so it did nothing. The real guards are

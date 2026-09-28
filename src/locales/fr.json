@@ -63,10 +63,6 @@
   "dataExportTitle": "Exportation des données",
   "dates": "Dates",
   "delete": "Supprimer",
-  "deleteRegistration": "Supprimer l'inscription",
-  "deleteRegistrationConfirm": "Êtes-vous sûr de vouloir supprimer cette inscription? Cette action est irréversible.",
-  "deleteRegistrationSuccess": "Inscription supprimée avec succès",
-  "deleteRegistrationError": "Erreur lors de la suppression de l'inscription",
   "deleteRegistrationInProgress": "Suppression...",
   "description": "Description",
   "dietaryNeeds": "Restrictions alimentaires",
@@ -447,7 +443,6 @@
   "historyFieldCounts": "Décompte des participants",
   "historyFieldConfirmation": "Message de confirmation",
   "historyFieldAdminNotes": "Notes des administrateurs",
-  "deleteRegistrationConfirmTitle": "Supprimer l'inscription?",
   "mixcloudPlayerTitle": "Lecteur Mixcloud de YULmix",
   "aboutMuralAlt": "La murale de La Bédaine sous la lumière noire",
   "stepperLess": "Moins",
@@ -493,5 +488,12 @@
   "estimatedCostHint": "Interne, jamais montré aux membres.",
   "archiveEventConfirmTitle": "Archiver l'événement?",
   "archiveEventConfirm": "« {theme} » ne sera plus l'événement actif. Il reste consultable et peut être réactivé plus tard.",
-  "paymentColumn": "Paiement"
+  "paymentColumn": "Paiement",
+  "cancelRegistration": "Se désinscrire",
+  "cancelRegistrationConfirmTitle": "Se désinscrire?",
+  "cancelRegistrationConfirm": "Votre inscription sera annulée et votre place libérée pour la liste d'attente. Vous pourrez vous réinscrire tant que les inscriptions sont ouvertes. Si vous avez déjà payé, écrivez aux organisateurs.",
+  "cancelRegistrationSuccess": "Vous êtes désinscrit. Votre place a été libérée.",
+  "cancelRegistrationError": "La désinscription n'a pas fonctionné. Réessayez ou contactez un organisateur.",
+  "cancelRegistrationLocked": "La date limite de désinscription ({date}) est passée : le montant dû reste exigible. Pour toute exception, contactez un organisateur.",
+  "registrationCancelledNotice": "Votre inscription a été annulée. Vous pouvez vous réinscrire tant que les inscriptions sont ouvertes."
 }

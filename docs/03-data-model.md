@@ -278,9 +278,14 @@ close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — i
 It does **not** block new registrations, edits, or adding participants; it only blocks, once the
 close date has passed and the caller isn't an admin:
 
-- `DELETE` on `user_parties` (a member un-registering their whole party).
+- `DELETE` on `user_parties` (members can't delete at all since #35; this is a second guard).
+- `UPDATE` on `user_parties` that moves the row to `cancelled` (a member un-registering, #35).
 - `UPDATE` on `user_parties` where the new `attendees` array is shorter than the stored one
-  (a member removing a participant).
+  (a member removing a participant), unless the row was `cancelled`: registering again with a
+  smaller group isn't removing anyone from a registration that owed something.
+
+The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
+`src/lib/eventPhase.js`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
 
 The amount already owed is never reimbursed by this trigger — it just stops the row (or the
 attendee list) from shrinking. If either `event_start_date` or `x_reg_close_weeks` is null, the
