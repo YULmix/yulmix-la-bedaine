@@ -27,7 +27,7 @@ export default [
       ecmaVersion: 2022,
       sourceType: 'module',
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: { ...globals.browser, ...globals.es2021 }
+      globals: { ...globals.browser, ...globals.es2021, __PREVIEW_TOOLS__: 'readonly' }
     },
     rules: {
       'local/no-literal-ui-strings': 'warn'

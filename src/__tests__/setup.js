@@ -12,3 +12,5 @@ if (typeof global.TextEncoder === 'undefined') {
   global.TextEncoder = TextEncoder;
   global.TextDecoder = TextDecoder;
 }
+// Build-time constant from vite.config.js `define` (#105). Tests run as a production build would.
+global.__PREVIEW_TOOLS__ = false;

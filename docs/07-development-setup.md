@@ -385,6 +385,31 @@ What a reset does (`scripts/preview-db.mjs`):
    admin screens. The seeded users stay regular members (except `admin@test.local`). No migration
    knows about this trigger, so it never reaches production.
 
+#### Signing in as a test account ("Se connecter comme…")
+
+A preview deployment only offers Google sign-in, so the account menu there has **Se connecter
+comme…** (#105). It signs in as any seeded `@test.local` account, which all share the password
+`password123`:
+
+- **Admin de test** / **Membre de test** in one click, from any state, even signed out. A member
+  can't list other accounts (RLS), so the admin link is the way back.
+- Any other `@test.local` address, typed in.
+- When the current account is an admin: the full list, searchable, with each account's state on
+  the active event (registered or waitlisted, paid, bed, email to check).
+
+While signed in as a test account, a thin bar under the header says so. It is the same on the
+local dev server against a local stack, which is how `e2e/preview-account-picker.spec.js` tests it.
+
+It never reaches production, by two separate guards:
+
+1. **Build time.** `vite.config.js` defines `__PREVIEW_TOOLS__`: true on the dev server and when
+   `VERCEL_ENV=preview` (set by `vercel build` in the preview job), false otherwise, including when
+   `VERCEL_ENV` is missing. When it's false, Rollup drops the lazy `src/preview/` chunk: a
+   production build contains none of its code, strings (`src/locales/fr.preview.json`, kept out of
+   `fr.json` for that reason) or the password. Check with `npm run build`, then
+   `grep -rl password123 dist` (no output).
+2. **Runtime.** It renders only when `VITE_SUPABASE_URL` is the Preview project or a local stack.
+
 #### Choosing the fake data
 
 Edit `supabase/preview-seed.json` (changes go through a PR like any other file):
