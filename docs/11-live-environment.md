@@ -132,9 +132,8 @@ the CI gate (`npm run build`, `npm run test:pricing`) that was missing in front 
   functions are executable via `/rest/v1/rpc/…` by `anon` and `authenticated`; leaked-password
   protection is off in Auth.
 - **Not yet checked.** Auth settings (email confirmation on/off — relevant because the root admin is
-  identified by email), storage buckets, and the `seed_test_data` RPC that
-  `src/__tests__/rlsPolicies.test.js:54` calls (it is **not** among the live functions, and that
-  test handles its absence).
+  identified by email) and storage buckets. (The `seed_test_data` RPC the RLS suite used to call
+  was never a live function; the suite now seeds its own rows.)
 
 ## The emptied `supabase/schema.sql`
 
