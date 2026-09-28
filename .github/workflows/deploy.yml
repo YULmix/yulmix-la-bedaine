@@ -22,7 +22,12 @@ name: Build, test, deploy
 # an AI assistant, and BEFORE merging any migration (without them the
 # backup job fails, and a failed backup blocks the deploy):
 #   gh secret set SUPABASE_ACCESS_TOKEN --env supabase-production
-#                                             # from supabase.com/dashboard/account/tokens.
+#                                             # from supabase.com/dashboard/account/tokens:
+#                                             # a scoped token with exactly the permissions
+#                                             # in docs/07-development-setup.md
+#                                             # ("SUPABASE_ACCESS_TOKEN permissions"),
+#                                             # Edge Functions ones included (job
+#                                             # "Deploy Edge Functions").
 #                                             # Set as an environment secret, not a repo
 #                                             # secret: the "supabase-production" environment
 #                                             # is branch-restricted to main, so no workflow
@@ -350,10 +355,15 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
+      # Two different failures, reported separately: a token that can't list secrets (it needs
+      # "Edge Function Secrets: Read", see docs/07-development-setup.md) is not a missing key.
       - name: Require RESEND_API_KEY
         run: |
-          supabase secrets list --project-ref "$SUPABASE_PROJECT_REF" -o json \
-            | jq -e 'any(.[]; .name == "RESEND_API_KEY")' > /dev/null \
+          if ! secrets=$(supabase secrets list --project-ref "$SUPABASE_PROJECT_REF" -o json); then
+            echo "::error::Could not list the production project's secrets (see the error above). SUPABASE_ACCESS_TOKEN needs Edge Function Secrets: Read and Edge Functions: Read-write."
+            exit 1
+          fi
+          jq -e 'any(.[]; .name == "RESEND_API_KEY")' <<<"$secrets" > /dev/null \
             || { echo "::error::RESEND_API_KEY is not set on the production project. See the one-time setup above this job."; exit 1; }
 
       # verify_jwt per function comes from supabase/config.toml.
