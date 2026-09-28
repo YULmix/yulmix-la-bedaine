@@ -4,7 +4,7 @@ import {
   Tent, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getPriceShare, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
+import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { plural } from '../lib/eventDisplay';
@@ -458,7 +458,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                       </h3>
                       <div className="flex items-center gap-2">
                         {basePrice > 0 && (
-                          <span className="font-data text-sm text-ink">{formatCurrency(getPriceShare(attendee, ratios) * basePrice)}</span>
+                          <span className="font-data text-sm text-ink">{formatCurrency(attendeePrice(attendee, basePrice, ratios))}</span>
                         )}
                         {attendees.length > 1 && (
                           <Button
@@ -616,7 +616,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                       {attendee.name || `${fr.participantNumberLabel}${index + 1}`}
                       {attendee.isNewMember && <Check aria-label={fr.firstTimeTag} className="ml-2 inline size-4 text-neon" />}
                     </span>
-                    {basePrice > 0 && <span className="font-data text-sm text-muted">{formatCurrency(getPriceShare(attendee, ratios) * basePrice)}</span>}
+                    {basePrice > 0 && <span className="font-data text-sm text-muted">{formatCurrency(attendeePrice(attendee, basePrice, ratios))}</span>}
                   </li>
                 ))}
               </ul>

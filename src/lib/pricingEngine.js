@@ -10,7 +10,8 @@
  *   - teen main    = TEEN_SHARE × ratio_main_whole
  *   - newbie       = the main-event share of their age, whatever tier they picked
  *   - kid          = 0 (free)
- * A party owes the sum of its attendees' shares × the base price, rounded up to the dollar.
+ * Each attendee pays their share × the base price, rounded up to the dollar, and a party owes the
+ * sum of those rounded prices (#120).
  * Paid parties keep the amount they paid (grandfathering).
  * A registration is priced at the base price and ratio locked when it was made (#117), not the
  * event's current ones: see partyPricingOf.
@@ -75,7 +76,10 @@ export const totalPriceShares = (attendees, ratios = DEFAULT_PRICE_RATIOS) =>
 // Rounds away float noise (0.1 + 0.2) before rounding up, so an exact amount isn't bumped a dollar.
 const ceilDollars = (amount) => Math.ceil(Number(amount.toFixed(6)));
 
-/** What one attendee pays on their own, rounded up to the dollar (tier price lists). */
+/**
+ * What one attendee pays, rounded up to the dollar. The one place an attendee's price is rounded:
+ * a party owes the sum of these (#120), and every per-attendee price in the UI is this value.
+ */
 export const attendeePrice = (attendee, basePrice, ratios = DEFAULT_PRICE_RATIOS) => {
   if (!Number.isFinite(basePrice) || basePrice <= 0) return 0;
   return ceilDollars(getPriceShare(attendee, ratios) * basePrice);
@@ -114,10 +118,11 @@ export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, ra
   let calculated_amount_owed = 0;
 
   const parties = attendeeParties.map(party => {
-    const shares = totalPriceShares(party.attendees, ratios);
-    totalShares += shares;
+    totalShares += totalPriceShares(party.attendees, ratios);
     // Grandfathering: a paid party keeps the amount it paid.
-    const partyTotal = party.is_paid ? (party.historical_owed || 0) : ceilDollars(shares * basePrice);
+    const partyTotal = party.is_paid
+      ? (party.historical_owed || 0)
+      : party.attendees.reduce((sum, attendee) => sum + attendeePrice(attendee, basePrice, ratios), 0);
     calculated_amount_owed += partyTotal;
     return { ...party, party_total: partyTotal };
   });

@@ -325,7 +325,7 @@ describe('🔒 price locked per registration (#117)', () => {
     expect(Number((await row(ADMIN_PARTY_ID)).calculated_amount_owed)).toBe(120); // 0.6 × 200
 
     await memberClient.from('user_parties').update({ attendees: [...adultMain, ...adultMain] }).eq('id', MEMBER_PARTY_ID);
-    expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(215); // 2 × 107.50
+    expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(216); // 108 + 108, each attendee rounded up (#120)
   });
 
   test('a member cannot write the locked price or ratio, on insert or update', async () => {
@@ -457,6 +457,26 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
       id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
     });
     expect(await owed()).toBe(220);
+  });
+
+  // #120: same case as pricingEngine.test.js. Each attendee is rounded up to the dollar and the party
+  // owes the sum of the lines: 205 + 123 + 61.50 → 62 + 61.50 → 62 + 0 = 452 (the rounded sum is 451).
+  test('a party owes the sum of its attendees\' rounded prices', async () => {
+    const { error } = await adminAuthClient.from('events')
+      .update({ selling_price_whole_event: 205, ratio_main_whole: 0.6 }).eq('id', RATIO_EVENT_ID);
+    expect(error).toBeNull();
+    await memberClient.from('user_parties').insert({
+      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: [
+        { type: 'Adult', participation: 'Whole', is_new_member: false },
+        { type: 'Adult', participation: 'Main', is_new_member: false },
+        { type: 'Teenager', participation: 'Main', is_new_member: false },
+        { type: 'Teenager', participation: 'Whole', is_new_member: true },
+        { type: 'Kid', participation: 'Whole', is_new_member: false }
+      ]
+    });
+    const { data } = await memberClient.from('user_parties')
+      .select('calculated_amount_owed').eq('id', RATIO_PARTY_ID).single();
+    expect(Number(data.calculated_amount_owed)).toBe(452);
   });
 
   test('a ratio outside (0, 1] is refused', async () => {
