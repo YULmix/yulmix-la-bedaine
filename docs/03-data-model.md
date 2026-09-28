@@ -268,6 +268,12 @@ environment), `pending` (claimed, send in progress or interrupted) or `backfille
 already held when the table was created; nobody was emailed about it). Admins can read it; nobody
 writes it but the function (service role).
 
+Members read their own emails through `my_party_emails(p_party_id)` (#93), a `SECURITY DEFINER`
+function that returns only `template`, `sent_at` and `sent` | `not_sent` (for `failed`), for a
+party the caller owns. `pending`, `dry_run` and `backfilled` rows are left out: no email went out
+for them. The app shows this under the member's Pass. Admins see every row in the party's edit
+dialog, and `failed` + `pending` rows for the active event in Vue d'ensemble.
+
 The function's URL is per environment, in `private.settings` (`email_function_url`): the local
 seed sets it, CI sets it in production. Preview loads the same seed, so its URL points at a host
 that only exists locally: the request fails and nothing is sent. Where it's unset, the trigger

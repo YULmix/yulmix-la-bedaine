@@ -383,6 +383,59 @@ describe('✉️ email_log is admin-only (#12)', () => {
   });
 });
 
+describe("✉️ my_party_emails: the member's summary of their own emails (#93)", () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000000093';
+  const MEMBER_PARTY_ID = 'a0000000-a000-a000-a000-a00000000094';
+  const ADMIN_PARTY_ID = 'a0000000-a000-a000-a000-a00000000095';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+
+  let memberClient;
+  let adminAuthClient;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    await adminAuthClient.from('user_parties').delete().in('id', [MEMBER_PARTY_ID, ADMIN_PARTY_ID]);
+    const { error: eventError } = await adminAuthClient.from('events').upsert({ id: EVENT_ID, theme: 'My Party Emails Test', status: 'ACTIVE' });
+    if (eventError) throw eventError;
+    const { error: partyError } = await adminAuthClient.from('user_parties').insert([
+      { id: MEMBER_PARTY_ID, user_id: MEMBER_ID, event_id: EVENT_ID },
+      { id: ADMIN_PARTY_ID, user_id: ADMIN_ID, event_id: EVENT_ID }
+    ]);
+    if (partyError) throw partyError;
+    const rows = [
+      { party_id: MEMBER_PARTY_ID, template: 'registration', status: 'sent', recipient: 'member@test.local', resend_id: 're_1' },
+      { party_id: MEMBER_PARTY_ID, template: 'payment', status: 'failed', recipient: 'member@test.local', error: '422 refused' },
+      { party_id: MEMBER_PARTY_ID, template: 'waitlist', status: 'backfilled' },
+      { party_id: MEMBER_PARTY_ID, template: 'promotion', status: 'dry_run' },
+      { party_id: MEMBER_PARTY_ID, template: 'accommodation', status: 'pending' },
+      { party_id: ADMIN_PARTY_ID, template: 'registration', status: 'sent', recipient: 'admin@test.local' }
+    ];
+    const { error: logError } = await adminClient.from('email_log').upsert(rows, { onConflict: 'party_id,template' });
+    if (logError) throw logError;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().in('id', [MEMBER_PARTY_ID, ADMIN_PARTY_ID]);
+  });
+
+  test('returns only sent and failed rows, simplified, with no recipient, error or Resend id', async () => {
+    const { data, error } = await memberClient.rpc('my_party_emails', { p_party_id: MEMBER_PARTY_ID });
+    expect(error).toBeNull();
+    expect(data.map(row => [row.template, row.status]).sort()).toEqual([['payment', 'not_sent'], ['registration', 'sent']]);
+    expect(Object.keys(data[0]).sort()).toEqual(['sent_at', 'status', 'template']);
+  });
+
+  test("returns nothing for someone else's party", async () => {
+    const { data, error } = await memberClient.rpc('my_party_emails', { p_party_id: ADMIN_PARTY_ID });
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+  });
+});
+
 describe('🚪 member self-cancellation (#35)', () => {
   jest.setTimeout(30000);
 

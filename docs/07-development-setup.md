@@ -428,6 +428,12 @@ Edit `supabase/preview-seed.json` (changes go through a PR like any other file):
 | `parties.minSize` / `maxSize` | `1` / `4` | People per registration. |
 | `parties.newMemberShare` | `0.15` | Chance an adult or teen is a new member (priced at the main-event rate). |
 | `parties.teenShare` / `kidShare` | `0.2` / `0.2` | Chance each extra person is a teen / a kid (the registrant is always an adult). |
+| `emails.failed` / `pending` | `2` / `1` | Active-event parties whose latest email is `failed` (with a Resend error) / stuck `pending`, so the admin views have something to follow up. Never Test Member; the generated SQL lists which accounts got them. |
+| `emails.promotedShare` | `0.1` | Chance a non-waitlisted party's history is waitlist then promotion instead of a plain confirmation. |
+
+Every registration also gets an email history (`email_log`) matching its state, as `send-party-email`
+would have sent it: confirmation or waitlist, then payment once paid and accommodation once a bed is
+assigned, all `sent`. Past editions' rows are `backfilled`, like the migration that created the table.
 
 Names come from [faker](https://fakerjs.dev/) with a French-Canadian locale; free text (notes,
 messages, allergies) is picked from French phrase lists in `scripts/preview-seed/generate.mjs`.

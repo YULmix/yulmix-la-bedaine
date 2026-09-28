@@ -10,6 +10,7 @@ import AdminUserManagement from '../components/admin/AdminUserManagement';
 import { AdminEventList, EventEditDialog } from '../components/admin/AdminEvents';
 import { DataExport, FeedbackInbox, ScenarioSimulator } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
+import PartyEmailLog from '../components/admin/PartyEmailLog';
 import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
@@ -880,7 +881,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
-    return <AdminOverview event={activeEventState} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} />;
+    return <AdminOverview event={activeEventState} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} onOpenParty={openPartyEdit} />;
   };
 
   const unsavedLogistics = Object.keys(logisticsChanges).length;
@@ -964,6 +965,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         {editingParty && (
           <div className="px-4 pt-5 sm:px-6">
             <p className="mb-5 text-sm text-muted">{editingParty.profiles?.full_name} <span className="text-faint">{editingParty.profiles?.email}</span></p>
+            <PartyEmailLog partyId={editingParty.id} />
             <RegistrationForm
               event={activeEventState}
               userRegistration={editingParty}

@@ -5,6 +5,7 @@ import { computeAdminStats } from '../../lib/adminStats';
 import { calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints } from '../../lib/pricingEngine';
 import { ACCOMMODATION_OPTIONS, DIETARY_OPTIONS, TIER_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { Card, Stat } from '../ui';
+import EmailProblems from './EmailProblems';
 
 // Horizontal bars without a background track: the number is the information, the bar is the
 // shape. Widths are relative to the largest value in the list.
@@ -34,7 +35,7 @@ const TIER_LABEL_KEYS = {
   kids: 'exportKids'
 };
 
-const AdminOverview = ({ event, parties, getRoundedPartyTotal }) => {
+const AdminOverview = ({ event, parties, getRoundedPartyTotal, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties, getRoundedPartyTotal), [parties, getRoundedPartyTotal]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
   const capacity = event?.max_attendees || 0;
@@ -56,6 +57,8 @@ const AdminOverview = ({ event, parties, getRoundedPartyTotal }) => {
   return (
     <div className="space-y-6">
       <h2 className="sr-only">{fr.adminTabOverview}</h2>
+
+      <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
 
       {/* KPI strip: one ruled row, not a grid of identical cards. */}
       <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line sm:grid-cols-4">

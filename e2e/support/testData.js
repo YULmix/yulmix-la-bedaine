@@ -168,3 +168,20 @@ export async function getProfile(userId) {
   const db = await adminClient();
   return check(await db.from('profiles').select('deleted_at').eq('id', userId).single(), 'read e2e profile');
 }
+
+// email_log is written only by the send-party-email Edge Function, with the service role (#12).
+// Specs stand in for it the same way (#93). Upserts on (party_id, template), so a row the local
+// function may have written for the seeded party is replaced, not duplicated.
+export async function seedEmailLog(partyId, rows) {
+  const url = process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) throw new Error('E2E_SUPABASE_SERVICE_ROLE_KEY missing; see playwright.config.js');
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/.test(url)) {
+    throw new Error(`Refusing to seed email_log against non-local Supabase URL ${url}`);
+  }
+  const db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  check(
+    await db.from('email_log').upsert(rows.map(row => ({ party_id: partyId, ...row })), { onConflict: 'party_id,template' }),
+    'seed email_log'
+  );
+}
