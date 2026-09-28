@@ -532,7 +532,11 @@
   "breakEvenPriceLabel": "Prix d'équilibre (weekend complet)",
   "scenarioUseBreakEven": "Essayer ce prix",
   "scenarioProjectedRevenue": "Revenu prévu",
-  "scenarioApply": "Appliquer comme prix de base",
-  "scenarioApplyConfirmTitle": "Appliquer ce prix ?",
-  "scenarioApplyConfirm": "Le prix de base passera à {price} et l'événement principal à {mainWhole} % du weekend complet. {count} inscription(s) non payée(s) seront recalculée(s) ; les inscriptions payées gardent leur montant."
+  "scenarioApply": "Appliquer",
+  "scenarioApplyConfirmTitle": "Appliquer le nouveau prix ?",
+  "modifiedTag": "Modifié",
+  "applyImpactPrice": "Prix de base : {before} → {after}",
+  "applyImpactRatio": "Événement principal : {before} → {after} du weekend complet",
+  "applyImpactReprice": "{count} inscription(s) non payée(s) seront recalculée(s)",
+  "applyImpactPaid": "Les inscriptions payées gardent leur montant"
 }

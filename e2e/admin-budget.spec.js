@@ -98,12 +98,23 @@ test('applying a price and main-event ratio reprices the unpaid registration', a
   // Seeded at 200 $, default ratio: 200 + 0.5375 × 200 = 307.50 → 308.
   expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(308);
 
+  const apply = panel(page).getByRole('button', { name: fr.scenarioApply, exact: true });
+  const modified = panel(page).getByText(fr.modifiedTag, { exact: true });
+  await expect(apply).toBeDisabled();
+  await expect(modified).toHaveCount(0);
+
+  // Only the ratio changes: it alone is tagged, and the confirmation lists one change per line.
   await panel(page).getByLabel(fr.ratioMainWholeLabel).fill('60');
-  const apply = panel(page).getByRole('button', { name: fr.scenarioApply });
+  await expect(modified).toHaveCount(1);
   await apply.click();
   const confirm = page.getByRole('dialog', { name: fr.scenarioApplyConfirmTitle });
-  await expect(confirm).toContainText('60 %');
-  await confirm.getByRole('button', { name: fr.scenarioApply }).click();
+  const impacts = confirm.getByRole('listitem');
+  await expect(impacts).toHaveText([
+    fr.applyImpactRatio.replace('{before}', '53,75 %').replace('{after}', '60 %'),
+    fr.applyImpactReprice.replace('{count}', 1),
+    fr.applyImpactPaid
+  ]);
+  await confirm.getByRole('button', { name: fr.scenarioApply, exact: true }).click();
   await expect(page.getByText(fr.eventRepricedCountToast.replace('{count}', 1))).toBeVisible();
 
   const event = await getEvent(seeded.eventId);
@@ -114,6 +125,7 @@ test('applying a price and main-event ratio reprices the unpaid registration', a
 
   // The simulator now starts from the saved values, so there is nothing to apply.
   await expect(panel(page).getByLabel(fr.ratioMainWholeLabel)).toHaveValue('60');
+  await expect(modified).toHaveCount(0);
   await expect(apply).toBeDisabled();
 });
 

@@ -10,7 +10,7 @@ import {
   totalPriceShares
 } from '../../lib/pricingEngine';
 import { BUDGET_CATEGORIES, PAYMENT_STATUS, TIER_OPTIONS } from '../../lib/registrationOptions';
-import { Button, Card, ConfirmDialog, Field, Input, Select, Stat } from '../ui';
+import { Button, Card, ConfirmDialog, Field, Input, Select, Stat, Tag } from '../ui';
 
 // Expected-headcount groups of the simulator. Newbies are their own groups: they pay the main
 // price whatever tier they pick, so they are not counted in the tier groups too.
@@ -47,6 +47,8 @@ const toPrice = (text) => {
   const value = parseFloat(text);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
+
+const formatPct = (ratio) => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(ratio * 100)} %`;
 
 const sumLines = (lines) => lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
 
@@ -123,6 +125,13 @@ const BudgetEditor = ({ budget, draft, onDraftChange, onSave, saving }) => {
   );
 };
 
+const ChangedLabel = ({ text, changed }) => (
+  <span className="inline-flex flex-wrap items-center gap-2">
+    {text}
+    {changed && <Tag tone="warn">{fr.modifiedTag}</Tag>}
+  </span>
+);
+
 // What-if pricing: expected headcount, a base price and main-event ratio to try, the break-even base price
 // for the budget, and "apply", which saves the price and ratio (and so reprices unpaid parties).
 const PricingSimulator = ({ event, parties, totalCost, contingencyPct, onApply }) => {
@@ -148,7 +157,9 @@ const PricingSimulator = ({ event, parties, totalCost, contingencyPct, onApply }
   const breakEven = calculateBreakEvenPrice(totalCost, contingencyPct, totalPriceShares(attendees, ratios));
   const revenue = valid ? simulateEventPricing([{ id: 'sim', attendees }], price, ratios).calculated_amount_owed : 0;
   const margin = revenue - totalCost;
-  const unchanged = valid && price === savedPrice && mainWhole === saved.mainWhole;
+  // Invalid input counts as changed: it is not what is saved.
+  const priceChanged = price !== savedPrice;
+  const ratioChanged = mainWhole !== saved.mainWhole;
   const unpaidCount = parties.filter(party => party.payment_status !== PAYMENT_STATUS.PAID).length;
 
   const tierPrices = valid ? [
@@ -200,23 +211,6 @@ const PricingSimulator = ({ event, parties, totalCost, contingencyPct, onApply }
         </Button>
       </fieldset>
 
-      <fieldset className="mt-5 border-t border-line pt-5">
-        <legend className="sr-only">{fr.scenarioPricingLegend}</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={fr.eventSellingPriceLabel} hint={fr.sellingPriceHint}>
-            {({ id, describedBy }) => (
-              <Input id={id} aria-describedby={describedBy} type="number" min="0" step="1" inputMode="decimal" className="font-data" value={tried.price} onChange={e => setTried(prev => ({ ...prev, price: e.target.value }))} />
-            )}
-          </Field>
-          <Field label={fr.ratioMainWholeLabel} hint={fr.ratioMainWholeHint}>
-            {({ id, describedBy }) => (
-              <Input id={id} aria-describedby={describedBy} type="number" min="0" max="100" step="0.01" inputMode="decimal" className="font-data" value={tried.mainWhole} onChange={e => setTried(prev => ({ ...prev, mainWhole: e.target.value }))} />
-            )}
-          </Field>
-        </div>
-        {!valid && <p className="mt-2 text-sm text-bad">{fr.scenarioInvalidPricing}</p>}
-      </fieldset>
-
       <div aria-live="polite" className="mt-5 grid gap-5 border-t border-line pt-5 sm:grid-cols-3">
         <div>
           <Stat label={fr.breakEvenPriceLabel} value={breakEven ? formatCurrency(breakEven) : '—'} tone="neon" />
@@ -241,9 +235,26 @@ const PricingSimulator = ({ event, parties, totalCost, contingencyPct, onApply }
         </ul>
       )}
 
-      <div className="mt-5 border-t border-line pt-5">
-        <Button onClick={() => setConfirming(true)} disabled={!valid || unchanged}>{fr.scenarioApply}</Button>
-      </div>
+      {/* The two values the event actually stores, right above the button that saves them. */}
+      <fieldset className="mt-5 border-t border-line pt-5">
+        <legend className="sr-only">{fr.scenarioPricingLegend}</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={<ChangedLabel text={fr.eventSellingPriceLabel} changed={priceChanged} />} hint={fr.sellingPriceHint}>
+            {({ id, describedBy }) => (
+              <Input id={id} aria-describedby={describedBy} type="number" min="0" step="1" inputMode="decimal" className="font-data" value={tried.price} onChange={e => setTried(prev => ({ ...prev, price: e.target.value }))} />
+            )}
+          </Field>
+          <Field label={<ChangedLabel text={fr.ratioMainWholeLabel} changed={ratioChanged} />} hint={fr.ratioMainWholeHint}>
+            {({ id, describedBy }) => (
+              <Input id={id} aria-describedby={describedBy} type="number" min="0" max="100" step="0.01" inputMode="decimal" className="font-data" value={tried.mainWhole} onChange={e => setTried(prev => ({ ...prev, mainWhole: e.target.value }))} />
+            )}
+          </Field>
+        </div>
+        {!valid && <p className="mt-2 text-sm text-bad">{fr.scenarioInvalidPricing}</p>}
+        <Button className="mt-5" onClick={() => setConfirming(true)} disabled={!valid || (!priceChanged && !ratioChanged)}>
+          {fr.scenarioApply}
+        </Button>
+      </fieldset>
 
       <ConfirmDialog
         open={confirming}
@@ -254,10 +265,18 @@ const PricingSimulator = ({ event, parties, totalCost, contingencyPct, onApply }
         onConfirm={apply}
         onCancel={() => setConfirming(false)}
       >
-        {fr.scenarioApplyConfirm
-          .replace('{price}', valid ? formatCurrency(price) : '')
-          .replace('{mainWhole}', tried.mainWhole)
-          .replace('{count}', unpaidCount)}
+        {valid && (
+          <ul className="space-y-3">
+            {priceChanged && (
+              <li>{fr.applyImpactPrice.replace('{before}', formatCurrency(savedPrice)).replace('{after}', formatCurrency(price))}</li>
+            )}
+            {ratioChanged && (
+              <li>{fr.applyImpactRatio.replace('{before}', formatPct(saved.mainWhole)).replace('{after}', formatPct(mainWhole))}</li>
+            )}
+            <li>{fr.applyImpactReprice.replace('{count}', unpaidCount)}</li>
+            <li>{fr.applyImpactPaid}</li>
+          </ul>
+        )}
       </ConfirmDialog>
     </Card>
   );
