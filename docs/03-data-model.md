@@ -26,6 +26,7 @@ erDiagram
     text full_name
     bool is_admin "UPDATE revoked from authenticated"
     timestamptz created_at
+    timestamptz deleted_at "soft delete, #36"
   }
   EVENTS {
     uuid id PK
@@ -199,6 +200,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff | Yes, but attributed to `NEW.user_id` — so an admin's god-mode edit is logged as the *member's* edit |
 | `calculated_amount_owed` | **The browser**, written as a plain value | **No** |
 | `profiles.is_admin` on signup | `handle_new_user`, true iff email is the root admin | Yes |
+| `profiles.deleted_at` | `delete_my_account()` only; `protect_profile_deleted_at` (BEFORE INSERT/UPDATE) keeps the stored value on any direct client write | Yes |
 
 ## Triggers and constraints, in full
 
@@ -213,6 +215,7 @@ flowchart TD
     P2["BEFORE UPDATE → prevent_self_privilege_escalation()<br/>nobody edits their own is_admin"]
     P3["BEFORE UPDATE → protect_root_admin()<br/>root admin can never be demoted"]
     P4["REVOKE UPDATE (is_admin) FROM authenticated<br/>forces rpc admin_set_is_admin()"]
+    P5["BEFORE INSERT/UPDATE → protect_profile_deleted_at()<br/>only SECURITY DEFINER code sets deleted_at"]
   end
   subgraph user_parties
     U1["BEFORE INSERT/UPDATE OF attendees → update_attendee_counts()"]
@@ -311,3 +314,27 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.
 5. Update this document and the ERD above.
+
+## Account deletion (#36)
+
+Deleting an account is a soft delete, and no row is ever removed. `profiles.id` cascades from
+`auth.users` and `user_parties.user_id` from `profiles`, so a hard delete would wipe the member's
+registration and payment history.
+
+`delete_my_account()` (a `SECURITY DEFINER` RPC, callable by `authenticated`) does all of it in one
+transaction:
+
+1. It refuses, changing nothing, if the member has an active registration (`registered` or
+   `pending`) for an event that isn't over and whose [registration close date](#registration-close-date)
+   has passed. The amount owed stays owed. It also refuses for the root admin.
+2. It cancels the member's active registrations for events still to come, meaning not archived
+   and not over (`event_start_date + duration_days`). This is the same soft status change as a
+   member's own cancellation (#35), so the waitlist is promoted. Registrations for past or
+   archived events are history: they aren't touched, and they never block a deletion.
+3. It stamps `profiles.deleted_at`.
+
+After that, the account has no member access. The member-side RLS policies require
+`is_account_active()`, and `is_admin()` is false for a deleted profile. The one thing still readable
+is the member's own profile row, which is how the app knows to show "Compte supprimé". Admins
+still see the member's past registrations (`user_event_history`), but no longer see them among the
+current edition's parties. Reactivating an account isn't built.

@@ -496,5 +496,11 @@
   "cancelRegistrationSuccess": "Vous êtes désinscrit. Votre place a été libérée.",
   "cancelRegistrationError": "La désinscription n'a pas fonctionné. Réessayez ou contactez un organisateur.",
   "cancelRegistrationLocked": "La date limite de désinscription ({date}) est passée : le montant dû reste exigible. Pour toute exception, contactez un organisateur.",
+  "deleteAccount": "Supprimer mon compte",
+  "deleteAccountConfirmTitle": "Supprimer votre compte?",
+  "deleteAccountConfirm": "Vos inscriptions aux événements à venir seront annulées et vos places libérées pour la liste d'attente. Vous ne pourrez plus utiliser l'application avec ce compte. Les organisateurs conservent l'historique de vos participations et paiements. Si vous avez déjà payé, écrivez aux organisateurs.",
+  "deleteAccountError": "La suppression du compte n'a pas fonctionné. Réessayez ou contactez un organisateur.",
+  "accountDeletedTitle": "Compte supprimé",
+  "accountDeletedMessage": "Ce compte a été supprimé et ne donne plus accès à l'application. Pour toute question, contactez un organisateur.",
   "registrationCancelledNotice": "Votre inscription a été annulée. Vous pouvez vous réinscrire tant que les inscriptions sont ouvertes."
 }

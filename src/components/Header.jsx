@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles } from 'lucide-react';
+import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import { initials } from '../lib/eventDisplay';
-import { cx } from './ui';
+import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
 
 const MENU_ITEM = 'flex w-full min-h-11 items-center gap-3 rounded-control px-3 text-left text-base text-ink hover:bg-raised focus-visible:bg-raised';
@@ -32,9 +32,12 @@ const navLinkClass = ({ isActive }) => cx(
   isActive ? 'text-neon' : 'text-muted hover:text-ink'
 );
 
-const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeedback }) => {
+const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted = false, onOpenFeedback }) => {
   const menu = useMenu();
   const navigate = useNavigate();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   const userDisplayName = user
     ? (user.user_metadata?.full_name || user.email || fr.profile)
@@ -67,6 +70,26 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeed
     }
   };
 
+  // The database decides (close-date lock, root admin); its refusals are raised in French, so
+  // show them as they are. Anything else gets the generic message.
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await supabase.rpc('delete_my_account');
+    setDeleting(false);
+    if (error) {
+      setDeleteError(error.code === 'P0001' ? error.message : fr.deleteAccountError);
+      return;
+    }
+    setConfirmingDelete(false);
+    await handleSignOut();
+  };
+
+  const closeDeleteDialog = () => {
+    setConfirmingDelete(false);
+    setDeleteError(null);
+  };
+
   const go = (path) => {
     menu.setOpen(false);
     navigate(path);
@@ -80,7 +103,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeed
           <span className="hidden font-display text-lg text-ink min-[400px]:inline">{fr.brandName}</span>
         </Link>
 
-        {isAuthenticated && (
+        {isAuthenticated && !isDeleted && (
           <nav aria-label={fr.mainNavLabel} className="flex items-center">
             <NavLink to="/event-details" className={navLinkClass}>
               <Info aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
@@ -125,7 +148,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeed
                 </>
               ) : (
                 <>
-                  {isAdmin && (
+                  {!isDeleted && isAdmin && (
                     <button role="menuitem" onClick={() => go('/admin')} className={MENU_ITEM}>
                       <ShieldCheck aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                       {fr.adminNavLink}
@@ -135,11 +158,19 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeed
                     <Sparkles aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                     {fr.about}
                   </button>
-                  <button role="menuitem" onClick={() => { menu.setOpen(false); onOpenFeedback(); }} className={MENU_ITEM}>
-                    <MessageSquareWarning aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
-                    {fr.reportProblem}
-                  </button>
+                  {!isDeleted && (
+                    <button role="menuitem" onClick={() => { menu.setOpen(false); onOpenFeedback(); }} className={MENU_ITEM}>
+                      <MessageSquareWarning aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                      {fr.reportProblem}
+                    </button>
+                  )}
                   <div className="my-1 h-px bg-line" />
+                  {!isDeleted && (
+                    <button role="menuitem" onClick={() => { menu.setOpen(false); setConfirmingDelete(true); }} className={cx(MENU_ITEM, 'text-muted')}>
+                      <UserX aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                      {fr.deleteAccount}
+                    </button>
+                  )}
                   <button role="menuitem" onClick={handleSignOut} className={cx(MENU_ITEM, 'text-bad')}>
                     <LogOut aria-hidden="true" className="size-5" strokeWidth={1.75} />
                     {fr.signOut}
@@ -150,6 +181,18 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, onOpenFeed
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={fr.deleteAccountConfirmTitle}
+        confirmLabel={fr.deleteAccount}
+        onConfirm={handleDeleteAccount}
+        onCancel={closeDeleteDialog}
+        loading={deleting}
+      >
+        {fr.deleteAccountConfirm}
+        {deleteError && <span role="alert" className="mt-3 block font-semibold text-bad">{deleteError}</span>}
+      </ConfirmDialog>
     </header>
   );
 };
