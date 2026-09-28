@@ -14,6 +14,7 @@ erDiagram
   EVENTS ||--o{ USER_PARTIES : "receives"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
+  USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
 
   AUTH_USERS {
     uuid id PK
@@ -240,6 +241,34 @@ values, which no row has any more, so it counts zero existing attendees
 Two properties worth knowing: waitlisting is **all-or-nothing per party** (a party of 4 that
 straddles the cap goes entirely to the waitlist), and nothing ever moves a party *off* the waitlist
 when someone else cancels — that is a manual admin action today, and there is no UI for it.
+
+### Transactional emails
+
+`trg_request_party_email_on_insert` (every insert) and `trg_request_party_email_on_update` (only
+when `is_waitlisted`, `payment_status` or `status` changes, or the party goes from no attendee with
+an `assigned_bed` to at least one) ask the `send-party-email` Edge Function, through pg_net, to look
+at the party ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), #12). The function
+decides what is owed from the committed row and `email_log`:
+
+| Template | Owed when |
+|---|---|
+| `registration` | active event, not cancelled, not waitlisted, never sent a `registration` or `waitlist` email |
+| `waitlist` | waitlisted and never sent one |
+| `promotion` | no longer waitlisted after a `waitlist` email, and never sent one |
+| `payment` | `payment_status = 'paid'`, not waitlisted |
+| `accommodation` | at least one attendee has an `assigned_bed`, not waitlisted |
+
+`email_log` has one row per party and template (unique), claimed before sending, so each email goes
+out at most once whatever happens later (paid, unpaid, paid again sends one receipt). `status` is
+`sent`, `failed` (Resend refused; never retried), `dry_run` (no `RESEND_API_KEY` in that
+environment), `pending` (claimed, send in progress or interrupted) or `backfilled` (the state
+already held when the table was created; nobody was emailed about it). Admins can read it; nobody
+writes it but the function (service role).
+
+The function's URL is per environment, in `private.settings` (`email_function_url`): the local
+seed sets it, CI sets it in production. Preview loads the same seed, so its URL points at a host
+that only exists locally: the request fails and nothing is sent. Where it's unset, the trigger
+does nothing.
 
 ### Registration close date
 

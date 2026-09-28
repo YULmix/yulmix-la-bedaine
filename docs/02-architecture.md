@@ -37,7 +37,7 @@ flowchart TD
 
 Everything the app does is a direct, authenticated PostgREST call from the browser. There is no
 API layer, no server-side rendering, no serverless function, no cron. See
-[ADR 0001](./adr/0001-supabase-as-the-only-backend.md). The one planned exception is transactional
+[ADR 0001](./adr/0001-supabase-as-the-only-backend.md). The one exception is transactional
 email: a Postgres trigger calls a single Supabase Edge Function that sends through Resend
 ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), issue #12). The browser never calls it.
 
@@ -207,8 +207,9 @@ The client throws at import time if the two `VITE_` variables are missing
 
 ## What deliberately does not exist
 
-- **No email/notification layer yet.** Confirmation emails are planned in issue #12; the design is
-  [ADR 0016](./adr/0016-edge-function-for-transactional-email.md).
+- **No notification layer beyond five lifecycle emails.** Registration, waitlist, promotion,
+  payment and bed-assignment emails exist ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md));
+  there are no reminders, scheduled sends or marketing emails.
 - **No file storage in use.** A `feedback` storage bucket is specified for screenshot paste;
   the feature is unbuilt.
 - **No state management library.** Component-local `useState` plus prop drilling from `App.jsx`.

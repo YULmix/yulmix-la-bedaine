@@ -371,6 +371,12 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# Called by a Postgres trigger through pg_net, not by the app, so there is no user JWT to verify.
+# The request carries only a party id; the function works out what is due from the database
+# (ADR 0016), so an unexpected call can't send anything that isn't owed.
+[functions.send-party-email]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

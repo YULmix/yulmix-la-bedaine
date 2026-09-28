@@ -334,6 +334,55 @@ describe('💵 reprice unpaid registrations on price change (#32)', () => {
   });
 });
 
+describe('✉️ email_log is admin-only (#12)', () => {
+  jest.setTimeout(30000);
+
+  const EMAIL_EVENT_ID = 'a0000000-a000-a000-a000-a00000000012';
+  const EMAIL_PARTY_ID = 'a0000000-a000-a000-a000-a00000000013';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+
+  let memberClient;
+  let adminAuthClient;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    await adminAuthClient.from('user_parties').delete().eq('id', EMAIL_PARTY_ID);
+    const { error: eventError } = await adminAuthClient.from('events').upsert({ id: EMAIL_EVENT_ID, theme: 'Email Log Test', status: 'ACTIVE' });
+    if (eventError) throw eventError;
+    const { error: partyError } = await adminAuthClient.from('user_parties').insert({ id: EMAIL_PARTY_ID, user_id: MEMBER_ID, event_id: EMAIL_EVENT_ID });
+    if (partyError) throw partyError;
+    // The service role writes the log, as the send-party-email Edge Function does.
+    const { error: logError } = await adminClient.from('email_log')
+      .upsert({ party_id: EMAIL_PARTY_ID, template: 'registration', status: 'dry_run' }, { onConflict: 'party_id,template' });
+    if (logError) throw logError;
+  });
+
+  afterAll(async () => {
+    // Deleting the party cascades to its email_log rows.
+    await adminAuthClient.from('user_parties').delete().eq('id', EMAIL_PARTY_ID);
+  });
+
+  test('a member cannot read the log, even for their own party', async () => {
+    const { data, error } = await memberClient.from('email_log').select('id').eq('party_id', EMAIL_PARTY_ID);
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+  });
+
+  test('an admin can read the log', async () => {
+    const { data, error } = await adminAuthClient.from('email_log').select('template').eq('party_id', EMAIL_PARTY_ID);
+    expect(error).toBeNull();
+    expect(data).toEqual([{ template: 'registration' }]);
+  });
+
+  test('neither can write to it', async () => {
+    for (const client of [memberClient, adminAuthClient]) {
+      const { error } = await client.from('email_log').insert({ party_id: EMAIL_PARTY_ID, template: 'payment' });
+      expect(error).not.toBeNull();
+    }
+  });
+});
+
 // Manual seeding if function doesn't exist
 async function seedTestDataManually() {
   // Clear existing test data

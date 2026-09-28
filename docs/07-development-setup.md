@@ -225,6 +225,11 @@ adult, the new-member discount, fractional selling prices, and grandfathering a 
 on its own with `npm run test:pricing`, or as part of `npm test`. It is the only meaningful
 coverage in the repo, and it is genuinely pure — no Supabase, no DOM, no I/O.
 
+### `supabase/functions/*/*_test.ts` — the Edge Function unit suite
+
+Deno tests for the email logic (which emails a party is owed, fr-CA formatting, the rendered
+templates): `deno test supabase/functions/`. They need no Supabase and run in CI's build job.
+
 ### `src/__tests__/rlsPolicies.test.js` — the RLS integration suite
 
 The most valuable *kind* of test in the repo (see [security](./06-security-and-rls.md#testing-rls))
@@ -293,6 +298,34 @@ check.
 Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
 "For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
 browser-install strategy and runtime cost for CI runners are worked out.
+
+## Transactional email (Edge Function)
+
+`supabase/functions/send-party-email` sends the lifecycle emails
+([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)). Locally:
+
+```bash
+supabase functions serve        # serves every function against the local stack
+```
+
+`supabase db reset` seeds `private.settings` with the local function URL, so registering, paying,
+assigning a bed or promoting a party locally calls it. There is no `RESEND_API_KEY` locally: the
+function prints the email it would send in the `functions serve` output and records a `dry_run`
+row in `email_log`. Nothing leaves the machine.
+
+Production: CI deploys the function when `supabase/functions/` or `supabase/config.toml` changes
+(job **Deploy Edge Functions** in `deploy.yml`) and points the trigger at it. That job **fails until
+`RESEND_API_KEY` is set** on the production project, so no production registration can be
+recorded as a dry run and never emailed. One-time, by a maintainer, locally:
+
+```bash
+supabase secrets set --project-ref ceacurlofmasyvhsoska RESEND_API_KEY=re_...
+```
+
+Use a Resend "Sending access" key restricted to `yulmix.com`. Optional overrides, same command:
+`EMAIL_FROM` (default `La Bédaine <bedaine@yulmix.com>`) and `SITE_URL` (default
+`https://www.yulmix.com/`). Preview never sends: it has no key, no deployed function, and its seeded function URL points at
+a host that only exists in the local stack.
 
 ## Environment files
 

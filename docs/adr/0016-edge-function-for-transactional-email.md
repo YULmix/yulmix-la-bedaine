@@ -40,9 +40,12 @@ flowchart LR
 
 ## Consequences
 
-- **The trigger is the source of truth for "what happened", not the function.** It is created in a
-  migration (ADR 0013/0014), with a `WHEN` clause, so unrelated edits (transport, dietary notes)
-  never call the function or use quota. The function re-checks the old/new row before sending.
+- **The trigger only knocks; the function decides from state.** The trigger is created in a
+  migration (ADR 0013/0014) with a `WHEN` clause, so unrelated edits (transport, dietary notes)
+  never call the function. It sends only the party id. The function reads the committed row and
+  `email_log` and sends what is owed and not yet logged, so a repeated, late or forged call can't
+  send a wrong or duplicate email. That is why the function can run without JWT verification and
+  needs no shared secret with the database.
 - **The daily cap is the real limit.** Emails fire on state changes only: first registration,
   waitlisted, promoted, payment becoming `paid`, and a party's beds going from none assigned to
   some. Later bed reshuffles don't resend. A refusal from Resend (rate limit or quota) is logged
@@ -52,14 +55,23 @@ flowchart LR
   table makes the function idempotent: pg_net can call it twice, and a template already sent for
   that party and transition is not sent again.
 - **Only production sends.** `RESEND_API_KEY` is set with `supabase secrets set` on the production
-  project only. Local Supabase and the Preview project have no key, and the function logs the
-  email it would have sent instead. This protects the quota and keeps fake seeded addresses from
-  bouncing and damaging `yulmix.com`'s sender reputation.
+  project only. Local Supabase has no key, and the function logs the email it would have sent
+  instead. This protects the quota and keeps fake seeded addresses from bouncing and damaging
+  `yulmix.com`'s sender reputation.
+- **The function URL is per-environment data, not schema.** It lives in `private.settings`: the
+  local seed sets it, CI writes the production one after deploying the function. Preview loads the
+  same seed, whose URL only resolves locally, so nothing is sent there; where it is unset, the
+  trigger does nothing. CI refuses to deploy while production has no
+  `RESEND_API_KEY`, so production never records real registrations as dry runs that would then
+  never be emailed.
+- **Existing registrations are backfilled.** The migration that creates `email_log` records every
+  party's current state as `backfilled`, so the first change after deploying doesn't email people
+  about things that happened weeks earlier.
 - **The key is narrow.** A Resend "Sending access" key restricted to `yulmix.com`, never a full-access
   key. It lives only in Supabase's secret store, never in the repo or in Vercel.
-- **CI deploys the function.** Alongside migrations on merge (ADR 0014), `supabase functions
-  deploy send-party-email` runs against production. A function change is reviewed in its PR like
-  a migration.
+- **CI deploys the function.** After migrations on merge (ADR 0014), `supabase functions deploy`
+  runs against production when `supabase/functions/` changes. A function change is reviewed in its
+  PR like a migration, and its Deno tests run in the build job.
 - **Sender identity.** Mail is sent from an address on `yulmix.com` with Reply-To
   `yulmixalabedaine@gmail.com`. The Gmail address still appears in the body as the Interac
   recipient.
