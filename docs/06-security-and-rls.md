@@ -68,7 +68,7 @@ Derived from production's schema as captured in the baseline migration
 | `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — `is_admin` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
 | `email_log` | admin only | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
-| `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)) | admin only (#35: cancelling is a status change, never a delete) |
+| `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
 | `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
 | `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
 
@@ -86,6 +86,15 @@ Notes on specific choices:
   revoke can't narrow a table-level grant, so it did nothing. The real guards are
   `trg_prevent_self_privilege_escalation` and `trg_protect_root_admin`, and changing someone
   else's admin flag goes through `admin_set_is_admin()`.
+- **A registration's admin-only fields are protected by a trigger, not by the policies** (#94).
+  RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
+  whatever a non-admin end user sends for `payment_status`, `admin_notes` and
+  `attendees[].assigned_bed`. On insert these become `unpaid`, no notes and no beds. On update the
+  stored values stay, so a paid party stays paid through a member's own save (#31) or when they
+  re-register over their cancelled row (#35). Beds follow attendees by name, because attendees
+  have no stable id; a new or renamed attendee has no bed. The trigger ignores rather than
+  refuses, since the member form sends these fields back on every save. `service_role` and
+  direct connections are not restricted.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

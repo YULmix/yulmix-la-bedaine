@@ -450,6 +450,140 @@ describe('🚪 member self-cancellation (#35)', () => {
   });
 });
 
+// #94: payment_status, admin_notes and attendees[].assigned_bed are admin-only. A member's value is
+// ignored (not refused), since the member form sends them back on every save; beds carry over by
+// attendee name.
+describe('🛡️ admin-only registration fields (#94)', () => {
+  jest.setTimeout(30000);
+
+  const ADMIN_FIELDS_EVENT_ID = 'a0000000-a000-a000-a000-a00000000094';
+  const ADMIN_FIELDS_PARTY_ID = 'a0000000-a000-a000-a000-a00000000095';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const attendee = (name, assignedBed = '') => ({
+    name, type: 'Adult', participation: 'Whole', is_new_member: false, assigned_bed: assignedBed
+  });
+
+  let memberClient;
+  let adminAuthClient;
+
+  const partyRow = async () => (await adminAuthClient.from('user_parties')
+    .select('payment_status, admin_notes, attendees, calculated_amount_owed, status')
+    .eq('id', ADMIN_FIELDS_PARTY_ID).single()).data;
+  const bedsOf = (row) => row.attendees.map(a => [a.name, a.assigned_bed]);
+
+  // What the member form does: an upsert on (user_id, event_id) sending everything back.
+  const memberFormSave = (fields) => memberClient.from('user_parties')
+    .upsert({ user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, status: 'registered', ...fields }, { onConflict: 'user_id,event_id' });
+
+  // A party the admin has marked paid, annotated and given beds.
+  const seedAdminManagedParty = async () => {
+    const { error: insertError } = await adminAuthClient.from('user_parties').insert({
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID,
+      attendees: [attendee('Ann', 'B1'), attendee('Bob', 'B2')],
+      payment_status: 'paid', admin_notes: 'secret'
+    });
+    if (insertError) throw insertError;
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: ADMIN_FIELDS_EVENT_ID, theme: 'Admin Fields Test', status: 'ACTIVE', selling_price_whole_event: 100
+    });
+    if (error) throw error;
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
+  });
+
+  test('a member inserting a party cannot set payment, notes or beds', async () => {
+    const { error } = await memberClient.from('user_parties').insert({
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID,
+      attendees: [attendee('Ann', 'B1')], payment_status: 'paid', admin_notes: 'hax'
+    });
+    expect(error).toBeNull();
+    const row = await partyRow();
+    expect(row.payment_status).toBe('unpaid');
+    expect(row.admin_notes).toBeNull();
+    expect(bedsOf(row)).toEqual([['Ann', '']]);
+  });
+
+  test('a member updating their party cannot mark it paid, write notes or assign beds', async () => {
+    await memberClient.from('user_parties').insert({
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, attendees: [attendee('Ann')]
+    });
+    const { error } = await memberClient.from('user_parties')
+      .update({ payment_status: 'paid', admin_notes: 'hax', attendees: [attendee('Ann', 'B1')] })
+      .eq('id', ADMIN_FIELDS_PARTY_ID);
+    expect(error).toBeNull();
+    const row = await partyRow();
+    expect(row.payment_status).toBe('unpaid');
+    expect(row.admin_notes).toBeNull();
+    expect(bedsOf(row)).toEqual([['Ann', '']]);
+  });
+
+  test('an admin can set payment, notes and beds', async () => {
+    await memberClient.from('user_parties').insert({
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, attendees: [attendee('Ann')]
+    });
+    const { error } = await adminAuthClient.from('user_parties')
+      .update({ payment_status: 'paid', admin_notes: 'secret', attendees: [attendee('Ann', 'B1')] })
+      .eq('id', ADMIN_FIELDS_PARTY_ID);
+    expect(error).toBeNull();
+    const row = await partyRow();
+    expect(row.payment_status).toBe('paid');
+    expect(row.admin_notes).toBe('secret');
+    expect(bedsOf(row)).toEqual([['Ann', 'B1']]);
+  });
+
+  test("a member's form save keeps a paid party paid, its notes and its grandfathered amount (#31)", async () => {
+    await seedAdminManagedParty();
+    await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', ADMIN_FIELDS_EVENT_ID);
+    const { error } = await memberFormSave({
+      attendees: [attendee('Ann', 'B1'), attendee('Bob', 'B2')], payment_status: 'unpaid', admin_notes: null
+    });
+    await adminAuthClient.from('events').update({ selling_price_whole_event: 100 }).eq('id', ADMIN_FIELDS_EVENT_ID);
+    expect(error).toBeNull();
+    const row = await partyRow();
+    expect(row.payment_status).toBe('paid');
+    expect(row.admin_notes).toBe('secret');
+    expect(Number(row.calculated_amount_owed)).toBe(200);
+    expect(bedsOf(row)).toEqual([['Ann', 'B1'], ['Bob', 'B2']]);
+  });
+
+  test('beds follow attendee names: removing the first attendee does not shift beds', async () => {
+    await seedAdminManagedParty();
+    // The form sends beds back by position, so after removing Ann, Bob arrives with Ann's bed.
+    const { error } = await memberFormSave({ attendees: [attendee('Bob', 'B1'), attendee('Cat', 'B9')] });
+    expect(error).toBeNull();
+    expect(bedsOf(await partyRow())).toEqual([['Bob', 'B2'], ['Cat', '']]);
+  });
+
+  test('renaming an attendee clears only that attendee\'s bed', async () => {
+    await seedAdminManagedParty();
+    const { error } = await memberFormSave({ attendees: [attendee('Ann', 'B1'), attendee('Rob', 'B2')] });
+    expect(error).toBeNull();
+    expect(bedsOf(await partyRow())).toEqual([['Ann', 'B1'], ['Rob', '']]);
+  });
+
+  test('re-registering over their own cancelled paid party keeps it paid (#35)', async () => {
+    await seedAdminManagedParty();
+    await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', ADMIN_FIELDS_PARTY_ID);
+    const { error } = await memberFormSave({ attendees: [attendee('Ann'), attendee('Bob')], payment_status: 'unpaid' });
+    expect(error).toBeNull();
+    const row = await partyRow();
+    expect(row.status).toBe('registered');
+    expect(row.payment_status).toBe('paid');
+    expect(row.admin_notes).toBe('secret');
+  });
+});
+
 // Manual seeding if function doesn't exist
 async function seedTestDataManually() {
   // Clear existing test data
