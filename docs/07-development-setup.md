@@ -168,10 +168,17 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 ## Pre-commit hooks
 
 The repo ships a [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) that runs
-`npm run build`, `npm run test:pricing`, `npm test` and `npm run lint:diff:staged` before each
-commit — the same checklist [`CLAUDE.md`](../CLAUDE.md) documents doing by hand, just automatic.
-Each hook is scoped to only run when it's relevant (e.g. `build` only fires when `src/` or
-`package.json` changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle.
+the same checks as CI's "Build & test" and "Lint migrations (squawk)" jobs before each commit:
+`npm run build`, `npm run test:pricing`, `npm test`, `npm run lint`, `npm run lint:diff:staged`,
+`deno test` and `deno check` on `supabase/functions/`, and squawk on migrations. Each hook is
+scoped to only run when it's relevant (e.g. `build` only fires when `src/` or `package.json`
+changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle. The Deno hooks
+need `deno` on your PATH; squawk runs through `npx` at CI's pinned version.
+
+The two lists are kept identical on purpose, so a commit that passes its hooks shouldn't fail CI's
+checks. Change them together. The one check that stays CI-only is "Migrations apply cleanly", which
+replays every migration on a fresh Postgres and needs Docker. Locally, `supabase migration up`
+against your running stack is the nearest thing.
 
 The `lint-diff-staged` hook exists because `npm run lint:diff` alone doesn't work as a pre-commit
 check: it diffs `baseRef...HEAD`, and at pre-commit time `HEAD` is the *previous* commit — the one
