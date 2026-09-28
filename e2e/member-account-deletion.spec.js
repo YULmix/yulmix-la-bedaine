@@ -82,7 +82,11 @@ test('after the close date, deletion is refused and the member is told why', asy
   const dialog = page.getByRole('dialog', { name: fr.deleteAccountConfirmTitle });
   await dialog.getByRole('button', { name: fr.deleteAccount }).click();
 
-  await expect(dialog.getByRole('alert')).toContainText('ne peut pas être supprimé');
+  // The database raises a code; the dialog shows its French text, with the event's name.
+  const alert = dialog.getByRole('alert');
+  await expect(alert).toContainText(fr.dbErrorAccountDeletionLocked.split('«')[0].trim());
+  await expect(alert).toContainText('« E2E Admin Tabs Event »');
+  await expect(alert).not.toContainText('account_deletion_locked');
   expect((await getProfile(member.id)).deleted_at).toBeNull();
   expect((await getParty(partyId)).status).toBe('registered');
 });

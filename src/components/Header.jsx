@@ -4,6 +4,7 @@ import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles,
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import { initials } from '../lib/eventDisplay';
+import { dbErrorMessage } from '../lib/dbErrors';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
 
@@ -70,15 +71,15 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
     }
   };
 
-  // The database decides (close-date lock, root admin); its refusals are raised in French, so
-  // show them as they are. Anything else gets the generic message.
+  // The database decides (close-date lock, root admin) and raises a code; dbErrorMessage maps it
+  // to French. Anything else gets the generic message.
   const handleDeleteAccount = async () => {
     setDeleting(true);
     setDeleteError(null);
     const { error } = await supabase.rpc('delete_my_account');
     setDeleting(false);
     if (error) {
-      setDeleteError(error.code === 'P0001' ? error.message : fr.deleteAccountError);
+      setDeleteError(dbErrorMessage(error, fr.deleteAccountError));
       return;
     }
     setConfirmingDelete(false);

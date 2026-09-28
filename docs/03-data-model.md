@@ -326,7 +326,10 @@ transaction:
 
 1. It refuses, changing nothing, if the member has an active registration (`registered` or
    `pending`) for an event that isn't over and whose [registration close date](#registration-close-date)
-   has passed. The amount owed stays owed. It also refuses for the root admin.
+   has passed. The amount owed stays owed. It also refuses for the root admin. Refusals are
+   raised as codes, not French text: `account_deletion_locked` (with `details` =
+   `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
+   maps them to `fr.json` through `src/lib/dbErrors.js`.
 2. It cancels the member's active registrations for events still to come, meaning not archived
    and not over (`event_start_date + duration_days`). This is the same soft status change as a
    member's own cancellation (#35), so the waitlist is promoted. Registrations for past or

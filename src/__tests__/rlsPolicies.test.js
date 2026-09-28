@@ -662,7 +662,9 @@ describe('🗑️ soft account deletion (#36)', () => {
     await register(member.id, LOCKED_EVENT_ID);
 
     const { error } = await member.client.rpc('delete_my_account');
-    expect(error?.message).toMatch(/ne peut pas être supprimé.*Deletion Locked/);
+    // A code for the app to translate, not French text (see src/lib/dbErrors.js).
+    expect(error?.message).toBe('account_deletion_locked');
+    expect(JSON.parse(error.details)).toEqual({ event: 'Deletion Locked', close_date: isoDay(3 - 7) });
 
     expect(await deletedAtOf(member.id)).toBeNull();
     expect((await partiesOf(member.id)).map(p => p.status)).toEqual(['registered', 'registered']);

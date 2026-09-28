@@ -144,14 +144,16 @@ SET search_path = ''
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
-    v_locked_theme text;
+    v_locked record;
 BEGIN
+    -- Errors are stable English codes (MESSAGE) with their parameters as JSON (DETAIL); the app
+    -- maps them to French in src/lib/dbErrors.js. No user-facing text lives in the database.
     IF v_uid IS NULL THEN
-        RAISE EXCEPTION 'Vous devez être connecté pour supprimer votre compte.';
+        RAISE EXCEPTION USING MESSAGE = 'not_authenticated';
     END IF;
 
     IF EXISTS (SELECT 1 FROM public.profiles WHERE id = v_uid AND email = 'yulmixalabedaine@gmail.com') THEN
-        RAISE EXCEPTION 'Le compte administrateur racine ne peut pas être supprimé.';
+        RAISE EXCEPTION USING MESSAGE = 'root_admin_cannot_be_deleted';
     END IF;
 
     -- Already deleted: nothing left to do.
@@ -161,7 +163,7 @@ BEGIN
 
     -- "Still to come": not archived, and not over (start date + duration). An event with no start
     -- date has no close date either, so it never locks.
-    SELECT e.theme INTO v_locked_theme
+    SELECT e.theme, e.event_start_date - (e.x_reg_close_weeks * 7) AS close_date INTO v_locked
     FROM public.user_parties up
     JOIN public.events e ON e.id = up.event_id
     WHERE up.user_id = v_uid
@@ -174,7 +176,9 @@ BEGIN
     LIMIT 1;
 
     IF FOUND THEN
-        RAISE EXCEPTION 'Votre compte ne peut pas être supprimé : la date limite de désinscription pour « % » est passée. Le montant dû reste exigible. Contactez un organisateur pour toute exception.', v_locked_theme;
+        RAISE EXCEPTION USING
+            MESSAGE = 'account_deletion_locked',
+            DETAIL = json_build_object('event', v_locked.theme, 'close_date', v_locked.close_date)::text;
     END IF;
 
     UPDATE public.user_parties up
