@@ -38,6 +38,13 @@ const panel = (page) => page.getByRole('tabpanel');
 // A <Stat>'s value is the paragraph right after its label.
 const stat = (page, label) => panel(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
 // Same formatting as src/lib/format.js (fr-CA, e.g. "1 000,00 $").
+// The two informative sections are collapsed by default; their title is the disclosure button.
+const expand = async (page, title) => {
+  const toggle = panel(page).getByRole('button', { name: new RegExp(`^${title}`) });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+};
 const money = (amount) => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(amount);
 
 async function expectNoHorizontalOverflow(page) {
@@ -52,7 +59,12 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
   test(`${viewport.name}: budget lines are saved and drive the break-even price`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto('/admin?tab=budget');
-    await expect(panel(page).getByRole('heading', { name: fr.adminTabBudget, exact: true })).toBeVisible();
+    // Collapsed: only the pricing section shows its fields.
+    await expect(panel(page).getByRole('button', { name: fr.budgetLineAdd })).toHaveCount(0);
+    await expect(panel(page).getByLabel(fr.scenarioAdultWholeCount, { exact: true })).toHaveCount(0);
+    await expect(panel(page).getByLabel(fr.ratioMainWholeLabel)).toBeVisible();
+
+    await expand(page, fr.budgetLinesTitle);
     await expect(stat(page, fr.budgetTotalCost)).toHaveText(money(0));
 
     // Two lines, with categories picked from the per-line dropdown.
@@ -70,6 +82,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
     await expect(stat(page, fr.budgetTotalCost)).toHaveText(money(1000));
     await expectNoHorizontalOverflow(page);
 
+    await expand(page, fr.scenarioSimulatorTitle);
     // Headcount comes from the seeded registration: one adult whole weekend, one adult main event.
     await expect(panel(page).getByLabel(fr.scenarioAdultWholeCount, { exact: true })).toHaveValue('1');
     await expect(panel(page).getByLabel(fr.scenarioAdultMainCount, { exact: true })).toHaveValue('1');
@@ -88,7 +101,13 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
     // Saving the budget reprices nothing: it is only what the simulator works from.
     expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(308);
 
+    // "Copier dans le prix de vente" puts the break-even price in the price field, marked modified.
+    await panel(page).getByRole('button', { name: fr.scenarioUseBreakEven }).click();
+    await expect(panel(page).getByLabel(fr.eventSellingPriceLabel)).toHaveValue('790');
+    await expect(panel(page).getByText(fr.modifiedTag, { exact: true })).toHaveCount(1);
+
     await page.reload();
+    await expand(page, fr.budgetLinesTitle);
     await expect(stat(page, fr.budgetTotalCost)).toHaveText(money(1000));
   });
 }

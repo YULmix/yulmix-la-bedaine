@@ -525,12 +525,11 @@
   "scenarioNewTeensCount": "Ados, 1re Bédaine",
   "scenarioHeadcountLegend": "Participants attendus",
   "scenarioResetHeadcount": "Reprendre les inscriptions actuelles",
-  "scenarioPricingLegend": "Prix à essayer",
   "ratioMainWholeLabel": "Événement principal (% du weekend complet)",
   "ratioMainWholeHint": "C'est aussi le prix d'une 1re Bédaine. Les ados paient toujours la moitié du prix adulte.",
   "scenarioInvalidPricing": "Le prix doit être positif et le pourcentage compris entre 0 et 100.",
   "breakEvenPriceLabel": "Prix d'équilibre (weekend complet)",
-  "scenarioUseBreakEven": "Essayer ce prix",
+  "scenarioUseBreakEven": "Copier dans le prix de vente",
   "scenarioProjectedRevenue": "Revenu prévu",
   "scenarioApply": "Appliquer",
   "scenarioApplyConfirmTitle": "Appliquer le nouveau prix ?",
@@ -538,5 +537,7 @@
   "applyImpactPrice": "Prix de base : {before} → {after}",
   "applyImpactRatio": "Événement principal : {before} → {after} du weekend complet",
   "applyImpactReprice": "{count} inscription(s) non payée(s) seront recalculée(s)",
-  "applyImpactPaid": "Les inscriptions payées gardent leur montant"
+  "applyImpactPaid": "Les inscriptions payées gardent leur montant",
+  "pricingSectionTitle": "Prix des membres",
+  "pricingSectionSubtitle": "Ce que paient les membres. Appliquer enregistre ces deux valeurs et recalcule les inscriptions non payées."
 }

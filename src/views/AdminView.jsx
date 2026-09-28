@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wallet, Wrench } from 'lucide-react';
+import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -31,7 +31,7 @@ const ADMIN_TABS = [
   { id: 'overview', labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard },
   { id: 'users', labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList },
   { id: 'logistics', labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
-  { id: 'budget', labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Wallet },
+  { id: 'budget', labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote },
   { id: 'events', labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
   { id: 'tools', labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
 ];
