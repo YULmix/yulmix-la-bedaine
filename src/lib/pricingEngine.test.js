@@ -5,7 +5,14 @@
  * new-member discounts, fractional costs, and grandfathering of paid parties.
  */
 
-import { simulateEventPricing } from './pricingEngine.js';
+import {
+  DEFAULT_PRICE_RATIOS,
+  calculateBreakEvenPrice,
+  priceRatiosOf,
+  roundUpToNearestTen,
+  simulateEventPricing,
+  totalPriceShares
+} from './pricingEngine.js';
 
 describe('pricingEngine — simulateEventPricing', () => {
   test('zero points (all kids/after-party) owe nothing', () => {
@@ -166,4 +173,73 @@ test('newbies attending Main Event pay the same as regular Main Event members', 
 
     expect(result.calculated_amount_owed).toBeCloseTo(289, 2);
 });
+});
+
+describe('pricingEngine — per-event main-event ratio (#109)', () => {
+  const ratios = { mainWhole: 0.6 };
+  const one = (attendee) => simulateEventPricing([{ id: 'p', attendees: [attendee] }], 200, ratios).calculated_amount_owed;
+
+  test('each tier is a share of the base price; teens pay half the adult price', () => {
+    expect(one({ type: 'Adult', participation: 'Whole' })).toBe(200);
+    expect(one({ type: 'Adult', participation: 'Main' })).toBe(120); // 0.6 × 200
+    expect(one({ type: 'Teenager', participation: 'Whole' })).toBe(100); // 0.5 × 200
+    expect(one({ type: 'Teenager', participation: 'Main' })).toBe(60); // 0.5 × 0.6 × 200
+    expect(one({ type: 'Kid', participation: 'After-Party' })).toBe(0);
+  });
+
+  test('a newbie pays the main-event price of their age, whatever tier they picked', () => {
+    for (const participation of ['Whole', 'Main']) {
+      expect(one({ type: 'Adult', participation, isNewMember: true })).toBe(120);
+      expect(one({ type: 'Teenager', participation, isNewMember: true })).toBe(60);
+      expect(one({ type: 'Kid', participation, isNewMember: true })).toBe(0);
+    }
+  });
+
+  test('reads is_new_member as stored in user_parties.attendees', () => {
+    expect(one({ type: 'Adult', participation: 'Whole', is_new_member: true })).toBe(120);
+  });
+
+  test('matches calculate_party_amount_owed for a mixed party (same case checked in SQL)', () => {
+    const attendees = [
+      { type: 'Adult', participation: 'Main' },
+      { type: 'Teenager', participation: 'Whole' },
+      { type: 'Teenager', participation: 'Main' },
+      { type: 'Teenager', participation: 'Whole', is_new_member: true }
+    ];
+    // 120 + 100 + 60 + 60
+    expect(simulateEventPricing([{ id: 'p', attendees }], 200, ratios).calculated_amount_owed).toBe(340);
+  });
+
+  test('an exact amount is not rounded up by float noise', () => {
+    // 0.5375 × 160 is 86 exactly, but not in binary floating point.
+    expect(simulateEventPricing([{ id: 'p', attendees: [{ type: 'Adult', participation: 'Main' }] }], 160).calculated_amount_owed).toBe(86);
+  });
+
+  test('priceRatiosOf reads numeric strings and falls back to the defaults', () => {
+    expect(priceRatiosOf({ ratio_main_whole: '0.6000' })).toEqual(ratios);
+    expect(priceRatiosOf({})).toEqual(DEFAULT_PRICE_RATIOS);
+    expect(priceRatiosOf({ ratio_main_whole: 0 })).toEqual(DEFAULT_PRICE_RATIOS);
+    expect(priceRatiosOf({ ratio_main_whole: 1.5 })).toEqual(DEFAULT_PRICE_RATIOS);
+  });
+});
+
+describe('pricingEngine — break-even price (#109)', () => {
+  test('budget plus contingency over the shares, rounded up to $10', () => {
+    // 10 adults whole + 4 adult main at 0.5375 = 12.15 shares. 7000 × 1.2 / 12.15 = 691.36 → 700.
+    const attendees = [
+      ...Array(10).fill({ type: 'Adult', participation: 'Whole' }),
+      ...Array(4).fill({ type: 'Adult', participation: 'Main' })
+    ];
+    expect(calculateBreakEvenPrice(7000, 20, totalPriceShares(attendees))).toBe(700);
+  });
+
+  test('an exact multiple of $10 stays put', () => {
+    expect(calculateBreakEvenPrice(1000, 0, 10)).toBe(100);
+    expect(roundUpToNearestTen(70.01)).toBe(80);
+  });
+
+  test('no budget or nobody paying gives 0', () => {
+    expect(calculateBreakEvenPrice(0, 20, 10)).toBe(0);
+    expect(calculateBreakEvenPrice(1000, 20, 0)).toBe(0);
+  });
 });

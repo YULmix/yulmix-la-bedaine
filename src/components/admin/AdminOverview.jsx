@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import fr from '../../locales/fr.json';
 import { formatCurrency } from '../../lib/format';
 import { computeAdminStats } from '../../lib/adminStats';
-import { calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints } from '../../lib/pricingEngine';
-import { ACCOMMODATION_OPTIONS, DIETARY_OPTIONS, TIER_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
+import { attendeePrice, calculateBreakEvenPrice, priceRatiosOf, totalPriceShares } from '../../lib/pricingEngine';
+import { ACCOMMODATION_OPTIONS, DIETARY_OPTIONS, TIER_OPTIONS, getOptionLabel, isActiveRegistration } from '../../lib/registrationOptions';
 import { Card, Stat } from '../ui';
 import EmailProblems from './EmailProblems';
 
@@ -35,24 +35,31 @@ const TIER_LABEL_KEYS = {
   kids: 'exportKids'
 };
 
-const AdminOverview = ({ event, parties, getRoundedPartyTotal, onOpenParty }) => {
+// `budget` is the event's admin-only event_budgets row, or null when none was saved yet.
+const AdminOverview = ({ event, budget, parties, getRoundedPartyTotal, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties, getRoundedPartyTotal), [parties, getRoundedPartyTotal]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
   const capacity = event?.max_attendees || 0;
 
-  const tierPrices = useMemo(() => {
-    const sellingPrice = event?.selling_price_whole_event;
-    if (!sellingPrice) return [];
-    const pricePerPoint = calculatePricePerPointFromSellingPrice(sellingPrice);
-    const kidOption = TIER_OPTIONS.find(opt => opt.type === 'Kid');
-    return [
-      ...TIER_OPTIONS.filter(opt => opt.type !== 'Kid').map(opt => ({ label: opt.label, points: calculateBasePoints(opt.type, opt.participation) })),
-      { label: fr.tierNewbieLabel, points: getFinalPoints({ type: 'Adult', participation: 'Main', isNewMember: true }) },
-      { label: kidOption.label, points: 0 }
-    ].map(tier => ({ ...tier, price: Math.ceil(tier.points * pricePerPoint) }));
-  }, [event?.selling_price_whole_event]);
+  const ratios = useMemo(() => priceRatiosOf(event), [event]);
 
-  const margin = event?.total_cost ? stats.totalDue - event.total_cost : null;
+  const tierPrices = useMemo(() => {
+    const sellingPrice = Number(event?.selling_price_whole_event);
+    if (!sellingPrice) return [];
+    return [
+      ...TIER_OPTIONS.filter(opt => opt.type !== 'Kid').map(opt => ({ label: opt.label, attendee: opt })),
+      { label: fr.tierNewbieLabel, attendee: { type: 'Adult', participation: 'Whole', isNewMember: true } },
+      ...TIER_OPTIONS.filter(opt => opt.type === 'Kid').map(opt => ({ label: opt.label, attendee: opt }))
+    ].map(tier => ({ label: tier.label, price: attendeePrice(tier.attendee, sellingPrice, ratios) }));
+  }, [event?.selling_price_whole_event, ratios]);
+
+  const totalCost = Number(budget?.total_cost) || 0;
+  const margin = totalCost ? stats.totalDue - totalCost : null;
+  // The base price at which the people registered so far would cover the budget (#109).
+  const breakEvenPrice = useMemo(() => {
+    const attendees = parties.filter(isActiveRegistration).flatMap(party => party.attendees || []);
+    return calculateBreakEvenPrice(totalCost, Number(budget?.contingency_pct ?? 20), totalPriceShares(attendees, ratios));
+  }, [parties, totalCost, budget?.contingency_pct, ratios]);
 
   return (
     <div className="space-y-6">
@@ -94,7 +101,7 @@ const AdminOverview = ({ event, parties, getRoundedPartyTotal, onOpenParty }) =>
           <dl className="grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
             <div>
               <dt className="text-sm text-muted">{fr.budgetTotalCost}</dt>
-              <dd className="font-data text-lg text-ink">{event?.total_cost ? formatCurrency(event.total_cost) : fr.notSpecified}</dd>
+              <dd className="font-data text-lg text-ink">{totalCost ? formatCurrency(totalCost) : fr.notSpecified}</dd>
             </div>
             <div>
               <dt className="text-sm text-muted">{fr.budgetMargin}</dt>
@@ -103,8 +110,8 @@ const AdminOverview = ({ event, parties, getRoundedPartyTotal, onOpenParty }) =>
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-muted">{fr.estimatedCostPerParticipant}</dt>
-              <dd className="font-data text-lg text-ink">{event?.estimated_individual_cost_whole_event ? formatCurrency(event.estimated_individual_cost_whole_event) : fr.notSpecified}</dd>
+              <dt className="text-sm text-muted">{fr.breakEvenPriceLabel}</dt>
+              <dd className="font-data text-lg text-ink">{breakEvenPrice ? formatCurrency(breakEvenPrice) : fr.notSpecified}</dd>
             </div>
             <div>
               <dt className="text-sm text-muted">{fr.eventSellingPriceLabel}</dt>

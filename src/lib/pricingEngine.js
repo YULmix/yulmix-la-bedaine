@@ -1,41 +1,62 @@
 /**
- * Pricing Engine for Bedaine Event Cost Calculation
- * 
- * Business Rules:
- * 1. Points per attendee (Regular Members):
- *    - Adult (Whole Event): 2.0 pts
- *    - Adult (Main Event): 1.075 pts  
- *    - Teenager (Whole Event): 1.0 pt
- *    - Teenager (Main Event): 0.5375 pts
- *    - Kids / After-Party: 0.0 pts
- * 
- * 2. Price per point baseline:
- *    - Unit price per point = events.selling_price_whole_event / 2.0
- *    - Adult Whole (2.0 pts) pays exactly selling_price_whole_event
- * 
- * 3. Newbie Fixed Point Weights (Tier Ignored):
- *    - Adult Newbie (any tier): 1.075 pts (same as Adult Main Event)
- *    - Teen Newbie (any tier): 0.5375 pts (same as Teen Main Event)
- *    - Kid Newbie: 0.0 pts (free, same as regular kids)
- *    - Note: Newbies always pay Main Event rate regardless of attendance tier
- * 
- * 4. Grandfathering: Paid parties preserve historical calculated_amount_owed
+ * Pricing engine for La Bédaine.
+ *
+ * Every price is a share of the base price, the adult whole-weekend price
+ * (events.selling_price_whole_event). The main-event share is set per event (#109); teens always
+ * pay half the adult price:
+ *   - adult whole  = 1
+ *   - adult main   = ratio_main_whole
+ *   - teen whole   = TEEN_SHARE
+ *   - teen main    = TEEN_SHARE × ratio_main_whole
+ *   - newbie       = the main-event share of their age, whatever tier they picked
+ *   - kid          = 0 (free)
+ * A party owes the sum of its attendees' shares × the base price, rounded up to the dollar.
+ * Paid parties keep the amount they paid (grandfathering).
+ *
+ * The database computes the authoritative amount (calculate_party_amount_owed); this module is the
+ * live estimate shown in the UI and the admin simulator. The two must agree.
  */
 
+// The main-event share before it became a per-event setting: 1.075 / 2.0 points.
+export const DEFAULT_PRICE_RATIOS = Object.freeze({ mainWhole: 0.5375 });
+
+// Teens pay half the adult price of the same tier. Fixed, also in calculate_party_amount_owed.
+export const TEEN_SHARE = 0.5;
+
+const toRatio = (value, fallback) => {
+  const ratio = Number(value);
+  return Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : fallback;
+};
+
+/** An event row's ratios (numeric columns come back from PostgREST as strings or numbers). */
+export const priceRatiosOf = (event) => ({
+  mainWhole: toRatio(event?.ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole)
+});
+
 /**
- * Calculate base points by age type and participation level
- * @param {string} type - 'Adult', 'Teenager', 'Kid'
- * @param {string} participation - 'Whole', 'Main', 'After-Party'
- * @returns {number} Points value
+ * An attendee's price as a share of the base price.
+ * @param {{ type: string, participation?: string, isNewMember?: boolean, is_new_member?: boolean }} attendee
+ * @param {{ mainWhole: number }} ratios
  */
-export const calculateBasePoints = (type, participation) => {
-  if (type === 'Adult') {
-    return participation === 'Whole' ? 2.0 : 1.075;
-  }
-  if (type === 'Teenager') {
-    return participation === 'Whole' ? 1.0 : 0.5375;
-  }
-  return 0.0;
+export const getPriceShare = (attendee, ratios = DEFAULT_PRICE_RATIOS) => {
+  const { type } = attendee;
+  if (type !== 'Adult' && type !== 'Teenager') return 0;
+  const isNewMember = attendee.isNewMember ?? attendee.is_new_member ?? false;
+  const tierShare = !isNewMember && attendee.participation === 'Whole' ? 1 : ratios.mainWhole;
+  return type === 'Teenager' ? tierShare * TEEN_SHARE : tierShare;
+};
+
+/** Sum of the attendees' price shares: how many base prices they pay between them. */
+export const totalPriceShares = (attendees, ratios = DEFAULT_PRICE_RATIOS) =>
+  attendees.reduce((sum, attendee) => sum + getPriceShare(attendee, ratios), 0);
+
+// Rounds away float noise (0.1 + 0.2) before rounding up, so an exact amount isn't bumped a dollar.
+const ceilDollars = (amount) => Math.ceil(Number(amount.toFixed(6)));
+
+/** What one attendee pays on their own, rounded up to the dollar (tier price lists). */
+export const attendeePrice = (attendee, basePrice, ratios = DEFAULT_PRICE_RATIOS) => {
+  if (!Number.isFinite(basePrice) || basePrice <= 0) return 0;
+  return ceilDollars(getPriceShare(attendee, ratios) * basePrice);
 };
 
 /**
@@ -43,161 +64,41 @@ export const calculateBasePoints = (type, participation) => {
  * @param {number} amount - Amount in CAD
  * @returns {number} Rounded amount
  */
-export const roundUpToNearestTen = (amount) => {
-  return Math.ceil(amount / 10) * 10;
+export const roundUpToNearestTen = (amount) => Math.ceil(Number(amount.toFixed(6)) / 10) * 10;
+
+/**
+ * The lowest base price, rounded up to $10, at which the expected attendees cover the budget plus
+ * its contingency. 0 when there is no budget or nobody who pays.
+ * @param {number} totalCost - Sum of the budget lines, in CAD
+ * @param {number} contingencyPct - e.g. 20 for +20 %
+ * @param {number} shares - totalPriceShares() of the expected attendees
+ */
+export const calculateBreakEvenPrice = (totalCost, contingencyPct, shares) => {
+  if (!Number.isFinite(totalCost) || totalCost <= 0 || !(shares > 0)) return 0;
+  const withContingency = totalCost * (1 + (Number(contingencyPct) || 0) / 100);
+  return roundUpToNearestTen(withContingency / shares);
 };
 
 /**
- * Calculate price per point with contingency (for internal cost estimation)
- * @param {number} totalCost - Total event cost in CAD
- * @param {number} totalPoints - Sum of all attendee points
- * @returns {number} Base price per point (rounded up to nearest $10)
+ * What each party owes, and the total.
+ * @param {Array} attendeeParties - [{ id, attendees, is_paid?, historical_owed? }]
+ * @param {number} sellingPriceWholeEvent - The base price, in CAD
+ * @param {{ mainWhole: number }} ratios
+ * @returns {{ totalShares: number, calculated_amount_owed: number, parties: Array }}
  */
-export const calculatePricePerPointFromTotalCost = (totalCost, totalPoints) => {
-  if (!Number.isFinite(totalCost) || totalCost <= 0) return 0;
-  if (totalPoints === 0) return 0;
-  
-  const contingencyCost = totalCost * 1.2;
-  const rawPricePerPoint = contingencyCost / totalPoints;
-  return roundUpToNearestTen(rawPricePerPoint);
-};
-
-/**
- * Calculate price per point from selling price baseline
- * @param {number} sellingPriceWholeEvent - Selling price for adult whole event in CAD
- * @returns {number} Price per point (sellingPriceWholeEvent / 2.0)
- */
-export const calculatePricePerPointFromSellingPrice = (sellingPriceWholeEvent) => {
-  if (!Number.isFinite(sellingPriceWholeEvent) || sellingPriceWholeEvent <= 0) return 0;
-  return sellingPriceWholeEvent / 2.0;
-};
-
-/**
- * Get final points for an attendee (with new member adjustment)
- * @param {Object} attendee - Attendee object
- * @param {string} attendee.type - 'Adult', 'Teenager', 'Kid'
- * @param {string} attendee.participation - 'Whole', 'Main', 'After-Party'
- * @param {boolean} attendee.isNewMember - Whether attendee is a new member
- * @returns {number} Adjusted points
- */
-export const getFinalPoints = (attendee) => {
-  // Newbies pay fixed flat rates regardless of tier (always Main Event rate)
-  if (attendee.isNewMember) {
-    return calculateBasePoints(attendee.type, 'Main');
-  }
-  
-  // Regular members use standard point weights
-  return calculateBasePoints(attendee.type, attendee.participation);
-};
-
-/**
- * Calculate total points across all attendees (ignoring new member status)
- * @param {Array} attendeeParties - Array of party objects
- * @returns {number} Total base points
- */
-export const calculateTotalPoints = (attendeeParties) => {
-  return attendeeParties.reduce((sum, party) => {
-    return sum + party.attendees.reduce((partySum, attendee) => {
-      return partySum + calculateBasePoints(attendee.type, attendee.participation);
-    }, 0);
-  }, 0);
-};
-
-/**
- * Simulate event pricing calculation based on selling price
- * @param {Array} attendeeParties - Array of party objects
- * @param {number} sellingPriceWholeEvent - Selling price for adult whole event in CAD
- * @param {number|null} priceOverride - Optional override for base price per point
- * @returns {Object} Pricing simulation results
- */
-export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, priceOverride = null) => {
-  // Sum all base points (ignoring isNewMember status)
-  const totalPoints = calculateTotalPoints(attendeeParties);
-  
-  // Calculate or use override for base price per point
-  const basePricePerPoint = priceOverride !== null 
-    ? priceOverride 
-    : calculatePricePerPointFromSellingPrice(sellingPriceWholeEvent);
-  
-  // Calculate total owed amount
+export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, ratios = DEFAULT_PRICE_RATIOS) => {
+  const basePrice = Number.isFinite(sellingPriceWholeEvent) && sellingPriceWholeEvent > 0 ? sellingPriceWholeEvent : 0;
+  let totalShares = 0;
   let calculated_amount_owed = 0;
-  
-  // Process each party
-  const processedParties = attendeeParties.map(party => {
-    let partyTotal = 0;
-    let processedAttendees = [];
-    
-    // Grandfathering: preserve historical amount for paid parties
-    if (party.is_paid) {
-      partyTotal = party.historical_owed || 0;
-    } else {
-      // Calculate cost for each attendee in the party
-      processedAttendees = party.attendees.map(attendee => {
-        const points = getFinalPoints(attendee);
-        const cost = points * basePricePerPoint;
-        // No additional discount - newbie point weights already reflect the discount
-        
-        return {
-          ...attendee,
-          basePoints: calculateBasePoints(attendee.type, attendee.participation),
-          finalPoints: points,
-          calculated_cost: cost
-        };
-      });
-      
-      // Sum costs for all attendees in this party
-      partyTotal = processedAttendees.reduce((sum, attendee) => sum + attendee.calculated_cost, 0);
-      // Round up to nearest dollar
-      partyTotal = Math.ceil(partyTotal);
-    }
-    
-    // Add party total to overall total
-    calculated_amount_owed += partyTotal;
-    
-    // Return party object with calculated data
-    return {
-      ...party,
-      attendees: processedAttendees.length > 0 ? processedAttendees : party.attendees,
-      party_total: partyTotal
-    };
-  });
-  
-  return {
-    totalPoints,
-    basePricePerPoint,
-    calculated_amount_owed,
-    parties: processedParties,
-    sellingPriceWholeEvent,
-    pricePerPoint: basePricePerPoint
-  };
-};
 
-/**
- * Calculate estimated cost per participant (excluding kids)
- * @param {number} totalCost - Total event cost in CAD
- * @param {Array} parties - Array of user_parties objects with counts JSONB
- * @returns {number} Estimated cost per participant (excluding kids)
- */
-export const calculateEstimatedCostPerParticipant = (totalCost, parties) => {
-  if (!Array.isArray(parties) || parties.length === 0) return 0;
-  
-  let totalParticipants = 0;
-  parties.forEach(party => {
-    const counts = party.counts || {};
-    totalParticipants += (counts.adult_whole || 0) + (counts.adult_main || 0) + (counts.teen_whole || 0) + (counts.teen_main || 0);
+  const parties = attendeeParties.map(party => {
+    const shares = totalPriceShares(party.attendees, ratios);
+    totalShares += shares;
+    // Grandfathering: a paid party keeps the amount it paid.
+    const partyTotal = party.is_paid ? (party.historical_owed || 0) : ceilDollars(shares * basePrice);
+    calculated_amount_owed += partyTotal;
+    return { ...party, party_total: partyTotal };
   });
-  
-  if (totalParticipants === 0) return 0;
-  return totalCost / totalParticipants;
-};
-// Export all functions
-export default {
-  calculateBasePoints,
-  roundUpToNearestTen,
-  calculatePricePerPointFromTotalCost,
-  calculatePricePerPointFromSellingPrice,
-  getFinalPoints,
-  calculateTotalPoints,
-  simulateEventPricing,
-  calculateEstimatedCostPerParticipant
+
+  return { totalShares, calculated_amount_owed, parties };
 };

@@ -106,8 +106,8 @@ sequenceDiagram
   participant PG as Supabase / Postgres
 
   U->>RF: add attendees, pick tiers, logistics
-  RF->>PE: simulateEventPricing(party, selling_price_whole_event)
-  PE-->>RF: points + estimated amount owed
+  RF->>PE: simulateEventPricing(party, selling_price_whole_event, ratios)
+  PE-->>RF: estimated amount owed
   RF-->>U: live total ("Montant dû")
   U->>RF: Sauvegarder
   RF->>PG: select profiles (self-heal: upsert if missing)

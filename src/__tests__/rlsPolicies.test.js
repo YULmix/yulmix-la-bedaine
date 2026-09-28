@@ -334,6 +334,116 @@ describe('💵 reprice unpaid registrations on price change (#32)', () => {
   });
 });
 
+// #109: the main-event ratio is a per-event setting; changing it reprices unpaid registrations
+// like a price change does, and the budget is readable and writable by admins only.
+describe('💵 main-event ratio and admin-only budget (#109)', () => {
+  jest.setTimeout(30000);
+
+  const RATIO_EVENT_ID = 'a0000000-a000-a000-a000-a00000000109';
+  const RATIO_PARTY_ID = 'a0000000-a000-a000-a000-a00000000110';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADULT_MAIN_AND_TEEN = [
+    { type: 'Adult', participation: 'Main', is_new_member: false },
+    { type: 'Teenager', participation: 'Whole', is_new_member: false }
+  ];
+
+  let memberClient;
+  let adminAuthClient;
+  let anonClient;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    anonClient = createClient(SUPABASE_URL, ANON_KEY);
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', RATIO_PARTY_ID);
+    await adminAuthClient.from('event_budgets').delete().eq('event_id', RATIO_EVENT_ID);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: RATIO_EVENT_ID,
+      theme: 'Ratio Test Event',
+      status: 'ACTIVE',
+      selling_price_whole_event: 200,
+      ratio_main_whole: 0.5375
+    });
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', RATIO_PARTY_ID);
+    await adminAuthClient.from('event_budgets').delete().eq('event_id', RATIO_EVENT_ID);
+  });
+
+  test('changing the ratio reprices an unpaid registration; teens pay half', async () => {
+    await memberClient.from('user_parties').insert({
+      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
+    });
+    const owed = async () => Number((await memberClient.from('user_parties')
+      .select('calculated_amount_owed').eq('id', RATIO_PARTY_ID).single()).data.calculated_amount_owed);
+    // 0.5375 × 200 + 0.5 × 200 = 207.50 → 208.
+    expect(await owed()).toBe(208);
+
+    const { error } = await adminAuthClient.from('events').update({ ratio_main_whole: 0.6 }).eq('id', RATIO_EVENT_ID);
+    expect(error).toBeNull();
+    // 0.6 × 200 + 0.5 × 200 = 220.
+    expect(await owed()).toBe(220);
+  });
+
+  test('a ratio outside (0, 1] is refused', async () => {
+    for (const ratio of [0, 1.2]) {
+      const { error } = await adminAuthClient.from('events').update({ ratio_main_whole: ratio }).eq('id', RATIO_EVENT_ID);
+      expect(error).not.toBeNull();
+    }
+  });
+
+  test('a member cannot change the ratio', async () => {
+    await memberClient.from('events').update({ ratio_main_whole: 0.9 }).eq('id', RATIO_EVENT_ID);
+    const { data } = await adminAuthClient.from('events').select('ratio_main_whole').eq('id', RATIO_EVENT_ID).single();
+    expect(Number(data.ratio_main_whole)).toBe(0.5375);
+  });
+
+  test('an admin writes the budget; the database computes its total', async () => {
+    const { data, error } = await adminAuthClient.from('event_budgets').upsert({
+      event_id: RATIO_EVENT_ID,
+      lines: [{ category: 'Chalet', description: 'Location', amount: 700 }, { category: 'Food', description: '', amount: 300.5 }],
+      total_cost: 1
+    }).select().single();
+    expect(error).toBeNull();
+    expect(Number(data.total_cost)).toBe(1000.5);
+    expect(Number(data.contingency_pct)).toBe(20);
+  });
+
+  test('a budget line with an unknown category or a negative amount is refused', async () => {
+    for (const line of [{ category: 'Bogus', amount: 1 }, { category: 'Food', amount: -1 }]) {
+      const { error } = await adminAuthClient.from('event_budgets').upsert({ event_id: RATIO_EVENT_ID, lines: [line] });
+      expect(error).not.toBeNull();
+    }
+  });
+
+  test('members and signed-out visitors can neither read nor write the budget', async () => {
+    await adminAuthClient.from('event_budgets').upsert({ event_id: RATIO_EVENT_ID, lines: [{ category: 'Tech', amount: 50 }] });
+
+    const { data: memberRows } = await memberClient.from('event_budgets').select('*').eq('event_id', RATIO_EVENT_ID);
+    expect(memberRows).toEqual([]);
+    const { error: memberWrite } = await memberClient.from('event_budgets')
+      .upsert({ event_id: RATIO_EVENT_ID, lines: [] });
+    expect(memberWrite).not.toBeNull();
+
+    const { data: anonRows, error: anonRead } = await anonClient.from('event_budgets').select('*');
+    expect(anonRows ?? []).toEqual([]);
+    expect(anonRead).not.toBeNull();
+
+    const { data } = await adminAuthClient.from('event_budgets').select('total_cost').eq('event_id', RATIO_EVENT_ID).single();
+    expect(Number(data.total_cost)).toBe(50);
+  });
+
+  test('the budget columns are gone from the public events row', async () => {
+    const { error } = await anonClient.from('events').select('total_cost').limit(1);
+    expect(error).not.toBeNull();
+  });
+});
+
 describe('✉️ email_log is admin-only (#12)', () => {
   jest.setTimeout(30000);
 

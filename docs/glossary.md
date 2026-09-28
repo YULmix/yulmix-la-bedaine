@@ -62,30 +62,38 @@ _Avoid_: pre-registration, RSVP, expression of interest.
 
 ## Money
 
-**Point**
-The weighting unit that spreads cost across attendees by how much of the weekend they consume:
-adult-whole 2.0, adult-main 1.5, teen-whole 1.0, teen-main 0.5, kids 0.0. Everything financial is
-"price per point × points".
-_Avoid_: unit, weight, share, credit.
-
-**Selling price** (fr. *prix de vente*, column `events.selling_price_whole_event`)
-The price an admin decides an adult attending the whole event pays. **The only input to what
-members owe.** Set by human judgement, deliberately not recomputed when people join or leave.
+**Base price** / **selling price** (fr. *prix de base*, *prix de vente*, column
+`events.selling_price_whole_event`)
+What an adult attending the whole weekend pays. With the main-event ratio, **the only input to
+what members owe.** Set by an admin, deliberately not recomputed when people join or leave.
 _Avoid_: ticket price, fee, member price.
 
-**Price per point**
-`selling_price_whole_event / 2.0`. The rate every tier is charged at.
+**Price share**
+An attendee's price as a fraction of the base price: adult whole 1, adult main
+`ratio_main_whole`, teens half the adult share of their tier, a new member the main-event share of
+their age, kids 0. Replaced the "points" (2.0 / 1.075 / 1.0 / 0.5375) in #109; the default ratio
+gives the same prices.
+_Avoid_: point, weight, unit.
 
-**Base cost** / **estimated cost per participant** (fr. *coût de revient estimé*, columns
-`events.total_cost`, `events.estimated_individual_cost_whole_event`)
-The organisers' internal break-even estimate: what the weekend actually costs, plus a 20%
-contingency, divided across points, rounded **up** to the nearest $10. Never shown to members;
-it exists so organisers can see whether the selling price covers reality.
-_Avoid_: cost price, break-even price, real price — and above all do not conflate it with the
-selling price. They are unrelated numbers that happen to be in the same currency.
+**Main-event ratio** (column `events.ratio_main_whole`)
+The main-event price as a share of the whole-weekend price, per event (default 53.75 %). Also what
+a first Bédaine pays.
 
-**Contingency**
-The flat ×1.20 safety margin applied to `total_cost` before computing the base cost.
+**Budget** (fr. *budget*, table `event_budgets`)
+The organisers' categorized list of what the weekend costs, with its total and a contingency.
+Admins only. A **simulation** tool: it never changes an amount owed.
+_Avoid_: cost breakdown (the old column name), expenses.
+
+**Contingency** (fr. *contingence*, column `event_budgets.contingency_pct`)
+The safety margin added to the budget's total before computing the break-even price. 20 % by
+default, set per event.
+
+**Break-even price** (fr. *prix d'équilibre*)
+The lowest base price, rounded **up** to the nearest $10, at which an expected headcount covers the
+budget plus its contingency. Shown to admins so they can set the base price; never applied on its
+own.
+_Avoid_: base cost, cost price — and do not conflate it with the base price. One is a yardstick,
+the other a decision.
 
 **Amount owed** (fr. *montant dû*, column `user_parties.calculated_amount_owed`)
 What a party owes, in CAD: the sum of its attendees' individual costs. Snapshotted onto the row

@@ -42,7 +42,8 @@ flowchart TD
   ADMIN -->|"?tab=users"| USERS["AdminUserManagement"]
   ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView"]
   ADMIN -->|"?tab=events"| EVENTS["AdminEvents"]
-  ADMIN -->|"?tab=tools"| TOOLS["AdminTools<br/>simulator, export, feedback"]
+  ADMIN -->|"?tab=budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
+  ADMIN -->|"?tab=tools"| TOOLS["AdminTools<br/>export, feedback"]
 ```
 
 Sizes, as a blunt signal of where the complexity is:
