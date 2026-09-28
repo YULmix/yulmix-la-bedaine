@@ -636,15 +636,12 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
             <p className="font-data text-xl font-medium text-ink">{formatCurrency(estimatedBalance)}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Cancelling is the close button above the form (page header or dialog header). */}
+            {/* Cancelling is the close button above the form (page header or dialog header).
+                When editing, save is possible from any step, so the step arrows flank it:
+                back on the left, forward on the right, matching the step header's direction. */}
             {step > 0 && (
-              <Button variant="ghost" size="icon" onClick={() => goToStep(step - 1)} aria-label={fr.previousStep}>
+              <Button variant="secondary" size="icon" onClick={() => goToStep(step - 1)} aria-label={fr.previousStep}>
                 <ArrowLeft aria-hidden="true" className="size-5" />
-              </Button>
-            )}
-            {isEditing && !isLastStep && (
-              <Button variant="secondary" onClick={() => goToStep(step + 1)} aria-label={fr.nextStep}>
-                <ArrowRight aria-hidden="true" className="size-5" />
               </Button>
             )}
             <Button type="submit" loading={isSubmitting}>
@@ -657,6 +654,14 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                   </>
                 )}
             </Button>
+            {isEditing && (isLastStep
+              // Keeps the save button anchored in place when the forward arrow goes away.
+              ? <span aria-hidden="true" className="size-11" />
+              : (
+                <Button variant="secondary" size="icon" onClick={() => goToStep(step + 1)} aria-label={fr.nextStep}>
+                  <ArrowRight aria-hidden="true" className="size-5" />
+                </Button>
+              ))}
           </div>
         </div>
       </div>
