@@ -39,3 +39,16 @@ test('computeAdminStats counts from attendees and splits money by payment status
   expect(stats.received).toBe(360);
   expect(stats.outstanding).toBe(90);
 });
+
+test('computeAdminStats leaves cancelled parties out of every count and amount', () => {
+  const cancelled = {
+    id: 'c',
+    status: 'cancelled',
+    payment_status: 'paid',
+    is_waitlisted: true,
+    attendees: [{ type: 'Adult', participation: 'Whole', is_new_member: true, sleeping_preference: 'bed', assigned_bed: 'Ch. 2', dietary_needs: 'vegan' }]
+  };
+  const amountOf = party => ({ a: 360, b: 90, c: 500 }[party.id]);
+  expect(computeAdminStats([...parties, cancelled], amountOf)).toEqual(computeAdminStats(parties, amountOf));
+  expect(computeAdminStats([cancelled], amountOf)).toMatchObject({ people: 0, parties: 0, totalDue: 0, received: 0, paidParties: 0 });
+});

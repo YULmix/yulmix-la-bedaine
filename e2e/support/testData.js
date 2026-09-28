@@ -153,11 +153,11 @@ export async function deleteThrowawayMember(userId) {
   if (error) throw new Error(`delete throwaway member: ${error.message}`);
 }
 
-export async function addParty(userId, eventId) {
+export async function addParty(userId, eventId, status = 'registered') {
   const db = await adminClient();
   return check(
     await db.from('user_parties')
-      .insert({ user_id: userId, event_id: eventId, attendees: E2E_ATTENDEES, status: 'registered' })
+      .insert({ user_id: userId, event_id: eventId, attendees: E2E_ATTENDEES, status })
       .select('id')
       .single(),
     'create throwaway party'

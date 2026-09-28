@@ -1,4 +1,4 @@
-import { PAYMENT_STATUS } from './registrationOptions.js';
+import { PAYMENT_STATUS, isActiveRegistration } from './registrationOptions.js';
 
 // Aggregates for the admin overview, derived from each party's attendees array rather than
 // user_parties.counts, which the counts trigger leaves at zero (see docs/03-data-model.md, #41).
@@ -12,10 +12,12 @@ export const tierOf = (attendee) => {
 };
 
 /**
- * @param {Array} parties user_parties rows (with attendees)
+ * @param {Array} parties user_parties rows (with attendees). Cancelled ones are skipped: there
+ *   are no refunds, so a cancelled party owes nothing and counts for nothing (#101).
  * @param {(party) => number} amountOf the party's amount owed (rounded, grandfathered)
  */
-export const computeAdminStats = (parties, amountOf) => {
+export const computeAdminStats = (allParties, amountOf) => {
+  const parties = allParties.filter(isActiveRegistration);
   const tiers = Object.fromEntries(TIERS.map(tier => [tier, 0]));
   const accommodation = {};
   const dietary = {};

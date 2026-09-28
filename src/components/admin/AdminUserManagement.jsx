@@ -1,24 +1,34 @@
 import { useMemo, useState } from 'react';
 import { Pencil, Search, UsersRound } from 'lucide-react';
 import fr from '../../locales/fr.json';
-import { PAYMENT_STATUS, getPaymentStatusShortLabel } from '../../lib/registrationOptions';
+import {
+  PAYMENT_STATUS,
+  getPaymentStatusShortLabel,
+  getRegistrationStatusLabel,
+  isActiveRegistration
+} from '../../lib/registrationOptions';
 import { formatCurrency } from '../../lib/format';
 import { initials, plural } from '../../lib/eventDisplay';
-import { Button, EmptyState, Input, cx, tagToneClass } from '../ui';
+import { Button, EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
 
+// A cancelled party owes nothing and counts for nothing (no refunds, #101): every filter but
+// "Annulées" leaves it out, and that pill only shows while there is one.
 const FILTERS = [
-  { id: 'all', labelKey: 'filterAll', test: () => true },
-  { id: 'unpaid', labelKey: 'unpaidShort', test: party => party.payment_status !== PAYMENT_STATUS.PAID },
-  { id: 'paid', labelKey: 'paid', test: party => party.payment_status === PAYMENT_STATUS.PAID },
-  { id: 'waitlist', labelKey: 'filterWaitlist', test: party => party.is_waitlisted }
+  { id: 'all', labelKey: 'filterAll', test: isActiveRegistration },
+  { id: 'unpaid', labelKey: 'unpaidShort', test: party => isActiveRegistration(party) && party.payment_status !== PAYMENT_STATUS.PAID },
+  { id: 'paid', labelKey: 'paid', test: party => isActiveRegistration(party) && party.payment_status === PAYMENT_STATUS.PAID },
+  { id: 'waitlist', labelKey: 'filterWaitlist', test: party => isActiveRegistration(party) && party.is_waitlisted },
+  { id: 'cancelled', labelKey: 'filterCancelled', test: party => !isActiveRegistration(party), hideWhenEmpty: true }
 ];
+
+const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
 // Name | email | people | amount | payment | admin | edit, from lg up; a card per party below.
 const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem_4.5rem_3rem]';
 
 export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   <div role="group" aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-    {filters.map(filter => {
+    {filters.filter(filter => isShown(filter, counts)).map(filter => {
       const selected = value === filter.id;
       return (
         <button
@@ -60,7 +70,8 @@ const AdminUserManagement = ({
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const activeFilter = FILTERS.find(f => f.id === filter) || FILTERS[0];
+    // Falls back to "Tous" if the selected pill disappeared (its last party was re-registered).
+    const activeFilter = FILTERS.find(f => f.id === filter && isShown(f, counts)) || FILTERS[0];
     return parties.filter(party => {
       if (!activeFilter.test(party)) return false;
       if (!needle) return true;
@@ -68,7 +79,7 @@ const AdminUserManagement = ({
       return [profile.full_name, profile.email, ...(party.attendees || []).map(a => a.name)]
         .some(value => value?.toLowerCase().includes(needle));
     });
-  }, [parties, query, filter]);
+  }, [parties, query, filter, counts]);
 
   return (
     <section className="space-y-4">
@@ -107,6 +118,8 @@ const AdminUserManagement = ({
               const profile = party.profiles || {};
               const isSelf = profile.id === currentUserId;
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
+              const isCancelled = !isActiveRegistration(party);
+              const amount = isCancelled ? 0 : getRoundedPartyTotal(party);
               const people = (party.attendees || []).length;
               return (
                 <li
@@ -127,20 +140,24 @@ const AdminUserManagement = ({
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
                   </div>
-                  <span className="font-data text-base text-ink lg:hidden">{formatCurrency(getRoundedPartyTotal(party))}</span>
+                  <span className="font-data text-base text-ink lg:hidden">{formatCurrency(amount)}</span>
 
                   <span className="col-span-3 hidden truncate text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
                   <span className="hidden font-data text-sm text-muted lg:block">{people}</span>
-                  <span className="hidden text-right font-data text-ink lg:block">{formatCurrency(getRoundedPartyTotal(party))}</span>
+                  <span className="hidden text-right font-data text-ink lg:block">{formatCurrency(amount)}</span>
 
                   <div className="col-span-3 flex items-center gap-3 lg:contents">
-                    <button
-                      onClick={() => onPaymentToggle(party, isPaid ? PAYMENT_STATUS.UNPAID : PAYMENT_STATUS.PAID)}
-                      title={isPaid ? fr.markUnpaid : fr.markPaid}
-                      className={cx('inline-flex min-h-9 items-center justify-self-start rounded-full px-3 text-sm font-semibold transition hover:brightness-125', tagToneClass(isPaid ? 'ok' : 'warn'))}
-                    >
-                      {getPaymentStatusShortLabel(party.payment_status)}
-                    </button>
+                    {isCancelled ? (
+                      <Tag className="justify-self-start">{getRegistrationStatusLabel(party.status)}</Tag>
+                    ) : (
+                      <button
+                        onClick={() => onPaymentToggle(party, isPaid ? PAYMENT_STATUS.UNPAID : PAYMENT_STATUS.PAID)}
+                        title={isPaid ? fr.markUnpaid : fr.markPaid}
+                        className={cx('inline-flex min-h-9 items-center justify-self-start rounded-full px-3 text-sm font-semibold transition hover:brightness-125', tagToneClass(isPaid ? 'ok' : 'warn'))}
+                      >
+                        {getPaymentStatusShortLabel(party.payment_status)}
+                      </button>
+                    )}
                     <label className={cx('ml-auto inline-flex min-h-9 items-center gap-2 text-sm text-muted lg:ml-0', isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
                       <input
                         type="checkbox"
