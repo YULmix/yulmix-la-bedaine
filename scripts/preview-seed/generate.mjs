@@ -66,7 +66,7 @@ const REG_CLOSE_WEEKS = 2; // so the close date is ~6 weeks away and nothing is 
 // Config
 
 export const DEFAULT_CONFIG = {
-  seed: 1976,
+  seed: 20260927,
   members: 40,
   activeEvent: { registrations: 25, maxAttendees: 70, sellingPrice: 260, paidShare: 0.5 },
   pastEvents: { count: 2, registrationsEach: 15, sellingPrice: 220 },
