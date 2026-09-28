@@ -1,225 +1,149 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import RegistrationForm from '../components/RegistrationForm';
+import { useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowRight, CalendarX2, Hourglass, Info, PartyPopper, RotateCw } from 'lucide-react';
 import RegistrationSummary from './RegistrationSummary';
+import PosterHeader from '../components/brand/PosterHeader';
+import PhaseTrack from '../components/brand/PhaseTrack';
+import ToastContainer from '../components/Toast';
+import { Button, Card, EmptyState, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
-import { getGoogleMapsUrl } from '../lib/venue';
-import { formatDate } from '../lib/format';
+import { formatCurrency } from '../lib/format';
+import { getEventPhase } from '../lib/eventPhase';
+import { useMyRegistration } from '../hooks/useMyRegistration';
+import { useToasts } from '../hooks/useToasts';
+import PastEditions from './PastEditions';
 
-const HomeView = ({ activeEvent, isAuthenticated }) => {
-  const [userRegistration, setUserRegistration] = useState(null);
-  const [loadingRegistration, setLoadingRegistration] = useState(false);
-  const [error, setError] = useState(null);
-const [isEditingRegistration, setIsEditingRegistration] = useState(false);
+const linkButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-5 font-semibold transition duration-150 active:scale-[0.98]';
+export const primaryLinkClass = `${linkButton} bg-neon text-night hover:brightness-110`;
+export const secondaryLinkClass = `${linkButton} border border-edge text-ink hover:bg-raised`;
 
-  // Fetch user registration for the active event
-  const fetchUserRegistration = async () => {
-    if (!activeEvent?.id) return;
+// Same footprint as the pass, so nothing jumps when the registration arrives.
+const PassSkeleton = () => (
+  <div aria-busy="true" className="grid gap-4 rounded-card border border-line bg-surface p-6 md:grid-cols-[1fr_18rem]">
+    <span className="sr-only">{fr.loadingRegistrationMessage}</span>
+    <div className="space-y-3">
+      <Skeleton className="h-3 w-32" />
+      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-6 h-10 w-48" />
+    </div>
+    <div className="space-y-3">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-9 w-36" />
+      <Skeleton className="mt-6 h-11 w-full" />
+    </div>
+  </div>
+);
 
-    setLoadingRegistration(true);
-    setError(null);
+const InviteCard = ({ event, isIntent }) => (
+  <Card className="relative overflow-hidden p-6 sm:p-8 animate-rise">
+    <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+      <div className="max-w-xl">
+        <PartyPopper aria-hidden="true" className="size-8 text-neon" strokeWidth={1.5} />
+        <h2 className="mt-4 font-display text-display-md text-ink">{isIntent ? fr.inviteIntentTitle : fr.inviteTitle}</h2>
+        <p className="mt-2 text-muted">{isIntent ? fr.intentPhaseMessage : fr.inviteText}</p>
+        {event.selling_price_whole_event > 0 && (
+          <p className="mt-4 text-sm text-muted">
+            {fr.invitePriceLabel}{' '}
+            <span className="font-data text-base text-ink">{formatCurrency(event.selling_price_whole_event)}</span>
+          </p>
+        )}
+      </div>
+      <Link to="/inscription" className={`${primaryLinkClass} md:shrink-0`}>
+        {isIntent ? fr.declareIntentButton : fr.registerGroupButton}
+        <ArrowRight aria-hidden="true" className="size-4.5" />
+      </Link>
+    </div>
+  </Card>
+);
 
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!user) return;
+const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick }) => {
+  const { registration, setRegistration, loading, error, refetch } = useMyRegistration(activeEvent, isAuthenticated);
+  const { toasts, addToast, removeToast } = useToasts();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const justSaved = !!location.state?.justSaved;
+  const announcedSave = useRef(false);
 
-      const { data: registration, error: regError } = await supabase
-        .from('user_parties')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('event_id', activeEvent.id)
-        .maybeSingle();
-
-      if (regError) throw regError;
-
-      setUserRegistration(registration || null);
-    } catch (err) {
-      console.error('Erreur lors de la récupération de l\'inscription:', err);
-      setError(err.message);
-    } finally {
-      setLoadingRegistration(false);
-    }
-  };
-
+  // Coming back from /inscription after a save: celebrate once (toast + pass stamp), then clear
+  // the router state so a refresh doesn't replay it.
   useEffect(() => {
-    if (!isAuthenticated || !activeEvent?.id) {
-      setUserRegistration(null);
-      return;
-    }
+    if (!justSaved || announcedSave.current) return;
+    announcedSave.current = true;
+    addToast(fr.registrationSuccess, 'success');
+    const timer = setTimeout(() => navigate('.', { replace: true, state: null }), 1200);
+    return () => clearTimeout(timer);
+  }, [justSaved]);
 
-    fetchUserRegistration();
-  }, [isAuthenticated, activeEvent]);
-
-  // Determine event phase
-  const getEventPhase = () => {
-    if (!activeEvent) return 'NO_EVENT';
-    
-    const today = new Date();
-    const regStartDate = new Date(activeEvent.reg_start_date);
-    const intentMonths = activeEvent.z_intent_months || 2;
-    
-    // Calculate intent start date (reg_start_date - intentMonths months)
-    const intentStartDate = new Date(regStartDate);
-    intentStartDate.setMonth(intentStartDate.getMonth() - intentMonths);
-    
-    if (today >= intentStartDate && today < regStartDate) {
-      return 'INTENT_PHASE';
-    }
-    
-    if (activeEvent.status === 'ACTIVE' && activeEvent.is_reg_open) {
-      return 'REGISTRATION_OPEN';
-    }
-    
-    if (activeEvent.status === 'ACTIVE') {
-      return 'ACTIVE_NO_REG';
-    }
-    
-    return 'OTHER';
-  };
-
-  const handleSignIn = async () => {
-    try {
-      console.log('OAuth redirectTo:', window.location.origin);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erreur de connexion:', error);
-    }
-  };
-
-  const eventPhase = getEventPhase();
-// If no active event
   if (!activeEvent) {
     return (
-      <div className="text-center py-12">
-        <div className="inline-block p-4 bg-gray-100 rounded-full mb-4">
-          <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-          </svg>
-        </div>
-        <h3 className="text-xl font-semibold text-gray-700 mb-2">{fr.noActiveEventTitle}</h3>
-        <p className="text-gray-500">{fr.noActiveEventMessage}</p>
+      <div className="space-y-10">
+        <Card>
+          <EmptyState icon={CalendarX2} title={fr.noActiveEventTitle}>{fr.noActiveEventMessage}</EmptyState>
+        </Card>
+        <PastEditions events={otherEvents} onEventClick={onEventClick} />
       </div>
     );
   }
 
+  const eventPhase = getEventPhase(activeEvent);
+  const isIntent = eventPhase === 'INTENT_PHASE';
+
   return (
-    <div className="space-y-8">
-      {/* Loading state for registration data */}
-      {loadingRegistration && (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">{fr.loadingRegistrationMessage}</p>
-        </div>
-      )}
-      {/* Event header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">{activeEvent.theme}</h1>
-        <p className="text-blue-100 mb-4">{activeEvent.description}</p>
-        <div className="flex flex-wrap gap-4 text-sm">
-          <div className="bg-white/20 px-3 py-1 rounded-full">{formatDate(activeEvent.reg_start_date)}</div>
-          {activeEvent.venue_address && (
-            <a href={getGoogleMapsUrl(activeEvent.venue_address)} target="_blank" rel="noopener noreferrer" className="bg-white/20 px-3 py-1 rounded-full underline hover:bg-white/30 transition-colors">
-              {activeEvent.venue_address}
-            </a>
-          )}
-          <div className="bg-white/20 px-3 py-1 rounded-full">{activeEvent.duration_days} {fr.daysSuffix}</div>
-          <Link
-            to="/event-details"
-            className="bg-[#fb951a] hover:bg-[#e08213] px-3 py-1 rounded-full text-white font-medium transition-colors duration-200 shadow-sm"
-          >
-            {fr.eventLearnMore}
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
-      {/* Intent phase banner */}
-      {eventPhase === 'INTENT_PHASE' && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                <strong>{fr.intentPhaseLabel}</strong> {fr.intentPhaseMessage}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* User registration status */}
-      {isAuthenticated && userRegistration && !isEditingRegistration && eventPhase !== "INTENT_PHASE" && (
-        <RegistrationSummary
-          registration={userRegistration}
-          event={activeEvent}
-          onEdit={() => setIsEditingRegistration(true)}
-          onBackToHome={() => {/* nothing */}}
-          onDeleted={() => setUserRegistration(null)}
-        />
+      <PosterHeader event={activeEvent}>
+        <Link to="/event-details" className={secondaryLinkClass}>
+          <Info aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+          {fr.eventLearnMore}
+        </Link>
+      </PosterHeader>
+
+      <Card className="px-5 py-5 sm:px-6">
+        <PhaseTrack event={activeEvent} />
+      </Card>
+
+      {isIntent && (
+        <Notice tone="warn" icon={Hourglass} title={fr.intentPhaseLabel.replace(/\s*:$/, '')}>
+          {fr.intentPhaseMessage}
+        </Notice>
       )}
 
-      {/* Edit registration form */}
-      {isAuthenticated && userRegistration && isEditingRegistration && eventPhase !== "INTENT_PHASE" && (
-        <RegistrationForm
-          event={activeEvent}
-          userRegistration={userRegistration}
-          onRegistrationSuccess={() => {
-            setIsEditingRegistration(false);
-            fetchUserRegistration();
-          }}
-          onCancel={() => setIsEditingRegistration(false)}
-        />
-      )}
-
-      {/* Registration form (show if user is authenticated and either not registered or in intent phase) */}
-      {isAuthenticated && (!userRegistration || eventPhase === 'INTENT_PHASE') && (
-        <RegistrationForm 
-          event={activeEvent}
-          userRegistration={userRegistration}
-          onRegistrationSuccess={() => {
-            fetchUserRegistration();
-          }}
-        />
-      )}
-
-      {/* Not authenticated message */}
-      {!isAuthenticated && (
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-          <div className="inline-block p-4 bg-blue-50 rounded-full mb-4">
-            <svg className="w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-            </svg>
-          </div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">{fr.signInToRegisterTitle}</h3>
-          <p className="text-gray-500 mb-6">{fr.signInToRegisterMessage}</p>
-          <button
-            onClick={handleSignIn}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-          >
-            {fr.signIn}
-          </button>
-        </div>
-      )}
-
-      {/* Error state */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <Notice
+          tone="bad"
+          title={fr.registrationLoadError}
+          action={<Button variant="secondary" size="sm" onClick={refetch}><RotateCw aria-hidden="true" className="size-4" />{fr.retry}</Button>}
+        >
           {error}
-        </div>
+        </Notice>
       )}
+
+      {loading && !registration ? (
+        <PassSkeleton />
+      ) : registration ? (
+        <RegistrationSummary
+          registration={registration}
+          event={activeEvent}
+          isIntent={isIntent}
+          animateStamp={justSaved}
+          onEdit={() => navigate('/inscription')}
+          onDeleted={() => {
+            setRegistration(null);
+            addToast(fr.deleteRegistrationSuccess, 'success');
+          }}
+          onError={(message) => addToast(message, 'error')}
+        />
+      ) : !error && (
+        <InviteCard event={activeEvent} isIntent={isIntent} />
+      )}
+
+      <div className="pt-6">
+        <PastEditions events={otherEvents} onEventClick={onEventClick} />
+      </div>
     </div>
   );
 };
 
 export default HomeView;
-

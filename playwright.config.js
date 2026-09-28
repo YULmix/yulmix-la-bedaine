@@ -47,6 +47,14 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
+      // admin-tabs.spec.js seeds and mutates the same single active event/registration.
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 7'] },
+      testMatch: /admin-tabs\.spec\.js/,
+      dependencies: ['chromium']
     }
   ],
   webServer: {

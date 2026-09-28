@@ -1,23 +1,48 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
+import AdminOverview from '../components/admin/AdminOverview';
+import AdminLogisticsView from '../components/admin/AdminLogisticsView';
+import AdminUserManagement from '../components/admin/AdminUserManagement';
+import { AdminEventList, EventEditDialog } from '../components/admin/AdminEvents';
+import { DataExport, FeedbackInbox, ScenarioSimulator } from '../components/admin/AdminTools';
+import UserProfileDialog from '../components/admin/UserProfileDialog';
+import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
-  BED_REASON_OPTIONS,
-  DIETARY_OPTIONS,
-  TIER_OPTIONS,
   getOptionLabel,
-  getDietaryRequestsLabel,
   PAYMENT_STATUS,
   getPaymentStatusShortLabel
 } from '../lib/registrationOptions';
-import { simulateEventPricing, calculateEstimatedCostPerParticipant, calculateBasePoints, calculatePricePerPointFromSellingPrice, getFinalPoints } from '../lib/pricingEngine';
-import { formatCurrency, formatDate } from '../lib/format';
+import { simulateEventPricing } from '../lib/pricingEngine';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
+// Admin sub-navigation tabs; the id is what appears in the URL (?tab=<id>). `users` and
+// `logistics` keep their original ids so existing deep links still work.
+const ADMIN_TABS = [
+  { id: 'overview', labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard },
+  { id: 'users', labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList },
+  { id: 'logistics', labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
+  { id: 'events', labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
+  { id: 'tools', labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
+];
+const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
+
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = ADMIN_TABS.some(tab => tab.id === requestedTab) ? requestedTab : DEFAULT_ADMIN_TAB;
+  const selectTab = (tabId) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tabId);
+      return next;
+    });
+  };
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -46,6 +71,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [simulationResult, setSimulationResult] = useState(null);
   const [feedbackItems, setFeedbackItems] = useState([]);
   const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(null);
+  const [pendingArchive, setPendingArchive] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // Fetch all events, parties, profiles
   useEffect(() => {
@@ -153,7 +181,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .from('user_parties')
         .select(`
           *,
-          profiles!inner(email, full_name, is_admin)
+          profiles!inner(id, email, full_name, is_admin, created_at)
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: true });
@@ -193,7 +221,10 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
   };
 
-  const handleArchiveEvent = async (event) => {
+  const confirmArchiveEvent = async () => {
+    const event = pendingArchive;
+    if (!event) return;
+    setConfirmBusy(true);
     try {
       const { error } = await supabase
         .from('events')
@@ -205,6 +236,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     } catch (err) {
       console.error('Error archiving event:', err);
       addToast(err.message || fr.eventArchivingError, 'error');
+    } finally {
+      setConfirmBusy(false);
+      setPendingArchive(null);
     }
   };
 
@@ -327,15 +361,16 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
   };
 
-  // Payment status toggle
-  const handlePaymentToggle = async (party, newStatus) => {
+  // Payment status toggle: asks for confirmation in a dialog (pendingPayment), then writes.
+  const handlePaymentToggle = (party, newStatus) => {
+    setPendingPayment({ party, newStatus });
+  };
+
+  const confirmPaymentToggle = async () => {
+    if (!pendingPayment) return;
+    const { party, newStatus } = pendingPayment;
     const action = getPaymentStatusShortLabel(newStatus);
-    const confirmMessage = fr.paymentToggleConfirm
-      .replace('{action}', action)
-      .replace('{name}', party.profiles?.full_name || fr.defaultUserFallback);
-
-    if (!window.confirm(confirmMessage)) return;
-
+    setConfirmBusy(true);
     try {
       const { error } = await supabase
         .from('user_parties')
@@ -347,6 +382,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     } catch (err) {
       console.error('Error updating payment status:', err);
       addToast(err.message || fr.updateError, 'error');
+    } finally {
+      setConfirmBusy(false);
+      setPendingPayment(null);
     }
   };
 
@@ -405,7 +443,10 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     return totals;
   }, [parties, activeEventState?.selling_price_whole_event]);
 
-  const getRoundedPartyTotal = (party) => roundedPartyTotals.get(party.id) ?? (party.calculated_amount_owed || 0);
+  const getRoundedPartyTotal = useCallback(
+    (party) => roundedPartyTotals.get(party.id) ?? (party.calculated_amount_owed || 0),
+    [roundedPartyTotals]
+  );
 
   // User profile modal functions
   const openUserProfile = async (profile) => {
@@ -730,853 +771,230 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   if (!isAdmin) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-          <p>{fr.adminAccessRestricted}</p>
-        </div>
-      </div>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-6">
+        <Notice tone="warn">{fr.adminAccessRestricted}</Notice>
+      </main>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <p className="text-gray-600">{fr.adminDashboardLoading}</p>
-      </div>
-    );
-  }
+  const activeTabIndex = ADMIN_TABS.findIndex(tab => tab.id === activeTab);
+  // Arrow keys move between tabs (WAI-ARIA tabs pattern, automatic activation).
+  const handleTabKeyDown = (event) => {
+    const keys = { ArrowRight: 1, ArrowLeft: -1 };
+    if (!(event.key in keys) && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    let next = activeTabIndex + (keys[event.key] || 0);
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = ADMIN_TABS.length - 1;
+    next = (next + ADMIN_TABS.length) % ADMIN_TABS.length;
+    selectTab(ADMIN_TABS[next].id);
+    requestAnimationFrame(() => document.getElementById(`admin-tab-${ADMIN_TABS[next].id}`)?.focus());
+  };
+
+  const renderPanel = () => {
+    if (loading) {
+      return (
+        <div aria-busy="true" className="space-y-4">
+          <span className="sr-only">{fr.adminDashboardLoading}</span>
+          <Skeleton className="h-24 rounded-card" />
+          <Skeleton className="h-64 rounded-card" />
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <Notice
+          tone="bad"
+          title={fr.adminLoadError}
+          action={<Button variant="secondary" size="sm" onClick={fetchAllData}><RotateCw aria-hidden="true" className="size-4" />{fr.retry}</Button>}
+        >
+          {error}
+        </Notice>
+      );
+    }
+    if (activeTab === 'events') {
+      return (
+        <AdminEventList
+          events={events}
+          onActivate={handleActivateEvent}
+          onArchive={setPendingArchive}
+          onEdit={(event) => { setEditingEvent(event); setEventChanges({}); }}
+        />
+      );
+    }
+    if (activeTab === 'tools') {
+      return (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <div className="space-y-6">
+            {activeEventState && (
+              <ScenarioSimulator
+                event={activeEventState}
+                values={scenarioValues}
+                onChange={handleScenarioChange}
+                onRun={runSimulation}
+                result={simulationResult}
+              />
+            )}
+            {activeEventState && <DataExport hasData={parties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
+          </div>
+          <FeedbackInbox
+            items={feedbackItems}
+            showResolved={showResolvedFeedback}
+            onToggleResolved={setShowResolvedFeedback}
+            onResolve={handleResolveFeedback}
+          />
+        </div>
+      );
+    }
+    if (!activeEventState) {
+      return <EmptyState icon={CalendarRange} title={fr.noActiveEventTitle}>{fr.adminNoActiveEventHint}</EmptyState>;
+    }
+    if (activeTab === 'logistics') {
+      return (
+        <AdminLogisticsView
+          parties={parties}
+          logisticsChanges={logisticsChanges}
+          onAssignedBedChange={handleAssignedBedChange}
+          onAdminNotesChange={handleAdminNotesChange}
+          onSave={saveLogisticsChanges}
+          onOpenUserProfile={openUserProfile}
+        />
+      );
+    }
+    if (activeTab === 'users') {
+      return (
+        <AdminUserManagement
+          parties={parties}
+          currentUserId={currentUserId}
+          getRoundedPartyTotal={getRoundedPartyTotal}
+          onOpenUserProfile={openUserProfile}
+          onAdminToggle={handleAdminToggle}
+          onPaymentToggle={handlePaymentToggle}
+          onEditParty={openPartyEdit}
+        />
+      );
+    }
+    return <AdminOverview event={activeEventState} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} />;
+  };
+
+  const unsavedLogistics = Object.keys(logisticsChanges).length;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8"> 
-        <h1 className="text-3xl font-bold mb-2">{fr.adminPageTitle}</h1>
-        <p className="text-gray-100">{fr.adminPageSubtitle}</p>
-      </div>
-
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-16">
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
-      {/* Event Management */}
-      <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.adminEventsManagementTitle}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {events.map(event => (
-            <div key={event.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-medium text-gray-800">{event.theme}</h3>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  event.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
-                  event.status === 'ARCHIVED' ? 'bg-gray-100 text-gray-800' :
-                  'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {event.status === 'ACTIVE' ? fr.eventStatusActive : event.status === 'ARCHIVED' ? fr.eventStatusArchived : fr.draft}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mb-3">{event.description?.substring(0, 100)}...</p>
-              <div className="flex space-x-2">
-                {!event.is_active && event.status !== 'ARCHIVED' && (
-                  <button
-                    onClick={() => handleActivateEvent(event)}
-                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                  >
-                    {fr.activateEventButton}
-                  </button>
-                )}
-                {event.is_active && (
-                  <button
-                    onClick={() => handleArchiveEvent(event)}
-                    className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
-                  >
-                    {fr.archiveEventButton}
-                  </button>
-                )}
-                {event.is_active && (
-                  <button
-                    onClick={() => {
-                      setEditingEvent(event);
-                      setEventChanges({});
-                    }}
-                    className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
-                  >
-                    {fr.edit}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+
+      <div className="mb-6 flex flex-col gap-1">
+        <p className="font-data text-xs uppercase tracking-widest text-neon">{activeEventState ? activeEventState.theme : fr.adminPageSubtitle}</p>
+        <h1 className="font-display text-display-md text-ink">{fr.adminPageTitle}</h1>
       </div>
-      {/* Inline event metadata editing modal */}
-      {editingEvent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 ">
-          <div className="bg-indigo-50 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="sticky top-0 bg-indigo-50 border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">{fr.editEventMetadataTitle}</h2>
-              <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                ✕
-              </button>
-            </div>
-<div className="p-6 space-y-4">
-              {/* 1. Thème */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventTitle}</label>
-                <input type="text" value={eventChanges.theme ?? editingEvent.theme} onChange={e => handleEventFieldChange('theme', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
 
-              {/* 2. Description */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventDescriptionLabel}</label>
-                <textarea value={eventChanges.description ?? editingEvent.description} onChange={e => handleEventFieldChange('description', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 3. Adresse du lieu */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventVenueAddressLabel}</label>
-                <input type="text" value={eventChanges.venue_address ?? editingEvent.venue_address} onChange={e => handleEventFieldChange('venue_address', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 4. Durée (jours) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventDurationLabel}</label>
-                <input type="number" value={eventChanges.duration_days ?? editingEvent.duration_days} onChange={e => handleEventFieldChange('duration_days', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 5. Date de début des inscriptions */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventRegStartDateLabel}</label>
-                <input type="date" value={eventChanges.reg_start_date ?? editingEvent.reg_start_date} onChange={e => handleEventFieldChange('reg_start_date', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 5b. Date de début de l'événement */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventStartDateLabel}</label>
-                <input type="date" value={eventChanges.event_start_date ?? editingEvent.event_start_date ?? ''} onChange={e => handleEventFieldChange('event_start_date', e.target.value || null)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 6. Délai d'intention avant inscription (mois) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventIntentMonthsLabel}</label>
-                <input type="number" value={eventChanges.z_intent_months ?? editingEvent.z_intent_months} onChange={e => handleEventFieldChange('z_intent_months', parseInt(e.target.value) || 2)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 7. Fermeture des inscriptions avant l'événement (semaines) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventRegCloseWeeksLabel}</label>
-                <input type="number" value={eventChanges.x_reg_close_weeks ?? editingEvent.x_reg_close_weeks} onChange={e => handleEventFieldChange('x_reg_close_weeks', parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 8. Inscriptions ouvertes */}
-              <div>
-                <div className="flex items-center">
-                  <input type="checkbox" id="is_reg_open" checked={eventChanges.is_reg_open ?? editingEvent.is_reg_open ?? false} onChange={e => handleEventFieldChange('is_reg_open', e.target.checked)} className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                  <label htmlFor="is_reg_open" className="ml-2 block text-sm font-medium text-gray-700">{fr.eventRegOpenLabel}</label>
-                </div>
-              </div>
-
-              {/* 9. Points de contact */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventPointsOfContactLabel}</label>
-                <textarea value={eventChanges.points_of_contact ?? editingEvent.points_of_contact} onChange={e => handleEventFieldChange('points_of_contact', e.target.value)} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-{/* 10. Nombre maximum de participants */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventMaxAttendeesLabel}</label>
-                <input type="number" value={eventChanges.max_attendees ?? editingEvent.max_attendees} onChange={e => handleEventFieldChange('max_attendees', parseInt(e.target.value) || 90)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 11. Coût total (CAD) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventTotalCostLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.total_cost ?? editingEvent.total_cost} onChange={e => handleEventFieldChange('total_cost', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 12. Catégorie de dépense */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExpenseCategoryLabel}</label>
-                <select value={eventChanges.expense_category ?? editingEvent.expense_category ?? ''} onChange={e => handleEventFieldChange('expense_category', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50">
-                  <option value="">{fr.selectPlaceholder}</option>
-                  <option value="Chalet">{fr.eventExpenseCategoryChalet}</option>
-                  <option value="Food">{fr.eventExpenseCategoryFood}</option>
-                  <option value="Music">{fr.eventExpenseCategoryMusic}</option>
-                  <option value="Tech">{fr.eventExpenseCategoryTech}</option>
-                  <option value="Accessories">{fr.eventExpenseCategoryAccessories}</option>
-                </select>
-              </div>
-
-              {/* 13. Répartition des coûts */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventCostBreakdownLabel}</label>
-                {(eventChanges.cost_breakdown ?? editingEvent?.cost_breakdown ?? []).map((row, index) => (
-                  <div key={index} className="flex gap-2 mb-2">
-                    <input type="text" placeholder={fr.eventCostBreakdownCategoryPlaceholder} value={row.category || ''} onChange={e => handleCostBreakdownChange(index, 'category', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                    <input type="number" step="0.01" placeholder={fr.eventCostBreakdownAmountPlaceholder} value={row.amount || ''} onChange={e => handleCostBreakdownChange(index, 'amount', parseFloat(e.target.value) || 0)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                    <button type="button" onClick={() => removeCostBreakdownRow(index)} className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">
-                      {fr.eventCostBreakdownRemoveRow}
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={addCostBreakdownRow} className="mt-2 px-4 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg">
-                  {fr.eventCostBreakdownAddRow}
-                </button>
-              </div>
-            
-{/* 14. Prix de vente (weekend complet) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventSellingPriceLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.selling_price_whole_event ?? editingEvent.selling_price_whole_event} onChange={e => handleEventFieldChange('selling_price_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 15. Coût de revient estimé (weekend complet) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventEstimatedCostLabel}</label>
-                <input type="number" step="0.01" value={eventChanges.estimated_individual_cost_whole_event ?? editingEvent.estimated_individual_cost_whole_event} onChange={e => handleEventFieldChange('estimated_individual_cost_whole_event', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-
-              {/* 16. Liens externes */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventExternalLinksLabel}</label>
-                {(eventChanges.external_links ?? editingEvent?.external_links ?? []).map((row, index) => (
-                  <div key={index} className="flex gap-2 mb-2">
-                    <input type="text" placeholder={fr.eventExternalLinksLabelPlaceholder} value={row.label || ''} onChange={e => handleExternalLinksChange(index, 'label', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                    <input type="url" placeholder={fr.eventExternalLinksUrlPlaceholder} value={row.url || ''} onChange={e => handleExternalLinksChange(index, 'url', e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-                    <button type="button" onClick={() => removeExternalLinksRow(index)} className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg">
-                      {fr.eventExternalLinksRemoveRow}
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={addExternalLinksRow} className="mt-2 px-4 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg">
-                  {fr.eventExternalLinksAddRow}
-                </button>
-              </div>
-
-              {/* 17. Instructions */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{fr.eventInstructionsLabel}</label>
-                <textarea value={eventChanges.instructions ?? editingEvent.instructions} onChange={e => handleEventFieldChange('instructions', e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-indigo-50 border-t px-6 py-4 flex justify-end space-x-3">
-              <button onClick={() => setEditingEvent(null)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">{fr.cancel}</button>
-              <button onClick={saveEventChanges} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{fr.save}</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Real-time Aggregate Dashboard */}
-      {activeEventState && (  
-        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-800">{fr.dashboard}</h2>
-            <div className="text-sm text-gray-500">{fr.activeEventLabel} <strong>{activeEventState.theme}</strong></div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-blue-100 border border-blue-200 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-700">{parties.reduce((sum, p) => sum + (p.counts?.adult_whole || 0) + (p.counts?.adult_main || 0), 0)}</div>
-              <div className="text-sm text-blue-600 mt-1">{fr.adultsStatLabel}</div>
-            </div>
-            <div className="bg-green-50 border border-green-100 rounded-lg p-4">
-              <div className="text-3xl font-bold text-green-700">{parties.reduce((sum, p) => sum + (p.counts?.teen_whole || 0) + (p.counts?.teen_main || 0), 0)}</div>
-              <div className="text-sm text-green-600 mt-1">{fr.teenagersStatLabel}</div>
-            </div>
-            <div className="bg-purple-100 border border-purple-200 rounded-lg p-4">
-              <div className="text-3xl font-bold text-purple-700">{parties.reduce((sum, p) => sum + (p.counts?.kids || 0), 0)}</div>
-              <div className="text-sm text-purple-600 mt-1">{fr.kidsStatLabel}</div>
-            </div>
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
-              <div className="text-3xl font-bold text-amber-700">{parties.length}</div>
-              <div className="text-sm text-amber-600 mt-1">{fr.registeredGroupsStatLabel}</div>
-            </div>
-</div>
-           {/* Cost vs Price Display */}
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 mt-8">
-             <div className="bg-blue-100 border border-blue-200 rounded-lg p-6">
-               <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.costVsPriceTitle}</h3>
-               <div className="space-y-4">
-                 <div className="flex justify-between items-center">
-                   <span className="text-sm text-gray-600">{fr.estimatedCostPerParticipant}</span>
-                   <span className="text-xl font-bold text-blue-700">
-                     {activeEventState?.estimated_individual_cost_whole_event 
-                       ? formatCurrency(activeEventState.estimated_individual_cost_whole_event)
-                       : fr.notSpecified}
-                   </span>
-                 </div>
-                 {activeEventState?.selling_price_whole_event ? (() => {
-                   const pricePerPoint = calculatePricePerPointFromSellingPrice(activeEventState.selling_price_whole_event);
-                   const newbiePoints = getFinalPoints({ type: 'Adult', participation: 'Main', isNewMember: true });
-                   const kidOption = TIER_OPTIONS.find(opt => opt.type === 'Kid');
-                   const tierBreakdown = [
-                     ...TIER_OPTIONS
-                       .filter(opt => opt.type !== 'Kid')
-                       .map(opt => ({ label: opt.label, points: calculateBasePoints(opt.type, opt.participation) })),
-                     { label: fr.tierNewbieLabel, points: newbiePoints },
-                     { label: kidOption.label, points: calculateBasePoints(kidOption.type, kidOption.participation) }
-                   ];
-                   return tierBreakdown.map(tier => (
-                     <div key={tier.label} className="flex justify-between items-center">
-                       <span className="text-sm text-gray-600">{tier.label}</span>
-                       <span className="text-lg font-bold text-green-700">
-                         {formatCurrency(Math.ceil(tier.points * pricePerPoint))}
-                       </span>
-                     </div>
-                   ));
-                 })() : (
-                   <div className="flex justify-between items-center">
-                     <span className="text-sm text-gray-600">{fr.costVsPriceTitle}</span>
-                     <span className="text-xl font-bold text-green-700">{fr.notSpecified}</span>
-                   </div>
-                 )}
-               </div>
-             </div>
-{/* Budget Metrics */}
-              <div className="bg-purple-100 border border-purple-200 rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.budgetTitle}</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{fr.budgetTotalCost}</span>
-                    <span className="text-xl font-bold text-purple-700">
-                      {activeEventState?.total_cost 
-                        ? formatCurrency(activeEventState.total_cost)
-                        : fr.notSpecified}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{fr.budgetTotalAmountDue}</span>
-                    <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + getRoundedPartyTotal(party), 0))}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{fr.budgetAmountToReceive}</span>
-                    <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === PAYMENT_STATUS.UNPAID ? getRoundedPartyTotal(party) : 0), 0))}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{fr.budgetAmountReceived}</span>
-                    <span className="text-xl font-bold text-purple-700">
-                      {formatCurrency(parties.reduce((sum, party) => sum + (party.payment_status === PAYMENT_STATUS.PAID ? getRoundedPartyTotal(party) : 0), 0))}
-                    </span>
-                  </div>
-                </div>
-              </div>
-           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div>
-              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.accommodation}</h3>
-              <div className="space-y-2">
-                {ACCOMMODATION_OPTIONS.map(opt => {
-                  const count = parties.reduce((sum, p) => sum + (p.attendees || []).filter(a => a.sleeping_preference === opt.value).length, 0);
-                  return count > 0 ? (
-                    <div key={opt.value} className="flex justify-between items-center">
-                      <span className="text-gray-700">{opt.label}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                  ) : null;
-                })}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.foodPreferences}</h3>
-              <div className="space-y-2">
-                {DIETARY_OPTIONS.filter(opt => opt.value !== 'none').map(opt => {
-                  const count = parties.reduce((sum, p) => sum + (p.attendees || []).filter(a => a.dietary_needs === opt.value).length, 0);
-                  return count > 0 ? (
-                    <div key={opt.value} className="flex justify-between items-center">
-                      <span className="text-gray-700">{opt.label}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                  ) : null;
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-{/* Dedicated Logistics View */}
-      {activeEventState && (
-        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.logisticsViewTitle}</h2>
-          <p className="text-sm text-gray-600 mb-4">{fr.logisticsViewDescription}</p>
-
-          <div className="space-y-4">
-            {parties.map(party => {
-              const profile = party.profiles || {};
-              const partyAttendees = party.attendees || [];
-              const changes = logisticsChanges[party.id] || {};
-              const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
-
-              return (
-                <div key={party.id} className="border border-gray-200 rounded-lg p-4 bg-teal-50/50">
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 mb-3">
-                    <div>
-                      <button
-                        onClick={() => openUserProfile(profile)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                      >
-                        {profile.full_name || fr.notSpecified}
-                      </button>
-                      <p className="text-sm text-gray-500">{profile.email}</p>
-                    </div>
-                    {hasChanges && (
-                      <button
-                        onClick={() => saveLogisticsChanges(party.id)}
-                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 self-start"
-                      >
-                        {fr.saveAssignments}
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableAttendee}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingPref}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.bedReason}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">{fr.logisticsTableSleepingAssigned}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {partyAttendees.map((attendee, index) => {
-                          const assignedValue = changes.attendees && changes.attendees[index] !== undefined
-                            ? changes.attendees[index]
-                            : (attendee.assigned_bed || '');
-
-                          return (
-                            <tr key={index}>
-                              <td className="px-4 py-2 text-sm text-gray-800">{attendee.name || `${fr.participantFallback} #${index + 1}`}</td>
-                              <td className="px-4 py-2 text-sm text-gray-800">
-                                {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
-                                {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other && (
-                                  <span className="block text-xs text-gray-500">{attendee.sleeping_preference_other}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-gray-800">
-                                {getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason)}
-                                {attendee.bed_reason === 'other' && attendee.bed_reason_other && (
-                                  <span className="block text-xs text-gray-500">{attendee.bed_reason_other}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2">
-                                <input
-                                  type="text"
-                                  value={assignedValue}
-                                  onChange={(e) => handleAssignedBedChange(party.id, index, e.target.value)}
-                                  placeholder={fr.assignedBedPlaceholder}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-500 uppercase mb-1">{fr.logisticsTableAdminNotes}</label>
-                    <textarea
-                      value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                      onChange={(e) => handleAdminNotesChange(party.id, e.target.value)}
-                      rows="2"
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
-                      placeholder={fr.adminNotesPlaceholder}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-{/* Admin User & Party Management */}
-      {activeEventState && (
-
-        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">{fr.adminUsersManagementTitle}</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableName}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.logisticsTableEmail}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.adminTableHeader}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.paymentStatus}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.amountDue}</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.actionsTableHeader}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {parties.map(party => {
-                  const profile = party.profiles || {};
-                  const isCurrentAdmin = profile.id === currentUserId;
-                  return (
-                    <tr key={party.id}>
-                      <td className="px-4 py-3 text-sm text-gray-800">
-                        <button 
-                          onClick={() => openUserProfile(profile)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {profile.full_name || fr.notSpecified}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-800">{profile.email}</td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={!!profile.is_admin}
-                          onChange={e => handleAdminToggle(profile, e.target.checked)}
-                          disabled={isCurrentAdmin}
-                          className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 text-slate-600 placeholder:text-slate-300"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handlePaymentToggle(party, party.payment_status === PAYMENT_STATUS.PAID ? PAYMENT_STATUS.UNPAID : PAYMENT_STATUS.PAID)}
-                          className={`px-3 py-1 text-xs rounded-full font-medium ${
-                            party.payment_status === PAYMENT_STATUS.PAID
-                              ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                              : 'bg-red-100 text-red-800 hover:bg-red-200'
-                          }`}
-                        >
-                          {getPaymentStatusShortLabel(party.payment_status)}
-                        </button>
-                      </td>
-<td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(getRoundedPartyTotal(party))}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => openPartyEdit(party)}
-                          className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
-                        >
-                          {fr.editRegistrationButton}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-{/* Scenario Simulator */}
-      {activeEventState && (
-        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">{fr.scenarioSimulatorTitle}</h2>
-          <p className="text-sm text-gray-600 mb-6">{fr.scenarioSimulatorSubtitle}</p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioAdultWholeCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.adultWhole}
-                onChange={(e) => handleScenarioChange('adultWhole', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioAdultMainCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.adultMain}
-                onChange={(e) => handleScenarioChange('adultMain', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioTeenWholeCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.teenWhole}
-                onChange={(e) => handleScenarioChange('teenWhole', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioTeenMainCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.teenMain}
-                onChange={(e) => handleScenarioChange('teenMain', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioKidsCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.kids}
-                onChange={(e) => handleScenarioChange('kids', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioNewMembersCount}</label>
-              <input
-                type="number"
-                min="0"
-                value={scenarioValues.newMembers}
-                onChange={(e) => handleScenarioChange('newMembers', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioSellingPriceOverride} {fr.currencyCadSuffix}</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={scenarioValues.sellingPriceOverride}
-                onChange={(e) => handleScenarioChange('sellingPriceOverride', e.target.value)}
-                placeholder={activeEventState?.selling_price_whole_event || fr.currentSellingPricePlaceholder}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{fr.scenarioPricePerPointOverride} {fr.currencyCadSuffix}</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={scenarioValues.pricePerPointOverride}
-                onChange={(e) => handleScenarioChange('pricePerPointOverride', e.target.value)}
-                placeholder={activeEventState?.selling_price_whole_event ? (activeEventState.selling_price_whole_event / 2).toFixed(2) : fr.currentPricePerPointPlaceholder}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50"
-              />
-            </div>
-          </div>
-
-
-          
-          <div className="flex justify-between items-center">
-            <button
-              onClick={runSimulation}
-              className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300"
-            >
-              {fr.scenarioSimulateButton}
-            </button>
-            
-            {simulationResult && (
-              <div className="text-right">
-                <p className="text-sm text-gray-600 mb-1">{fr.scenarioResults}</p>
-                <div className="space-y-1">
-                  <p className="text-sm"><strong>{fr.scenarioTotalPoints}:</strong> {simulationResult.totalPoints.toFixed(2)}</p>
-                  <p className="text-sm"><strong>{fr.scenarioBasePricePerPoint}:</strong> {formatCurrency(simulationResult.basePricePerPoint)}</p>
-                  <p className="text-sm font-bold text-green-700"><strong>{fr.scenarioCalculatedAmountOwed}:</strong> {formatCurrency(simulationResult.calculated_amount_owed)}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-{/* Data Export */}
-      {activeEventState && (
-        <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">{fr.dataExportTitle}</h2>
-          <p className="text-sm text-gray-600 mb-6">{fr.dataExportDescription}</p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.exportCsvSectionTitle}</h3>
-              <p className="text-sm text-gray-600 mb-4">{fr.exportCsvSectionDescription}</p>
-              <button
-                onClick={exportToCSV}
-                disabled={!parties.length}
-                className={`px-6 py-3 font-medium rounded-lg ${
-                  parties.length 
-                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {fr.exportCSVButton}
-              </button>
-            </div>
-            
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-700 mb-3">{fr.exportGoogleSheetsSectionTitle}</h3>
-              <p className="text-sm text-gray-600 mb-2">{fr.exportGoogleSheetsSectionDescription}</p>
-              <p className="text-xs text-gray-500 mb-4">{fr.exportCopyTSVSubtext}</p>
-              <button
-                onClick={copyToClipboardForSheets}
-                disabled={!parties.length}
-                className={`px-6 py-3 font-medium rounded-lg ${
-                  parties.length 
-                    ? 'bg-green-600 text-white hover:bg-green-700' 
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {fr.exportCopyTSVButton}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* User Feedback */}
-      <div className="bg-indigo-50 rounded-xl shadow-lg p-6 mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">{fr.adminFeedbackSectionTitle}</h2>
-          <label className="flex items-center space-x-2 text-sm text-gray-600">
-            <input type="checkbox" checked={showResolvedFeedback} onChange={(e) => setShowResolvedFeedback(e.target.checked)} className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 text-slate-600 placeholder:text-slate-300 bg-white/50" />
-            <span>{fr.adminFeedbackShowResolved}</span>
-          </label>
-        </div>
-        {(() => {
-          const visibleFeedback = feedbackItems.filter(item => showResolvedFeedback || !item.is_resolved);
-          if (visibleFeedback.length === 0) {
-            return <p className="text-gray-500">{fr.adminFeedbackEmpty}</p>;
-          }
+      {/* One tablist: inline pills from md up, a fixed bottom bar (thumb zone) on phones. */}
+      <div
+        role="tablist"
+        aria-label={fr.adminTabsAriaLabel}
+        onKeyDown={handleTabKeyDown}
+        className={cx(
+          'fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
+          'md:static md:mb-8 md:flex md:gap-1 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none'
+        )}
+      >
+        {ADMIN_TABS.map(tab => {
+          const isActive = tab.id === activeTab;
+          const Icon = tab.icon;
+          const showDot = tab.id === 'logistics' && unsavedLogistics > 0;
           return (
-            <div className="space-y-4">
-              {visibleFeedback.map(item => (
-                <div key={item.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{item.profiles?.full_name || item.profiles?.email || fr.adminFeedbackUnknownAuthor}</p>
-                      <p className="text-xs text-gray-500">{new Date(item.created_at).toLocaleString('fr-CA')}</p>
-                    </div>
-                    {item.is_resolved ? (
-                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{fr.adminFeedbackResolved}</span>
-                    ) : (
-                      <button
-                        onClick={() => handleResolveFeedback(item.id)}
-                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                      >
-                        {fr.adminFeedbackResolve}
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.content}</p>
-                  {item.screenshot_url && (
-                    <img src={item.screenshot_url} alt={fr.feedbackScreenshotAlt} className="mt-3 max-h-48 rounded-lg border border-gray-200" />
-                  )}
-                </div>
-              ))}
-            </div>
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`admin-tab-${tab.id}`}
+              aria-selected={isActive}
+              aria-controls={`admin-tabpanel-${tab.id}`}
+              aria-label={fr[tab.labelKey]}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => selectTab(tab.id)}
+              className={cx(
+                'relative flex min-h-14 flex-col items-center justify-center gap-1 text-xs font-semibold transition duration-150',
+                'md:min-h-11 md:flex-row md:gap-2 md:rounded-full md:px-4 md:text-sm',
+                isActive ? 'text-neon md:tint-neon md:text-ink' : 'text-faint hover:text-ink md:hover:bg-raised'
+              )}
+            >
+              <Icon aria-hidden="true" className={cx('size-5 md:size-4.5', isActive && 'md:text-neon')} strokeWidth={1.75} />
+              <span className="md:hidden">{fr[tab.shortKey]}</span>
+              <span className="hidden md:inline">{fr[tab.labelKey]}</span>
+              {showDot && <span className="absolute right-[calc(50%-1.25rem)] top-2 size-2 rounded-full bg-warn md:static" aria-label={fr.unsavedTag} />}
+            </button>
           );
-        })()}
+        })}
       </div>
 
-      {/* User Profile Modal */}
-      {userProfileModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-indigo-50 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-indigo-50 border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">{fr.userProfileModalTitle}</h2>
-              <button onClick={closeUserProfile} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                ✕
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">{fr.userProfileEmail}</h3>
-                    <p className="text-gray-800">{userProfileModal.email}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">{fr.userProfileFullName}</h3>
-                    <p className="text-gray-800">{userProfileModal.full_name || fr.notSpecified}</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">{fr.userProfileAdminStatus}</h3>
-                    <p className="text-gray-800">{userProfileModal.is_admin ? fr.userProfileYes : fr.userProfileNo}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">{fr.userProfileMemberSince}</h3>
-                    <p className="text-gray-800">{formatDate(userProfileModal.created_at)}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-medium text-gray-700 mb-4">{fr.userProfileEventHistory}</h3>
-                {userEventHistory.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableEvent}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableDate}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableStatus}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTablePayment}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableAmount}</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{fr.eventHistoryTableWaitlisted}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {userEventHistory.map((history, index) => (
-                          <tr key={index}>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.event_theme}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{formatDate(history.registration_date)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.registration_status}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                history.payment_status === PAYMENT_STATUS.PAID 
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {getPaymentStatusShortLabel(history.payment_status)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{formatCurrency(history.calculated_amount_owed)}</td>
-                            <td className="px-4 py-3 text-sm text-gray-800">{history.is_waitlisted ? fr.userProfileYes : fr.userProfileNo}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">{fr.noEventHistoryFound}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`} key={activeTab} className="animate-step">
+        {renderPanel()}
+      </div>
 
-      {/* God-Mode editing modal */}
-      {editingParty && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-indigo-50 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-indigo-50 border-b px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">{fr.adminEditRegistrationTitle}</h2>
-              <button onClick={closePartyEdit} className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100">
-                ✕
-              </button>
-            </div>
-            <div className="p-6">
-              <RegistrationForm
-                event={activeEventState}
-                userRegistration={editingParty}
-                adminMode={true}
-                onAdminSave={handleAdminSave}
-                onCancel={closePartyEdit}
-              />
-            </div>
+      <EventEditDialog
+        event={editingEvent}
+        changes={eventChanges}
+        onChange={handleEventFieldChange}
+        onCostBreakdownChange={handleCostBreakdownChange}
+        onAddCostRow={addCostBreakdownRow}
+        onRemoveCostRow={removeCostBreakdownRow}
+        onLinkChange={handleExternalLinksChange}
+        onAddLinkRow={addExternalLinksRow}
+        onRemoveLinkRow={removeExternalLinksRow}
+        onSave={saveEventChanges}
+        onClose={() => setEditingEvent(null)}
+      />
+
+      <UserProfileDialog profile={userProfileModal} history={userEventHistory} onClose={closeUserProfile} />
+
+      <Dialog
+        open={!!editingParty}
+        onClose={closePartyEdit}
+        dismissible={false}
+        size="lg"
+        title={fr.adminEditRegistrationTitle}
+      >
+        {editingParty && (
+          <div className="px-4 pt-5 sm:px-6">
+            <p className="mb-5 text-sm text-muted">{editingParty.profiles?.full_name} <span className="text-faint">{editingParty.profiles?.email}</span></p>
+            <RegistrationForm
+              event={activeEventState}
+              userRegistration={editingParty}
+              adminMode={true}
+              onAdminSave={handleAdminSave}
+              onCancel={closePartyEdit}
+            />
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingPayment}
+        tone="primary"
+        title={pendingPayment?.newStatus === PAYMENT_STATUS.PAID ? fr.markPaid : fr.markUnpaid}
+        confirmLabel={pendingPayment?.newStatus === PAYMENT_STATUS.PAID ? fr.markPaid : fr.markUnpaid}
+        onConfirm={confirmPaymentToggle}
+        onCancel={() => setPendingPayment(null)}
+        loading={confirmBusy}
+      >
+        {pendingPayment && fr.paymentToggleConfirm
+          .replace('{action}', getPaymentStatusShortLabel(pendingPayment.newStatus))
+          .replace('{name}', pendingPayment.party.profiles?.full_name || fr.defaultUserFallback)}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!pendingArchive}
+        title={fr.archiveEventConfirmTitle}
+        confirmLabel={fr.archiveEventButton}
+        onConfirm={confirmArchiveEvent}
+        onCancel={() => setPendingArchive(null)}
+        loading={confirmBusy}
+      >
+        {pendingArchive && fr.archiveEventConfirm.replace('{theme}', pendingArchive.theme)}
+      </ConfirmDialog>
+    </main>
   );
 };
 
 export default AdminView;
-
-
-
-

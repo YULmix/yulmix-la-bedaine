@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { MessageCircle, X } from 'lucide-react';
+import { ImagePlus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
+import { Button, Dialog, Field, Notice, Textarea } from './ui';
 
-const FeedbackModal = ({ userId }) => {
-  const [isOpen, setIsOpen] = useState(false);
+// Opened from the account menu or the footer ("Signaler un problème"). It used to be a floating
+// button, which sat on top of the registration form's save button on phones.
+const FeedbackModal = ({ userId, open, onClose }) => {
   const [content, setContent] = useState('');
   const [screenshotUrl, setScreenshotUrl] = useState(null);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
@@ -20,7 +22,7 @@ const FeedbackModal = ({ userId }) => {
   };
 
   const handleClose = () => {
-    setIsOpen(false);
+    onClose();
     resetForm();
   };
 
@@ -73,8 +75,7 @@ const FeedbackModal = ({ userId }) => {
       setContent('');
       setScreenshotUrl(null);
       setTimeout(() => {
-        setIsOpen(false);
-        resetForm();
+        handleClose();
       }, 1500);
     } catch (err) {
       console.error('Error submitting feedback:', err);
@@ -87,78 +88,59 @@ const FeedbackModal = ({ userId }) => {
   if (!userId) return null;
 
   return (
-    <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 font-medium"
-      >
-        <MessageCircle className="w-5 h-5" />
-        <span className="hidden sm:inline">{fr.feedbackButtonLabel}</span>
-      </button>
-
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-xl shadow-slate-950/50">
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-700">
-              <h2 className="text-lg font-semibold text-slate-100">{fr.feedbackModalTitle}</h2>
-              <button onClick={handleClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-full hover:bg-slate-800">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {error && (
-                <div className="bg-red-900/30 border border-red-800/30 text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>
-              )}
-              {success && (
-                <div className="bg-green-900/30 border border-green-800/30 text-green-300 px-4 py-3 rounded-lg text-sm">{fr.feedbackSuccess}</div>
-              )}
-
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onPaste={handlePaste}
-                rows={5}
-                required
-                placeholder={fr.feedbackPlaceholder}
-                className="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-100 placeholder:text-slate-400"
-              />
-
-              {uploadingScreenshot && (
-                <p className="text-sm text-slate-400">{fr.feedbackScreenshotUploading}</p>
-              )}
-
-              {screenshotUrl && !uploadingScreenshot && (
-                <div className="relative inline-block">
-                  <img src={screenshotUrl} alt={fr.feedbackScreenshotAlt} className="max-h-40 rounded-lg border border-slate-700 bg-slate-800/50" />
-                  <button
-                    type="button"
-                    onClick={() => setScreenshotUrl(null)}
-                    aria-label={fr.feedbackRemoveScreenshot}
-                    className="absolute -top-2 -right-2 bg-slate-900 text-slate-100 rounded-full p-1 hover:bg-slate-800 border border-slate-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={handleClose} className="px-4 py-2 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-800 font-medium">
-                  {fr.feedbackCancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || uploadingScreenshot || !content.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {fr.feedbackSubmit}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      title={fr.feedbackModalTitle}
+      size="sm"
+      footer={(
+        <>
+          <Button variant="secondary" onClick={handleClose}>{fr.feedbackCancel}</Button>
+          <Button type="submit" form="feedback-form" loading={isSubmitting} disabled={uploadingScreenshot || !content.trim()}>
+            {fr.feedbackSubmit}
+          </Button>
+        </>
       )}
-    </>
+    >
+      <form id="feedback-form" onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 py-5 sm:px-6">
+        {error && <Notice tone="bad">{error}</Notice>}
+        {success && <Notice tone="ok" role="status">{fr.feedbackSuccess}</Notice>}
+        <Field label={fr.feedbackFieldLabel} hint={fr.feedbackPasteHint}>
+          {({ id, describedBy }) => (
+            <Textarea
+              id={id}
+              aria-describedby={describedBy}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onPaste={handlePaste}
+              rows={5}
+              required
+              placeholder={fr.feedbackPlaceholder}
+            />
+          )}
+        </Field>
+
+        {uploadingScreenshot && (
+          <p className="inline-flex items-center gap-2 text-sm text-muted">
+            <ImagePlus aria-hidden="true" className="size-4" /> {fr.feedbackScreenshotUploading}
+          </p>
+        )}
+
+        {screenshotUrl && !uploadingScreenshot && (
+          <div className="relative inline-block self-start">
+            <img src={screenshotUrl} alt={fr.feedbackScreenshotAlt} className="max-h-40 rounded-control border border-line" />
+            <button
+              type="button"
+              onClick={() => setScreenshotUrl(null)}
+              aria-label={fr.feedbackRemoveScreenshot}
+              className="absolute -right-3 -top-3 grid size-8 place-items-center rounded-full border border-edge bg-raised text-ink hover:bg-surface"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </form>
+    </Dialog>
   );
 };
 
