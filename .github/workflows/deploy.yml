@@ -87,6 +87,15 @@ jobs:
 
       - run: npm run test:pricing
 
+      # The Edge Functions (supabase/functions/) are Deno, outside the Node toolchain above.
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      - run: deno test supabase/functions/
+
+      - run: deno check supabase/functions/*/index.ts
+
       # Repo-wide, informational only (local/no-literal-ui-strings is a
       # warning — see eslint.config.js for the pre-existing backlog this
       # is tracking, not gating).
@@ -144,6 +153,7 @@ jobs:
       migrations: ${{ steps.detect.outputs.migrations }}
       files: ${{ steps.detect.outputs.files }}
       app: ${{ steps.detect.outputs.app }}
+      functions: ${{ steps.detect.outputs.functions }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -177,6 +187,7 @@ jobs:
             changed=$([ -n "${files// /}" ] && echo true || echo false)
             all_files=$(git diff --diff-filter=ACMR --name-only "origin/$BASE_REF...HEAD")
             app=$(is_app_change "$all_files" && echo true || echo false)
+            functions=$(git diff --name-only "origin/$BASE_REF...HEAD" -- supabase/functions/ supabase/config.toml | grep -q . && echo true || echo false)
           else
             last=$(gh run list --workflow deploy.yml --branch main --event push --status success \
               --limit 1 --json headSha --jq '.[0].headSha // empty' || true)
@@ -186,16 +197,19 @@ jobs:
               changed=$([ -n "${files// /}" ] && echo true || echo false)
               all_files=$(git diff --name-only "$last" HEAD)
               app=$(is_app_change "$all_files" && echo true || echo false)
+              functions=$(git diff --name-only "$last" HEAD -- supabase/functions/ supabase/config.toml | grep -q . && echo true || echo false)
             else
               echo "::notice::No usable last-successful run; assuming migrations and app changes may be pending."
               files=''
               changed=true
               app=true
+              functions=true
             fi
           fi
           echo "migrations=$changed" | tee -a "$GITHUB_OUTPUT"
           echo "files=$files" | tee -a "$GITHUB_OUTPUT"
           echo "app=$app" | tee -a "$GITHUB_OUTPUT"
+          echo "functions=$functions" | tee -a "$GITHUB_OUTPUT"
 
   # Flags migrations that lock or break things (dropped/renamed columns,
   # NOT NULL without a default, …) and comments the findings on the PR.
@@ -304,6 +318,54 @@ jobs:
         run: supabase db push --linked --yes
 
       - run: supabase migration list --linked
+
+  # Deploys supabase/functions/ to production when they (or config.toml) changed, after any
+  # pending migration has applied, then points the email trigger at the deployed function
+  # (ADR 0016: the URL is per environment, so it lives in private.settings, not in a migration).
+  #
+  # One-time setup, done by a maintainer, run locally, never pasted to an AI assistant, and
+  # BEFORE merging the first function (this job fails until it is done, so no registration is
+  # ever recorded as a dry run in production and silently never emailed):
+  #   supabase secrets set --project-ref ceacurlofmasyvhsoska RESEND_API_KEY=re_...
+  #                        # a Resend "Sending access" key restricted to yulmix.com
+  # Then re-run the failed job from the Actions tab if it ran first.
+  functions:
+    name: Deploy Edge Functions
+    needs: [build-and-test, changes, migrate]
+    if: >-
+      !cancelled()
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.build-and-test.result == 'success'
+      && needs.changes.result == 'success'
+      && needs.changes.outputs.functions == 'true'
+      && (needs.changes.outputs.migrations != 'true' || needs.migrate.result == 'success')
+    runs-on: ubuntu-latest
+    environment: supabase-production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Require RESEND_API_KEY
+        run: |
+          supabase secrets list --project-ref "$SUPABASE_PROJECT_REF" -o json \
+            | jq -e 'any(.[]; .name == "RESEND_API_KEY")' > /dev/null \
+            || { echo "::error::RESEND_API_KEY is not set on the production project. See the one-time setup above this job."; exit 1; }
+
+      # verify_jwt per function comes from supabase/config.toml.
+      - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Point the email trigger at the function
+        run: |
+          supabase db query --linked "INSERT INTO private.settings (key, value)
+            VALUES ('email_function_url', 'https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/send-party-email')
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
 
   # Runs on every push to main that touches more than docs/**Markdown, migration
   # or not. The explicit condition is needed because GitHub skips a job whose
