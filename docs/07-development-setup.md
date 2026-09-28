@@ -467,6 +467,8 @@ PITR/restore feature):
 | Migrations | Read-write |
 | API Keys | Read |
 | API Key Secrets | Read |
+| Edge Functions | Read-write |
+| Edge Function Secrets | Read |
 
 Supabase tokens can't be edited after creation — getting this wrong means regenerating, so here's
 why each one is needed, traced against the CLI's own source (`supabase/cli`, not just the docs
@@ -490,6 +492,13 @@ page, which doesn't list the raw permission IDs):
 - **Database** (`database_write`, for `Read-write`): `db dump`/`db push`/`migration list` all
   mint a temporary Postgres login role via `POST /v1/projects/{ref}/cli/login-role` once they have
   a connection, rather than needing a stored database password.
+- **Edge Functions** (`Read-write`) and **Edge Function Secrets** (`Read`,
+  `edge_functions_secrets_read`): the **Deploy Edge Functions** job
+  ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) runs `supabase functions
+  deploy`, and first `supabase secrets list` to refuse to activate the email trigger while
+  `RESEND_API_KEY` is missing. Read is enough for that check: the job never writes secrets, a
+  maintainer sets them. Without it the list call fails with `403 Missing required permission(s):
+  edge_functions_secrets_read` (first seen on the #92 merge, 2026-09-28).
 - **Migrations** (`Read-write`): not actually exercised by any of the three commands above in
   this CLI version — they apply/list migrations over the raw Postgres connection, not a separate
   Management API call. Kept anyway since `supabase migration repair` (used for the one-time
