@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import { TEST_USERS } from './auth.js';
 
 export const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+export const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
 export const E2E_EVENT_THEME = 'E2E Admin Tabs Event';
 export const E2E_ATTENDEES = [
   { name: 'Alice E2E', type: 'Adult', participation: 'Whole', is_new_member: false },
@@ -122,9 +123,29 @@ export async function getEvent(eventId) {
 export async function getParty(partyId) {
   const db = await adminClient();
   return check(
-    await db.from('user_parties').select('attendees, admin_notes, payment_status, status, calculated_amount_owed').eq('id', partyId).single(),
+    await db
+      .from('user_parties')
+      .select('attendees, admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .eq('id', partyId)
+      .single(),
     'read e2e party'
   );
+}
+
+// A registration for someone other than the seeded member (e.g. the admin's own), made now. The
+// caller deletes it with deleteParty.
+export async function createParty(eventId, userId, attendees) {
+  const db = await adminClient();
+  check(await db.from('user_parties').delete().eq('event_id', eventId).eq('user_id', userId), 'delete old extra party');
+  return check(
+    await db.from('user_parties').insert({ user_id: userId, event_id: eventId, attendees }).select('id').single(),
+    'create extra party'
+  ).id;
+}
+
+export async function deleteParty(partyId) {
+  const db = await adminClient();
+  check(await db.from('user_parties').delete().eq('id', partyId), 'delete extra party');
 }
 
 export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {

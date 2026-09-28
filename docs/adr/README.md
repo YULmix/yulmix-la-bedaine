@@ -17,7 +17,7 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0004](./0004-per-attendee-logistics-inside-attendees.md) | Per-person logistics live inside the `attendees` JSONB | accepted |
 | [0005](./0005-waitlist-instead-of-blocking.md) | Over capacity waitlists, never blocks | accepted |
 | [0006](./0006-french-values-in-payment-and-status-columns.md) | Payment status is stored in French | superseded by 0012 |
-| [0007](./0007-selling-price-not-cost-drives-member-pricing.md) | The admin-set selling price, not the cost estimate, determines what members pay | accepted |
+| [0007](./0007-selling-price-not-cost-drives-member-pricing.md) | The admin-set selling price, not the cost estimate, determines what members pay | accepted; repricing updated by 0017 |
 | [0008](./0008-archive-never-delete.md) | Events are archived, never deleted | accepted |
 | [0009](./0009-french-ui-english-code.md) | French UI from one dictionary, English codebase | accepted |
 | [0010](./0010-pricing-rules-and-logistics.md) | Refined pricing rules, individual logistics, and event lifecycle | accepted |
@@ -27,3 +27,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0014](./0014-ci-applies-migrations-on-merge.md) | CI applies migrations to production on merge, after an encrypted backup; fix forward | accepted |
 | [0015](./0015-dedicated-preview-supabase-project.md) | A dedicated free-tier Supabase project for Vercel Preview, instead of sharing production | accepted |
 | [0016](./0016-edge-function-for-transactional-email.md) | Transactional email is sent by one Supabase Edge Function, triggered from Postgres | accepted |
+| [0017](./0017-lock-price-per-registration.md) | A registration keeps the base price and ratio it was made at; a price change only affects new ones | accepted; reverses the repricing of #32/#109 |

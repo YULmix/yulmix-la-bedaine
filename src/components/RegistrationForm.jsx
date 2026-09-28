@@ -4,7 +4,7 @@ import {
   Tent, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getPriceShare, priceRatiosOf, simulateEventPricing } from '../lib/pricingEngine';
+import { getPriceShare, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { plural } from '../lib/eventDisplay';
@@ -190,8 +190,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     }
   }, [sameForEveryone, attendees]);
 
-  const basePrice = Number(event?.selling_price_whole_event) || 0;
-  const ratios = useMemo(() => priceRatiosOf(event), [event]);
+  // An existing registration is priced at what it locked when it was made, not today's price (#117).
+  const { basePrice, ratios } = useMemo(() => partyPricingOf(userRegistration, event), [userRegistration, event]);
 
   const estimatedBalance = useMemo(() => {
     if (!event) return 0;

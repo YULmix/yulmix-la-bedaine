@@ -8,6 +8,7 @@
 import {
   DEFAULT_PRICE_RATIOS,
   calculateBreakEvenPrice,
+  partyPricingOf,
   priceRatiosOf,
   roundUpToNearestTen,
   simulateEventPricing,
@@ -220,6 +221,33 @@ describe('pricingEngine — per-event main-event ratio (#109)', () => {
     expect(priceRatiosOf({})).toEqual(DEFAULT_PRICE_RATIOS);
     expect(priceRatiosOf({ ratio_main_whole: 0 })).toEqual(DEFAULT_PRICE_RATIOS);
     expect(priceRatiosOf({ ratio_main_whole: 1.5 })).toEqual(DEFAULT_PRICE_RATIOS);
+  });
+});
+
+describe('pricingEngine — price locked per registration (#117)', () => {
+  const event = { selling_price_whole_event: '250.00', ratio_main_whole: '0.6000' };
+  const party = { status: 'registered', locked_selling_price_whole_event: '200.00', locked_ratio_main_whole: '0.5375' };
+  const owed = ({ basePrice, ratios }, attendees) =>
+    simulateEventPricing([{ id: 'p', attendees }], basePrice, ratios).calculated_amount_owed;
+
+  test('an existing registration keeps its locked price and ratio after the event changes', () => {
+    expect(partyPricingOf(party, event)).toEqual({ basePrice: 200, ratios: { mainWhole: 0.5375 } });
+    // Adding someone after the price went up to 250 / 60 %: 200 + 0.5375 × 200 = 307.50 → 308.
+    expect(owed(partyPricingOf(party, event), [
+      { type: 'Adult', participation: 'Whole' },
+      { type: 'Adult', participation: 'Main' }
+    ])).toBe(308);
+  });
+
+  test('a new registration is priced at the event\'s current values', () => {
+    expect(partyPricingOf(null, event)).toEqual({ basePrice: 250, ratios: { mainWhole: 0.6 } });
+    expect(owed(partyPricingOf(null, event), [{ type: 'Adult', participation: 'Main' }])).toBe(150);
+  });
+
+  test('re-registering after a cancellation, or a registration made before any price, uses the current values', () => {
+    const current = { basePrice: 250, ratios: { mainWhole: 0.6 } };
+    expect(partyPricingOf({ ...party, status: 'cancelled' }, event)).toEqual(current);
+    expect(partyPricingOf({ status: 'registered', locked_selling_price_whole_event: null, locked_ratio_main_whole: null }, event)).toEqual(current);
   });
 });
 

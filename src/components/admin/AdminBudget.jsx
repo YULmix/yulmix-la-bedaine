@@ -185,8 +185,9 @@ const ChangedLabel = ({ text, changed }) => (
 );
 
 // The simulator (expected headcount → break-even base price, revenue, margin) and the pricing
-// section (the base price and main-event % the event stores, and "Appliquer", which saves them and
-// so reprices unpaid parties). They share the values being tried, so they live together.
+// section (the base price and main-event % the event stores, and "Appliquer", which saves them for
+// new registrations: existing ones keep the price they locked, #117). They share the values being
+// tried, so they live together.
 const Pricing = ({ event, parties, totalCost, contingencyPct, onApply }) => {
   const saved = priceRatiosOf(event);
   const savedPrice = Number(event?.selling_price_whole_event) || 0;
@@ -214,7 +215,10 @@ const Pricing = ({ event, parties, totalCost, contingencyPct, onApply }) => {
   // Invalid input counts as changed: it is not what is saved.
   const priceChanged = price !== savedPrice;
   const ratioChanged = mainWhole !== saved.mainWhole;
-  const unpaidCount = parties.filter(party => party.payment_status !== PAYMENT_STATUS.PAID).length;
+  // Registrations made while the event had no price are the only ones a price change reaches.
+  const unpricedCount = parties.filter(party =>
+    party.payment_status !== PAYMENT_STATUS.PAID && !(Number(party.locked_selling_price_whole_event) > 0)
+  ).length;
 
   const tierPrices = valid ? [
     ...TIER_OPTIONS.filter(opt => opt.type !== 'Kid').map(opt => ({ label: opt.label, attendee: opt })),
@@ -333,8 +337,10 @@ const Pricing = ({ event, parties, totalCost, contingencyPct, onApply }) => {
             {ratioChanged && (
               <li>{fr.applyImpactRatio.replace('{before}', formatPct(saved.mainWhole)).replace('{after}', formatPct(mainWhole))}</li>
             )}
-            <li>{fr.applyImpactReprice.replace('{count}', unpaidCount)}</li>
-            <li>{fr.applyImpactPaid}</li>
+            <li>{fr.applyImpactExisting}</li>
+            {savedPrice <= 0 && price > 0 && unpricedCount > 0 && (
+              <li>{fr.applyImpactUnpriced.replace('{count}', unpricedCount)}</li>
+            )}
           </ul>
         )}
       </ConfirmDialog>

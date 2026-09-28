@@ -31,8 +31,11 @@ flowchart LR
 
 The budget is a **simulation tool**. Saving it changes no amount. Only two numbers on the event
 drive what members owe: the **base price** (`selling_price_whole_event`, what an adult pays for
-the whole weekend) and the **main-event ratio** (`ratio_main_whole`). Changing either reprices
-every unpaid registration of the event (#32, #109); paid ones keep their amount.
+the whole weekend) and the **main-event ratio** (`ratio_main_whole`). Changing either only affects
+registrations made **afterwards**: each registration keeps the base price and ratio in force when
+it was made (its [locked price](#the-locked-price), #117).
+[ADR 0017](./adr/0017-lock-price-per-registration.md) explains why this replaced repricing unpaid
+registrations (#32, #109).
 
 Why it matters: if the price were derived from the cost, every new registration would silently
 change what everyone owes. See
@@ -65,10 +68,33 @@ discount. Kids stay free.
 ## What a party owes
 
 ```
-amount_owed(party) = ceil( Σ share(attendee) × selling_price_whole_event )   -- up to the dollar
+amount_owed(party) = ceil( Σ share(attendee) × locked_selling_price_whole_event )   -- up to the dollar
 ```
 
-If `selling_price_whole_event` is missing or ≤ 0, everyone owes `0,00 $`.
+with each share computed from the party's `locked_ratio_main_whole`. A registration made while the
+event had no price (≤ 0) owes `0,00 $` until the event gets one (see below).
+
+### The locked price
+
+`user_parties.locked_selling_price_whole_event` and `locked_ratio_main_whole` hold the base price
+and ratio in force when the registration was made. The `enforce_calculated_amount_owed` trigger
+sets them and ignores whatever a client sends, member or admin (#117):
+
+- **On insert**, from the event's current values.
+- **On every update**, the stored values. Every recalculation (a member adding someone or changing
+  a tier, an admin edit, a waitlist promotion) prices the party at its locked values, never the
+  event's current ones.
+- **Re-registering over a cancelled registration** (#35) locks the current values again:
+  cancelling ended the deal.
+- **Before the event has a price**: intents are collected before organisers set the price, which
+  defaults to 0. A registration made then stays unlocked (both columns `NULL`). When the event first
+  gets a price, the `trg_lock_unpriced_registrations_on_first_price` trigger locks its unpaid
+  unlocked registrations at it. That is the only time a price change writes to `user_parties`.
+
+The browser follows the same rule: `partyPricingOf(party, event)` in `src/lib/pricingEngine.js`
+gives the locked values of an existing registration and the event's current ones for a new one (or
+a re-registration, or an unlocked one). The admin views show the stored `calculated_amount_owed`;
+they never recompute it at today's price.
 
 ### Worked example
 
@@ -86,8 +112,9 @@ If `selling_price_whole_event` is missing or ≤ 0, everyone owes `0,00 $`.
 ### Grandfathering
 
 Once a party is marked paid, its amount is frozen: the trigger keeps the stored
-`calculated_amount_owed` on every later update (#31), and a price or ratio change skips paid rows.
-Nobody gets a supplementary invoice after settling.
+`calculated_amount_owed` on every later update (#31), even if its attendees change. Nobody gets a
+supplementary invoice after settling. (An unpaid party is protected from price changes by its
+locked price; a paid one doesn't even move when edited.)
 
 ## The budget and the break-even price
 
@@ -119,7 +146,9 @@ The simulator (in the Budget tab) takes:
 
 It shows the break-even base price, the projected revenue and margin at the tried values, and the
 tier prices they give. **"Appliquer comme prix de base"** saves the tried base price and ratio
-after a confirmation that names the number of unpaid registrations that will be repriced.
+after a confirmation that says existing registrations keep their price: the change only applies to
+new registrations. When the event had no price yet, it also names the registrations made without a
+price, which get this one.
 
 ## Capacity and the waitlist
 
@@ -147,8 +176,10 @@ after a confirmation that names the number of unpaid registrations that will be 
    the same PR.
 2. Add or amend a case in `src/lib/pricingEngine.test.js` and run `npm run test:pricing`. Check the
    same case against the SQL function on a local Supabase (`select calculate_party_amount_owed(…)`).
-3. Callers of the engine: `RegistrationForm` (live estimate), `AdminView` (per-party totals),
-   `AdminOverview` (tier prices, break-even), `AdminBudget` (simulator).
-4. Existing registrations: a change to the base price or the ratio reprices unpaid ones through the
-   `trg_reprice_unpaid_on_price_change` trigger. A change to the rules themselves (a new migration)
-   does not: decide whether it should, and touch the rows in that migration if so.
+3. Callers of the engine: `RegistrationForm` (live estimate, at the party's locked values),
+   `AdminOverview` (tier prices, break-even), `AdminBudget` (simulator). The admin per-party totals
+   are the stored amounts (`amountOwedOf` in `src/lib/adminStats.js`), not a recalculation.
+4. Existing registrations: a change to the base price or the ratio doesn't touch them (#117). A
+   change to the rules themselves (a new migration) doesn't either, until a row is next saved, and
+   then it applies the new rules to the row's locked price. Decide whether existing registrations
+   should follow, and touch the rows in that migration if so.

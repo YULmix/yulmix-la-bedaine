@@ -12,6 +12,8 @@
  *   - kid          = 0 (free)
  * A party owes the sum of its attendees' shares × the base price, rounded up to the dollar.
  * Paid parties keep the amount they paid (grandfathering).
+ * A registration is priced at the base price and ratio locked when it was made (#117), not the
+ * event's current ones: see partyPricingOf.
  *
  * The database computes the authoritative amount (calculate_party_amount_owed); this module is the
  * live estimate shown in the UI and the admin simulator. The two must agree.
@@ -32,6 +34,26 @@ const toRatio = (value, fallback) => {
 export const priceRatiosOf = (event) => ({
   mainWhole: toRatio(event?.ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole)
 });
+
+/**
+ * The base price and ratios a registration is priced at (#117): the ones the database locked on
+ * it when it was made, or the event's current ones for a new registration, one re-registering
+ * after a cancellation, or one made before the event had a price. Mirrors
+ * enforce_calculated_amount_owed.
+ * @param {object|null} party - A user_parties row, or null for a new registration
+ * @param {object} event - The events row
+ * @returns {{ basePrice: number, ratios: { mainWhole: number } }}
+ */
+export const partyPricingOf = (party, event) => {
+  const locked = party && party.status !== 'cancelled' && Number(party.locked_selling_price_whole_event) > 0;
+  if (locked) {
+    return {
+      basePrice: Number(party.locked_selling_price_whole_event),
+      ratios: { mainWhole: toRatio(party.locked_ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole) }
+    };
+  }
+  return { basePrice: Number(event?.selling_price_whole_event) || 0, ratios: priceRatiosOf(event) };
+};
 
 /**
  * An attendee's price as a share of the base price.
