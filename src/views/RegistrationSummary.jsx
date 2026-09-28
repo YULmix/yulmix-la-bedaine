@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, BedDouble, Car, HandHeart, History, Music, MessageSquareText, Pencil, Trash2, Utensils } from 'lucide-react';
+import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
-import { formatDateTime } from '../lib/format';
+import { formatDate, formatDateTime } from '../lib/format';
+import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
 import { describeChanges } from '../lib/editHistory';
 import { initials } from '../lib/eventDisplay';
 import Pass from '../components/brand/Pass';
@@ -14,6 +15,7 @@ import {
   TRANSPORT_TYPES,
   getOptionLabel,
   EDITABLE_REGISTRATION_STATUSES,
+  REGISTRATION_STATUS,
   getAttendeeTypeLabel,
   getParticipationSummaryLabel
 } from '../lib/registrationOptions';
@@ -32,9 +34,9 @@ const InfoBlock = ({ icon: Icon, title, children }) => (
 
 // Home page, registered state: the pass (signature), then the group, logistics, requests and edit
 // history. What matters most (am I in, what do I owe) is on the pass; details follow.
-const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEdit, onDeleted, onError }) => {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEdit, onCancelled, onError }) => {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [editHistory, setEditHistory] = useState([]);
 
   useEffect(() => {
@@ -55,22 +57,26 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
     loadEditHistory();
   }, [registration]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
+  // Cancelling is a soft status change (#35): the row stays, the waitlist is promoted by the
+  // database, and after the close date the database refuses it (the button is hidden by then).
+  const handleCancel = async () => {
+    setCancelling(true);
     try {
-      const { error: deleteError } = await supabase
+      const { data, error: cancelError } = await supabase
         .from('user_parties')
-        .delete()
-        .eq('id', registration.id);
-      if (deleteError) throw deleteError;
-      setConfirmingDelete(false);
-      onDeleted?.();
+        .update({ status: REGISTRATION_STATUS.CANCELLED })
+        .eq('id', registration.id)
+        .select()
+        .single();
+      if (cancelError) throw cancelError;
+      setConfirmingCancel(false);
+      onCancelled?.(data);
     } catch (err) {
-      console.error('Error deleting registration:', err);
-      setConfirmingDelete(false);
-      onError?.(fr.deleteRegistrationError);
+      console.error('Error cancelling registration:', err);
+      setConfirmingCancel(false);
+      onError?.(fr.cancelRegistrationError);
     } finally {
-      setDeleting(false);
+      setCancelling(false);
     }
   };
 
@@ -78,7 +84,8 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const logistics = registration.logistics || {};
   const transport = registration.transport || {};
   const volunteering = logistics.volunteering || [];
-  const canDelete = EDITABLE_REGISTRATION_STATUSES.includes(registration.status);
+  const isCancellable = EDITABLE_REGISTRATION_STATUSES.includes(registration.status);
+  const locked = isRegistrationLocked(event);
 
   return (
     <div className="space-y-6">
@@ -218,24 +225,29 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
         )}
       </Card>
 
-      {canDelete && (
+      {isCancellable && !locked && (
         <div className="flex justify-center pt-2">
-          <Button variant="dangerGhost" onClick={() => setConfirmingDelete(true)}>
-            <Trash2 aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-            {fr.deleteRegistration}
+          <Button variant="dangerGhost" onClick={() => setConfirmingCancel(true)}>
+            <LogOut aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+            {fr.cancelRegistration}
           </Button>
         </div>
       )}
+      {isCancellable && locked && (
+        <p className="pt-2 text-center text-sm text-muted">
+          {fr.cancelRegistrationLocked.replace('{date}', formatDate(getRegistrationCloseDate(event)))}
+        </p>
+      )}
 
       <ConfirmDialog
-        open={confirmingDelete}
-        title={fr.deleteRegistrationConfirmTitle}
-        confirmLabel={fr.deleteRegistration}
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmingDelete(false)}
-        loading={deleting}
+        open={confirmingCancel}
+        title={fr.cancelRegistrationConfirmTitle}
+        confirmLabel={fr.cancelRegistration}
+        onConfirm={handleCancel}
+        onCancel={() => setConfirmingCancel(false)}
+        loading={cancelling}
       >
-        {fr.deleteRegistrationConfirm}
+        {fr.cancelRegistrationConfirm}
       </ConfirmDialog>
     </div>
   );

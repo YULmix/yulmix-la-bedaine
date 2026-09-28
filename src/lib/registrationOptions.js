@@ -19,6 +19,12 @@ export const PAYMENT_STATUS = {
 
 export const EDITABLE_REGISTRATION_STATUSES = [REGISTRATION_STATUS.REGISTERED, REGISTRATION_STATUS.PENDING];
 
+// A cancelled registration keeps its row (cancellation is a soft status change, #35), so "has a
+// row" is not "is registered". Screens treat a cancelled row as no registration: the member can
+// register again, which reuses that row.
+export const isActiveRegistration = (registration) =>
+  !!registration && registration.status !== REGISTRATION_STATUS.CANCELLED;
+
 const REGISTRATION_STATUS_LABELS = {
   [REGISTRATION_STATUS.REGISTERED]: fr.statusRegistered,
   [REGISTRATION_STATUS.PENDING]: fr.statusPending,

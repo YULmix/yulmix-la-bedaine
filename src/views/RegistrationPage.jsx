@@ -5,12 +5,15 @@ import { Button, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
 import { getEventPhase } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
+import { isActiveRegistration } from '../lib/registrationOptions';
 
 // /inscription: the registration flow on its own route, so the phone's back button leaves the
 // form instead of the app, and the form gets the whole screen.
 const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
   const navigate = useNavigate();
-  const { registration, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
+  const { registration: row, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
+  // Registering again after cancelling starts a fresh form; the save reuses the cancelled row.
+  const registration = isActiveRegistration(row) ? row : null;
 
   if (!activeEvent) return <Navigate to="/" replace />;
 

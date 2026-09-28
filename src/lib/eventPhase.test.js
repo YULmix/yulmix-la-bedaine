@@ -1,4 +1,4 @@
-import { getEventPhase, getEventTimeline } from './eventPhase';
+import { getEventPhase, getEventTimeline, getRegistrationCloseDate, isRegistrationLocked } from './eventPhase';
 
 const event = {
   status: 'ACTIVE',
@@ -43,5 +43,26 @@ describe('getEventTimeline', () => {
   test('no event start date: later milestones undated', () => {
     const { steps } = getEventTimeline({ ...event, event_start_date: null }, new Date(2026, 6, 1));
     expect(steps.find(s => s.id === 'weekend').date).toBeNull();
+  });
+});
+
+describe('registration close date (#38, #35)', () => {
+  test('is the event start minus x_reg_close_weeks weeks, as a local day', () => {
+    expect(getRegistrationCloseDate(event)).toEqual(new Date(2026, 7, 7));
+    expect(getRegistrationCloseDate({ ...event, x_reg_close_weeks: 2 })).toEqual(new Date(2026, 6, 31));
+  });
+  test('counts calendar days across a daylight-saving change', () => {
+    // Clocks go back on 2026-11-01 in Quebec; the close date must still be a Sunday midnight.
+    expect(getRegistrationCloseDate({ event_start_date: '2026-11-08', x_reg_close_weeks: 1 })).toEqual(new Date(2026, 10, 1));
+  });
+  test('is unknown when either input is missing, like the database trigger', () => {
+    expect(getRegistrationCloseDate({ ...event, event_start_date: null })).toBeNull();
+    expect(getRegistrationCloseDate({ ...event, x_reg_close_weeks: null })).toBeNull();
+    expect(isRegistrationLocked({ ...event, event_start_date: null }, new Date(2030, 0, 1))).toBe(false);
+  });
+  test('locks only after the close date: the close date itself is still open', () => {
+    expect(isRegistrationLocked(event, new Date(2026, 7, 6, 23, 59))).toBe(false);
+    expect(isRegistrationLocked(event, new Date(2026, 7, 7, 23, 59))).toBe(false);
+    expect(isRegistrationLocked(event, new Date(2026, 7, 8, 0, 1))).toBe(true);
   });
 });

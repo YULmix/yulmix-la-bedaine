@@ -10,6 +10,7 @@ import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { getEventPhase } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
+import { isActiveRegistration } from '../lib/registrationOptions';
 import { useToasts } from '../hooks/useToasts';
 import PastEditions from './PastEditions';
 
@@ -122,21 +123,24 @@ const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick
 
       {loading && !registration ? (
         <PassSkeleton />
-      ) : registration ? (
+      ) : isActiveRegistration(registration) ? (
         <RegistrationSummary
           registration={registration}
           event={activeEvent}
           isIntent={isIntent}
           animateStamp={justSaved}
           onEdit={() => navigate('/inscription')}
-          onDeleted={() => {
-            setRegistration(null);
-            addToast(fr.deleteRegistrationSuccess, 'success');
+          onCancelled={(cancelled) => {
+            setRegistration(cancelled);
+            addToast(fr.cancelRegistrationSuccess, 'success');
           }}
           onError={(message) => addToast(message, 'error')}
         />
       ) : !error && (
-        <InviteCard event={activeEvent} isIntent={isIntent} />
+        <>
+          {registration && <Notice tone="info">{fr.registrationCancelledNotice}</Notice>}
+          <InviteCard event={activeEvent} isIntent={isIntent} />
+        </>
       )}
 
       <div className="pt-6">

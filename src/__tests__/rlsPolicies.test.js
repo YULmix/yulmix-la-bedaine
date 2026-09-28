@@ -383,6 +383,73 @@ describe('✉️ email_log is admin-only (#12)', () => {
   });
 });
 
+describe('🚪 member self-cancellation (#35)', () => {
+  jest.setTimeout(30000);
+
+  const CANCEL_EVENT_ID = 'a0000000-a000-a000-a000-a00000000035';
+  const CANCEL_PARTY_ID = 'a0000000-a000-a000-a000-a00000000036';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
+
+  let memberClient;
+  let adminAuthClient;
+
+  const seed = async (eventStartDate) => {
+    await adminAuthClient.from('user_parties').delete().eq('id', CANCEL_PARTY_ID);
+    const { error: eventError } = await adminAuthClient.from('events').upsert({
+      id: CANCEL_EVENT_ID, theme: 'Cancellation Test', status: 'ACTIVE', event_start_date: eventStartDate, x_reg_close_weeks: 1
+    });
+    if (eventError) throw eventError;
+    const { error: partyError } = await adminAuthClient.from('user_parties').insert({
+      id: CANCEL_PARTY_ID, user_id: MEMBER_ID, event_id: CANCEL_EVENT_ID, status: 'registered'
+    });
+    if (partyError) throw partyError;
+  };
+  const statusOf = async () => (await adminAuthClient.from('user_parties').select('status').eq('id', CANCEL_PARTY_ID).single()).data?.status;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', CANCEL_PARTY_ID);
+  });
+
+  test('a member can no longer hard-delete their registration', async () => {
+    await seed(isoDay(60));
+    await memberClient.from('user_parties').delete().eq('id', CANCEL_PARTY_ID);
+    expect(await statusOf()).toBe('registered');
+  });
+
+  test('before the close date, a member cancels: the row stays, as cancelled', async () => {
+    await seed(isoDay(60));
+    const { error } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
+    expect(error).toBeNull();
+    expect(await statusOf()).toBe('cancelled');
+  });
+
+  test('a cancelled registration can be taken up again by the member', async () => {
+    await seed(isoDay(60));
+    await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
+    const { error } = await memberClient.from('user_parties')
+      .upsert({ user_id: MEMBER_ID, event_id: CANCEL_EVENT_ID, status: 'registered' }, { onConflict: 'user_id,event_id' });
+    expect(error).toBeNull();
+    expect(await statusOf()).toBe('registered');
+  });
+
+  test('after the close date, a member cannot cancel but an admin can', async () => {
+    await seed(isoDay(3));
+    const { error: memberError } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
+    expect(memberError?.message).toMatch(/verrouillées/);
+    expect(await statusOf()).toBe('registered');
+
+    const { error: adminError } = await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
+    expect(adminError).toBeNull();
+    expect(await statusOf()).toBe('cancelled');
+  });
+});
+
 // Manual seeding if function doesn't exist
 async function seedTestDataManually() {
   // Clear existing test data

@@ -46,7 +46,8 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: /member-cancellation\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -55,6 +56,14 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       testMatch: /admin-tabs\.spec\.js/,
       dependencies: ['chromium']
+    },
+    {
+      // Also reseeds the shared active event (with a start date for the close-date lock), so it
+      // runs after the admin-tabs projects rather than alongside them.
+      name: 'member-cancellation',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-cancellation\.spec\.js/,
+      dependencies: ['mobile-chrome']
     }
   ],
   webServer: {

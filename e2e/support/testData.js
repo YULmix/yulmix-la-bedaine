@@ -40,7 +40,10 @@ function check({ data, error }, what) {
 
 // Makes our event the single active one and gives the seeded member a fresh registration
 // (2 attendees, no bed assignments, no admin notes). Returns { eventId, partyId }.
-export async function seedActiveEventWithMemberParty() {
+// eventOverrides sets extra event fields for one spec (e.g. an event_start_date that puts the
+// registration close date in the past). Every seed resets them, so specs don't inherit each
+// other's dates through the shared, reused event.
+export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
   const db = await adminClient();
 
   const existing = check(
@@ -61,7 +64,10 @@ export async function seedActiveEventWithMemberParty() {
     is_active: true,
     is_reg_open: true,
     selling_price_whole_event: 200,
-    max_attendees: 90
+    max_attendees: 90,
+    event_start_date: null,
+    x_reg_close_weeks: 1,
+    ...eventOverrides
   };
   let eventId;
   if (existing.length > 0) {
@@ -96,7 +102,7 @@ export async function seedActiveEventWithMemberParty() {
 export async function getParty(partyId) {
   const db = await adminClient();
   return check(
-    await db.from('user_parties').select('attendees, admin_notes, payment_status').eq('id', partyId).single(),
+    await db.from('user_parties').select('attendees, admin_notes, payment_status, status').eq('id', partyId).single(),
     'read e2e party'
   );
 }
