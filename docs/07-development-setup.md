@@ -416,7 +416,7 @@ Edit `supabase/preview-seed.json` (changes go through a PR like any other file):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `seed` | `20260927` | Random seed. Same config + same seed = exactly the same data, so a bug seen on Preview stays reproducible after a reset. Override once with `--seed <n>` or the workflow's seed field. |
+| `seed` | `1976` | Random seed. Same config + same seed = exactly the same data, so a bug seen on Preview stays reproducible after a reset. Override once with `--seed <n>` or the workflow's seed field. |
 | `members` | `40` | Fake members, on top of the two test accounts. All `…@test.local`, password `password123`. |
 | `activeEvent.registrations` | `40` | Registrations on the active event (registration open, event ~8 weeks out). Test Member is always one of them. At most `members + 1`. |
 | `activeEvent.maxAttendees` | `70` | Capacity; every attendee counts, kids included. Parties arriving once it's full are waitlisted. `0` = no limit. |
