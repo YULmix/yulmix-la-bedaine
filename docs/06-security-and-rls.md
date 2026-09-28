@@ -23,7 +23,7 @@ enforced.
 | Role | How you get it | What it means |
 |---|---|---|
 | Anonymous | no session | `SELECT` on ACTIVE/ARCHIVED events only |
-| Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback |
+| Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback. A soft-deleted account (#36) keeps only read access to its own profile row |
 | Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `admin_notes` |
 | Root admin | email = `yulmixalabedaine@gmail.com` | always admin, cannot be demoted |
 
@@ -65,29 +65,43 @@ Derived from production's schema as captured in the baseline migration
 
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
-| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own or admin — `is_admin` changes are blocked by triggers, see below | *no policy* → denied |
+| `profiles` | own or admin | own (`id = auth.uid()`) or admin | own (active account) or admin — `is_admin` and `deleted_at` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
-| `user_parties` | own or admin | own or admin | own **while status is `'Enregistré'`/`'En attente'`** (stale French values, so in practice **admin only**, see [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)), or admin | own (**no status gate** in production), or admin |
-| `app_feedback` | own or admin | own (`user_id = auth.uid()`) | own or admin | admin only |
-| `registration_edits` | `edited_by = auth.uid()` or admin | `edited_by = auth.uid()` or admin | *no policy* → denied | *no policy* → denied |
+| `email_log` | admin only | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
+| `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
+| `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
+| `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
 Notes on specific choices:
 
 - **DRAFT events are admin-only**, which is what lets organisers plan next year's weekend in the open
   without members seeing half-finished prices.
-- **The `user_parties` UPDATE and DELETE status gates** are meant to make cancellation final:
-  once a registration leaves `registered`/`pending`, the member can no longer edit or delete it,
-  and only an admin can. In production, the UPDATE gate still compares against the pre-migration
-  French values, so members cannot edit their registration at all. The DELETE policy has no gate,
-  so a member can delete even a *paid* registration through the API, and `RegistrationSummary.jsx`
-  does call delete. Both are tracked in
-  [#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49). A proper cancellation flow
-  (`status = 'cancelled'` instead of a row delete) is still the right long-term fix.
+- **Cancellation is a status change, not a delete** (#35). A member moves their own registration
+  to `cancelled` ("Se désinscrire"); the row, its history and its email log stay. Members can't
+  delete rows at all; admins can. Registering again reuses the cancelled row (one row per member
+  and event), so the UPDATE policy lets a member act on their own cancelled row. After the
+  registration close date, the close-date trigger refuses a member's cancellation.
 - **`is_admin` is protected by triggers, not by column privileges.** `authenticated` holds table-level
   `UPDATE` on `profiles`. The old `schema.sql` had a `REVOKE UPDATE (is_admin)`, but a column-level
   revoke can't narrow a table-level grant, so it did nothing. The real guards are
   `trg_prevent_self_privilege_escalation` and `trg_protect_root_admin`, and changing someone
   else's admin flag goes through `admin_set_is_admin()`.
+- **A deleted account keeps no member access** (#36). `delete_my_account()` is the only way to
+  set `profiles.deleted_at`. The `protect_profile_deleted_at` trigger keeps the stored value on any
+  direct write by `authenticated`/`anon`. Every member-side policy on `profiles` (UPDATE),
+  `user_parties`, `app_feedback` and `registration_edits` also requires `is_account_active()`, and
+  `is_admin()` is false for a deleted profile, so a deleted admin loses admin access too. The
+  `user_parties` cells above read "own" for active accounts only. See
+  [Data model](./03-data-model.md#account-deletion-36).
+- **A registration's admin-only fields are protected by a trigger, not by the policies** (#94).
+  RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
+  whatever a non-admin end user sends for `payment_status`, `admin_notes` and
+  `attendees[].assigned_bed`. On insert these become `unpaid`, no notes and no beds. On update the
+  stored values stay, so a paid party stays paid through a member's own save (#31) or when they
+  re-register over their cancelled row (#35). Beds follow attendees by name, because attendees
+  have no stable id; a new or renamed attendee has no bed. The trigger ignores rather than
+  refuses, since the member form sends these fields back on every save. `service_role` and
+  direct connections are not restricted.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.
@@ -122,6 +136,7 @@ keeping the two implementations in step — the cost of having no backend of our
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | build-time env; public by design | fine |
 | `SUPABASE_SERVICE_ROLE_KEY` | local `.env.test` and CI secrets **only** | `.env.test` is committed but contains only placeholders — verified, no leak |
 | OAuth client secrets | Supabase dashboard | never in the repo |
+| `RESEND_API_KEY` | Supabase Edge Function secrets, **production project only** (`supabase secrets set`) | a "Sending access" key restricted to `yulmix.com`; never in the repo, Vercel, or Preview ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) |
 
 Care needed: `.gitignore` covers `.env`, `.env.*.local` — but **`.env.test` is tracked**. It is
 harmless today. The moment someone pastes a real service-role key into it, the key is in git history

@@ -17,4 +17,4 @@ realtime and row-level authorisation out of the box.
   `src/__tests__/rlsPolicies.test.js` matters more than any other test.
 - Anything genuinely server-side (sending email, scheduled jobs) will be the first thing to break
   this decision. When that happens — probably for confirmation emails — write a new ADR rather than
-  quietly adding a function.
+  quietly adding a function. That happened with [ADR 0016](./0016-edge-function-for-transactional-email.md).

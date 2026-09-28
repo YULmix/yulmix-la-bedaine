@@ -93,9 +93,19 @@ broken or asking the user to "grant access" again. Passing CI's syntax/lint chec
 not sufficient — say explicitly what was and wasn't verified rather than presenting a build pass
 as proof the acceptance criteria are met.
 
+### Procedure: check CI after every push
+
+After pushing to a PR branch, wait for its checks (`gh pr checks <number> --watch`) before
+reporting the work as done or asking for review. If a check fails, read the log
+(`gh run view <run-id> --log-failed`), fix it on the same branch, push, and check again. A PR
+reported as ready while CI is red, or before CI has run, isn't done. Local checks don't cover CI
+exactly: `Build & test` also runs `npm run lint`, `npm run lint:diff`, and the Deno tests and type
+check for `supabase/functions/`.
+
 ## Verifying your work
 
 - `npm run build` — must pass.
+- `npm run lint` — must pass (CI runs it; the pre-commit hook doesn't).
 - `npm run test:pricing` — must pass; add cases for pricing changes.
 - `npm test` — must pass (the RLS suite is deliberately excluded; see
   [Development setup](./docs/07-development-setup.md#scripts)).

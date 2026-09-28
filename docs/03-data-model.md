@@ -14,6 +14,7 @@ erDiagram
   EVENTS ||--o{ USER_PARTIES : "receives"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
+  USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
 
   AUTH_USERS {
     uuid id PK
@@ -25,6 +26,7 @@ erDiagram
     text full_name
     bool is_admin "UPDATE revoked from authenticated"
     timestamptz created_at
+    timestamptz deleted_at "soft delete, #36"
   }
   EVENTS {
     uuid id PK
@@ -198,6 +200,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff | Yes, but attributed to `NEW.user_id` — so an admin's god-mode edit is logged as the *member's* edit |
 | `calculated_amount_owed` | **The browser**, written as a plain value | **No** |
 | `profiles.is_admin` on signup | `handle_new_user`, true iff email is the root admin | Yes |
+| `profiles.deleted_at` | `delete_my_account()` only; `protect_profile_deleted_at` (BEFORE INSERT/UPDATE) keeps the stored value on any direct client write | Yes |
 
 ## Triggers and constraints, in full
 
@@ -212,6 +215,7 @@ flowchart TD
     P2["BEFORE UPDATE → prevent_self_privilege_escalation()<br/>nobody edits their own is_admin"]
     P3["BEFORE UPDATE → protect_root_admin()<br/>root admin can never be demoted"]
     P4["REVOKE UPDATE (is_admin) FROM authenticated<br/>forces rpc admin_set_is_admin()"]
+    P5["BEFORE INSERT/UPDATE → protect_profile_deleted_at()<br/>only SECURITY DEFINER code sets deleted_at"]
   end
   subgraph user_parties
     U1["BEFORE INSERT/UPDATE OF attendees → update_attendee_counts()"]
@@ -241,6 +245,34 @@ Two properties worth knowing: waitlisting is **all-or-nothing per party** (a par
 straddles the cap goes entirely to the waitlist), and nothing ever moves a party *off* the waitlist
 when someone else cancels — that is a manual admin action today, and there is no UI for it.
 
+### Transactional emails
+
+`trg_request_party_email_on_insert` (every insert) and `trg_request_party_email_on_update` (only
+when `is_waitlisted`, `payment_status` or `status` changes, or the party goes from no attendee with
+an `assigned_bed` to at least one) ask the `send-party-email` Edge Function, through pg_net, to look
+at the party ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), #12). The function
+decides what is owed from the committed row and `email_log`:
+
+| Template | Owed when |
+|---|---|
+| `registration` | active event, not cancelled, not waitlisted, never sent a `registration` or `waitlist` email |
+| `waitlist` | waitlisted and never sent one |
+| `promotion` | no longer waitlisted after a `waitlist` email, and never sent one |
+| `payment` | `payment_status = 'paid'`, not waitlisted |
+| `accommodation` | at least one attendee has an `assigned_bed`, not waitlisted |
+
+`email_log` has one row per party and template (unique), claimed before sending, so each email goes
+out at most once whatever happens later (paid, unpaid, paid again sends one receipt). `status` is
+`sent`, `failed` (Resend refused; never retried), `dry_run` (no `RESEND_API_KEY` in that
+environment), `pending` (claimed, send in progress or interrupted) or `backfilled` (the state
+already held when the table was created; nobody was emailed about it). Admins can read it; nobody
+writes it but the function (service role).
+
+The function's URL is per environment, in `private.settings` (`email_function_url`): the local
+seed sets it, CI sets it in production. Preview loads the same seed, so its URL points at a host
+that only exists locally: the request fails and nothing is sent. Where it's unset, the trigger
+does nothing.
+
 ### Registration close date
 
 `enforce_registration_lock_after_close_date` (added for
@@ -249,9 +281,14 @@ close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — i
 It does **not** block new registrations, edits, or adding participants; it only blocks, once the
 close date has passed and the caller isn't an admin:
 
-- `DELETE` on `user_parties` (a member un-registering their whole party).
+- `DELETE` on `user_parties` (members can't delete at all since #35; this is a second guard).
+- `UPDATE` on `user_parties` that moves the row to `cancelled` (a member un-registering, #35).
 - `UPDATE` on `user_parties` where the new `attendees` array is shorter than the stored one
-  (a member removing a participant).
+  (a member removing a participant), unless the row was `cancelled`: registering again with a
+  smaller group isn't removing anyone from a registration that owed something.
+
+The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
+`src/lib/eventPhase.js`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
 
 The amount already owed is never reimbursed by this trigger — it just stops the row (or the
 attendee list) from shrinking. If either `event_start_date` or `x_reg_close_weeks` is null, the
@@ -277,3 +314,30 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.
 5. Update this document and the ERD above.
+
+## Account deletion (#36)
+
+Deleting an account is a soft delete, and no row is ever removed. `profiles.id` cascades from
+`auth.users` and `user_parties.user_id` from `profiles`, so a hard delete would wipe the member's
+registration and payment history.
+
+`delete_my_account()` (a `SECURITY DEFINER` RPC, callable by `authenticated`) does all of it in one
+transaction:
+
+1. It refuses, changing nothing, if the member has an active registration (`registered` or
+   `pending`) for an event that isn't over and whose [registration close date](#registration-close-date)
+   has passed. The amount owed stays owed. It also refuses for the root admin. Refusals are
+   raised as codes, not French text: `account_deletion_locked` (with `details` =
+   `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
+   maps them to `fr.json` through `src/lib/dbErrors.js`.
+2. It cancels the member's active registrations for events still to come, meaning not archived
+   and not over (`event_start_date + duration_days`). This is the same soft status change as a
+   member's own cancellation (#35), so the waitlist is promoted. Registrations for past or
+   archived events are history: they aren't touched, and they never block a deletion.
+3. It stamps `profiles.deleted_at`.
+
+After that, the account has no member access. The member-side RLS policies require
+`is_account_active()`, and `is_admin()` is false for a deleted profile. The one thing still readable
+is the member's own profile row, which is how the app knows to show "Compte supprimé". Admins
+still see the member's past registrations (`user_event_history`), but no longer see them among the
+current edition's parties. Reactivating an account isn't built.

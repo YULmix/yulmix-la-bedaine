@@ -168,10 +168,17 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 ## Pre-commit hooks
 
 The repo ships a [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) that runs
-`npm run build`, `npm run test:pricing`, `npm test` and `npm run lint:diff:staged` before each
-commit — the same checklist [`CLAUDE.md`](../CLAUDE.md) documents doing by hand, just automatic.
-Each hook is scoped to only run when it's relevant (e.g. `build` only fires when `src/` or
-`package.json` changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle.
+the same checks as CI's "Build & test" and "Lint migrations (squawk)" jobs before each commit:
+`npm run build`, `npm run test:pricing`, `npm test`, `npm run lint`, `npm run lint:diff:staged`,
+`deno test` and `deno check` on `supabase/functions/`, and squawk on migrations. Each hook is
+scoped to only run when it's relevant (e.g. `build` only fires when `src/` or `package.json`
+changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle. The Deno hooks
+need `deno` on your PATH; squawk runs through `npx` at CI's pinned version.
+
+The two lists are kept identical on purpose, so a commit that passes its hooks shouldn't fail CI's
+checks. Change them together. The one check that stays CI-only is "Migrations apply cleanly", which
+replays every migration on a fresh Postgres and needs Docker. Locally, `supabase migration up`
+against your running stack is the nearest thing.
 
 The `lint-diff-staged` hook exists because `npm run lint:diff` alone doesn't work as a pre-commit
 check: it diffs `baseRef...HEAD`, and at pre-commit time `HEAD` is the *previous* commit — the one
@@ -224,6 +231,11 @@ Five Jest `test()` cases covering the edge cases from the requirements: zero poi
 adult, the new-member discount, fractional selling prices, and grandfathering a paid party. Run it
 on its own with `npm run test:pricing`, or as part of `npm test`. It is the only meaningful
 coverage in the repo, and it is genuinely pure — no Supabase, no DOM, no I/O.
+
+### `supabase/functions/*/*_test.ts` — the Edge Function unit suite
+
+Deno tests for the email logic (which emails a party is owed, fr-CA formatting, the rendered
+templates): `deno test supabase/functions/`. They need no Supabase and run in CI's build job.
 
 ### `src/__tests__/rlsPolicies.test.js` — the RLS integration suite
 
@@ -281,9 +293,46 @@ if Supabase isn't running.
    `node_modules`, cached under `~/.cache/ms-playwright`).
 3. `npm run test:e2e`.
 
+`e2e/admin-tabs.spec.js` covers the admin sub-navigation tabs. The seed has no events, so it
+creates its own active event and member registration (`e2e/support/testData.js`, signed in as the
+seeded admin; refuses any non-local URL) and archives it again afterwards. It also runs in a second
+project, `mobile-chrome` (Pixel 7 viewport), which checks the admin screens on a phone: no
+horizontal page overflow, 44px tab targets, controls within the viewport. That project depends on
+`chromium` because both mutate the same single active event; use `--project=mobile-chrome --no-deps`
+to run it alone. Set `E2E_SCREENSHOT_DIR=<dir>` to save full-page mobile screenshots for a visual
+check.
+
 Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
 "For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
 browser-install strategy and runtime cost for CI runners are worked out.
+
+## Transactional email (Edge Function)
+
+`supabase/functions/send-party-email` sends the lifecycle emails
+([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)). Locally:
+
+```bash
+supabase functions serve        # serves every function against the local stack
+```
+
+`supabase db reset` seeds `private.settings` with the local function URL, so registering, paying,
+assigning a bed or promoting a party locally calls it. There is no `RESEND_API_KEY` locally: the
+function prints the email it would send in the `functions serve` output and records a `dry_run`
+row in `email_log`. Nothing leaves the machine.
+
+Production: CI deploys the function when `supabase/functions/` or `supabase/config.toml` changes
+(job **Deploy Edge Functions** in `deploy.yml`) and points the trigger at it. That job **fails until
+`RESEND_API_KEY` is set** on the production project, so no production registration can be
+recorded as a dry run and never emailed. One-time, by a maintainer, locally:
+
+```bash
+supabase secrets set --project-ref ceacurlofmasyvhsoska RESEND_API_KEY=re_...
+```
+
+Use a Resend "Sending access" key restricted to `yulmix.com`. Optional overrides, same command:
+`EMAIL_FROM` (default `La Bédaine <bedaine@yulmix.com>`) and `SITE_URL` (default
+`https://www.yulmix.com/`). Preview never sends: it has no key, no deployed function, and its seeded function URL points at
+a host that only exists in the local stack.
 
 ## Environment files
 
@@ -425,6 +474,8 @@ PITR/restore feature):
 | Migrations | Read-write |
 | API Keys | Read |
 | API Key Secrets | Read |
+| Edge Functions | Read-write |
+| Edge Function Secrets | Read |
 
 Supabase tokens can't be edited after creation — getting this wrong means regenerating, so here's
 why each one is needed, traced against the CLI's own source (`supabase/cli`, not just the docs
@@ -448,6 +499,13 @@ page, which doesn't list the raw permission IDs):
 - **Database** (`database_write`, for `Read-write`): `db dump`/`db push`/`migration list` all
   mint a temporary Postgres login role via `POST /v1/projects/{ref}/cli/login-role` once they have
   a connection, rather than needing a stored database password.
+- **Edge Functions** (`Read-write`) and **Edge Function Secrets** (`Read`,
+  `edge_functions_secrets_read`): the **Deploy Edge Functions** job
+  ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) runs `supabase functions
+  deploy`, and first `supabase secrets list` to refuse to activate the email trigger while
+  `RESEND_API_KEY` is missing. Read is enough for that check: the job never writes secrets, a
+  maintainer sets them. Without it the list call fails with `403 Missing required permission(s):
+  edge_functions_secrets_read` (first seen on the #92 merge, 2026-09-28).
 - **Migrations** (`Read-write`): not actually exercised by any of the three commands above in
   this CLI version — they apply/list migrations over the raw Postgres connection, not a separate
   Management API call. Kept anyway since `supabase migration repair` (used for the one-time

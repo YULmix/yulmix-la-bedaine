@@ -27,11 +27,17 @@ function loadLocalSupabaseEnv() {
   if (!env.API_URL || !env.ANON_KEY) {
     throw new Error('`supabase status -o env` did not return API_URL/ANON_KEY as expected.');
   }
-  return { VITE_SUPABASE_URL: env.API_URL, VITE_SUPABASE_ANON_KEY: env.ANON_KEY };
+  return {
+    supabaseEnv: { VITE_SUPABASE_URL: env.API_URL, VITE_SUPABASE_ANON_KEY: env.ANON_KEY },
+    serviceRoleKey: env.SERVICE_ROLE_KEY
+  };
 }
 
-const supabaseEnv = loadLocalSupabaseEnv();
+const { supabaseEnv, serviceRoleKey } = loadLocalSupabaseEnv();
 Object.assign(process.env, supabaseEnv);
+// For the specs' own Node-side helpers only (creating throwaway auth users, e2e/support). Not in
+// supabaseEnv, so the dev server, and the browser bundle, never see it.
+process.env.E2E_SUPABASE_SERVICE_ROLE_KEY = serviceRoleKey || '';
 
 export default defineConfig({
   testDir: './e2e',
@@ -46,7 +52,38 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: /member-(cancellation|pass|account-deletion)\.spec\.js/
+    },
+    {
+      // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
+      // admin-tabs.spec.js seeds and mutates the same single active event/registration.
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 7'] },
+      testMatch: /admin-tabs\.spec\.js/,
+      dependencies: ['chromium']
+    },
+    {
+      // Also reseeds the shared active event (with a start date for the close-date lock), so it
+      // runs after the admin-tabs projects rather than alongside them.
+      name: 'member-cancellation',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-cancellation\.spec\.js/,
+      dependencies: ['mobile-chrome']
+    },
+    {
+      // Reseeds the same shared active event, so it runs last, on its own.
+      name: 'member-pass',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-pass\.spec\.js/,
+      dependencies: ['member-cancellation']
+    },
+    {
+      // Reseeds the same shared active event, so it runs after member-pass, on its own.
+      name: 'member-account-deletion',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-account-deletion\.spec\.js/,
+      dependencies: ['member-pass']
     }
   ],
   webServer: {

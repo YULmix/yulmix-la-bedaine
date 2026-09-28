@@ -37,9 +37,10 @@ function mockEventsQuery({ data = null, error = null }) {
       };
     }
     // Any other table (e.g. profiles) a mounted view might touch: return an empty result.
+    const empty = () => Promise.resolve({ data: null, error: null });
     return {
       select: () => ({
-        eq: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+        eq: () => ({ maybeSingle: empty, eq: () => ({ maybeSingle: empty }) }),
       }),
     };
   });
