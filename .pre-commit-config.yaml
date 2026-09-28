@@ -5,6 +5,11 @@
 #   pre-commit install --hook-type pre-commit
 #
 # See docs/07-development-setup.md#pre-commit-hooks for what each hook checks and why.
+#
+# Keep this in step with the "Build & test" and "Lint migrations (squawk)" jobs in
+# .github/workflows/deploy.yml: every check CI runs there runs here too, scoped to the files it
+# concerns. The one exception is replaying the migrations on a fresh Postgres ("Migrations apply
+# cleanly"), which needs Docker and a database reset.
 repos:
   - repo: local
     hooks:
@@ -41,3 +46,32 @@ repos:
         language: system
         pass_filenames: false
         files: \.jsx$
+
+      - id: lint
+        name: npm run lint
+        entry: npm run lint
+        language: system
+        pass_filenames: false
+        files: (\.(c|m)?jsx?$|^eslint)
+
+      # The Edge Functions are Deno, outside the Node toolchain. Needs `deno` on PATH.
+      - id: deno-test
+        name: deno test supabase/functions/
+        entry: deno test supabase/functions/
+        language: system
+        pass_filenames: false
+        files: ^supabase/functions/
+
+      - id: deno-check
+        name: deno check supabase/functions/*/index.ts
+        entry: bash -c 'deno check supabase/functions/*/index.ts'
+        language: system
+        pass_filenames: false
+        files: ^supabase/functions/
+
+      # Same version and config as CI (SQUAWK_VERSION in deploy.yml); bump both together.
+      - id: squawk
+        name: squawk (migrations)
+        entry: npx --yes squawk-cli@2.66.0 --config .squawk.toml
+        language: system
+        files: ^supabase/migrations/.*\.sql$

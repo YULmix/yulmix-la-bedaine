@@ -13,13 +13,38 @@ export const formatCurrency = (amount) => {
 };
 
 /**
+ * Parse a date. A date-only 'YYYY-MM-DD' (Postgres `date` columns) is read as local midnight:
+ * `new Date('2026-03-15')` is UTC midnight, which renders as March 14 in Montréal.
+ * @param {string|Date|null|undefined} value
+ * @returns {Date|null}
+ */
+export const parseDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnly) return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  return new Date(value);
+};
+
+/**
+ * Format a date as a short French-Canadian day and month (e.g. "15 mars").
+ * @param {string|Date|null|undefined} value
+ * @returns {string}
+ */
+export const formatShortDate = (value) => {
+  const date = parseDate(value);
+  if (!date) return '';
+  return date.toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' });
+};
+
+/**
  * Format a date string as a long French-Canadian date (e.g. "15 mars 2026").
  * @param {string|null|undefined} dateString
  * @returns {string}
  */
 export const formatDate = (dateString) => {
   if (!dateString) return '';
-  const date = new Date(dateString);
+  const date = parseDate(dateString);
   return date.toLocaleDateString('fr-CA', {
     year: 'numeric',
     month: 'long',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { LockKeyhole, UserX } from 'lucide-react';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
@@ -8,21 +9,75 @@ import HomeView from './views/HomeView';
 import AdminView from './views/AdminView';
 import EventDetailsView from './views/EventDetailsView';
 import AboutView from './views/AboutView';
+import RegistrationPage from './views/RegistrationPage';
+import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
-import { getGoogleMapsUrl } from './lib/venue';
-import { formatDate } from './lib/format';
+
+const signInWithGoogle = async () => {
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin }
+    });
+    if (error) throw error;
+  } catch (error) {
+    console.error(`${fr.authError}:`, error);
+  }
+};
+
+// Auth still resolving: the page's shape, not a spinner.
+const ShellSkeleton = () => (
+  <div className="min-h-dvh bg-night" aria-busy="true">
+    <span className="sr-only">{fr.loading}</span>
+    <div className="h-16 border-b border-line" />
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6">
+      <Skeleton className="h-72 rounded-card" />
+      <Skeleton className="h-16" />
+      <Skeleton className="h-56 rounded-card" />
+    </div>
+  </div>
+);
+
+const PageMain = ({ children, wide = false }) => (
+  <main className={`mx-auto w-full flex-1 px-4 pb-16 pt-6 md:px-6 ${wide ? 'max-w-7xl' : 'max-w-6xl'}`}>{children}</main>
+);
+
+const SignedOutHome = () => (
+  <PageMain>
+    <section className="relative isolate flex min-h-[70dvh] flex-col justify-end overflow-hidden rounded-card border border-line p-6 sm:p-10 animate-rise">
+      <img src="/bedaine-disco.webp" alt="" aria-hidden="true" className="absolute inset-0 -z-20 size-full object-cover" />
+      <img src="/bedaine-mural.webp" alt="" aria-hidden="true" className="absolute inset-x-0 top-0 -z-20 h-1/2 w-full object-cover opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[linear-gradient(to_top,var(--color-night)_20%,transparent)]" />
+      <p className="font-data text-xs uppercase tracking-widest text-muted">{fr.appTitle}</p>
+      <h1 className="mt-3 font-display text-display-lg text-ink">{fr.brandName}</h1>
+      <p className="mt-4 max-w-xl text-lg text-ink">{fr.pleaseSignInHome}</p>
+      <p className="mt-1 max-w-xl text-muted">{fr.signedOutSubtext}</p>
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <Button onClick={signInWithGoogle}>
+          <LockKeyhole aria-hidden="true" className="size-4.5" strokeWidth={2} />
+          {fr.signInWithGoogle}
+        </Button>
+      </div>
+    </section>
+  </PageMain>
+);
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Soft-deleted account (#36): the database gives it no member access; the app shows why.
+  const [isDeleted, setIsDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
   const [otherEvents, setOtherEvents] = useState([]);
   const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
+  // Routes that need the active event (/inscription, /event-details) must not decide "no event"
+  // before the events query has answered.
+  const [eventsLoaded, setEventsLoaded] = useState(false);
 
   // Fetch admin status for current user (matches DB is_admin() function logic)
   const fetchAdminStatus = async (userId) => {
@@ -30,12 +85,12 @@ function App() {
       // Use the database's is_admin() function which respects root email fallback
       const { data: rpcData, error: rpcError } = await supabase
         .rpc('is_admin');
-      
+
       if (!rpcError && typeof rpcData === 'boolean') {
         setIsAdmin(rpcData);
         return;
       }
-      
+
       // Fallback: fetch profile and apply same logic client‑side
       const { data, error } = await supabase
         .from('profiles')
@@ -53,9 +108,26 @@ function App() {
     }
   };
 
+  // A deleted member can still read their own profile row; everything else is closed to them.
+  // If the lookup fails, the database still refuses a deleted account everything; only the
+  // explanation is missing, so treat it as active rather than signing the user out.
+  const fetchAccountStatus = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('deleted_at')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      setIsDeleted(!!data?.deleted_at);
+    } catch (error) {
+      console.error('Error fetching account status:', error);
+      setIsDeleted(false);
+    }
+  };
+
   const fetchEvents = async () => {
     try {
-      // Fetch all events
       const { data: events, error } = await supabase
         .from('events')
         .select('*')
@@ -64,10 +136,9 @@ function App() {
       if (error) throw error;
 
       if (events && events.length > 0) {
-        // Find active event
         const active = events.find(event => event.is_active);
         const others = events.filter(event => !event.is_active);
-        
+
         if (active) {
           setActiveEvent(active);
           setOtherEvents(others);
@@ -87,21 +158,14 @@ function App() {
       // A failed query is not "no events" — don't claim one is active when we don't know.
       setActiveEvent(null);
       setOtherEvents([]);
+    } finally {
+      setEventsLoaded(true);
     }
   };
 
   // Protected Route component for admin access
   const ProtectedRoute = ({ children, adminOnly = false }) => {
-    if (loading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-slate-400">{fr.loading}</p>
-          </div>
-        </div>
-      );
-    }
+    if (loading || !eventsLoaded) return <ShellSkeleton />;
 
     if (!isAuthenticated) {
       return <Navigate to="/" replace />;
@@ -109,11 +173,9 @@ function App() {
 
     if (adminOnly && !isAdmin) {
       return (
-        <div className="container mx-auto px-4 py-8">
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
-            <p>{fr.adminOnlyAccessMessage}</p>
-          </div>
-        </div>
+        <PageMain>
+          <EmptyState icon={LockKeyhole} title={fr.adminOnlyAccessMessage} action={<Link to="/" className="font-semibold text-neon underline underline-offset-4">{fr.backToHome}</Link>} />
+        </PageMain>
       );
     }
 
@@ -125,49 +187,32 @@ function App() {
     setIsModalOpen(true);
   };
 
-  
-
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      'DRAFT': 'Brouillon',
-      'ACTIVE': 'En cours',
-      'ARCHIVED': 'Archivé'
-    };
-    return statusMap[status] || status;
-  };
-
   useEffect(() => {
     fetchEvents();
-    
-    // Initialize auth state listener
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session);
-        setSession(session);
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
-        // Fetch admin status when authenticated
         if (session?.user) {
-          await fetchAdminStatus(session.user.id);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
         } else {
           setIsAdmin(false);
+          setIsDeleted(false);
         }
         setLoading(false);
       }
     );
 
-    // Get initial session
     const getInitialSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
-        
-        console.log('Initial session:', session);
-        setSession(session);
+
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
         if (session?.user) {
-          await fetchAdminStatus(session.user.id);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
@@ -185,156 +230,102 @@ function App() {
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-400">{fr.loading}</p>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
-      <ResolutionBanner isAuthenticated={isAuthenticated} />
-      <Header isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} user={user} isAdmin={isAdmin} />
-      
-      <Routes>
-        <Route path="/" element={
-          <main className="flex-grow container mx-auto px-4 py-8">
-            <div className="max-w-6xl mx-auto">
-              {isAuthenticated ? (
-                <>
-                  <HomeView activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
-              {/* Other Events */}
-              {otherEvents.length > 0 && (
-                <>
-                  <h2 className="text-2xl font-bold text-slate-100 mb-6">{fr.otherEventsTitle}</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {otherEvents.map((event) => (
-                      <div 
-                        key={event.id}
-                        onClick={() => handleEventClick(event)}
-                        className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg shadow-slate-900/30 p-6 hover:shadow-xl hover:shadow-slate-900/40 transition-shadow duration-300 cursor-pointer hover:transform hover:scale-[1.02]"
-                      >
-                        <div className="flex items-center mb-4">
-                          <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                            event.status === 'ARCHIVED' 
-                              ? 'bg-slate-800 text-slate-300'
-                              : 'bg-yellow-900/30 text-yellow-300 border border-yellow-800/30'
-                          }`}>
-                            {getStatusLabel(event.status)}
-                          </span>
-                        </div>
-                        
-                        <h3 className="text-xl font-semibold text-slate-100 mb-3">
-                          {event.theme}
-                        </h3>
-                        
-                        <p className="text-slate-300 mb-4">
-                          {event.description}
-                        </p>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-400">
-                            {fr.venue}:{' '}
-                            {event.venue_address ? (
-                              <a href={getGoogleMapsUrl(event.venue_address)} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600 transition-colors">
-                                {event.venue_address}
-                              </a>
-                            ) : null}
-                          </span>
-                          <button className="text-blue-600 hover:text-blue-800 font-medium">
-                            {fr.viewDetails}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              
-              {/* Empty State */}
-              {otherEvents.length === 0 && (
-                <div className="text-center py-12">
-                  <div className="inline-block p-4 bg-blue-950/30 border border-blue-800/30 rounded-full mb-4">
-                    <svg className="w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-200 mb-2">{fr.noOtherEventsTitle}</h3>
-                  <p className="text-slate-400">{fr.noOtherEventsMessage}</p>
-                </div>
-              )}
-              
-                </>
-              ) : (
-                <div className="text-center py-16 w-full overflow-hidden rounded-xl bg-[url('/Bedaine_Disco.png')] bg-cover bg-center">
-                  <div className="inline-block p-8 bg-blue-950/30 border border-blue-800/30 rounded-full mb-8">
-                    <svg className="w-20 h-20 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-slate-100 mb-4">{fr.pleaseSignInHome}</h2>
-                  <p className="text-slate-300 max-w-2xl mx-auto mb-8">
-                    {fr.pleaseSignInHomeInstructions}
-                  </p>
-                </div>
-              )}
-            </div>
-          </main>
-        } />
-        
-        <Route path="/event-details" element={
-          <ProtectedRoute>
-            <main className="flex-grow container mx-auto px-4 py-8">
-              <div className="max-w-6xl mx-auto">
-                <EventDetailsView activeEvent={activeEvent} />
-              </div>
-            </main>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/admin" element={
-          <ProtectedRoute adminOnly={true}>
-            <AdminView 
-              activeEvent={activeEvent}
-              otherEvents={otherEvents}
-              isAdmin={isAdmin}
-            />
-          </ProtectedRoute>
-        } />
+  if (loading) return <ShellSkeleton />;
 
-        <Route path="/a-propos" element={
-          <main className="flex-grow container mx-auto px-4 py-8">
-            <div className="max-w-6xl mx-auto">
+  return (
+    <div className="flex min-h-dvh flex-col bg-night text-ink">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-80 focus:rounded-control focus:bg-neon focus:px-4 focus:py-2 focus:text-night">{fr.skipToContent}</a>
+      <ResolutionBanner isAuthenticated={isAuthenticated} />
+      <Header
+        isAuthenticated={isAuthenticated}
+        setIsAuthenticated={setIsAuthenticated}
+        user={user}
+        isAdmin={isAdmin}
+        isDeleted={isDeleted}
+        onOpenFeedback={() => setIsFeedbackOpen(true)}
+      />
+
+      {/* overflow-x-clip: step/tab slide-ins translate content sideways; without it mobile browsers widen the layout viewport mid-animation. clip (not hidden) keeps position: sticky working. */}
+      <div id="main" className="flex flex-1 flex-col overflow-x-clip">
+        {isAuthenticated && isDeleted ? (
+          <PageMain>
+            <EmptyState
+              icon={UserX}
+              title={fr.accountDeletedTitle}
+              action={<Button variant="secondary" onClick={() => supabase.auth.signOut()}>{fr.signOut}</Button>}
+            >
+              {fr.accountDeletedMessage}
+            </EmptyState>
+          </PageMain>
+        ) : (
+        <Routes>
+          <Route path="/" element={
+            isAuthenticated ? (
+              <PageMain>
+                <HomeView
+                  activeEvent={activeEvent}
+                  isAuthenticated={isAuthenticated}
+                  otherEvents={otherEvents}
+                  onEventClick={handleEventClick}
+                />
+              </PageMain>
+            ) : <SignedOutHome />
+          } />
+
+          <Route path="/inscription" element={
+            <ProtectedRoute>
+              <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/event-details" element={
+            <ProtectedRoute>
+              <PageMain>
+                <EventDetailsView activeEvent={activeEvent} />
+              </PageMain>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/admin" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminView
+                activeEvent={activeEvent}
+                otherEvents={otherEvents}
+                isAdmin={isAdmin}
+              />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/a-propos" element={
+            <PageMain>
               <AboutView />
-            </div>
-          </main>
-        } />
-      </Routes>
-      
-      <footer className="bg-slate-900 border-t border-slate-800 text-slate-200 py-6">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-sm">
-            © {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}
-          </p>
-          <div className="mt-4 flex justify-center space-x-6 text-sm">
-            <Link to="/a-propos" className="hover:text-slate-300">{fr.about}</Link>
+            </PageMain>
+          } />
+        </Routes>
+        )}
+      </div>
+
+      <footer className="border-t border-line pb-24 md:pb-0">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-sm text-faint sm:flex-row sm:items-center sm:justify-between md:px-6">
+          <p>© {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}</p>
+          <div className="flex gap-5">
+            <Link to="/a-propos" className="inline-flex min-h-11 items-center hover:text-ink">{fr.about}</Link>
+            {isAuthenticated && !isDeleted && (
+              <button onClick={() => setIsFeedbackOpen(true)} className="inline-flex min-h-11 items-center hover:text-ink">{fr.reportProblem}</button>
+            )}
           </div>
         </div>
       </footer>
-      
-      {/* Event Modal */}
+
       <EventModal
         event={selectedEvent}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
 
-      {isAuthenticated && <FeedbackModal userId={user?.id} />}
+      {isAuthenticated && !isDeleted && (
+        <FeedbackModal userId={user?.id} open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
+      )}
     </div>
   );
 }

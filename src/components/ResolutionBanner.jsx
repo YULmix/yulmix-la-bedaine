@@ -49,11 +49,13 @@ const ResolutionBanner = ({ isAuthenticated }) => {
   if (!latestResolution) return null;
 
   return (
-    <div className="bg-emerald-600 text-white px-4 py-3 flex items-center justify-between">
-      <p className="text-sm font-medium">{fr.resolutionBannerMessage}</p>
-      <button onClick={handleDismiss} aria-label={fr.resolutionBannerDismiss} className="p-1 rounded-full hover:bg-emerald-700">
-        <X className="w-4 h-4" />
-      </button>
+    <div role="status" className="border-b border-ok/30 tint-ok">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 md:px-6">
+        <p className="text-sm font-semibold text-ok">{fr.resolutionBannerMessage}</p>
+        <button onClick={handleDismiss} aria-label={fr.resolutionBannerDismiss} className="grid size-9 place-items-center rounded-full text-ok hover:bg-ok/15">
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 };

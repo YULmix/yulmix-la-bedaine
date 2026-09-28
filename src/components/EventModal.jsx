@@ -1,177 +1,28 @@
-import { X } from 'lucide-react';
 import fr from '../locales/fr.json';
-import { getGoogleMapsUrl } from '../lib/venue';
-import { formatCurrency, formatDate } from '../lib/format';
+import EventFacts from './EventFacts';
+import { Dialog, Tag } from './ui';
 
+const STATUS = {
+  ARCHIVED: { tone: 'neutral', key: 'eventStatusArchived' },
+  DRAFT: { tone: 'info', key: 'draft' },
+  ACTIVE: { tone: 'ok', key: 'eventStatusActive' }
+};
+
+// Details of another (usually past) edition, opened from the home page's strip.
 const EventModal = ({ event, isOpen, onClose }) => {
-  if (!isOpen) return null;
-
-  // Map event data to expected format (supporting both old and new schema)
-  const eventData = event ? {
-    title: event.theme || event.title || "Événement sans titre",
-    description: event.description || "Aucune description disponible.",
-    venue: event.venue_address || event.venue || "Lieu non spécifié",
-    address: event.venue_address || event.address || "",
-    startDate: event.reg_start_date || event.startDate || "Date non spécifiée",
-    endDate: event.reg_start_date && event.duration_days 
-      ? new Date(new Date(event.reg_start_date).getTime() + event.duration_days * 86400000).toISOString().split('T')[0]
-      : event.endDate || "Date non spécifiée",
-    contactName: extractContactName(event.points_of_contact) || event.contactName || "Contact non spécifié",
-    contactEmail: event.contactEmail || "",
-    contactPhone: event.contactPhone || "",
-    instructions: event.instructions || event.instructions || "Aucune instruction particulière.",
-    // Additional fields for display
-    duration_days: event.duration_days,
-    points_of_contact: event.points_of_contact,
-    total_cost: event.total_cost,
-    selling_price_whole_event: event.selling_price_whole_event,
-    estimated_individual_cost_whole_event: event.estimated_individual_cost_whole_event,
-    max_attendees: event.max_attendees,
-    status: event.status,
-    is_reg_open: event.is_reg_open
-  } : {
-    title: "Événement exemple",
-    description: "Description détaillée de l'événement.",
-    venue: "Centre des congrès de Montréal",
-    address: "1001 Place Jean-Paul-Riopelle, Montréal",
-    startDate: "2024-06-15",
-    endDate: "2024-06-17",
-    contactName: "Jean Tremblay",
-    contactEmail: "jean.tremblay@example.com",
-    contactPhone: "(514) 123-4567",
-    instructions: "Veuillez arriver 30 minutes avant le début."
-  };
-
-  // Helper to extract a contact name from points_of_contact string
-  function extractContactName(points) {
-    if (!points) return "";
-    // Simple extraction: first name before comma
-    const match = points.match(/^([^,]+)/);
-    return match ? match[1].trim() : "";
-  }
-
-
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      'DRAFT': 'Brouillon',
-      'ACTIVE': 'En cours',
-      'ARCHIVED': 'Archivé'
-    };
-    return statusMap[status] || status;
-  };
-
+  const status = event ? STATUS[event.status] : null;
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-slate-100">{fr.eventDetails}</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-2 rounded-full hover:bg-slate-800"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <h3 className="text-2xl font-bold text-slate-50 mb-6">{eventData.title}</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.description}</h4>
-              <p className="text-slate-300 mb-6">{eventData.description}</p>
-              
-              <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.instructions}</h4>
-              <p className="text-slate-300">{eventData.instructions}</p>
-              
-              {/* Additional event info */}
-              {eventData.duration_days && (
-                <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventDurationTitle}</h4>
-                  <p className="text-slate-300">{eventData.duration_days} {fr.daysSuffix}</p>
-                </div>
-              )}
-              
-              {eventData.points_of_contact && (
-                <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventPointsOfContactLabel}</h4>
-                  <p className="text-slate-300 whitespace-pre-line">{eventData.points_of_contact}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.venue}</h4>
-                <p className="text-slate-300">{eventData.venue}</p>
-                {eventData.address && (
-                  <a href={getGoogleMapsUrl(eventData.address)} target="_blank" rel="noopener noreferrer" className="text-slate-400 text-sm mt-1 underline hover:text-blue-500 transition-colors inline-block">
-                    {eventData.address}
-                  </a>
-                )}
-              </div>
-              
-              <div>
-                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.dates}</h4>
-                <p className="text-slate-300">
-                  {formatDate(eventData.startDate)} - {formatDate(eventData.endDate)}
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.contact}</h4>
-                <p className="text-slate-300">{eventData.contactName}</p>
-                {eventData.contactEmail && <p className="text-slate-300">{eventData.contactEmail}</p>}
-                {eventData.contactPhone && <p className="text-slate-300">{eventData.contactPhone}</p>}
-              </div>
-              
-              {/* Financial info */}
-              {eventData.estimated_individual_cost_whole_event && (
-                <div>
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventEstimatedIndividualCostTitle}</h4>
-                  <p className="text-slate-300">{formatCurrency(eventData.estimated_individual_cost_whole_event)}</p>
-                </div>
-              )}
-              
-              {eventData.max_attendees && (
-                <div>
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventDurationCapacityTitle}</h4>
-                  <p className="text-slate-300">{eventData.max_attendees} {fr.participantsSuffix}</p>
-                </div>
-              )}
-              
-              {eventData.status && (
-                <div>
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.status}</h4>
-                  <p className="text-slate-300">{getStatusLabel(eventData.status)}</p>
-                </div>
-              )}
-              
-              {eventData.is_reg_open !== undefined && (
-                <div>
-                  <h4 className="text-lg font-semibold text-slate-100 mb-2">{fr.eventRegistrationsTitle}</h4>
-                  <p className={`px-3 py-1 rounded-full text-sm font-semibold border ${eventData.is_reg_open ? 'bg-green-900/30 text-green-300 border-green-800/30' : 'bg-red-900/30 text-red-300 border-red-800/30'}`}>
-                    {eventData.is_reg_open ? fr.eventRegOpenLabel : fr.eventRegClosedLabel}
-                  </p>
-                </div>
-              )}
-            </div>
+    <Dialog open={isOpen && !!event} onClose={onClose} title={event?.theme || fr.eventDetails} size="md">
+      {event && (
+        <div className="space-y-6 px-5 py-5 sm:px-6">
+          <div className="space-y-3">
+            {status && <Tag tone={status.tone}>{fr[status.key]}</Tag>}
+            {event.description && <p className="max-w-prose text-muted">{event.description}</p>}
           </div>
+          <EventFacts event={event} />
         </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700 px-6 py-4 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            {fr.close}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 };
 

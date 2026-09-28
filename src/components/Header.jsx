@@ -1,30 +1,56 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
+import { initials } from '../lib/eventDisplay';
+import { dbErrorMessage } from '../lib/dbErrors';
+import { ConfirmDialog, cx } from './ui';
+import yulmixLogo from '../assets/YULmix_App.png';
 
-const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+const MENU_ITEM = 'flex w-full min-h-11 items-center gap-3 rounded-control px-3 text-left text-base text-ink hover:bg-raised focus-visible:bg-raised';
+
+// Small popover menu: closes on outside click, Escape, or choosing an item.
+const useMenu = () => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event) => { if (!ref.current?.contains(event.target)) setOpen(false); };
+    const onKey = (event) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return { open, setOpen, ref };
+};
+
+const navLinkClass = ({ isActive }) => cx(
+  'inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold transition duration-150',
+  isActive ? 'text-neon' : 'text-muted hover:text-ink'
+);
+
+const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted = false, onOpenFeedback }) => {
+  const menu = useMenu();
   const navigate = useNavigate();
-  
-  // User display name
-  const userDisplayName = user 
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const userDisplayName = user
     ? (user.user_metadata?.full_name || user.email || fr.profile)
     : fr.profile;
 
   const handleSignIn = async (provider) => {
     try {
-      console.log('OAuth redirectTo:', window.location.origin);
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: {
-          redirectTo: window.location.origin
-        }
+        options: { redirectTo: window.location.origin }
       });
-      
-      if (error) {
-        console.error(`${fr.authError}:`, error);
-      }
+      if (error) console.error(`${fr.authError}:`, error);
     } catch (error) {
       console.error(`${fr.authError}:`, error);
     }
@@ -37,7 +63,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
         console.error(`${fr.authError}:`, error);
       } else {
         setIsAuthenticated(false);
-        setIsDropdownOpen(false);
+        menu.setOpen(false);
         navigate('/');
       }
     } catch (error) {
@@ -45,49 +71,108 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
     }
   };
 
+  // The database decides (close-date lock, root admin) and raises a code; dbErrorMessage maps it
+  // to French. Anything else gets the generic message.
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await supabase.rpc('delete_my_account');
+    setDeleting(false);
+    if (error) {
+      setDeleteError(dbErrorMessage(error, fr.deleteAccountError));
+      return;
+    }
+    setConfirmingDelete(false);
+    await handleSignOut();
+  };
+
+  const closeDeleteDialog = () => {
+    setConfirmingDelete(false);
+    setDeleteError(null);
+  };
+
+  const go = (path) => {
+    menu.setOpen(false);
+    navigate(path);
+  };
+
   return (
-    <header className="bg-indigo-900 text-white p-4">
-      <div className="container mx-auto flex justify-between items-center">
-        <h1 
-          className="text-2xl font-bold cursor-pointer"
-          onClick={() => navigate('/')}
-        >
-          {fr.appTitle}
-        </h1>
-        
-        <div className="relative">
+    <header className="sticky top-0 z-30 border-b border-line bg-night/85 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 md:px-6">
+        <Link to="/" className="mr-auto flex items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
+          <img src={yulmixLogo} alt="" aria-hidden="true" className="h-7 w-auto" />
+          <span className="hidden font-display text-lg text-ink min-[400px]:inline">{fr.brandName}</span>
+        </Link>
+
+        {isAuthenticated && !isDeleted && (
+          <nav aria-label={fr.mainNavLabel} className="flex items-center">
+            <NavLink to="/event-details" className={navLinkClass}>
+              <Info aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+              <span className="sr-only sm:not-sr-only">{fr.navInfo}</span>
+            </NavLink>
+            {isAdmin && (
+              <NavLink to="/admin" className={navLinkClass}>
+                <ShieldCheck aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+                <span className="sr-only sm:not-sr-only">{fr.navAdmin}</span>
+              </NavLink>
+            )}
+          </nav>
+        )}
+
+        <div ref={menu.ref} className="relative">
           <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg"
+            onClick={() => menu.setOpen(!menu.open)}
+            aria-expanded={menu.open}
+            aria-haspopup="menu"
+            className={cx(
+              'inline-flex min-h-11 items-center gap-2 rounded-full border px-1.5 text-sm font-semibold transition duration-150',
+              isAuthenticated ? 'border-line pr-3 hover:border-edge' : 'border-neon bg-neon px-4 text-night hover:brightness-110'
+            )}
           >
-            {isAuthenticated ? userDisplayName : fr.signIn}
+            {isAuthenticated ? (
+              <>
+                <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-raised font-data text-xs text-neon">
+                  {initials(userDisplayName)}
+                </span>
+                <span className="max-w-32 truncate sm:max-w-48">{userDisplayName}</span>
+                <ChevronDown aria-hidden="true" className="size-4 text-faint" />
+              </>
+            ) : fr.signIn}
           </button>
-          
-          {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-700 text-slate-100 rounded-lg shadow-lg shadow-slate-950/50 py-2 z-50">
+
+          {menu.open && (
+            <div role="menu" className="absolute right-0 mt-2 w-64 rounded-card border border-line bg-surface p-2 shadow-pop animate-sheet">
               {!isAuthenticated ? (
                 <>
-                  <button
-                    onClick={() => handleSignIn('google')}
-                    className="w-full px-4 py-3 text-left hover:bg-slate-800"
-                  >
-                    {fr.signInWithGoogle}
-                  </button>
+                  <button role="menuitem" onClick={() => handleSignIn('google')} className={MENU_ITEM}>{fr.signInWithGoogle}</button>
                 </>
               ) : (
                 <>
-                  {isAdmin && (
-                    <button
-                      onClick={() => { navigate('/admin'); setIsDropdownOpen(false); }}
-                      className="w-full px-4 py-3 text-left hover:bg-slate-800 text-blue-400"
-                    >
+                  {!isDeleted && isAdmin && (
+                    <button role="menuitem" onClick={() => go('/admin')} className={MENU_ITEM}>
+                      <ShieldCheck aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                       {fr.adminNavLink}
                     </button>
                   )}
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full px-4 py-3 text-left hover:bg-slate-800 text-red-400"
-                  >
+                  <button role="menuitem" onClick={() => go('/a-propos')} className={MENU_ITEM}>
+                    <Sparkles aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                    {fr.about}
+                  </button>
+                  {!isDeleted && (
+                    <button role="menuitem" onClick={() => { menu.setOpen(false); onOpenFeedback(); }} className={MENU_ITEM}>
+                      <MessageSquareWarning aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                      {fr.reportProblem}
+                    </button>
+                  )}
+                  <div className="my-1 h-px bg-line" />
+                  {!isDeleted && (
+                    <button role="menuitem" onClick={() => { menu.setOpen(false); setConfirmingDelete(true); }} className={cx(MENU_ITEM, 'text-muted')}>
+                      <UserX aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                      {fr.deleteAccount}
+                    </button>
+                  )}
+                  <button role="menuitem" onClick={handleSignOut} className={cx(MENU_ITEM, 'text-bad')}>
+                    <LogOut aria-hidden="true" className="size-5" strokeWidth={1.75} />
                     {fr.signOut}
                   </button>
                 </>
@@ -96,6 +181,18 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin }) => {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={fr.deleteAccountConfirmTitle}
+        confirmLabel={fr.deleteAccount}
+        onConfirm={handleDeleteAccount}
+        onCancel={closeDeleteDialog}
+        loading={deleting}
+      >
+        {fr.deleteAccountConfirm}
+        {deleteError && <span role="alert" className="mt-3 block font-semibold text-bad">{deleteError}</span>}
+      </ConfirmDialog>
     </header>
   );
 };

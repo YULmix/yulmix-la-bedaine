@@ -10,7 +10,7 @@ test('member: no admin nav, /admin blocked, RLS limits profiles to own row', asy
   await loginAs(page, TEST_USERS.member);
 
   await page.getByRole('button', { name: 'Test Member' }).click();
-  await expect(page.getByRole('button', { name: 'Admin' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Admin' })).toHaveCount(0);
 
   await page.goto('/admin');
   await expect(page.getByText('Accès réservé aux administrateurs')).toBeVisible();
@@ -28,7 +28,7 @@ test('admin: sees admin nav, can open /admin, RLS exposes all profiles', async (
   await loginAs(page, TEST_USERS.admin);
 
   await page.getByRole('button', { name: 'Test Admin' }).click();
-  const adminNavButton = page.getByRole('button', { name: 'Admin', exact: true });
+  const adminNavButton = page.getByRole('menuitem', { name: 'Admin', exact: true });
   await expect(adminNavButton).toBeVisible();
   await adminNavButton.click();
 

@@ -57,3 +57,10 @@ INSERT INTO auth.identities (
 
 -- handle_new_user() already created both profiles rows; flip the admin one.
 UPDATE public.profiles SET is_admin = true WHERE id = '00000000-0000-0000-0000-000000000002';
+
+-- Transactional emails (ADR 0016): point the trigger at the local edge runtime, as seen from the
+-- database container. With no RESEND_API_KEY locally, send-party-email only logs what it would
+-- send (dry_run rows in email_log). Preview also loads this file; the host doesn't exist there,
+-- so the request fails quietly and nothing is sent, which is what Preview wants.
+INSERT INTO private.settings ("key", "value")
+VALUES ('email_function_url', 'http://api.supabase.internal:8000/functions/v1/send-party-email');

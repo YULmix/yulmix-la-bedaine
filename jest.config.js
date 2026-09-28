@@ -4,6 +4,7 @@ export default {
     '^.+\\.(js|jsx)$': 'babel-jest',
   },
   moduleNameMapper: {
+    '\\.(png|jpe?g|webp|svg)$': '<rootDir>/src/__tests__/fileStub.js',
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^(\\.{1,2}/.*)\\.jsx$': '$1',
   },
@@ -14,7 +15,9 @@ export default {
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setupAfterEnv.js'],
   testMatch: [
     '**/__tests__/**/*.test.js',
-    '**/?(*.)+(spec|test).js'
+    '**/?(*.)+(spec|test).js',
+    // Component tests render JSX, and eslint.config.js only parses JSX in .jsx files.
+    '<rootDir>/src/**/*.test.jsx'
   ],
   // rlsPolicies.test.js is an integration suite: it needs a running local Supabase instance
   // and a real SUPABASE_SERVICE_ROLE_KEY (see supabase/tests/README.md). It is excluded from
