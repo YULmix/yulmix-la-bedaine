@@ -145,7 +145,6 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
               {!isAuthenticated ? (
                 <>
                   <button role="menuitem" onClick={() => handleSignIn('google')} className={MENU_ITEM}>{fr.signInWithGoogle}</button>
-                  <button role="menuitem" onClick={() => handleSignIn('facebook')} className={MENU_ITEM}>{fr.signInWithFacebook}</button>
                 </>
               ) : (
                 <>
