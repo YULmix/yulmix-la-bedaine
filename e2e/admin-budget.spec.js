@@ -1,10 +1,14 @@
 // The Budget admin tab (issue #109): categorized cost lines saved to the admin-only
-// event_budgets table, and the simulator whose "apply" sets the base price and main-event ratio,
-// which reprices unpaid registrations.
+// event_budgets table, and the simulator whose "apply" sets the base price and main-event ratio.
+// That price applies to new registrations only: existing ones keep the price they locked (#117).
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  ADMIN_ID,
+  E2E_ATTENDEES,
+  createParty,
   deleteBudget,
+  deleteParty,
   getBudget,
   getEvent,
   getParty,
@@ -112,7 +116,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
   });
 }
 
-test('applying a price and main-event ratio reprices the unpaid registration', async ({ page }) => {
+test('a new price and ratio apply to new registrations; existing ones keep their locked price', async ({ page, browser }) => {
   await page.goto('/admin?tab=budget');
   // Seeded at 200 $, default ratio: 200 + 0.5375 × 200 = 307.50 → 308.
   expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(308);
@@ -122,30 +126,61 @@ test('applying a price and main-event ratio reprices the unpaid registration', a
   await expect(apply).toBeDisabled();
   await expect(modified).toHaveCount(0);
 
-  // Only the ratio changes: it alone is tagged, and the confirmation lists one change per line.
+  // Both change: each is tagged, and the confirmation lists one change per line.
+  await panel(page).getByLabel(fr.eventSellingPriceLabel).fill('250');
   await panel(page).getByLabel(fr.ratioMainWholeLabel).fill('60');
-  await expect(modified).toHaveCount(1);
+  await expect(modified).toHaveCount(2);
   await apply.click();
   const confirm = page.getByRole('dialog', { name: fr.scenarioApplyConfirmTitle });
-  const impacts = confirm.getByRole('listitem');
-  await expect(impacts).toHaveText([
+  await expect(confirm.getByRole('listitem')).toHaveText([
+    fr.applyImpactPrice.replace('{before}', money(200)).replace('{after}', money(250)),
     fr.applyImpactRatio.replace('{before}', '53,75 %').replace('{after}', '60 %'),
-    fr.applyImpactReprice.replace('{count}', 1),
-    fr.applyImpactPaid
+    fr.applyImpactExisting
   ]);
   await confirm.getByRole('button', { name: fr.scenarioApply, exact: true }).click();
-  await expect(page.getByText(fr.eventRepricedCountToast.replace('{count}', 1))).toBeVisible();
+  await expect(page.getByText(fr.pricingAppliedToast)).toBeVisible();
 
   const event = await getEvent(seeded.eventId);
   expect(Number(event.ratio_main_whole)).toBe(0.6);
-  expect(Number(event.selling_price_whole_event)).toBe(200);
-  // 200 + 0.6 × 200 = 320.
-  expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(320);
+  expect(Number(event.selling_price_whole_event)).toBe(250);
+
+  // The existing registration is untouched.
+  const existing = await getParty(seeded.partyId);
+  expect(Number(existing.calculated_amount_owed)).toBe(308);
+  expect(Number(existing.locked_selling_price_whole_event)).toBe(200);
+  expect(Number(existing.locked_ratio_main_whole)).toBe(0.5375);
 
   // The simulator now starts from the saved values, so there is nothing to apply.
   await expect(panel(page).getByLabel(fr.ratioMainWholeLabel)).toHaveValue('60');
   await expect(modified).toHaveCount(0);
   await expect(apply).toBeDisabled();
+
+  // A registration made now, with the same people, pays the new price: 250 + 0.6 × 250 = 400.
+  const newPartyId = await createParty(seeded.eventId, ADMIN_ID, E2E_ATTENDEES);
+  try {
+    expect(Number((await getParty(newPartyId)).calculated_amount_owed)).toBe(400);
+
+    // The admin's totals are the stored amounts, not a recalculation at today's price.
+    await page.goto('/admin?tab=users');
+    const members = panel(page);
+    await expect(members.getByText(money(308), { exact: true }).filter({ visible: true })).toHaveCount(1);
+    await expect(members.getByText(money(400), { exact: true }).filter({ visible: true })).toHaveCount(1);
+
+    // The member sees the same amount, and their form estimates at the locked price: adding a
+    // whole-weekend adult adds 200, not 250.
+    const memberPage = await (await browser.newContext()).newPage();
+    await loginAs(memberPage, TEST_USERS.member);
+    await memberPage.goto('/');
+    const pass = memberPage.getByRole('article', { name: fr.passLabel });
+    await expect(pass.getByText(money(308), { exact: true })).toBeVisible();
+    await pass.getByRole('button', { name: fr.editRegistration }).click();
+    const estimate = memberPage.getByText(fr.estimatedAmountDueLabel).locator('xpath=following-sibling::p[1]');
+    await expect(estimate).toHaveText(money(308));
+    await memberPage.getByRole('button', { name: fr.addParticipantButton }).click();
+    await expect(estimate).toHaveText(money(508));
+  } finally {
+    await deleteParty(newPartyId);
+  }
 });
 
 test('the event dialog and the tools tab no longer hold money settings', async ({ page }) => {

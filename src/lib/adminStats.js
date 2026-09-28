@@ -11,12 +11,17 @@ export const tierOf = (attendee) => {
   return `${age}_${attendee.participation === 'Main' ? 'main' : 'whole'}`;
 };
 
+// What a party owes is what the database computed (#117): an unpaid party is priced at the price
+// it locked when it registered, a paid one keeps what it paid. Never re-run the pricing engine at
+// the event's current price here.
+export const amountOwedOf = (party) => Number(party.calculated_amount_owed) || 0;
+
 /**
  * @param {Array} parties user_parties rows (with attendees). Cancelled ones are skipped: there
  *   are no refunds, so a cancelled party owes nothing and counts for nothing (#101).
- * @param {(party) => number} amountOf the party's amount owed (rounded, grandfathered)
+ * @param {(party) => number} amountOf the party's amount owed
  */
-export const computeAdminStats = (allParties, amountOf) => {
+export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
   const parties = allParties.filter(isActiveRegistration);
   const tiers = Object.fromEntries(TIERS.map(tier => [tier, 0]));
   const accommodation = {};

@@ -106,13 +106,13 @@ sequenceDiagram
   participant PG as Supabase / Postgres
 
   U->>RF: add attendees, pick tiers, logistics
-  RF->>PE: simulateEventPricing(party, selling_price_whole_event, ratios)
+  RF->>PE: simulateEventPricing(party, partyPricingOf(registration, event))
   PE-->>RF: estimated amount owed
   RF-->>U: live total ("Montant dû")
   U->>RF: Sauvegarder
   RF->>PG: select profiles (self-heal: upsert if missing)
   RF->>PG: upsert user_parties on (user_id, event_id)
-  Note over PG: BEFORE trigger update_attendee_counts recomputes counts<br/>BEFORE trigger enforce_capacity_and_waitlist overrides is_waitlisted<br/>BEFORE trigger increment_edit_count bumps edit_count<br/>AFTER trigger log_registration_edit writes registration_edits
+  Note over PG: BEFORE trigger enforce_calculated_amount_owed locks the price, computes the amount<br/>BEFORE trigger update_attendee_counts recomputes counts<br/>BEFORE trigger enforce_capacity_and_waitlist overrides is_waitlisted<br/>BEFORE trigger increment_edit_count bumps edit_count<br/>AFTER trigger log_registration_edit writes registration_edits
   PG-->>RF: upserted row
   RF-->>U: toast, then full page reload
 ```

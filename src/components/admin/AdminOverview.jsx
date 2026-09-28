@@ -36,8 +36,8 @@ const TIER_LABEL_KEYS = {
 };
 
 // `budget` is the event's admin-only event_budgets row, or null when none was saved yet.
-const AdminOverview = ({ event, budget, parties, getRoundedPartyTotal, onOpenParty }) => {
-  const stats = useMemo(() => computeAdminStats(parties, getRoundedPartyTotal), [parties, getRoundedPartyTotal]);
+const AdminOverview = ({ event, budget, parties, onOpenParty }) => {
+  const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
   const capacity = event?.max_attendees || 0;
 

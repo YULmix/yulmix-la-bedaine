@@ -28,3 +28,10 @@ the Budget tab turns it into a break-even price for an expected headcount. Savin
 changes an amount: an admin still decides the base price, and "Appliquer comme prix de base" is
 that decision, which reprices unpaid registrations. The repricing this ADR said did not exist was
 added in #32.
+
+## Update (2026-09-28, #117)
+
+Repricing existing registrations was dropped: a price or ratio change now only affects
+registrations made afterwards, and each registration keeps the price it was made at. Registrations
+made before the event had any price (intents) still get the first price set. See
+[ADR 0017](./0017-lock-price-per-registration.md).

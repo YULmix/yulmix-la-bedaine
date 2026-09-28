@@ -170,7 +170,7 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
     await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
   });
 
-  test('an unpaid party keeps being recomputed on every save', async () => {
+  test('an unpaid party keeps being recomputed on every save, at its locked price', async () => {
     const { error: insertError } = await memberClient.from('user_parties').insert({
       id: UNPAID_PARTY_ID,
       user_id: '00000000-0000-0000-0000-000000000001',
@@ -189,8 +189,8 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
       .single();
     expect(Number(afterInsert.calculated_amount_owed)).toBe(100);
 
-    // Raising the price and editing the party recomputes fresh — unpaid parties are not
-    // grandfathered.
+    // Editing the party recomputes it (unpaid parties are not grandfathered), but at the price it
+    // locked when it was made (#117), not the event's new one.
     await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', GF_EVENT_ID);
     await memberClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', UNPAID_PARTY_ID);
 
@@ -199,7 +199,7 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
       .select('calculated_amount_owed')
       .eq('id', UNPAID_PARTY_ID)
       .single();
-    expect(Number(afterUpdate.calculated_amount_owed)).toBe(1000);
+    expect(Number(afterUpdate.calculated_amount_owed)).toBe(200);
   });
 
   test('a paid party keeps its stored amount across a price change and further edits', async () => {
@@ -244,19 +244,32 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
   });
 });
 
-// Regression tests for #32: changing events.selling_price_whole_event must retroactively reprice
-// every existing *unpaid* registration for that event, without waiting for the member to resave
-// their own row — and must leave paid registrations untouched (the #31 grandfathering still
-// applies).
-describe('💵 reprice unpaid registrations on price change (#32)', () => {
+// #117 (reverses #32): a registration locks the base price and main-event ratio in force when it is
+// made. Changing them afterwards only affects registrations made afterwards.
+describe('🔒 price locked per registration (#117)', () => {
   jest.setTimeout(30000);
 
-  const REPRICE_EVENT_ID = 'a0000000-a000-a000-a000-a00000000041';
-  const UNPAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000042';
-  const PAID_PARTY_ID = 'a0000000-a000-a000-a000-a00000000043';
+  const LOCK_EVENT_ID = 'a0000000-a000-a000-a000-a00000000117';
+  const MEMBER_PARTY_ID = 'a0000000-a000-a000-a000-a00000000118';
+  const ADMIN_PARTY_ID = 'a0000000-a000-a000-a000-a00000000119';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+  const PARTY_IDS = [MEMBER_PARTY_ID, ADMIN_PARTY_ID];
 
   let memberClient;
   let adminAuthClient;
+
+  const row = async (id) => (await adminAuthClient.from('user_parties')
+    .select('calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole, edit_count, is_waitlisted')
+    .eq('id', id).single()).data;
+  const setEvent = async (fields) => {
+    const { error } = await adminAuthClient.from('events').update(fields).eq('id', LOCK_EVENT_ID);
+    expect(error).toBeNull();
+  };
+  const register = async (client, id, userId, attendees = ONE_ADULT_WHOLE) => {
+    const { error } = await client.from('user_parties').insert({ id, user_id: userId, event_id: LOCK_EVENT_ID, attendees });
+    expect(error).toBeNull();
+  };
 
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
@@ -264,78 +277,130 @@ describe('💵 reprice unpaid registrations on price change (#32)', () => {
   });
 
   beforeEach(async () => {
-    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+    await adminAuthClient.from('user_parties').delete().in('id', PARTY_IDS);
     const { error } = await adminAuthClient.from('events').upsert({
-      id: REPRICE_EVENT_ID,
-      theme: 'Reprice Test Event',
+      id: LOCK_EVENT_ID,
+      theme: 'Price Lock Test Event',
       status: 'ACTIVE',
-      selling_price_whole_event: 100
+      selling_price_whole_event: 200,
+      ratio_main_whole: 0.5375,
+      max_attendees: null
     });
     if (error) throw error;
   });
 
   afterAll(async () => {
-    await adminAuthClient.from('user_parties').delete().in('id', [UNPAID_PARTY_ID, PAID_PARTY_ID]);
+    await adminAuthClient.from('user_parties').delete().in('id', PARTY_IDS);
   });
 
-  test('changing the price alone reprices unpaid registrations, without any member edit', async () => {
-    await memberClient.from('user_parties').insert({
-      id: UNPAID_PARTY_ID,
-      user_id: '00000000-0000-0000-0000-000000000001',
-      event_id: REPRICE_EVENT_ID,
-      attendees: ONE_ADULT_WHOLE,
-      payment_status: 'unpaid'
+  test('a price change writes nothing to existing registrations; new ones pay the new price', async () => {
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
+    const before = await row(MEMBER_PARTY_ID);
+    expect(Number(before.calculated_amount_owed)).toBe(200);
+    expect(Number(before.locked_selling_price_whole_event)).toBe(200);
+
+    await setEvent({ selling_price_whole_event: 250 });
+    expect(await row(MEMBER_PARTY_ID)).toEqual(before);
+
+    await register(adminAuthClient, ADMIN_PARTY_ID, ADMIN_ID);
+    expect(Number((await row(ADMIN_PARTY_ID)).calculated_amount_owed)).toBe(250);
+
+    // The member adds someone: priced at their locked 200, not 250.
+    await memberClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', MEMBER_PARTY_ID);
+    const after = await row(MEMBER_PARTY_ID);
+    expect(Number(after.calculated_amount_owed)).toBe(400);
+    expect(Number(after.locked_selling_price_whole_event)).toBe(200);
+  });
+
+  test('the same for a ratio change', async () => {
+    const adultMain = [{ type: 'Adult', participation: 'Main', is_new_member: false }];
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID, adultMain);
+    const before = await row(MEMBER_PARTY_ID);
+    expect(Number(before.calculated_amount_owed)).toBe(108); // 0.5375 × 200 = 107.50 → 108
+
+    await setEvent({ ratio_main_whole: 0.6 });
+    expect(await row(MEMBER_PARTY_ID)).toEqual(before);
+
+    await register(adminAuthClient, ADMIN_PARTY_ID, ADMIN_ID, adultMain);
+    expect(Number((await row(ADMIN_PARTY_ID)).calculated_amount_owed)).toBe(120); // 0.6 × 200
+
+    await memberClient.from('user_parties').update({ attendees: [...adultMain, ...adultMain] }).eq('id', MEMBER_PARTY_ID);
+    expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(215); // 2 × 107.50
+  });
+
+  test('a member cannot write the locked price or ratio, on insert or update', async () => {
+    const { error } = await memberClient.from('user_parties').insert({
+      id: MEMBER_PARTY_ID, user_id: MEMBER_ID, event_id: LOCK_EVENT_ID, attendees: ONE_ADULT_WHOLE,
+      locked_selling_price_whole_event: 1, locked_ratio_main_whole: 0.1
     });
-
-    const { data: before } = await memberClient
-      .from('user_parties')
-      .select('calculated_amount_owed')
-      .eq('id', UNPAID_PARTY_ID)
-      .single();
-    expect(Number(before.calculated_amount_owed)).toBe(100);
-
-    // Only the event's price changes here — the member never touches their own row.
-    const { error } = await adminAuthClient
-      .from('events')
-      .update({ selling_price_whole_event: 500 })
-      .eq('id', REPRICE_EVENT_ID);
     expect(error).toBeNull();
+    let locked = await row(MEMBER_PARTY_ID);
+    expect(Number(locked.locked_selling_price_whole_event)).toBe(200);
+    expect(Number(locked.locked_ratio_main_whole)).toBe(0.5375);
+    expect(Number(locked.calculated_amount_owed)).toBe(200);
 
-    const { data: after } = await memberClient
-      .from('user_parties')
-      .select('calculated_amount_owed')
-      .eq('id', UNPAID_PARTY_ID)
-      .single();
-    expect(Number(after.calculated_amount_owed)).toBe(500);
+    await memberClient.from('user_parties')
+      .update({ attendees: TWO_ADULTS_WHOLE, locked_selling_price_whole_event: 1, locked_ratio_main_whole: 0.1 })
+      .eq('id', MEMBER_PARTY_ID);
+    locked = await row(MEMBER_PARTY_ID);
+    expect(Number(locked.locked_selling_price_whole_event)).toBe(200);
+    expect(Number(locked.locked_ratio_main_whole)).toBe(0.5375);
+    expect(Number(locked.calculated_amount_owed)).toBe(400);
   });
 
-  test('a paid registration is not repriced by a price change', async () => {
-    await memberClient.from('user_parties').insert({
-      id: PAID_PARTY_ID,
-      user_id: '00000000-0000-0000-0000-000000000001',
-      event_id: REPRICE_EVENT_ID,
-      attendees: ONE_ADULT_WHOLE,
-      payment_status: 'unpaid'
-    });
-    await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', PAID_PARTY_ID);
+  test('a paid registration stays frozen when edited', async () => {
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
+    await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', MEMBER_PARTY_ID);
+    await setEvent({ selling_price_whole_event: 500 });
+    await adminAuthClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', MEMBER_PARTY_ID);
+    expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(200);
+  });
 
-    await adminAuthClient
-      .from('events')
-      .update({ selling_price_whole_event: 500 })
-      .eq('id', REPRICE_EVENT_ID);
+  test('a waitlisted registration keeps its locked price when promoted', async () => {
+    await setEvent({ max_attendees: 1 });
+    await register(adminAuthClient, ADMIN_PARTY_ID, ADMIN_ID);
+    // Inserted as admin: the capacity trigger only sees the rows the writer can read, so a
+    // member's own insert is not waitlisted (a separate bug, #118).
+    await register(adminAuthClient, MEMBER_PARTY_ID, MEMBER_ID);
+    expect((await row(MEMBER_PARTY_ID)).is_waitlisted).toBe(true);
 
-    const { data: afterPriceChange } = await adminAuthClient
-      .from('user_parties')
-      .select('calculated_amount_owed, payment_status')
-      .eq('id', PAID_PARTY_ID)
-      .single();
-    expect(afterPriceChange.payment_status).toBe('paid');
-    expect(Number(afterPriceChange.calculated_amount_owed)).toBe(100);
+    await setEvent({ selling_price_whole_event: 300 });
+    await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', ADMIN_PARTY_ID);
+    const promoted = await row(MEMBER_PARTY_ID);
+    expect(promoted.is_waitlisted).toBe(false);
+    expect(Number(promoted.calculated_amount_owed)).toBe(200);
+  });
+
+  test('re-registering over a cancelled registration takes the current price', async () => {
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
+    await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', MEMBER_PARTY_ID);
+    await setEvent({ selling_price_whole_event: 250 });
+    await memberClient.from('user_parties').update({ status: 'registered' }).eq('id', MEMBER_PARTY_ID);
+    const again = await row(MEMBER_PARTY_ID);
+    expect(Number(again.locked_selling_price_whole_event)).toBe(250);
+    expect(Number(again.calculated_amount_owed)).toBe(250);
+  });
+
+  test('a registration made before the event had a price is locked at the first price set', async () => {
+    await setEvent({ selling_price_whole_event: 0 });
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
+    const unpriced = await row(MEMBER_PARTY_ID);
+    expect(unpriced.locked_selling_price_whole_event).toBeNull();
+    expect(Number(unpriced.calculated_amount_owed)).toBe(0);
+
+    await setEvent({ selling_price_whole_event: 300 });
+    const priced = await row(MEMBER_PARTY_ID);
+    expect(Number(priced.locked_selling_price_whole_event)).toBe(300);
+    expect(Number(priced.calculated_amount_owed)).toBe(300);
+
+    // From then on it is locked like any other.
+    await setEvent({ selling_price_whole_event: 350 });
+    expect(await row(MEMBER_PARTY_ID)).toEqual(priced);
   });
 });
 
-// #109: the main-event ratio is a per-event setting; changing it reprices unpaid registrations
-// like a price change does, and the budget is readable and writable by admins only.
+// #109: the main-event ratio is a per-event setting (locked per registration since #117, see above),
+// and the budget is readable and writable by admins only.
 describe('💵 main-event ratio and admin-only budget (#109)', () => {
   jest.setTimeout(30000);
 
@@ -375,7 +440,7 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
     await adminAuthClient.from('event_budgets').delete().eq('event_id', RATIO_EVENT_ID);
   });
 
-  test('changing the ratio reprices an unpaid registration; teens pay half', async () => {
+  test('the main-event ratio prices a registration; teens pay half', async () => {
     await memberClient.from('user_parties').insert({
       id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
     });
@@ -384,9 +449,13 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
     // 0.5375 × 200 + 0.5 × 200 = 207.50 → 208.
     expect(await owed()).toBe(208);
 
+    // A new registration at another ratio: 0.6 × 200 + 0.5 × 200 = 220.
     const { error } = await adminAuthClient.from('events').update({ ratio_main_whole: 0.6 }).eq('id', RATIO_EVENT_ID);
     expect(error).toBeNull();
-    // 0.6 × 200 + 0.5 × 200 = 220.
+    await adminAuthClient.from('user_parties').delete().eq('id', RATIO_PARTY_ID);
+    await memberClient.from('user_parties').insert({
+      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
+    });
     expect(await owed()).toBe(220);
   });
 

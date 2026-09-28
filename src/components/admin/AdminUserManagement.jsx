@@ -8,6 +8,7 @@ import {
   isActiveRegistration
 } from '../../lib/registrationOptions';
 import { formatCurrency } from '../../lib/format';
+import { amountOwedOf } from '../../lib/adminStats';
 import { initials, plural } from '../../lib/eventDisplay';
 import { Button, EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
 
@@ -54,7 +55,6 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
 const AdminUserManagement = ({
   parties,
   currentUserId,
-  getRoundedPartyTotal,
   onOpenUserProfile,
   onAdminToggle,
   onPaymentToggle,
@@ -119,7 +119,7 @@ const AdminUserManagement = ({
               const isSelf = profile.id === currentUserId;
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
               const isCancelled = !isActiveRegistration(party);
-              const amount = isCancelled ? 0 : getRoundedPartyTotal(party);
+              const amount = isCancelled ? 0 : amountOwedOf(party);
               const people = (party.attendees || []).length;
               return (
                 <li

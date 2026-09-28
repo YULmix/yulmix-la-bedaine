@@ -69,7 +69,9 @@ erDiagram
     text message_to_organizers
     text confirmation_message
     text status
-    numeric calculated_amount_owed "client-computed"
+    numeric calculated_amount_owed "trigger-computed"
+    numeric locked_selling_price_whole_event "base price when registered (#117)"
+    numeric locked_ratio_main_whole "ratio when registered (#117)"
     text payment_status "unpaid|paid"
     bool is_waitlisted "trigger-computed"
     text admin_notes "organisers only"
@@ -209,7 +211,8 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE), advisory-locked per event | Yes |
 | `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE) | Yes |
 | `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff | Yes, but attributed to `NEW.user_id` — so an admin's god-mode edit is logged as the *member's* edit |
-| `calculated_amount_owed` | **The browser**, written as a plain value | **No** |
+| `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from `attendees` and the party's locked price; frozen once paid (#31) | Yes |
+| `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |
 | `profiles.is_admin` on signup | `handle_new_user`, true iff email is the root admin | Yes |
 | `profiles.deleted_at` | `delete_my_account()` only; `protect_profile_deleted_at` (BEFORE INSERT/UPDATE) keeps the stored value on any direct client write | Yes |
 
@@ -220,6 +223,7 @@ flowchart TD
   subgraph events
     E1["BEFORE DELETE → prevent_event_deletion()<br/>raises: events can never be deleted"]
     E2["partial UNIQUE INDEX only_one_active_event<br/>WHERE is_active = TRUE"]
+    E3["AFTER UPDATE OF selling_price_whole_event → lock_unpriced_registrations_on_first_price()<br/>only when the price goes from ≤ 0 to > 0 (#117)"]
   end
   subgraph profiles
     P1["AFTER INSERT on auth.users → handle_new_user()<br/>creates profile, sets root admin"]
@@ -234,6 +238,7 @@ flowchart TD
     U3["BEFORE UPDATE → increment_edit_count()"]
     U4["AFTER UPDATE → log_registration_edit()"]
     U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
+    U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
   end
 ```
 

@@ -65,7 +65,8 @@ _Avoid_: pre-registration, RSVP, expression of interest.
 **Base price** / **selling price** (fr. *prix de base*, *prix de vente*, column
 `events.selling_price_whole_event`)
 What an adult attending the whole weekend pays. With the main-event ratio, **the only input to
-what members owe.** Set by an admin, deliberately not recomputed when people join or leave.
+what members owe.** Set by an admin, deliberately not recomputed when people join or leave. A
+change applies to registrations made afterwards; existing ones keep their **locked price**.
 _Avoid_: ticket price, fee, member price.
 
 **Price share**
@@ -99,9 +100,16 @@ the other a decision.
 What a party owes, in CAD: the sum of its attendees' individual costs. Snapshotted onto the row
 at save time, not computed on read.
 
+**Locked price** (fr. *prix garanti*, columns `user_parties.locked_selling_price_whole_event` and
+`locked_ratio_main_whole`)
+The base price and main-event ratio in force when a registration was made. Every recalculation of
+that registration's amount uses them, so a later price change only affects new registrations
+(#117). Set by the database, never by a client.
+_Avoid_: frozen price (that is grandfathering), quoted price.
+
 **Grandfathering**
-Once a party is paid, its `calculated_amount_owed` is preserved even if the event's selling price
-changes afterwards. Nobody gets an invoice after they have already settled.
+Once a party is paid, its `calculated_amount_owed` is preserved even if its attendees change
+afterwards. Nobody gets an invoice after they have already settled.
 
 ## Logistics
 

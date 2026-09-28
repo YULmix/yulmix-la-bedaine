@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -21,7 +21,6 @@ import {
   getPaymentStatusShortLabel,
   isActiveRegistration
 } from '../lib/registrationOptions';
-import { priceRatiosOf, simulateEventPricing } from '../lib/pricingEngine';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
@@ -216,7 +215,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
   };
 
-  // New base price and main-event ratio. The database reprices every unpaid registration (#32, #109).
+  // New base price and main-event ratio. Existing registrations keep the price they locked (#117);
+  // only those made while the event had no price get it.
   const applyPricing = async (pricing) => {
     try {
       const { error: updateError } = await supabase
@@ -224,17 +224,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .update(pricing)
         .eq('id', activeEventState.id);
       if (updateError) throw updateError;
-      const { count, error: countError } = await supabase
-        .from('user_parties')
-        .select('id', { count: 'exact', head: true })
-        .eq('event_id', activeEventState.id)
-        .eq('payment_status', PAYMENT_STATUS.UNPAID)
-        .neq('status', REGISTRATION_STATUS.CANCELLED);
-      addToast(
-        countError ? fr.eventMetadataUpdatedToast
-          : count > 0 ? fr.eventRepricedCountToast.replace('{count}', count) : fr.eventRepricedNoneToast,
-        'success'
-      );
+      addToast(fr.pricingAppliedToast, 'success');
       await fetchAllData();
     } catch (err) {
       console.error('Error applying pricing:', err);
@@ -432,54 +422,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
 
 
-  // Calculate rounded party total using current pricing with rounding up
-  const calculateRoundedPartyTotal = (party) => {
-    if (!activeEventState?.selling_price_whole_event) return party.calculated_amount_owed || 0;
-    
-    // Prepare party in format expected by simulateEventPricing.
-    // Preserve grandfathering: a party that already paid keeps its historical amount
-    // rather than being repriced at the current selling price.
-    const partyForSimulation = {
-      id: party.id,
-      attendees: party.attendees || [],
-      is_paid: party.payment_status === PAYMENT_STATUS.PAID,
-      historical_owed: party.calculated_amount_owed || 0
-    };
-    
-    try {
-      // Simulate pricing for this single party
-      const simulation = simulateEventPricing(
-        [partyForSimulation],
-        Number(activeEventState.selling_price_whole_event),
-        priceRatiosOf(activeEventState)
-      );
-      
-      // Return the calculated amount (already rounded up by pricing engine)
-      return simulation.calculated_amount_owed;
-    } catch (error) {
-      console.error('Error calculating rounded party total:', error);
-      return party.calculated_amount_owed || 0;
-    }
-  };
-
   // Cancelled parties owe nothing and count for nothing (no refunds, #101). Only the users tab
   // (its "Annulées" filter) and the god-mode edit still see them; everything else uses this.
   const activeParties = useMemo(() => parties.filter(isActiveRegistration), [parties]);
-
-  // Memoize per-party rounded totals so the pricing engine only reruns when the
-  // parties list or selling price actually changes, not on every render.
-  const roundedPartyTotals = useMemo(() => {
-    const totals = new Map();
-    parties.forEach(party => {
-      totals.set(party.id, calculateRoundedPartyTotal(party));
-    });
-    return totals;
-  }, [parties, activeEventState?.selling_price_whole_event, activeEventState?.ratio_main_whole]);
-
-  const getRoundedPartyTotal = useCallback(
-    (party) => roundedPartyTotals.get(party.id) ?? (party.calculated_amount_owed || 0),
-    [roundedPartyTotals]
-  );
 
   // User profile modal functions
   const openUserProfile = async (profile) => {
@@ -844,7 +789,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <AdminUserManagement
           parties={parties}
           currentUserId={currentUserId}
-          getRoundedPartyTotal={getRoundedPartyTotal}
           onOpenUserProfile={openUserProfile}
           onAdminToggle={handleAdminToggle}
           onPaymentToggle={handlePaymentToggle}
@@ -852,7 +796,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
-    return <AdminOverview event={activeEventState} budget={budget} parties={parties} getRoundedPartyTotal={getRoundedPartyTotal} onOpenParty={openPartyEdit} />;
+    return <AdminOverview event={activeEventState} budget={budget} parties={parties} onOpenParty={openPartyEdit} />;
   };
 
   const unsavedLogistics = Object.keys(logisticsChanges).length;

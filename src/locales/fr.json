@@ -331,8 +331,7 @@
   "noDataToExport": "Aucune donnée à exporter",
   "noDataToCopy": "Aucune donnée à copier",
   "copyError": "Erreur lors de la copie",
-  "eventRepricedCountToast": "Prix mis à jour : {count} inscription(s) non payée(s) recalculée(s)",
-  "eventRepricedNoneToast": "Prix mis à jour : aucune inscription non payée à recalculer",
+  "pricingAppliedToast": "Prix mis à jour pour les nouvelles inscriptions",
   "paymentToggleConfirm": "Voulez-vous marquer le paiement comme {action} pour {name}?",
   "defaultUserFallback": "cet utilisateur",
   "ourCommitmentTitle": "Notre engagement",
@@ -536,8 +535,8 @@
   "modifiedTag": "Modifié",
   "applyImpactPrice": "Prix de base : {before} → {after}",
   "applyImpactRatio": "Événement principal : {before} → {after} du weekend complet",
-  "applyImpactReprice": "{count} inscription(s) non payée(s) seront recalculée(s)",
-  "applyImpactPaid": "Les inscriptions payées gardent leur montant",
+  "applyImpactExisting": "Les inscriptions existantes gardent le prix auquel elles ont été faites : le changement ne s'applique qu'aux nouvelles inscriptions",
+  "applyImpactUnpriced": "{count} inscription(s) faite(s) avant qu'un prix soit fixé seront calculée(s) à ce prix",
   "pricingSectionTitle": "Prix des membres",
   "pricingSectionSubtitle": "Ce que paient les membres. Appliquer enregistre ces deux valeurs et recalcule les inscriptions non payées."
 }
