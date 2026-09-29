@@ -12,6 +12,7 @@ erDiagram
   AUTH_USERS ||--|| PROFILES : "trigger on insert"
   PROFILES ||--o{ USER_PARTIES : "registers"
   EVENTS ||--o{ USER_PARTIES : "receives"
+  USER_PARTIES ||--o{ ATTENDEES : "has (on delete cascade)"
   EVENTS ||--o| EVENT_BUDGETS : "budgeted by (admin-only)"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
@@ -61,9 +62,7 @@ erDiagram
     uuid id PK
     uuid user_id FK
     uuid event_id FK
-    jsonb attendees
-    jsonb counts "trigger-computed"
-    jsonb logistics
+    jsonb logistics "party-wide: volunteering"
     jsonb transport
     text music_requests
     text message_to_organizers
@@ -78,6 +77,19 @@ erDiagram
     timestamptz last_edited_at
     int edit_count
     timestamptz created_at
+  }
+  ATTENDEES {
+    uuid id PK
+    uuid party_id FK
+    int position "display order, unique per party"
+    text name "not blank"
+    text type "Adult|Teenager|Kid"
+    text participation "Whole|Main|After-Party"
+    bool is_new_member
+    text sleeping_preference "CHECK, '' = not answered"
+    text bed_reason "CHECK"
+    text dietary_needs "CHECK"
+    text assigned_bed "admin-only"
   }
   APP_FEEDBACK {
     uuid id PK
@@ -97,76 +109,57 @@ erDiagram
   }
 ```
 
-`UNIQUE (user_id, event_id)` on `user_parties` is what makes the registration form an *upsert*
-rather than an insert: one party per person per event, editable forever.
+`UNIQUE (user_id, event_id)` on `user_parties` is what makes saving the registration form an
+*upsert* rather than an insert: one party per person per event, editable forever.
+
+## Attendees
+
+Each person in a party is a row of `attendees` ([ADR 0018](./adr/0018-attendees-in-their-own-table.md),
+#126, which superseded the `user_parties.attendees` JSON array of ADR 0004). `position` is the
+display order (from 1, unique per party). The enumerated columns have `CHECK` constraints with the
+values of `src/lib/registrationOptions.js`; `''` means "not answered", as it did in the JSON.
+
+| Column | Values |
+|---|---|
+| `type` | `Adult`, `Teenager`, `Kid` |
+| `participation` | `Whole`, `Main`, `After-Party` (kids) |
+| `sleeping_preference` (+ `_other`) | `''`, `camping`, `floor`, `bed`, `sofa`, `outside_other` |
+| `bed_reason` (+ `_other`) | `''`, `health`, `children`, `comfort`, `other` |
+| `dietary_needs` (+ `dietary_other`) | `''`, `none`, `vegetarian`, `vegan`, `gluten_free`, `other` |
+| `assigned_bed` | free text set by an admin (#94); replaced by place assignments in #113 |
+
+**One write path.** The form saves a party and its attendees in one transaction with
+`save_registration(p_event_id, p_attendees, p_party, p_user_id)`, a `SECURITY INVOKER` function, so
+the RLS of both tables applies. It upserts the party, then updates the attendees whose `id` it is
+sent, inserts the others and deletes the ones left out, then updates the party so its triggers
+recompute what depends on the attendees. Saving registers the party (again, if it was cancelled).
+An admin saves someone else's registration by passing `p_user_id`.
+
+`trg_guard_attendee_write` refuses any other write to `attendees` from a client
+(`attendees_write_through_save_registration`), with two exceptions: an admin changing only an
+`assigned_bed`, and the cascade when an admin deletes a party. `save_registration()` marks the party
+it is saving in a transaction-local setting (`bedaine.saving_party`) that PostgREST gives clients no
+way to set. It never writes `assigned_bed`: a bed stays with its attendee, by id, whatever the member
+edits.
+
+**Reading.** Embed them: `user_parties(*, attendees(*))`, ordered by `position`
+(`src/lib/parties.js`). Screens receive an `attendees` array, as they did with the JSON.
 
 ## JSONB payload shapes
 
-Four columns carry structured data. These shapes are a contract between the form, the triggers and
-the admin screens, and nothing validates them — treat changes here as breaking.
-
-### `user_parties.attendees`
-
-**What the code actually writes** (`src/components/RegistrationForm.jsx:200`):
-
-```json
-[
-  {
-    "name": "Jean Tremblay",
-    "type": "Adult",                  // 'Adult' | 'Teenager' | 'Kid'
-    "participation": "Whole",         // 'Whole' | 'Main' | 'After-Party'
-    "is_new_member": false,
-    "sleeping_preference": "bed",     // camping | floor | bed | sofa
-    "bed_reason": "health",           // health | children | comfort (required if bed)
-    "dietary_needs": "vegetarian",    // none | vegetarian | vegan | gluten_free | other
-    "dietary_other": ""
-  }
-]
-```
-
-**What the schema documents and the counts trigger expects**
-(the baseline migration's `COMMENT ON COLUMN … attendees`; `update_attendee_counts` has since
-been fixed to read `type`/`participation` instead):
-
-```json
-[{ "name": "…", "tier": "adult_whole", "is_new_member": false }]
-```
-
-> ⚠️ **These two shapes used to disagree, and it was not cosmetic.** The trigger read
-> `attendee->>'tier'`, which is absent from every row the app writes, so it computed an all-zero
-> `counts` object and overwrote whatever the client sent — every admin aggregate that read `counts`
-> read zero. Fixed in code (the trigger now derives the tier from `type`/`participation`), but the
-> fix still needs deploying to the live database — see
-> [issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34).
-
-Per-attendee logistics living inside `attendees` (rather than in the party-level `logistics`) is
-deliberate — see [ADR 0004](./adr/0004-per-attendee-logistics-inside-attendees.md).
-
-### `user_parties.counts`
-
-```json
-{ "adult_whole": 0, "adult_main": 0, "teen_whole": 0, "teen_main": 0, "kids": 0 }
-```
-
-Derived, never authored. Exists so admin dashboards can aggregate without unpacking `attendees`.
+Three columns carry structured data. These shapes are a contract between the form and the admin
+screens, and nothing validates them — treat changes here as breaking.
 
 ### `user_parties.logistics`
 
 ```json
-{
-  "sleeping":       { "pref": "bed", "reason": "health", "assigned": "Chambre 2, lit A" },
-  "food_requests":  { "requests": "vegetarian, gluten_free", "notes": "free text" },
-  "volunteering":   ["cook_meal", "dj_evening"]
-}
+{ "volunteering": ["cook_meal", "dj_evening", "other"], "volunteering_other": "free text" }
 ```
 
-- `sleeping.pref` / `reason` are copied from the **first attendee only**
-  (`src/components/RegistrationForm.jsx:264`) — a party-level summary of per-person data.
-- `sleeping.assigned` is **admin-write only**: the member asks, the organiser answers
-  (`src/views/AdminView.jsx:366`).
-- `food_requests.requests` is a comma-joined string of raw option values across all attendees, and
-  admin aggregation does substring matching on it (`src/views/AdminView.jsx:939`) — fragile, but
-  currently the only food summary there is.
+Party-wide answers only. Everything about a person (sleeping, bed, food) is on their attendee row.
+`sleeping` (a copy of the first attendee's choice) and `food_requests` (a join of everyone's dietary
+needs) were removed with the move to the attendees table (#126); older `registration_edits` rows
+still contain them.
 
 ### `user_parties.transport`
 
@@ -207,11 +200,11 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 
 | Field | Computed by | Trusted? |
 |---|---|---|
-| `counts` | `update_attendee_counts` (BEFORE INSERT/UPDATE OF attendees) | Yes — but currently produces zeros, see above |
-| `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE), advisory-locked per event | Yes |
-| `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE) | Yes |
-| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff | Yes, but attributed to `NEW.user_id` — so an admin's god-mode edit is logged as the *member's* edit |
-| `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from `attendees` and the party's locked price; frozen once paid (#31) | Yes |
+| `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE OF status), advisory-locked per event | Yes |
+| `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE); the update that completes a new registration isn't counted | Yes |
+| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays | Yes, attributed to `auth.uid()` |
+| `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's `attendees` rows and its locked price; frozen once paid (#31) | Yes |
+| Headcount per tier | Not stored: counted from `attendees` where needed (`tierCountsOf()` in `src/lib/adminStats.js`) | — |
 | `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |
 | `profiles.is_admin` on signup | `handle_new_user`, true iff email is the root admin | Yes |
 | `profiles.deleted_at` | `delete_my_account()` only; `protect_profile_deleted_at` (BEFORE INSERT/UPDATE) keeps the stored value on any direct client write | Yes |
@@ -233,39 +226,44 @@ flowchart TD
     P5["BEFORE INSERT/UPDATE → protect_profile_deleted_at()<br/>only SECURITY DEFINER code sets deleted_at"]
   end
   subgraph user_parties
-    U1["BEFORE INSERT/UPDATE OF attendees → update_attendee_counts()"]
-    U2["BEFORE INSERT/UPDATE OF attendees,status → enforce_capacity_and_waitlist()"]
+    U2["BEFORE INSERT/UPDATE OF status → enforce_capacity_and_waitlist()"]
     U3["BEFORE UPDATE → increment_edit_count()"]
     U4["AFTER UPDATE → log_registration_edit()"]
     U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
     U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
   end
+  subgraph attendees
+    A1["BEFORE INSERT/UPDATE/DELETE → guard_attendee_write()<br/>only through save_registration(), or an admin's bed"]
+    A2["AFTER UPDATE OF assigned_bed → request_party_email()<br/>when an attendee gets a bed"]
+  end
 ```
 
 ### Capacity and waitlisting
 
-`enforce_capacity_and_waitlist` (baseline migration) is the one piece of concurrency-aware logic
-in the system. **In production it is currently defeated.** Step 3 filters on the old French status
-values, which no row has any more, so it counts zero existing attendees
-([#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)). As designed, it:
+`enforce_capacity_and_waitlist` is the one piece of concurrency-aware logic in the system. It is
+`SECURITY DEFINER`, so it counts every party whoever writes: under the member's RLS it used to see
+only the member's own party, and never waitlisted a member (#118). It:
 
 1. Reads `max_attendees` for the event; if null or ≤ 0, clears the waitlist flag and returns.
 2. Takes `pg_advisory_xact_lock(hashtext(event_id))` so two simultaneous registrations cannot both
    pass the capacity check.
-3. Sums `jsonb_array_length(attendees)` over all non-waitlisted, non-cancelled parties for the
-   event, excluding the row being written.
+3. Counts the `attendees` rows of all non-waitlisted, non-cancelled parties for the event,
+   excluding the row being written (`private.event_headcount`).
 4. Adds this party's size; if the total exceeds `max_attendees`, sets `is_waitlisted = TRUE`.
 5. Always overwrites the client's `is_waitlisted`.
 
-Two properties worth knowing: waitlisting is **all-or-nothing per party** (a party of 4 that
-straddles the cap goes entirely to the waitlist), and nothing ever moves a party *off* the waitlist
-when someone else cancels — that is a manual admin action today, and there is no UI for it.
+It runs on insert and on any update that sets `status`, which `save_registration()`'s last step
+always does, so it sees the party's attendees as saved.
+
+Waitlisting is **all-or-nothing per party** (a party of 4 that straddles the cap goes entirely to
+the waitlist). When a party is cancelled, `promote_waitlisted_parties` moves waitlisted parties off
+the list, oldest first, while they fit.
 
 ### Transactional emails
 
-`trg_request_party_email_on_insert` (every insert) and `trg_request_party_email_on_update` (only
-when `is_waitlisted`, `payment_status` or `status` changes, or the party goes from no attendee with
-an `assigned_bed` to at least one) ask the `send-party-email` Edge Function, through pg_net, to look
+`trg_request_party_email_on_insert` (every insert), `trg_request_party_email_on_update` (only
+when `is_waitlisted`, `payment_status` or `status` changes) and, on `attendees`,
+`trg_request_party_email_on_bed` (an attendee gets an `assigned_bed`) ask the `send-party-email` Edge Function, through pg_net, to look
 at the party ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), #12). The function
 decides what is owed from the committed row and `email_log`:
 
@@ -299,15 +297,17 @@ does nothing.
 
 `enforce_registration_lock_after_close_date` (added for
 [#38](https://github.com/YULmix/yulmix-la-bedaine/issues/38)) is the only place the "registration
-close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — is actually enforced.
-It does **not** block new registrations, edits, or adding participants; it only blocks, once the
-close date has passed and the caller isn't an admin:
+close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — is actually enforced,
+with `save_registration()` for the attendees (both use `private.registration_closed`). Neither
+blocks new registrations, edits, or adding participants; they only block, once the close date has
+passed and the caller isn't an admin:
 
 - `DELETE` on `user_parties` (members can't delete at all since #35; this is a second guard).
 - `UPDATE` on `user_parties` that moves the row to `cancelled` (a member un-registering, #35).
-- `UPDATE` on `user_parties` where the new `attendees` array is shorter than the stored one
-  (a member removing a participant), unless the row was `cancelled`: registering again with a
-  smaller group isn't removing anyone from a registration that owed something.
+- A `save_registration()` that leaves the party with fewer attendees than it had (a member removing
+  a participant), unless the row was `cancelled`: registering again with a smaller group isn't
+  removing anyone from a registration that owed something. Replacing someone is allowed. This check
+  is in `save_registration()`, the only place that sees the attendees before and after a save.
 
 The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
 `src/lib/eventPhase.js`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.

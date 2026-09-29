@@ -1,7 +1,8 @@
 # Pricing and business rules
 
 This is the part of the app that has to be right. The authoritative amount is computed in the
-database (`calculate_party_amount_owed`, set on every `user_parties` write by a trigger);
+database (`private.party_amount_owed`, over the party's `attendees` rows, set on every
+`user_parties` write by a trigger);
 `src/lib/pricingEngine.js` computes the same thing for the live estimates in the UI and the admin
 simulator. The two must agree: `src/lib/pricingEngine.test.js` covers the rules
 (`npm run test:pricing`), and #109 checked the pair against every seeded party.
@@ -57,7 +58,7 @@ Every price is a share of the base price:
   reproduces the point weights used before #109 (2.0 / 1.075 / 1.0 / 0.5375 points at
   `selling_price / 2` per point).
 - Teens always pay half the adult price of the same tier. That is fixed in code, not a setting.
-- `getPriceShare(attendee, ratios)` in the engine; the `CASE` in `calculate_party_amount_owed`.
+- `getPriceShare(attendee, ratios)` in the engine; the `CASE` in `private.party_amount_owed`.
 
 ### New members
 
@@ -167,7 +168,7 @@ price, which get this one.
   *"L'événement est malheureusement complet, mais vous serez ajouté à la liste d'attente."*
   ([ADR 0005](./adr/0005-waitlist-instead-of-blocking.md))
 - The authoritative decision is the Postgres trigger, which counts people across all parties under
-  an advisory lock. The browser's own check compares *this party's size* to `max_attendees`
+  an advisory lock, whoever writes (#118). The browser's own check compares *this party's size* to `max_attendees`
   (`src/components/RegistrationForm.jsx:122`), which is wrong in isolation but harmless, because the
   trigger overwrites the flag on write. Do not rely on the client value for anything.
 
@@ -176,18 +177,20 @@ price, which get this one.
 - Money is stored as `NUMERIC(10,2)`. The database computes amounts in exact `NUMERIC`; the engine
   works in floating point and trims float noise before rounding up, so an exact amount (0.5375 ×
   160 = 86) is not bumped a dollar.
-- Each attendee's price rounds **up to the dollar** (`attendeePrice` in the engine, the loop in
-  `calculate_party_amount_owed`), and a party's amount is the sum of those rounded prices, never
+- Each attendee's price rounds **up to the dollar** (`attendeePrice` in the engine, the `CEIL` per row in
+  `private.party_amount_owed`), and a party's amount is the sum of those rounded prices, never
   rounded again. `attendeePrice` is the only place the UI rounds an attendee's price. The
   break-even price rounds **up to $10**; that rounding never applies to what a member is charged.
 - All display goes through `formatCurrency` in `src/lib/format.js` (`fr-CA`, e.g. `355,00 $`).
 
 ## Changing the rules safely
 
-1. Change `calculate_party_amount_owed` in a new migration **and** `src/lib/pricingEngine.js`, in
+1. Change `private.party_amount_owed` in a new migration **and** `src/lib/pricingEngine.js`, in
    the same PR.
 2. Add or amend a case in `src/lib/pricingEngine.test.js` and run `npm run test:pricing`. Check the
-   same case against the SQL function on a local Supabase (`select calculate_party_amount_owed(…)`).
+   same case against the SQL function on a local Supabase: save the party with
+   `save_registration()` and read its `calculated_amount_owed`, or
+   `select private.party_amount_owed(<party id>, <price>, <ratio>)`.
 3. Callers of the engine: `RegistrationForm` (live estimate, at the party's locked values),
    `AdminOverview` (tier prices, break-even), `AdminBudget` (simulator). The admin per-party totals
    are the stored amounts (`amountOwedOf` in `src/lib/adminStats.js`), not a recalculation.

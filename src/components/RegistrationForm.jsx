@@ -4,6 +4,7 @@ import {
   Tent, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { saveRegistration } from '../lib/parties';
 import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
@@ -16,9 +17,7 @@ import {
   BED_REASON_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
-  DIETARY_OPTIONS,
-  REGISTRATION_STATUS,
-  PAYMENT_STATUS
+  DIETARY_OPTIONS
 } from '../lib/registrationOptions';
 
 const STEPS = [
@@ -148,8 +147,9 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // Initialize with existing registration or default attendee
   useEffect(() => {
     if (!userRegistration?.attendees) return;
-    const formattedAttendees = userRegistration.attendees.map((attendee, index) => ({
-      id: `attendee-${index}`,
+    const formattedAttendees = userRegistration.attendees.map(attendee => ({
+      // The row id: saving with it updates this attendee rather than replacing them.
+      id: attendee.id,
       name: attendee.name || '',
       type: attendee.type || 'Adult',
       participation: attendee.participation || 'Whole',
@@ -160,7 +160,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       bedReason: attendee.bed_reason || '',
       bedReasonOther: attendee.bed_reason_other || '',
       dietaryOther: attendee.dietary_other || '',
-      assignedBed: attendee.assigned_bed || ''
+      isSaved: true
     }));
     setAttendees(formattedAttendees);
     // Only start in "same for everyone" mode if the saved choices really are identical; otherwise
@@ -286,7 +286,9 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         authUser = user;
       }
 
+      // The bed an admin assigned stays on the attendee; the form never sends one.
       const attendeesData = attendees.map(attendee => ({
+        ...(attendee.isSaved ? { id: attendee.id } : {}),
         name: attendee.name.trim(),
         type: attendee.type,
         participation: attendee.participation,
@@ -296,24 +298,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         dietary_needs: attendee.dietaryNeeds,
         bed_reason: attendee.bedReason,
         bed_reason_other: attendee.bedReasonOther,
-        dietary_other: attendee.dietaryOther,
-        assigned_bed: attendee.assignedBed || ''
+        dietary_other: attendee.dietaryOther
       }));
 
-      const counts = {
-        adult_whole: attendeesData.filter(a => a.type === 'Adult' && a.participation === 'Whole').length,
-        adult_main: attendeesData.filter(a => a.type === 'Adult' && a.participation === 'Main').length,
-        teen_whole: attendeesData.filter(a => a.type === 'Teenager' && a.participation === 'Whole').length,
-        teen_main: attendeesData.filter(a => a.type === 'Teenager' && a.participation === 'Main').length,
-        kids: attendeesData.filter(a => a.type === 'Kid').length
-      };
-      // Party-wide fields only; per-attendee accommodation, bed reason and bed assignment live on
-      // each entry in attendeesData instead.
+      // Party-wide answers only; everything about a person is on their attendee row.
       const logistics = {
-        food_requests: {
-          requests: attendees.map(a => a.dietaryNeeds).filter(Boolean).join(', '),
-          notes: attendees.map(a => a.dietaryOther).filter(Boolean).join(', ')
-        },
         volunteering: volunteeringSelections,
         volunteering_other: volunteeringOtherDetail
       };
@@ -361,43 +350,35 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         throw new Error(adminMode ? fr.adminProfileMissingError : fr.profileMissingError);
       }
 
-      const registrationData = {
-        user_id: userId,
-        event_id: event.id,
-        attendees: attendeesData,
-        counts: counts,
-        calculated_amount_owed: estimatedBalance,
-        status: REGISTRATION_STATUS.REGISTERED,
-        // A self-edit of an existing registration must not reset payment_status to unpaid — that
-        // would silently un-grandfather calculated_amount_owed on the next save (issue #31), since
-        // the server-side trigger keys the grandfathering off the row's own persisted status.
-        payment_status: userRegistration ? userRegistration.payment_status : PAYMENT_STATUS.UNPAID,
-        is_waitlisted: isWaitlisted,
-        logistics: logistics,
-        transport: transport,
-        music_requests: musicRequests,
-        message_to_organizers: messageToOrganizers
-      };
-
-      // Single upsert call that handles both insert and update, respecting the UNIQUE(user_id, event_id) constraint.
-      const { data: upsertedRows, error: upsertError } = await supabase
-        .from('user_parties')
-        .upsert([registrationData], { onConflict: 'user_id,event_id' })
-        .select();
-
-      if (upsertError) {
-        console.error('Supabase user_parties upsert error:', upsertError.message, upsertError.code, upsertError.details, upsertError.hint, JSON.stringify(upsertError));
-        throw upsertError;
+      // Party and attendees in one transaction. The database computes the amount owed, the price
+      // lock and the waitlist, registers the party (again, if it was cancelled), and leaves
+      // payment_status and admin_notes alone.
+      let savedParty;
+      try {
+        savedParty = await saveRegistration(supabase, {
+          eventId: event.id,
+          attendees: attendeesData,
+          party: {
+            logistics,
+            transport,
+            music_requests: musicRequests,
+            message_to_organizers: messageToOrganizers
+          },
+          userId: adminMode ? userId : undefined
+        });
+      } catch (saveError) {
+        console.error('save_registration error:', saveError.message, saveError.code, saveError.details, saveError.hint, JSON.stringify(saveError));
+        throw saveError;
       }
 
-      if (!upsertedRows || upsertedRows.length === 0) {
+      if (!savedParty) {
         throw new Error(fr.noRowReturnedError);
       }
 
       if (adminMode && onAdminSave) {
         onAdminSave();
       } else if (onRegistrationSuccess) {
-        onRegistrationSuccess(upsertedRows[0]);
+        onRegistrationSuccess(savedParty);
       }
     } catch (err) {
       console.error('Erreur lors de l\'inscription:', err);

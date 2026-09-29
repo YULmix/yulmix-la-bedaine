@@ -116,6 +116,22 @@ const signIn = async (email) => {
   return client;
 };
 
+// What the registration form does (ADR 0018): save a party and its attendees through
+// save_registration(). Attendees without a name get one (names are required). `id` is the party's
+// id when this creates it; `userId` is whose registration, for an admin saving someone else's.
+// Returns supabase-js's { data, error }.
+const save = (client, eventId, attendees, { id, userId, party = {} } = {}) => client.rpc('save_registration', {
+  p_event_id: eventId,
+  p_attendees: attendees.map((attendee, index) => ({ name: `Person ${index + 1}`, ...attendee })),
+  p_party: id ? { ...party, id } : party,
+  ...(userId ? { p_user_id: userId } : {})
+});
+const saveOk = async (...args) => {
+  const { data, error } = await save(...args);
+  if (error) throw error;
+  return data;
+};
+
 describe('💰 calculated_amount_owed grandfathering (#31)', () => {
   jest.setTimeout(30000);
 
@@ -149,14 +165,7 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
   });
 
   test('an unpaid party keeps being recomputed on every save, at its locked price', async () => {
-    const { error: insertError } = await memberClient.from('user_parties').insert({
-      id: UNPAID_PARTY_ID,
-      user_id: '00000000-0000-0000-0000-000000000001',
-      event_id: GF_EVENT_ID,
-      attendees: ONE_ADULT_WHOLE,
-      payment_status: 'unpaid'
-    });
-    expect(insertError).toBeNull();
+    await saveOk(memberClient, GF_EVENT_ID, ONE_ADULT_WHOLE, { id: UNPAID_PARTY_ID });
 
     // Selling price is 100 for a whole-event adult (2.0 pts = the full price), regardless of
     // the estimate a client might have sent.
@@ -170,7 +179,7 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
     // Editing the party recomputes it (unpaid parties are not grandfathered), but at the price it
     // locked when it was made (#117), not the event's new one.
     await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', GF_EVENT_ID);
-    await memberClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', UNPAID_PARTY_ID);
+    await saveOk(memberClient, GF_EVENT_ID, TWO_ADULTS_WHOLE);
 
     const { data: afterUpdate } = await memberClient
       .from('user_parties')
@@ -181,14 +190,7 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
   });
 
   test('a paid party keeps its stored amount across a price change and further edits', async () => {
-    const { error: insertError } = await memberClient.from('user_parties').insert({
-      id: PAID_PARTY_ID,
-      user_id: '00000000-0000-0000-0000-000000000001',
-      event_id: GF_EVENT_ID,
-      attendees: ONE_ADULT_WHOLE,
-      payment_status: 'unpaid'
-    });
-    expect(insertError).toBeNull();
+    await saveOk(memberClient, GF_EVENT_ID, ONE_ADULT_WHOLE, { id: PAID_PARTY_ID });
     // Mark as paid at the current (100) price — an admin action, and the row's own persisted
     // state, the only thing the trigger is allowed to trust.
     await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', PAID_PARTY_ID);
@@ -206,9 +208,10 @@ describe('💰 calculated_amount_owed grandfathering (#31)', () => {
     // (exactly what a devtools/REST client attack would send) — the trigger must ignore all of
     // that and keep the amount frozen from the row's own prior payment_status.
     await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', GF_EVENT_ID);
+    await saveOk(memberClient, GF_EVENT_ID, TWO_ADULTS_WHOLE);
     await memberClient
       .from('user_parties')
-      .update({ attendees: TWO_ADULTS_WHOLE, calculated_amount_owed: 1, payment_status: 'unpaid' })
+      .update({ calculated_amount_owed: 1, payment_status: 'unpaid' })
       .eq('id', PAID_PARTY_ID);
 
     const { data: afterEdit } = await adminAuthClient
@@ -244,10 +247,7 @@ describe('🔒 price locked per registration (#117)', () => {
     const { error } = await adminAuthClient.from('events').update(fields).eq('id', LOCK_EVENT_ID);
     expect(error).toBeNull();
   };
-  const register = async (client, id, userId, attendees = ONE_ADULT_WHOLE) => {
-    const { error } = await client.from('user_parties').insert({ id, user_id: userId, event_id: LOCK_EVENT_ID, attendees });
-    expect(error).toBeNull();
-  };
+  const register = (client, id, userId, attendees = ONE_ADULT_WHOLE) => saveOk(client, LOCK_EVENT_ID, attendees, { id, userId });
 
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
@@ -284,7 +284,7 @@ describe('🔒 price locked per registration (#117)', () => {
     expect(Number((await row(ADMIN_PARTY_ID)).calculated_amount_owed)).toBe(250);
 
     // The member adds someone: priced at their locked 200, not 250.
-    await memberClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', MEMBER_PARTY_ID);
+    await saveOk(memberClient, LOCK_EVENT_ID, TWO_ADULTS_WHOLE);
     const after = await row(MEMBER_PARTY_ID);
     expect(Number(after.calculated_amount_owed)).toBe(400);
     expect(Number(after.locked_selling_price_whole_event)).toBe(200);
@@ -302,24 +302,26 @@ describe('🔒 price locked per registration (#117)', () => {
     await register(adminAuthClient, ADMIN_PARTY_ID, ADMIN_ID, adultMain);
     expect(Number((await row(ADMIN_PARTY_ID)).calculated_amount_owed)).toBe(120); // 0.6 × 200
 
-    await memberClient.from('user_parties').update({ attendees: [...adultMain, ...adultMain] }).eq('id', MEMBER_PARTY_ID);
+    await saveOk(memberClient, LOCK_EVENT_ID, [...adultMain, ...adultMain]);
     expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(216); // 108 + 108, each attendee rounded up (#120)
   });
 
   test('a member cannot write the locked price or ratio, on insert or update', async () => {
     const { error } = await memberClient.from('user_parties').insert({
-      id: MEMBER_PARTY_ID, user_id: MEMBER_ID, event_id: LOCK_EVENT_ID, attendees: ONE_ADULT_WHOLE,
+      id: MEMBER_PARTY_ID, user_id: MEMBER_ID, event_id: LOCK_EVENT_ID,
       locked_selling_price_whole_event: 1, locked_ratio_main_whole: 0.1
     });
     expect(error).toBeNull();
+    await saveOk(memberClient, LOCK_EVENT_ID, ONE_ADULT_WHOLE);
     let locked = await row(MEMBER_PARTY_ID);
     expect(Number(locked.locked_selling_price_whole_event)).toBe(200);
     expect(Number(locked.locked_ratio_main_whole)).toBe(0.5375);
     expect(Number(locked.calculated_amount_owed)).toBe(200);
 
     await memberClient.from('user_parties')
-      .update({ attendees: TWO_ADULTS_WHOLE, locked_selling_price_whole_event: 1, locked_ratio_main_whole: 0.1 })
+      .update({ locked_selling_price_whole_event: 1, locked_ratio_main_whole: 0.1 })
       .eq('id', MEMBER_PARTY_ID);
+    await saveOk(memberClient, LOCK_EVENT_ID, TWO_ADULTS_WHOLE);
     locked = await row(MEMBER_PARTY_ID);
     expect(Number(locked.locked_selling_price_whole_event)).toBe(200);
     expect(Number(locked.locked_ratio_main_whole)).toBe(0.5375);
@@ -330,16 +332,14 @@ describe('🔒 price locked per registration (#117)', () => {
     await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
     await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', MEMBER_PARTY_ID);
     await setEvent({ selling_price_whole_event: 500 });
-    await adminAuthClient.from('user_parties').update({ attendees: TWO_ADULTS_WHOLE }).eq('id', MEMBER_PARTY_ID);
+    await saveOk(adminAuthClient, LOCK_EVENT_ID, TWO_ADULTS_WHOLE, { userId: MEMBER_ID });
     expect(Number((await row(MEMBER_PARTY_ID)).calculated_amount_owed)).toBe(200);
   });
 
   test('a waitlisted registration keeps its locked price when promoted', async () => {
     await setEvent({ max_attendees: 1 });
     await register(adminAuthClient, ADMIN_PARTY_ID, ADMIN_ID);
-    // Inserted as admin: the capacity trigger only sees the rows the writer can read, so a
-    // member's own insert is not waitlisted (a separate bug, #118).
-    await register(adminAuthClient, MEMBER_PARTY_ID, MEMBER_ID);
+    await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
     expect((await row(MEMBER_PARTY_ID)).is_waitlisted).toBe(true);
 
     await setEvent({ selling_price_whole_event: 300 });
@@ -353,7 +353,7 @@ describe('🔒 price locked per registration (#117)', () => {
     await register(memberClient, MEMBER_PARTY_ID, MEMBER_ID);
     await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', MEMBER_PARTY_ID);
     await setEvent({ selling_price_whole_event: 250 });
-    await memberClient.from('user_parties').update({ status: 'registered' }).eq('id', MEMBER_PARTY_ID);
+    await saveOk(memberClient, LOCK_EVENT_ID, ONE_ADULT_WHOLE);
     const again = await row(MEMBER_PARTY_ID);
     expect(Number(again.locked_selling_price_whole_event)).toBe(250);
     expect(Number(again.calculated_amount_owed)).toBe(250);
@@ -419,9 +419,7 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
   });
 
   test('the main-event ratio prices a registration; teens pay half', async () => {
-    await memberClient.from('user_parties').insert({
-      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
-    });
+    await saveOk(memberClient, RATIO_EVENT_ID, ADULT_MAIN_AND_TEEN, { id: RATIO_PARTY_ID });
     const owed = async () => Number((await memberClient.from('user_parties')
       .select('calculated_amount_owed').eq('id', RATIO_PARTY_ID).single()).data.calculated_amount_owed);
     // 0.5375 × 200 + 0.5 × 200 = 207.50 → 208.
@@ -431,9 +429,7 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
     const { error } = await adminAuthClient.from('events').update({ ratio_main_whole: 0.6 }).eq('id', RATIO_EVENT_ID);
     expect(error).toBeNull();
     await adminAuthClient.from('user_parties').delete().eq('id', RATIO_PARTY_ID);
-    await memberClient.from('user_parties').insert({
-      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: ADULT_MAIN_AND_TEEN
-    });
+    await saveOk(memberClient, RATIO_EVENT_ID, ADULT_MAIN_AND_TEEN, { id: RATIO_PARTY_ID });
     expect(await owed()).toBe(220);
   });
 
@@ -443,15 +439,13 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
     const { error } = await adminAuthClient.from('events')
       .update({ selling_price_whole_event: 205, ratio_main_whole: 0.6 }).eq('id', RATIO_EVENT_ID);
     expect(error).toBeNull();
-    await memberClient.from('user_parties').insert({
-      id: RATIO_PARTY_ID, user_id: MEMBER_ID, event_id: RATIO_EVENT_ID, attendees: [
-        { type: 'Adult', participation: 'Whole', is_new_member: false },
-        { type: 'Adult', participation: 'Main', is_new_member: false },
-        { type: 'Teenager', participation: 'Main', is_new_member: false },
-        { type: 'Teenager', participation: 'Whole', is_new_member: true },
-        { type: 'Kid', participation: 'Whole', is_new_member: false }
-      ]
-    });
+    await saveOk(memberClient, RATIO_EVENT_ID, [
+      { type: 'Adult', participation: 'Whole', is_new_member: false },
+      { type: 'Adult', participation: 'Main', is_new_member: false },
+      { type: 'Teenager', participation: 'Main', is_new_member: false },
+      { type: 'Teenager', participation: 'Whole', is_new_member: true },
+      { type: 'Kid', participation: 'Whole', is_new_member: false }
+    ], { id: RATIO_PARTY_ID });
     const { data } = await memberClient.from('user_parties')
       .select('calculated_amount_owed').eq('id', RATIO_PARTY_ID).single();
     expect(Number(data.calculated_amount_owed)).toBe(452);
@@ -662,8 +656,7 @@ describe('🚪 member self-cancellation (#35)', () => {
   test('a cancelled registration can be taken up again by the member', async () => {
     await seed(isoDay(60));
     await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
-    const { error } = await memberClient.from('user_parties')
-      .upsert({ user_id: MEMBER_ID, event_id: CANCEL_EVENT_ID, status: 'registered' }, { onConflict: 'user_id,event_id' });
+    const { error } = await save(memberClient, CANCEL_EVENT_ID, [{ type: 'Adult', participation: 'Whole' }]);
     expect(error).toBeNull();
     expect(await statusOf()).toBe('registered');
   });
@@ -680,39 +673,40 @@ describe('🚪 member self-cancellation (#35)', () => {
   });
 });
 
-// #94: payment_status, admin_notes and attendees[].assigned_bed are admin-only. A member's value is
-// ignored (not refused), since the member form sends them back on every save; beds carry over by
-// attendee name.
+// #94: payment_status, admin_notes and the attendees' assigned_bed are admin-only. A member's
+// party-level values are ignored (not refused); save_registration() never writes a bed, and a bed
+// stays with its attendee (by id, ADR 0018) whatever the member edits.
 describe('🛡️ admin-only registration fields (#94)', () => {
   jest.setTimeout(30000);
 
   const ADMIN_FIELDS_EVENT_ID = 'a0000000-a000-a000-a000-a00000000094';
   const ADMIN_FIELDS_PARTY_ID = 'a0000000-a000-a000-a000-a00000000095';
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
-  const attendee = (name, assignedBed = '') => ({
-    name, type: 'Adult', participation: 'Whole', is_new_member: false, assigned_bed: assignedBed
-  });
+  const attendee = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', is_new_member: false, ...fields });
 
   let memberClient;
   let adminAuthClient;
 
   const partyRow = async () => (await adminAuthClient.from('user_parties')
-    .select('payment_status, admin_notes, attendees, calculated_amount_owed, status')
-    .eq('id', ADMIN_FIELDS_PARTY_ID).single()).data;
+    .select('payment_status, admin_notes, calculated_amount_owed, status, attendees(id, name, assigned_bed)')
+    .eq('id', ADMIN_FIELDS_PARTY_ID)
+    .order('position', { referencedTable: 'attendees' })
+    .single()).data;
   const bedsOf = (row) => row.attendees.map(a => [a.name, a.assigned_bed]);
-
-  // What the member form does: an upsert on (user_id, event_id) sending everything back.
-  const memberFormSave = (fields) => memberClient.from('user_parties')
-    .upsert({ user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, status: 'registered', ...fields }, { onConflict: 'user_id,event_id' });
+  const idOf = (row, name) => row.attendees.find(a => a.name === name).id;
 
   // A party the admin has marked paid, annotated and given beds.
   const seedAdminManagedParty = async () => {
-    const { error: insertError } = await adminAuthClient.from('user_parties').insert({
-      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID,
-      attendees: [attendee('Ann', 'B1'), attendee('Bob', 'B2')],
-      payment_status: 'paid', admin_notes: 'secret'
-    });
-    if (insertError) throw insertError;
+    await saveOk(adminAuthClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann'), attendee('Bob')], { id: ADMIN_FIELDS_PARTY_ID, userId: MEMBER_ID });
+    const row = await partyRow();
+    for (const [name, bed] of [['Ann', 'B1'], ['Bob', 'B2']]) {
+      const { error } = await adminAuthClient.from('attendees').update({ assigned_bed: bed }).eq('id', idOf(row, name));
+      if (error) throw error;
+    }
+    const { error } = await adminAuthClient.from('user_parties')
+      .update({ payment_status: 'paid', admin_notes: 'secret' }).eq('id', ADMIN_FIELDS_PARTY_ID);
+    if (error) throw error;
+    return partyRow();
   };
 
   beforeAll(async () => {
@@ -732,12 +726,12 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     await adminAuthClient.from('user_parties').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
   });
 
-  test('a member inserting a party cannot set payment, notes or beds', async () => {
+  test('a member creating a party cannot set payment, notes or beds', async () => {
     const { error } = await memberClient.from('user_parties').insert({
-      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID,
-      attendees: [attendee('Ann', 'B1')], payment_status: 'paid', admin_notes: 'hax'
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, payment_status: 'paid', admin_notes: 'hax'
     });
     expect(error).toBeNull();
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { assigned_bed: 'B1' })]);
     const row = await partyRow();
     expect(row.payment_status).toBe('unpaid');
     expect(row.admin_notes).toBeNull();
@@ -745,13 +739,15 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   });
 
   test('a member updating their party cannot mark it paid, write notes or assign beds', async () => {
-    await memberClient.from('user_parties').insert({
-      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, attendees: [attendee('Ann')]
-    });
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann')], { id: ADMIN_FIELDS_PARTY_ID });
+    const annId = idOf(await partyRow(), 'Ann');
     const { error } = await memberClient.from('user_parties')
-      .update({ payment_status: 'paid', admin_notes: 'hax', attendees: [attendee('Ann', 'B1')] })
+      .update({ payment_status: 'paid', admin_notes: 'hax' })
       .eq('id', ADMIN_FIELDS_PARTY_ID);
     expect(error).toBeNull();
+    const { error: bedError } = await memberClient.from('attendees').update({ assigned_bed: 'B1' }).eq('id', annId);
+    expect(bedError).not.toBeNull();
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { id: annId, assigned_bed: 'B1' })]);
     const row = await partyRow();
     expect(row.payment_status).toBe('unpaid');
     expect(row.admin_notes).toBeNull();
@@ -759,25 +755,22 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   });
 
   test('an admin can set payment, notes and beds', async () => {
-    await memberClient.from('user_parties').insert({
-      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, attendees: [attendee('Ann')]
-    });
-    const { error } = await adminAuthClient.from('user_parties')
-      .update({ payment_status: 'paid', admin_notes: 'secret', attendees: [attendee('Ann', 'B1')] })
-      .eq('id', ADMIN_FIELDS_PARTY_ID);
-    expect(error).toBeNull();
-    const row = await partyRow();
+    const row = await seedAdminManagedParty();
     expect(row.payment_status).toBe('paid');
     expect(row.admin_notes).toBe('secret');
-    expect(bedsOf(row)).toEqual([['Ann', 'B1']]);
+    expect(bedsOf(row)).toEqual([['Ann', 'B1'], ['Bob', 'B2']]);
   });
 
-  test("a member's form save keeps a paid party paid, its notes and its grandfathered amount (#31)", async () => {
-    await seedAdminManagedParty();
+  test('an admin cannot change anything but the bed outside save_registration()', async () => {
+    const row = await seedAdminManagedParty();
+    const { error } = await adminAuthClient.from('attendees').update({ name: 'Zed' }).eq('id', idOf(row, 'Ann'));
+    expect(error?.message).toBe('attendees_write_through_save_registration');
+  });
+
+  test("a member's form save keeps a paid party paid, its notes, its beds and its grandfathered amount (#31)", async () => {
+    const seeded = await seedAdminManagedParty();
     await adminAuthClient.from('events').update({ selling_price_whole_event: 500 }).eq('id', ADMIN_FIELDS_EVENT_ID);
-    const { error } = await memberFormSave({
-      attendees: [attendee('Ann', 'B1'), attendee('Bob', 'B2')], payment_status: 'unpaid', admin_notes: null
-    });
+    const { error } = await save(memberClient, ADMIN_FIELDS_EVENT_ID, seeded.attendees.map(a => attendee(a.name, { id: a.id })));
     await adminAuthClient.from('events').update({ selling_price_whole_event: 100 }).eq('id', ADMIN_FIELDS_EVENT_ID);
     expect(error).toBeNull();
     const row = await partyRow();
@@ -787,30 +780,193 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     expect(bedsOf(row)).toEqual([['Ann', 'B1'], ['Bob', 'B2']]);
   });
 
-  test('beds follow attendee names: removing the first attendee does not shift beds', async () => {
-    await seedAdminManagedParty();
-    // The form sends beds back by position, so after removing Ann, Bob arrives with Ann's bed.
-    const { error } = await memberFormSave({ attendees: [attendee('Bob', 'B1'), attendee('Cat', 'B9')] });
-    expect(error).toBeNull();
+  test('beds stay with their attendee: removing the first one does not shift them', async () => {
+    const seeded = await seedAdminManagedParty();
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Bob', { id: idOf(seeded, 'Bob') }), attendee('Cat')]);
     expect(bedsOf(await partyRow())).toEqual([['Bob', 'B2'], ['Cat', '']]);
   });
 
-  test('renaming an attendee clears only that attendee\'s bed', async () => {
-    await seedAdminManagedParty();
-    const { error } = await memberFormSave({ attendees: [attendee('Ann', 'B1'), attendee('Rob', 'B2')] });
-    expect(error).toBeNull();
-    expect(bedsOf(await partyRow())).toEqual([['Ann', 'B1'], ['Rob', '']]);
+  test('renaming an attendee keeps their bed: it is the same person', async () => {
+    const seeded = await seedAdminManagedParty();
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [
+      attendee('Ann', { id: idOf(seeded, 'Ann') }), attendee('Rob', { id: idOf(seeded, 'Bob') })
+    ]);
+    expect(bedsOf(await partyRow())).toEqual([['Ann', 'B1'], ['Rob', 'B2']]);
   });
 
   test('re-registering over their own cancelled paid party keeps it paid (#35)', async () => {
     await seedAdminManagedParty();
     await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', ADMIN_FIELDS_PARTY_ID);
-    const { error } = await memberFormSave({ attendees: [attendee('Ann'), attendee('Bob')], payment_status: 'unpaid' });
+    const { error } = await save(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann'), attendee('Bob')]);
     expect(error).toBeNull();
     const row = await partyRow();
     expect(row.status).toBe('registered');
     expect(row.payment_status).toBe('paid');
     expect(row.admin_notes).toBe('secret');
+  });
+});
+
+// #118: the capacity check counts every party of the event, whoever writes.
+describe('👥 capacity and waitlist see every party (#118)', () => {
+  jest.setTimeout(30000);
+
+  const CAPACITY_EVENT_ID = 'a0000000-a000-a000-a000-a00000000118';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+
+  let memberClient;
+  let adminAuthClient;
+
+  const waitlistedOf = async (userId) => (await adminAuthClient.from('user_parties')
+    .select('is_waitlisted').eq('event_id', CAPACITY_EVENT_ID).eq('user_id', userId).single()).data.is_waitlisted;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', CAPACITY_EVENT_ID);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: CAPACITY_EVENT_ID, theme: 'Capacity Test', status: 'ACTIVE', max_attendees: 1
+    });
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', CAPACITY_EVENT_ID);
+  });
+
+  test('a member registering past capacity is waitlisted', async () => {
+    await saveOk(adminAuthClient, CAPACITY_EVENT_ID, ONE_ADULT_WHOLE);
+    const party = await saveOk(memberClient, CAPACITY_EVENT_ID, ONE_ADULT_WHOLE);
+    expect(party.is_waitlisted).toBe(true);
+  });
+
+  test("a member cancelling their own registration promotes someone else's waitlisted party", async () => {
+    const party = await saveOk(memberClient, CAPACITY_EVENT_ID, ONE_ADULT_WHOLE);
+    await saveOk(adminAuthClient, CAPACITY_EVENT_ID, ONE_ADULT_WHOLE);
+    expect(await waitlistedOf(ADMIN_ID)).toBe(true);
+
+    const { error } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(error).toBeNull();
+    expect(await waitlistedOf(ADMIN_ID)).toBe(false);
+  });
+});
+
+// #126 (ADR 0018): attendees are rows of their own table, with the party's access, written only
+// through save_registration().
+describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
+  jest.setTimeout(30000);
+
+  const ATTENDEES_EVENT_ID = 'a0000000-a000-a000-a000-a00000000126';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
+  const person = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', ...fields });
+
+  let memberClient;
+  let adminAuthClient;
+  let memberParty;
+  let adminParty;
+
+  const attendeesOf = async (partyId) => (await adminAuthClient.from('attendees')
+    .select('id, name, position').eq('party_id', partyId).order('position')).data;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', ATTENDEES_EVENT_ID);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: ATTENDEES_EVENT_ID, theme: 'Attendees Test', status: 'ACTIVE', selling_price_whole_event: 100,
+      event_start_date: isoDay(60), x_reg_close_weeks: 1
+    });
+    if (error) throw error;
+    memberParty = await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Ann'), person('Bob')]);
+    adminParty = await saveOk(adminAuthClient, ATTENDEES_EVENT_ID, [person('Zed')]);
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', ATTENDEES_EVENT_ID);
+  });
+
+  test("a member reads their own party's attendees, in order, and no one else's", async () => {
+    const { data } = await memberClient.from('user_parties')
+      .select('id, attendees(name)').eq('event_id', ATTENDEES_EVENT_ID)
+      .order('position', { referencedTable: 'attendees' });
+    expect(data).toEqual([{ id: memberParty.id, attendees: [{ name: 'Ann' }, { name: 'Bob' }] }]);
+
+    const { data: others } = await memberClient.from('attendees').select('id').eq('party_id', adminParty.id);
+    expect(others).toEqual([]);
+  });
+
+  test('a member cannot write attendees directly, even in their own party', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const writes = [
+      memberClient.from('attendees').insert({ party_id: memberParty.id, position: 9, name: 'X', type: 'Adult', participation: 'Whole' }),
+      memberClient.from('attendees').update({ name: 'X' }).eq('id', ann.id),
+      memberClient.from('attendees').delete().eq('id', ann.id)
+    ];
+    for (const { error } of await Promise.all(writes)) expect(error).not.toBeNull();
+    expect((await attendeesOf(memberParty.id)).map(a => a.name)).toEqual(['Ann', 'Bob']);
+  });
+
+  test("a member cannot save someone else's registration, nor take over their attendees by id", async () => {
+    const { error } = await save(memberClient, ATTENDEES_EVENT_ID, [person('X')], { userId: adminParty.user_id });
+    expect(error).not.toBeNull();
+
+    const [zed] = await attendeesOf(adminParty.id);
+    await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Ann'), person('Stolen', { id: zed.id })]);
+    expect(await attendeesOf(adminParty.id)).toEqual([zed]);
+    expect((await attendeesOf(memberParty.id)).map(a => a.name)).toEqual(['Ann', 'Stolen']);
+  });
+
+  test('saving updates attendees by id, adds new ones, removes the others and keeps the order', async () => {
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Cat'), person('Bobby', { id: bob.id })]);
+    const after = await attendeesOf(memberParty.id);
+    expect(after.map(a => [a.name, a.position])).toEqual([['Cat', 1], ['Bobby', 2]]);
+    expect(after[1].id).toBe(bob.id);
+    expect(after.map(a => a.id)).not.toContain(ann.id);
+  });
+
+  test('an attendee with an invalid type or no name is refused, and nothing is saved', async () => {
+    for (const bad of [person('Ann', { type: 'Alien' }), person('  ')]) {
+      const { error } = await save(memberClient, ATTENDEES_EVENT_ID, [bad]);
+      expect(error).not.toBeNull();
+    }
+    expect((await attendeesOf(memberParty.id)).map(a => a.name)).toEqual(['Ann', 'Bob']);
+  });
+
+  test("the edit history records attendee changes; creating the registration isn't an edit", async () => {
+    const edits = async () => (await memberClient.from('registration_edits')
+      .select('changes').eq('registration_id', memberParty.id)).data;
+    expect(await edits()).toEqual([]);
+    expect(memberParty.edit_count).toBe(0);
+
+    await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Ann')]);
+    const [edit] = await edits();
+    expect(edit.changes.attendees.old.map(a => a.name)).toEqual(['Ann', 'Bob']);
+    expect(edit.changes.attendees.new.map(a => a.name)).toEqual(['Ann']);
+    expect(edit.changes.calculated_amount_owed).toEqual({ old: 200, new: 100 });
+  });
+
+  test('after the close date a member cannot remove an attendee, but can replace one', async () => {
+    await adminAuthClient.from('events').update({ event_start_date: isoDay(3) }).eq('id', ATTENDEES_EVENT_ID);
+    const [ann] = await attendeesOf(memberParty.id);
+
+    const { error: removeError } = await save(memberClient, ATTENDEES_EVENT_ID, [person('Ann', { id: ann.id })]);
+    expect(removeError?.message).toMatch(/verrouillées/);
+
+    const { error: replaceError } = await save(memberClient, ATTENDEES_EVENT_ID, [person('Ann', { id: ann.id }), person('Cat')]);
+    expect(replaceError).toBeNull();
+  });
+
+  test("deleting a party deletes its attendees", async () => {
+    const { error } = await adminAuthClient.from('user_parties').delete().eq('id', memberParty.id);
+    expect(error).toBeNull();
+    expect(await attendeesOf(memberParty.id)).toEqual([]);
   });
 });
 
@@ -837,13 +993,7 @@ describe('🗑️ soft account deletion (#36)', () => {
     createdUserIds.push(data.user.id);
     return { id: data.user.id, client: await signIn(email) };
   };
-  const register = async (userId, eventId) => {
-    const { data, error } = await adminAuthClient.from('user_parties')
-      .insert({ user_id: userId, event_id: eventId, attendees: ONE_ATTENDEE, status: 'registered' })
-      .select('id').single();
-    if (error) throw error;
-    return data.id;
-  };
+  const register = async (userId, eventId) => (await saveOk(adminAuthClient, eventId, ONE_ATTENDEE, { userId })).id;
   const partiesOf = async (userId) => (await adminAuthClient.from('user_parties')
     .select('event_id, status').eq('user_id', userId).order('event_id')).data;
   const deletedAtOf = async (userId) => (await adminAuthClient.from('profiles')
@@ -919,8 +1069,7 @@ describe('🗑️ soft account deletion (#36)', () => {
     const { data: ownParties } = await member.client.from('user_parties').select('id');
     expect(ownParties).toEqual([]);
 
-    const { error: insertError } = await member.client.from('user_parties')
-      .insert({ user_id: member.id, event_id: UPCOMING_EVENT_ID, attendees: ONE_ATTENDEE });
+    const { error: insertError } = await save(member.client, UPCOMING_EVENT_ID, ONE_ATTENDEE);
     expect(insertError).not.toBeNull();
 
     const { error: feedbackError } = await member.client.from('app_feedback').insert({ user_id: member.id, content: 'x' });

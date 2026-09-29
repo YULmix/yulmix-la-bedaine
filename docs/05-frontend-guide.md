@@ -188,8 +188,6 @@ Tracked in [GitHub Issues](https://github.com/YULmix/yulmix-la-bedaine/issues), 
 - `aggregateTotals()` (`src/views/AdminView.jsx:292`) builds a zeroed object and returns it without
   counting anything. It is also never called — dead code that looks authoritative. See
   [issue #41](https://github.com/YULmix/yulmix-la-bedaine/issues/41).
-- Admin aggregates read `party.counts`, which the counts trigger fills with zeros (see
-  [data model](./03-data-model.md#user_partiesattendees)).
 - The registration form has **two** "Annuler" buttons (`RegistrationForm.jsx:556`, `:560`) and no
   "Se désinscrire" action at all, despite both being specified.
 - `App.jsx:70` invents an active event when none exists — it promotes the newest event

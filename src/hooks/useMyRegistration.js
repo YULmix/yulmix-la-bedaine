@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 
 // The signed-in member's registration (user_parties row) for the active event. Shared by the
 // home page and /inscription so both read the same row the same way.
@@ -22,11 +23,11 @@ export const useMyRegistration = (activeEvent, isAuthenticated) => {
       if (userError) throw userError;
       if (!user) return;
 
-      const { data, error: regError } = await supabase
+      const { data, error: regError } = await orderAttendees(supabase
         .from('user_parties')
-        .select('*')
+        .select(PARTY_WITH_ATTENDEES)
         .eq('user_id', user.id)
-        .eq('event_id', activeEvent.id)
+        .eq('event_id', activeEvent.id))
         .maybeSingle();
       if (regError) throw regError;
       setRegistration(data || null);

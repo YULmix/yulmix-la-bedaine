@@ -8,13 +8,14 @@ the heading and the rest are listed under _Avoid_.
 
 **Party** (fr. *groupe*, *inscription*)
 One person's registration, covering everyone they are signing up — themselves, partner, kids,
-friends. Stored as one row in `user_parties` with an `attendees` JSONB array. A party is the unit
-of payment: one amount owed, one payment status.
+friends. Stored as one row in `user_parties`, with one `attendees` row per person. A party is the
+unit of payment: one amount owed, one payment status.
 _Avoid_: booking, group booking, family.
 
 **Attendee** (fr. *participant*)
 One human inside a party. Has a name, a tier, a new-member flag, and their own sleeping and
-dietary preferences. Not a database row — an object inside `user_parties.attendees`.
+dietary preferences. A row of `attendees`, referenced by its `party_id` and ordered by `position`
+([ADR 0018](./adr/0018-attendees-in-their-own-table.md)).
 _Avoid_: guest, member (a member is a person in the friend group, not a row in a party).
 
 **Tier** (fr. *type de participation*)
@@ -117,9 +118,9 @@ afterwards. Nobody gets an invoice after they have already settled.
 Requesting a bed requires a reason (`health`, `children`, `comfort`) because beds are scarce.
 _Avoid_: accommodation type, room.
 
-**Assigned spot** (`logistics.sleeping.assigned`)
-The sleeping place an organiser has actually allocated. Admin-write only; the member's `pref` is
-a request, `assigned` is the answer.
+**Assigned spot** (`attendees.assigned_bed`)
+The sleeping place an organiser has actually allocated to an attendee. Admin-write only; the
+attendee's `sleeping_preference` is a request, `assigned_bed` is the answer.
 
 **Volunteering** (fr. *bénévolat*)
 A multi-select of jobs a party offers to take on (food purchase, cooking, DJ, setup, cleanup,

@@ -39,6 +39,15 @@ function check({ data, error }, what) {
   return data;
 }
 
+// A registration saved the way the app saves one (save_registration(), ADR 0018), for userId.
+// Returns its id.
+async function saveParty(db, eventId, userId, attendees, what) {
+  return check(
+    await db.rpc('save_registration', { p_event_id: eventId, p_attendees: attendees, p_user_id: userId }),
+    what
+  ).id;
+}
+
 // Makes our event the single active one and gives the seeded member a fresh registration
 // (2 attendees, no bed assignments, no admin notes). Returns { eventId, partyId }.
 // eventOverrides sets extra event fields for one spec (e.g. an event_start_date that puts the
@@ -83,22 +92,9 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     await db.from('user_parties').delete().eq('event_id', eventId).eq('user_id', MEMBER_ID),
     'delete old e2e party'
   );
-  const party = check(
-    await db
-      .from('user_parties')
-      .insert({
-        user_id: MEMBER_ID,
-        event_id: eventId,
-        attendees: E2E_ATTENDEES,
-        status: 'registered',
-        payment_status: 'unpaid'
-      })
-      .select('id')
-      .single(),
-    'create e2e party'
-  );
+  const partyId = await saveParty(db, eventId, MEMBER_ID, E2E_ATTENDEES, 'create e2e party');
 
-  return { eventId, partyId: party.id };
+  return { eventId, partyId };
 }
 
 // The event's admin-only budget row (#109), or null.
@@ -125,10 +121,20 @@ export async function getParty(partyId) {
   return check(
     await db
       .from('user_parties')
-      .select('attendees, admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .select('attendees(*), admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
       .eq('id', partyId)
+      .order('position', { referencedTable: 'attendees' })
       .single(),
     'read e2e party'
+  );
+}
+
+// An admin assigning a bed to the party's nth attendee (1-based), as the Logistique tab does.
+export async function assignBed(partyId, position, bed) {
+  const db = await adminClient();
+  check(
+    await db.from('attendees').update({ assigned_bed: bed }).eq('party_id', partyId).eq('position', position),
+    'assign e2e bed'
   );
 }
 
@@ -137,10 +143,7 @@ export async function getParty(partyId) {
 export async function createParty(eventId, userId, attendees) {
   const db = await adminClient();
   check(await db.from('user_parties').delete().eq('event_id', eventId).eq('user_id', userId), 'delete old extra party');
-  return check(
-    await db.from('user_parties').insert({ user_id: userId, event_id: eventId, attendees }).select('id').single(),
-    'create extra party'
-  ).id;
+  return saveParty(db, eventId, userId, attendees, 'create extra party');
 }
 
 export async function deleteParty(partyId) {
@@ -196,13 +199,11 @@ export async function deleteThrowawayMember(userId) {
 
 export async function addParty(userId, eventId, status = 'registered') {
   const db = await adminClient();
-  return check(
-    await db.from('user_parties')
-      .insert({ user_id: userId, event_id: eventId, attendees: E2E_ATTENDEES, status })
-      .select('id')
-      .single(),
-    'create throwaway party'
-  ).id;
+  const partyId = await saveParty(db, eventId, userId, E2E_ATTENDEES, 'create throwaway party');
+  if (status !== 'registered') {
+    check(await db.from('user_parties').update({ status }).eq('id', partyId), 'set throwaway party status');
+  }
+  return partyId;
 }
 
 export async function getProfile(userId) {

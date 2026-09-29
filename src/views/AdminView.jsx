@@ -21,6 +21,8 @@ import {
   getPaymentStatusShortLabel,
   isActiveRegistration
 } from '../lib/registrationOptions';
+import { tierCountsOf } from '../lib/adminStats';
+import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
@@ -234,14 +236,14 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
 
   const fetchParties = async (eventId) => {
     try {
-      const { data: partiesData, error } = await supabase
+      const { data: partiesData, error } = await orderAttendees(supabase
         .from('user_parties')
         .select(`
-          *,
+          ${PARTY_WITH_ATTENDEES},
           profiles!inner(id, email, full_name, is_admin, created_at, deleted_at)
         `)
         .eq('event_id', eventId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true }));
       if (error) throw error;
       // A deleted account's registrations for events to come were cancelled with it (#36): it's no
       // longer a member of this edition. Its other registrations stay, as history.
@@ -483,23 +485,18 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     if (!party) return;
 
     try {
-      const updatedAttendees = (party.attendees || []).map((attendee, index) => (
-        changes.attendees && changes.attendees[index] !== undefined
-          ? { ...attendee, assigned_bed: changes.attendees[index] }
-          : attendee
-      ));
+      // A bed label is the one attendee field an admin writes directly (ADR 0018).
+      const bedUpdates = Object.entries(changes.attendees || {})
+        .map(([index, bed]) => ({ attendee: (party.attendees || [])[index], bed }))
+        .filter(({ attendee, bed }) => attendee && bed !== attendee.assigned_bed)
+        .map(({ attendee, bed }) => supabase.from('attendees').update({ assigned_bed: bed }).eq('id', attendee.id));
+      const partyUpdate = changes.adminNotes !== undefined
+        ? [supabase.from('user_parties').update({ admin_notes: changes.adminNotes }).eq('id', partyId)]
+        : [];
 
-      const updateData = {
-        attendees: updatedAttendees,
-        admin_notes: changes.adminNotes !== undefined ? changes.adminNotes : party.admin_notes
-      };
-
-      const { error } = await supabase
-        .from('user_parties')
-        .update(updateData)
-        .eq('id', partyId);
-
-      if (error) throw error;
+      const results = await Promise.all([...bedUpdates, ...partyUpdate]);
+      const failed = results.find(result => result.error);
+      if (failed) throw failed.error;
 
       addToast(fr.logisticsUpdatedToast, 'success');
 
@@ -551,7 +548,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     
     const rows = activeParties.map(party => {
       const profile = party.profiles || {};
-      const counts = party.counts || {};
+      const counts = tierCountsOf(party.attendees);
 
       return [
         `"${profile.full_name || ''}"`,
@@ -570,7 +567,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     
     // Add totals row
     const totals = activeParties.reduce((acc, party) => {
-      const counts = party.counts || {};
+      const counts = tierCountsOf(party.attendees);
       return {
         adultWhole: acc.adultWhole + (counts.adult_whole || 0),
         adultMain: acc.adultMain + (counts.adult_main || 0),
@@ -633,7 +630,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     
     const rows = activeParties.map(party => {
       const profile = party.profiles || {};
-      const counts = party.counts || {};
+      const counts = tierCountsOf(party.attendees);
 
       return [
         profile.full_name || '',
@@ -652,7 +649,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     
     // Add totals row
     const totals = activeParties.reduce((acc, party) => {
-      const counts = party.counts || {};
+      const counts = tierCountsOf(party.attendees);
       return {
         adultWhole: acc.adultWhole + (counts.adult_whole || 0),
         adultMain: acc.adultMain + (counts.adult_main || 0),

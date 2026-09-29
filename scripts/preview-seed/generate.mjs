@@ -3,9 +3,9 @@
 // Dates are emitted relative to current_date, so the data never goes stale.
 //
 // Runs during `supabase db reset` after the migrations and supabase/seed.sql (which creates
-// member@test.local ...0001 and admin@test.local ...0002). Only INSERTs: counts,
-// calculated_amount_owed and is_waitlisted come from the user_parties triggers, profiles from
-// handle_new_user(). The last statement installs the Preview-only "new accounts are admins"
+// member@test.local ...0001 and admin@test.local ...0002). Registrations go through
+// save_registration(), so calculated_amount_owed and is_waitlisted come from the database, profiles
+// from handle_new_user(). The last statement installs the Preview-only "new accounts are admins"
 // trigger, after the seeded users exist so they stay regular members.
 //
 // Option values come from ./options.js, which mirrors src/lib/registrationOptions.js (Node can't
@@ -202,10 +202,6 @@ function generateParty(faker, { member, partiesConfig, paid }) {
   return {
     attendees,
     logistics: {
-      food_requests: {
-        requests: attendees.map((a) => a.dietary_needs).join(', '),
-        notes: attendees.map((a) => a.dietary_other).filter(Boolean).join(', ')
-      },
       volunteering,
       volunteering_other: volunteering.includes('other') ? faker.helpers.arrayElement(VOLUNTEERING_OTHER) : ''
     },
@@ -356,9 +352,9 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
 `);
 
   if (registrations.length) {
-    // One INSERT per row, in order: the capacity trigger waitlists whoever arrives once the
-    // event is full, so insertion order is registration order.
-    out.push(`-- ${registrations.length} registrations (counts, amounts and waitlisting computed by triggers)`);
+    // Through save_registration(), the app's own write path, one row at a time in registration
+    // order: the capacity trigger waitlists whoever arrives once the event is full.
+    out.push(`-- ${registrations.length} registrations (amounts and waitlisting computed by the database)`);
     const sorted = [...registrations].sort((a, b) => b.daysAgo - a.daysAgo);
     for (const r of sorted) {
       const transport = r.transportType === ''
@@ -366,14 +362,39 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
         : `jsonb_build_object('type', ${lit(r.transportType)}, 'seats', ${r.transportType === 'offer' ? r.seats : 0},
       'arrival', to_char(${dateExpr(r.event.startDays)} + time '17:30', 'YYYY-MM-DD"T"HH24:MI'),
       'departure', to_char(${dateExpr(r.event.startDays + 2)} + time '14:00', 'YYYY-MM-DD"T"HH24:MI'))`;
-      out.push(`INSERT INTO public.user_parties (user_id, event_id, attendees, logistics, transport, music_requests,
-  message_to_organizers, status, payment_status, admin_notes, created_at, last_edited_at)
-VALUES (${lit(r.userId)}, ${lit(r.event.id)},
-  ${jsonb(r.attendees)},
-  ${jsonb(r.logistics)},
-  ${transport},
-  ${lit(r.music)}, ${lit(r.message)}, 'registered', ${lit(r.paymentStatus)}, ${lit(r.adminNotes)},
-  now() - make_interval(days => ${r.daysAgo}), now() - make_interval(days => ${r.daysAgo}));`);
+      out.push(`SELECT FROM public.save_registration(${lit(r.event.id)}, ${jsonb(r.attendees)},
+  jsonb_build_object('logistics', ${jsonb(r.logistics)}, 'transport', ${transport},
+    'music_requests', ${lit(r.music)}, 'message_to_organizers', ${lit(r.message)}),
+  ${lit(r.userId)});`);
+    }
+
+    // What happened after registering: the date it was made, the admin marking it paid, notes.
+    // Set without triggers, so none of it counts as an edit or changes the amount owed.
+    out.push(`
+ALTER TABLE public.user_parties DISABLE TRIGGER USER;
+UPDATE public.user_parties p
+SET created_at = now() - make_interval(days => v.days_ago),
+    last_edited_at = now() - make_interval(days => v.days_ago),
+    payment_status = v.payment_status,
+    admin_notes = v.admin_notes
+FROM (VALUES
+${sorted.map((r) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${r.daysAgo}, ${lit(r.paymentStatus)}, ${lit(r.adminNotes)})`).join(',\n')}
+) AS v(user_id, event_id, days_ago, payment_status, admin_notes)
+WHERE p.user_id = v.user_id AND p.event_id = v.event_id;
+ALTER TABLE public.user_parties ENABLE TRIGGER USER;`);
+
+    // Beds an admin assigned (the one attendee field written directly).
+    const beds = sorted.flatMap((r) => r.attendees
+      .map((a, i) => ({ r, position: i + 1, bed: a.assigned_bed }))
+      .filter(({ bed }) => bed));
+    if (beds.length) {
+      out.push(`
+UPDATE public.attendees a
+SET assigned_bed = v.bed
+FROM public.user_parties p, (VALUES
+${beds.map(({ r, position, bed }) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${position}, ${lit(bed)})`).join(',\n')}
+) AS v(user_id, event_id, position, bed)
+WHERE p.user_id = v.user_id AND p.event_id = v.event_id AND a.party_id = p.id AND a.position = v.position;`);
     }
     out.push('');
   }
@@ -429,7 +450,8 @@ ${flags}
 ),
 parties AS (
   SELECT p.id, p.created_at, pr.email, f.promoted, f.problem, p.is_waitlisted,
-         p.payment_status = 'paid' AS paid, private.has_assigned_bed(p.attendees) AS has_bed
+         p.payment_status = 'paid' AS paid,
+         EXISTS (SELECT 1 FROM public.attendees a WHERE a.party_id = p.id AND a.assigned_bed ~ '\\S') AS has_bed
   FROM public.user_parties p
   JOIN public.profiles pr ON pr.id = p.user_id
   JOIN flags f ON f.user_id = p.user_id
@@ -471,7 +493,7 @@ CROSS JOIN LATERAL (VALUES
   ('registration', NOT p.is_waitlisted),
   ('waitlist', p.is_waitlisted),
   ('payment', p.payment_status = 'paid'),
-  ('accommodation', private.has_assigned_bed(p.attendees))
+  ('accommodation', EXISTS (SELECT 1 FROM public.attendees a WHERE a.party_id = p.id AND a.assigned_bed ~ '\\S'))
 ) AS t(template, applies)
 WHERE t.applies
 ON CONFLICT (party_id, template) DO NOTHING;

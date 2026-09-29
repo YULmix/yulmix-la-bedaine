@@ -16,14 +16,14 @@
  * A registration is priced at the base price and ratio locked when it was made (#117), not the
  * event's current ones: see partyPricingOf.
  *
- * The database computes the authoritative amount (calculate_party_amount_owed); this module is the
+ * The database computes the authoritative amount (private.party_amount_owed); this module is the
  * live estimate shown in the UI and the admin simulator. The two must agree.
  */
 
 // The main-event share before it became a per-event setting: 1.075 / 2.0 points.
 export const DEFAULT_PRICE_RATIOS = Object.freeze({ mainWhole: 0.5375 });
 
-// Teens pay half the adult price of the same tier. Fixed, also in calculate_party_amount_owed.
+// Teens pay half the adult price of the same tier. Fixed, also in private.party_amount_owed.
 export const TEEN_SHARE = 0.5;
 
 const toRatio = (value, fallback) => {
