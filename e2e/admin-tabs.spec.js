@@ -280,7 +280,7 @@ test.describe('admin tabs', () => {
 
     // Nothing was written: the draft only lives in page state.
     const party = await getParty(seeded.partyId);
-    expect(party.attendees[0].assigned_bed).toBeUndefined();
+    expect(party.attendees[0].assigned_bed).toBe('');
     expect(party.admin_notes).toBeNull();
   });
 

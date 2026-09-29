@@ -1,7 +1,7 @@
 import { PAYMENT_STATUS, isActiveRegistration } from './registrationOptions.js';
 
-// Aggregates for the admin overview, derived from each party's attendees array rather than
-// user_parties.counts, which the counts trigger leaves at zero (see docs/03-data-model.md, #41).
+// Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
+// attendees is stored on the party).
 
 const TIERS = ['adult_whole', 'adult_main', 'teen_whole', 'teen_main', 'kids'];
 
@@ -10,6 +10,12 @@ export const tierOf = (attendee) => {
   const age = attendee.type === 'Teenager' ? 'teen' : 'adult';
   return `${age}_${attendee.participation === 'Main' ? 'main' : 'whole'}`;
 };
+
+/** Headcount per tier: { adult_whole, adult_main, teen_whole, teen_main, kids }. */
+export const tierCountsOf = (attendees = []) => attendees.reduce(
+  (counts, attendee) => ({ ...counts, [tierOf(attendee)]: counts[tierOf(attendee)] + 1 }),
+  Object.fromEntries(TIERS.map(tier => [tier, 0]))
+);
 
 // What a party owes is what the database computed (#117): an unpaid party is priced at the price
 // it locked when it registered, a paid one keeps what it paid. Never re-run the pricing engine at

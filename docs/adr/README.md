@@ -28,4 +28,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0015](./0015-dedicated-preview-supabase-project.md) | A dedicated free-tier Supabase project for Vercel Preview, instead of sharing production | accepted |
 | [0016](./0016-edge-function-for-transactional-email.md) | Transactional email is sent by one Supabase Edge Function, triggered from Postgres | accepted |
 | [0017](./0017-lock-price-per-registration.md) | A registration keeps the base price and ratio it was made at; a price change only affects new ones | accepted; reverses the repricing of #32/#109 |
-| [0018](./0018-attendees-in-their-own-table.md) | Attendees live in their own table, referenced by foreign key; no derived copies on `user_parties` | accepted, not yet implemented (#126); supersedes 0004 |
+| [0018](./0018-attendees-in-their-own-table.md) | Attendees live in their own table, referenced by foreign key; no derived copies on `user_parties` | accepted, implemented (#126); supersedes 0004 |

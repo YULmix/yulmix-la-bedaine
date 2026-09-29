@@ -10,7 +10,8 @@ the JSON kept in sync by five more (draft PR [#125](https://github.com/YULmix/yu
 **Attendees become rows of an `attendees` table, referenced by foreign key; `user_parties` keeps
 no derived copy of attendee data** ([issue #126](https://github.com/YULmix/yulmix-la-bedaine/issues/126)).
 
-**Status: accepted** (September 2026), not yet implemented. Supersedes ADR 0004.
+**Status: accepted** (September 2026), implemented by #126 (migration
+`20260929003000_attendees_table.sql`). Supersedes ADR 0004.
 
 ```mermaid
 erDiagram
@@ -50,6 +51,15 @@ erDiagram
   are saved through one function, `save_registration(...)` (`SECURITY INVOKER`, so RLS still
   applies), which writes the party and its attendees and recomputes the party's derived fields
   (amount owed, waitlist). It is the single write path for members and admins.
+- Because the function runs with the caller's grants, direct writes can't be revoked from
+  `authenticated` without blocking the function too. Instead a trigger on `attendees` refuses any
+  client write that isn't part of a `save_registration()` call, which marks the party it saves in a
+  transaction-local setting that clients can't set through PostgREST. The one direct write left is
+  an admin changing an attendee's `assigned_bed`, the free-text bed label that #113 replaces with
+  place assignments.
+- Deployed in one step: the migration backfills the table, rewires the triggers and drops
+  `user_parties.attendees` and `counts` together. A tab still running the previous frontend gets an
+  error on save until it reloads, which the traffic makes acceptable.
 - Every trigger that reads `user_parties.attendees` moves to the table: amount owed and the price
   lock, capacity and waitlist, waitlist promotion, the close-date lock, the audit log, and the
   email trigger. The Edge Function reads attendees and places through a join.

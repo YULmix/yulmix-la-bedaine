@@ -197,11 +197,11 @@ describe('pricingEngine — per-event main-event ratio (#109)', () => {
     }
   });
 
-  test('reads is_new_member as stored in user_parties.attendees', () => {
+  test('reads is_new_member as stored in the attendees table', () => {
     expect(one({ type: 'Adult', participation: 'Whole', is_new_member: true })).toBe(120);
   });
 
-  test('matches calculate_party_amount_owed for a mixed party (same case checked in SQL)', () => {
+  test('matches private.party_amount_owed for a mixed party (same case checked in SQL)', () => {
     const attendees = [
       { type: 'Adult', participation: 'Main' },
       { type: 'Teenager', participation: 'Whole' },
@@ -241,7 +241,7 @@ describe('pricingEngine — each attendee rounded up to the dollar (#120)', () =
     expect(owed([adultMain, adultMain], 200)).toBe(216);
   });
 
-  test('matches calculate_party_amount_owed for a mixed party whose lines round up (same case checked in SQL)', () => {
+  test('matches private.party_amount_owed for a mixed party whose lines round up (same case checked in SQL)', () => {
     const ratios = { mainWhole: 0.6 };
     const attendees = [
       { type: 'Adult', participation: 'Whole' },

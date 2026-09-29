@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
 import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
@@ -63,11 +64,11 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const handleCancel = async () => {
     setCancelling(true);
     try {
-      const { data, error: cancelError } = await supabase
+      const { data, error: cancelError } = await orderAttendees(supabase
         .from('user_parties')
         .update({ status: REGISTRATION_STATUS.CANCELLED })
         .eq('id', registration.id)
-        .select()
+        .select(PARTY_WITH_ATTENDEES))
         .single();
       if (cancelError) throw cancelError;
       setConfirmingCancel(false);

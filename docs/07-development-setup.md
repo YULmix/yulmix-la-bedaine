@@ -440,7 +440,8 @@ assigned, all `sent`. Past editions' rows are `backfilled`, like the migration t
 
 Names come from [faker](https://fakerjs.dev/) with a French-Canadian locale; free text (notes,
 messages, allergies) is picked from French phrase lists in `scripts/preview-seed/generate.mjs`.
-Amounts, counts and waitlisting are computed by the database triggers, as for real registrations.
+Amounts and waitlisting are computed by the database, as for real registrations (registrations go
+through `save_registration()`).
 
 To look at the data without touching any database: `npm run db:seed:generate` (add
 `-- --seed <n>` for another variant) and open `supabase/seeds/preview.generated.sql`. To load it

@@ -111,24 +111,22 @@ sequenceDiagram
   RF-->>U: live total ("Montant dû")
   U->>RF: Sauvegarder
   RF->>PG: select profiles (self-heal: upsert if missing)
-  RF->>PG: upsert user_parties on (user_id, event_id)
-  Note over PG: BEFORE trigger enforce_calculated_amount_owed locks the price, computes the amount<br/>BEFORE trigger update_attendee_counts recomputes counts<br/>BEFORE trigger enforce_capacity_and_waitlist overrides is_waitlisted<br/>BEFORE trigger increment_edit_count bumps edit_count<br/>AFTER trigger log_registration_edit writes registration_edits
-  PG-->>RF: upserted row
+  RF->>PG: rpc save_registration(event, attendees, party-wide fields)
+  Note over PG: one transaction, under the caller's RLS:<br/>upsert user_parties on (user_id, event_id)<br/>update / insert / delete attendees rows by id<br/>update the party, whose triggers run:<br/>enforce_calculated_amount_owed locks the price, computes the amount<br/>enforce_capacity_and_waitlist sets is_waitlisted<br/>increment_edit_count bumps edit_count<br/>log_registration_edit writes registration_edits
+  PG-->>RF: saved party
+  RF->>PG: select user_parties(*, attendees(*))
+  PG-->>RF: party with its attendees
   RF-->>U: toast, then full page reload
 ```
 
 Two things to notice, because they shape every future change:
 
-1. **The amount owed is computed in the browser and written as a value.** The database does not
-   recompute or validate it (`src/components/RegistrationForm.jsx:312`). A member could post any
-   number. This is the single largest integrity gap in the system — see
-   [issue #30](https://github.com/YULmix/yulmix-la-bedaine/issues/30).
-2. **Server triggers override client fields.** `counts` and `is_waitlisted` are recomputed by
-   Postgres on every write, so whatever the client sent is discarded. That is correct design; a
-   tier-naming mismatch that used to break this for `counts` was fixed in production
-   ([issue #34](https://github.com/YULmix/yulmix-la-bedaine/issues/34)). The capacity check behind
-   `is_waitlisted` is currently defeated by stale French status values
-   ([#49](https://github.com/YULmix/yulmix-la-bedaine/issues/49)).
+1. **The browser's total is an estimate.** The database computes `calculated_amount_owed` from
+   the party's attendee rows and its locked price (#30, #117); the form never sends it.
+2. **A party and its attendees are saved together, by the database.** Attendees are rows of their
+   own table ([ADR 0018](./adr/0018-attendees-in-their-own-table.md)), and PostgREST can't write
+   two tables in one transaction, so the form calls `save_registration()`. It is the only way to
+   write attendees; `is_waitlisted`, the amount and the audit log come from the party's triggers.
 
 ## Admin data flow
 
@@ -155,7 +153,8 @@ flowchart LR
 
 Rules currently enforced on the trusted side: who can read which event, who can read/write which
 registration, one active event, no event deletion, no self-promotion to admin, root admin
-protection, capacity/waitlist, counts, audit log.
+protection, capacity/waitlist, amount owed and price lock, attendees written only through
+`save_registration()`, audit log.
 
 Rules enforced **only** in the browser today: the amount owed, the intent/registration phase
 windows, capacity messaging, and the "cannot edit your own admin flag" convenience check. The
