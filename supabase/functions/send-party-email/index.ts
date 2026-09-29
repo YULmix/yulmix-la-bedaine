@@ -82,7 +82,7 @@ async function send(to: string, template: Template, email: ReturnType<typeof ren
 async function handle(partyId: string) {
   const [party] = await rest<PartyRow[]>(
     `user_parties?id=eq.${partyId}&select=id,status,is_waitlisted,payment_status,calculated_amount_owed,` +
-      'attendees(name,assigned_bed),events(theme,venue_address,event_start_date,is_active),profiles(email,full_name)' +
+      'attendees(name,place:attendee_places(place_id)),events(theme,venue_address,event_start_date,is_active),profiles(email,full_name)' +
       '&attendees.order=position.asc'
   );
   if (!party?.events || !party.profiles?.email) return { party_id: partyId, results: [] };

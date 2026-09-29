@@ -673,9 +673,9 @@ describe('🚪 member self-cancellation (#35)', () => {
   });
 });
 
-// #94: payment_status, admin_notes and the attendees' assigned_bed are admin-only. A member's
-// party-level values are ignored (not refused); save_registration() never writes a bed, and a bed
-// stays with its attendee (by id, ADR 0018) whatever the member edits.
+// #94: payment_status, admin_notes and where attendees sleep are admin-only. A member's
+// party-level values are ignored (not refused); only an admin writes place_assignments (#114), and
+// a place stays with its attendee (by id, ADR 0018) whatever the member edits.
 describe('🛡️ admin-only registration fields (#94)', () => {
   jest.setTimeout(30000);
 
@@ -688,19 +688,20 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   let adminAuthClient;
 
   const partyRow = async () => (await adminAuthClient.from('user_parties')
-    .select('payment_status, admin_notes, calculated_amount_owed, status, attendees(id, name, assigned_bed)')
+    .select('payment_status, admin_notes, calculated_amount_owed, status, attendees(id, name, place:attendee_places(bed_label))')
     .eq('id', ADMIN_FIELDS_PARTY_ID)
     .order('position', { referencedTable: 'attendees' })
     .single()).data;
-  const bedsOf = (row) => row.attendees.map(a => [a.name, a.assigned_bed]);
+  const bedsOf = (row) => row.attendees.map(a => [a.name, a.place?.bed_label ?? '']);
   const idOf = (row, name) => row.attendees.find(a => a.name === name).id;
+  let placeIds; // label → id of the event's places, in the location "Ch"
 
-  // A party the admin has marked paid, annotated and given beds.
+  // A party the admin has marked paid, annotated and given places.
   const seedAdminManagedParty = async () => {
     await saveOk(adminAuthClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann'), attendee('Bob')], { id: ADMIN_FIELDS_PARTY_ID, userId: MEMBER_ID });
     const row = await partyRow();
     for (const [name, bed] of [['Ann', 'B1'], ['Bob', 'B2']]) {
-      const { error } = await adminAuthClient.from('attendees').update({ assigned_bed: bed }).eq('id', idOf(row, name));
+      const { error } = await adminAuthClient.from('place_assignments').insert({ attendee_id: idOf(row, name), place_id: placeIds[bed] });
       if (error) throw error;
     }
     const { error } = await adminAuthClient.from('user_parties')
@@ -716,6 +717,13 @@ describe('🛡️ admin-only registration fields (#94)', () => {
       id: ADMIN_FIELDS_EVENT_ID, theme: 'Admin Fields Test', status: 'ACTIVE', selling_price_whole_event: 100
     });
     if (error) throw error;
+    await adminAuthClient.from('event_locations').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
+    const { data: location } = await adminAuthClient.from('event_locations')
+      .insert({ event_id: ADMIN_FIELDS_EVENT_ID, name: 'Ch' }).select('id').single();
+    const { data: places } = await adminAuthClient.from('event_places')
+      .insert([{ location_id: location.id, label: 'B1', type: 'bed' }, { location_id: location.id, label: 'B2', type: 'bed' }])
+      .select('id, label');
+    placeIds = Object.fromEntries(places.map(place => [place.label, place.id]));
   });
 
   beforeEach(async () => {
@@ -724,6 +732,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
 
   afterAll(async () => {
     await adminAuthClient.from('user_parties').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
+    await adminAuthClient.from('event_locations').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
   });
 
   test('a member creating a party cannot set payment, notes or beds', async () => {
@@ -731,7 +740,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
       id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, payment_status: 'paid', admin_notes: 'hax'
     });
     expect(error).toBeNull();
-    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { assigned_bed: 'B1' })]);
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { place_id: placeIds.B1 })]);
     const row = await partyRow();
     expect(row.payment_status).toBe('unpaid');
     expect(row.admin_notes).toBeNull();
@@ -745,9 +754,9 @@ describe('🛡️ admin-only registration fields (#94)', () => {
       .update({ payment_status: 'paid', admin_notes: 'hax' })
       .eq('id', ADMIN_FIELDS_PARTY_ID);
     expect(error).toBeNull();
-    const { error: bedError } = await memberClient.from('attendees').update({ assigned_bed: 'B1' }).eq('id', annId);
+    const { error: bedError } = await memberClient.from('place_assignments').insert({ attendee_id: annId, place_id: placeIds.B1 });
     expect(bedError).not.toBeNull();
-    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { id: annId, assigned_bed: 'B1' })]);
+    await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { id: annId, place_id: placeIds.B1 })]);
     const row = await partyRow();
     expect(row.payment_status).toBe('unpaid');
     expect(row.admin_notes).toBeNull();
@@ -758,10 +767,10 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     const row = await seedAdminManagedParty();
     expect(row.payment_status).toBe('paid');
     expect(row.admin_notes).toBe('secret');
-    expect(bedsOf(row)).toEqual([['Ann', 'B1'], ['Bob', 'B2']]);
+    expect(bedsOf(row)).toEqual([['Ann', 'Ch · B1'], ['Bob', 'Ch · B2']]);
   });
 
-  test('an admin cannot change anything but the bed outside save_registration()', async () => {
+  test('an admin cannot write attendees outside save_registration() either', async () => {
     const row = await seedAdminManagedParty();
     const { error } = await adminAuthClient.from('attendees').update({ name: 'Zed' }).eq('id', idOf(row, 'Ann'));
     expect(error?.message).toBe('attendees_write_through_save_registration');
@@ -777,13 +786,13 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     expect(row.payment_status).toBe('paid');
     expect(row.admin_notes).toBe('secret');
     expect(Number(row.calculated_amount_owed)).toBe(200);
-    expect(bedsOf(row)).toEqual([['Ann', 'B1'], ['Bob', 'B2']]);
+    expect(bedsOf(row)).toEqual([['Ann', 'Ch · B1'], ['Bob', 'Ch · B2']]);
   });
 
   test('beds stay with their attendee: removing the first one does not shift them', async () => {
     const seeded = await seedAdminManagedParty();
     await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Bob', { id: idOf(seeded, 'Bob') }), attendee('Cat')]);
-    expect(bedsOf(await partyRow())).toEqual([['Bob', 'B2'], ['Cat', '']]);
+    expect(bedsOf(await partyRow())).toEqual([['Bob', 'Ch · B2'], ['Cat', '']]);
   });
 
   test('renaming an attendee keeps their bed: it is the same person', async () => {
@@ -791,7 +800,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [
       attendee('Ann', { id: idOf(seeded, 'Ann') }), attendee('Rob', { id: idOf(seeded, 'Bob') })
     ]);
-    expect(bedsOf(await partyRow())).toEqual([['Ann', 'B1'], ['Rob', 'B2']]);
+    expect(bedsOf(await partyRow())).toEqual([['Ann', 'Ch · B1'], ['Rob', 'Ch · B2']]);
   });
 
   test('re-registering over their own cancelled paid party keeps it paid (#35)', async () => {

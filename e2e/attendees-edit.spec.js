@@ -1,13 +1,15 @@
 // Attendees are rows of their own table, saved through save_registration() (issue #126, ADR 0018):
 // editing a registration updates each attendee in place, adds and removes the others, and keeps
-// what an admin set on an attendee (their bed).
+// what an admin set on an attendee (their place, #114).
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
-  assignBed,
+  assignPlace,
+  deleteLocations,
   getParty,
   seedActiveEventWithMemberParty,
+  seedPlaces,
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -18,13 +20,18 @@ const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta
 test.describe.configure({ mode: 'serial' });
 
 let seeded;
+let places;
 
 test.beforeEach(async () => {
   seeded = await seedActiveEventWithMemberParty();
+  places = await seedPlaces(seeded.eventId);
 });
 
 test.afterEach(async () => {
-  if (seeded) await teardownActiveEventWithMemberParty(seeded);
+  if (seeded) {
+    await deleteLocations(seeded.eventId);
+    await teardownActiveEventWithMemberParty(seeded);
+  }
   seeded = null;
 });
 
@@ -34,7 +41,7 @@ const attendeeCard = (page, n) =>
 
 test('a member renames, removes and adds attendees; each keeps their row and the history says so', async ({ page }) => {
   const [alice, bob] = (await getParty(seeded.partyId)).attendees;
-  await assignBed(seeded.partyId, 1, 'Chambre 1');
+  await assignPlace(places['Chambre 1 · Lit A'], seeded.partyId, 1);
 
   await loginAs(page, TEST_USERS.member);
   await page.goto('/');
@@ -50,12 +57,13 @@ test('a member renames, removes and adds attendees; each keeps their row and the
     .toEqual(['Alice Renamed', 'Carol E2E']);
   const [renamed, carol] = (await getParty(seeded.partyId)).attendees;
   expect(renamed.id).toBe(alice.id);
-  expect(renamed.assigned_bed).toBe('Chambre 1');
+  expect(renamed.place?.bed_label).toBe('Chambre 1 · Lit A');
   expect(carol.id).not.toBe(bob.id);
-  expect(carol.assigned_bed).toBe('');
+  expect(carol.place).toBeNull();
 
-  // The summary lists the new group, and its history records the change of participants.
+  // The summary lists the new group with Alice's place, and its history records the change.
   await expect(page.getByText('Alice Renamed')).toBeVisible();
+  await expect(page.getByText('Chambre 1 · Lit A')).toBeVisible();
   await expect(page.getByText('Carol E2E')).toBeVisible();
   const history = page.locator('details').filter({ hasText: fr.editHistoryTitle });
   await history.getByText(fr.editHistoryTitle, { exact: true }).click();
@@ -63,7 +71,7 @@ test('a member renames, removes and adds attendees; each keeps their row and the
 });
 
 test("an admin editing a member's registration keeps the beds and the member's attendees", async ({ page }) => {
-  await assignBed(seeded.partyId, 2, 'Chambre 2');
+  await assignPlace(places['Salon · Sofa'], seeded.partyId, 2);
   const before = (await getParty(seeded.partyId)).attendees;
 
   await loginAs(page, TEST_USERS.admin);
@@ -78,8 +86,8 @@ test("an admin editing a member's registration keeps the beds and the member's a
   await expect(page.getByText(fr.changesSavedToast)).toBeVisible();
 
   const after = (await getParty(seeded.partyId)).attendees;
-  expect(after.map(a => [a.id, a.name, a.assigned_bed])).toEqual([
+  expect(after.map(a => [a.id, a.name, a.place?.bed_label ?? ''])).toEqual([
     [before[0].id, E2E_ATTENDEES[0].name, ''],
-    [before[1].id, 'Bob Renamed', 'Chambre 2']
+    [before[1].id, 'Bob Renamed', 'Salon · Sofa']
   ]);
 });

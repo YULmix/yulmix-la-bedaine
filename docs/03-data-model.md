@@ -93,7 +93,6 @@ erDiagram
     text sleeping_preference "CHECK, '' = not answered"
     text bed_reason "CHECK"
     text dietary_needs "CHECK"
-    text assigned_bed "admin-only; replaced by PLACE_ASSIGNMENTS in #114"
   }
   EVENT_LOCATIONS {
     uuid id PK
@@ -150,7 +149,6 @@ values of `src/lib/registrationOptions.js`; `''` means "not answered", as it did
 | `sleeping_preference` (+ `_other`) | `''`, `camping`, `floor`, `bed`, `sofa`, `outside_other` |
 | `bed_reason` (+ `_other`) | `''`, `health`, `children`, `comfort`, `other` |
 | `dietary_needs` (+ `dietary_other`) | `''`, `none`, `vegetarian`, `vegan`, `gluten_free`, `other` |
-| `assigned_bed` | free text set by an admin (#94); replaced by [place assignments](#sleeping-locations-and-places) in #114 |
 
 **One write path.** The form saves a party and its attendees in one transaction with
 `save_registration(p_event_id, p_attendees, p_party, p_user_id)`, a `SECURITY INVOKER` function, so
@@ -160,14 +158,16 @@ recompute what depends on the attendees. Saving registers the party (again, if i
 An admin saves someone else's registration by passing `p_user_id`.
 
 `trg_guard_attendee_write` refuses any other write to `attendees` from a client
-(`attendees_write_through_save_registration`), with two exceptions: an admin changing only an
-`assigned_bed`, and the cascade when an admin deletes a party. `save_registration()` marks the party
-it is saving in a transaction-local setting (`bedaine.saving_party`) that PostgREST gives clients no
-way to set. It never writes `assigned_bed`: a bed stays with its attendee, by id, whatever the member
-edits.
+(`attendees_write_through_save_registration`), admins included, except the cascade when an admin
+deletes a party. `save_registration()` marks the party it is saving in a transaction-local setting
+(`bedaine.saving_party`) that PostgREST gives clients no way to set. Where an attendee sleeps is
+not an attendee column but a [place assignment](#sleeping-locations-and-places), so it stays with
+the attendee, by id, whatever the member edits.
 
-**Reading.** Embed them: `user_parties(*, attendees(*))`, ordered by `position`
-(`src/lib/parties.js`). Screens receive an `attendees` array, as they did with the JSON.
+**Reading.** Embed them: `user_parties(*, attendees(*, place:attendee_places(place_id, bed_label)))`,
+ordered by `position` (`PARTY_WITH_ATTENDEES` in `src/lib/parties.js`). Screens receive an
+`attendees` array, as they did with the JSON, each attendee with `place` (or null). PostgREST
+embeds the view one-to-one, through `place_assignments.attendee_id`'s unique foreign key.
 
 ## JSONB payload shapes
 
@@ -257,13 +257,13 @@ flowchart TD
     U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
   end
   subgraph attendees
-    A1["BEFORE INSERT/UPDATE/DELETE → guard_attendee_write()<br/>only through save_registration(), or an admin's bed"]
-    A2["AFTER UPDATE OF assigned_bed → request_party_email()<br/>when an attendee gets a bed"]
+    A1["BEFORE INSERT/UPDATE/DELETE → guard_attendee_write()<br/>only through save_registration()"]
   end
   subgraph places["event_locations / event_places / place_assignments"]
     L1["BEFORE INSERT/UPDATE on place_assignments → enforce_place_assignment()<br/>active party, same event"]
     L2["AFTER UPDATE on user_parties → release_inactive_party_places()<br/>cancelled or newly waitlisted"]
     L3["BEFORE UPDATE OF event_id / location_id → keep_places_in_their_event()"]
+    L4["AFTER INSERT on place_assignments → request_party_email()<br/>an attendee is given a place"]
   end
 ```
 
@@ -273,7 +273,10 @@ An event's **locations** (`event_locations`: a room, the yard…) hold **places*
 bed, a sofa…, with a type from the sleeping-preference list and a capacity). An attendee holds at
 most one place for the whole event, as a `place_assignments` row (`UNIQUE (attendee_id)`, a foreign
 key to `attendees` with `ON DELETE CASCADE`). Readers use the `attendee_places` view below; no copy
-of the label is stored. Migration: `supabase/migrations/20260929024111_event_locations_and_places.sql` (#113).
+of the label is stored. Migrations: `20260929024111_event_locations_and_places.sql` (#113) and
+`20260929030708_place_assignments_replace_assigned_bed.sql` (#114), which dropped the free-text
+`attendees.assigned_bed` they replace. There are no free-text beds: an event that assigns beds
+defines places.
 
 - **Capacity is advisory.** Nothing stops more people than `capacity` in a place: organisers may
   overbook on purpose, and the UI warns.
@@ -287,10 +290,10 @@ of the label is stored. Migration: `supabase/migrations/20260929024111_event_loc
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting an occupied place, or the
   location holding it, fails; the editor lists who is in it first.
 - Places are edited in the event dialog of the Événements tab
-  (`src/components/admin/EventLocations.jsx`); every change is saved immediately.
-- Until #114, `attendees.assigned_bed` stays the free-text bed that the member summary, the
-  Logistique tab and the accommodation email read. #114 moves them to `attendee_places` and drops
-  the column; there are no free-text beds after that.
+  (`src/components/admin/EventLocations.jsx`); every change is saved immediately. They are
+  assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in
+  `src/lib/places.js`): open places of the attendee's preferred type first, then other open ones,
+  then full ones, still pickable with a warning. Saving upserts or deletes the attendee's row.
 
 ### Capacity and waitlisting
 
@@ -317,7 +320,8 @@ the list, oldest first, while they fit.
 
 `trg_request_party_email_on_insert` (every insert), `trg_request_party_email_on_update` (only
 when `is_waitlisted`, `payment_status` or `status` changes) and, on `attendees`,
-`trg_request_party_email_on_bed` (an attendee gets an `assigned_bed`) ask the `send-party-email` Edge Function, through pg_net, to look
+on `place_assignments`, `trg_request_party_email_on_place` (an attendee is given a place) ask the
+`send-party-email` Edge Function, through pg_net, to look
 at the party ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), #12). The function
 decides what is owed from the committed row and `email_log`:
 
@@ -327,7 +331,7 @@ decides what is owed from the committed row and `email_log`:
 | `waitlist` | waitlisted and never sent one |
 | `promotion` | no longer waitlisted after a `waitlist` email, and never sent one |
 | `payment` | `payment_status = 'paid'`, not waitlisted |
-| `accommodation` | at least one attendee has an `assigned_bed`, not waitlisted |
+| `accommodation` | at least one attendee has a place (`attendee_places`), not waitlisted |
 
 `email_log` has one row per party and template (unique), claimed before sending, so each email goes
 out at most once whatever happens later (paid, unpaid, paid again sends one receipt). `status` is

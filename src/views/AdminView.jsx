@@ -23,6 +23,8 @@ import {
 } from '../lib/registrationOptions';
 import { tierCountsOf } from '../lib/adminStats';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { flattenPlaces } from '../lib/places';
+import { dbErrorMessage } from '../lib/dbErrors';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
@@ -64,6 +66,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [userProfileModal, setUserProfileModal] = useState(null);
   const [userEventHistory, setUserEventHistory] = useState([]);
   const [logisticsChanges, setLogisticsChanges] = useState({});
+  // The active event's sleeping places (#113), flattened for the Logistique tab's picker.
+  const [places, setPlaces] = useState([]);
   // The active event's admin-only budget (event_budgets row, null if never saved) and its unsaved
   // edits, kept here so they survive switching tabs.
   const [budget, setBudget] = useState(null);
@@ -111,6 +115,23 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       supabase.removeChannel(channel);
     };
   }, [activeEventState?.id, isAdmin]);
+
+  // Places are edited in the Événements tab's event dialog, so reload them on reaching Logistique.
+  useEffect(() => {
+    if (activeTab === 'logistics' && activeEventState?.id) fetchPlaces(activeEventState.id);
+  }, [activeTab, activeEventState?.id]);
+
+  const fetchPlaces = async (eventId) => {
+    const { data, error: placesError } = await supabase
+      .from('event_locations')
+      .select('name, sort_order, event_places(id, label, type, capacity, sort_order)')
+      .eq('event_id', eventId);
+    if (placesError) {
+      console.error('Error fetching places:', placesError);
+      return;
+    }
+    setPlaces(flattenPlaces(data));
+  };
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -464,17 +485,17 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }));
   };
 
-  const handleAssignedBedChange = (partyId, attendeeIndex, value) => {
-    setLogisticsChanges(prev => ({
-      ...prev,
-      [partyId]: {
-        ...prev[partyId],
-        attendees: {
-          ...prev[partyId]?.attendees,
-          [attendeeIndex]: value
-        }
-      }
-    }));
+  // placeId: a place id, null to unassign, or undefined to drop the change (back to what's saved).
+  const handlePlaceChange = (partyId, attendeeIndex, placeId) => {
+    setLogisticsChanges(prev => {
+      const attendees = { ...prev[partyId]?.attendees };
+      if (placeId === undefined) delete attendees[attendeeIndex];
+      else attendees[attendeeIndex] = placeId;
+      const partyChanges = { ...prev[partyId], attendees };
+      const next = { ...prev, [partyId]: partyChanges };
+      if (!Object.keys(attendees).length && partyChanges.adminNotes === undefined) delete next[partyId];
+      return next;
+    });
   };
 
   const saveLogisticsChanges = async (partyId) => {
@@ -485,16 +506,18 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     if (!party) return;
 
     try {
-      // A bed label is the one attendee field an admin writes directly (ADR 0018).
-      const bedUpdates = Object.entries(changes.attendees || {})
-        .map(([index, bed]) => ({ attendee: (party.attendees || [])[index], bed }))
-        .filter(({ attendee, bed }) => attendee && bed !== attendee.assigned_bed)
-        .map(({ attendee, bed }) => supabase.from('attendees').update({ assigned_bed: bed }).eq('id', attendee.id));
+      // One place per attendee (place_assignments.attendee_id is unique): upsert, or delete.
+      const placeWrites = Object.entries(changes.attendees || {})
+        .map(([index, placeId]) => ({ attendee: (party.attendees || [])[index], placeId }))
+        .filter(({ attendee, placeId }) => attendee && placeId !== (attendee.place?.place_id ?? null))
+        .map(({ attendee, placeId }) => (placeId
+          ? supabase.from('place_assignments').upsert({ attendee_id: attendee.id, place_id: placeId }, { onConflict: 'attendee_id' })
+          : supabase.from('place_assignments').delete().eq('attendee_id', attendee.id)));
       const partyUpdate = changes.adminNotes !== undefined
         ? [supabase.from('user_parties').update({ admin_notes: changes.adminNotes }).eq('id', partyId)]
         : [];
 
-      const results = await Promise.all([...bedUpdates, ...partyUpdate]);
+      const results = await Promise.all([...placeWrites, ...partyUpdate]);
       const failed = results.find(result => result.error);
       if (failed) throw failed.error;
 
@@ -510,7 +533,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchParties(activeEventState.id);
     } catch (error) {
       console.error('Error saving logistics:', error);
-      addToast(fr.saveError, 'error');
+      addToast(dbErrorMessage(error, fr.saveError), 'error');
     }
   };
 
@@ -521,8 +544,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     .join('; ');
 
   const summarizeAssignedBeds = (party) => (party.attendees || [])
-    .filter(a => a.assigned_bed)
-    .map(a => `${a.name || '?'}: ${a.assigned_bed}`)
+    .filter(a => a.place)
+    .map(a => `${a.name || '?'}: ${a.place.bed_label}`)
     .join('; ');
 
   // Data export functions
@@ -759,8 +782,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       return (
         <AdminLogisticsView
           parties={activeParties}
+          places={places}
           logisticsChanges={logisticsChanges}
-          onAssignedBedChange={handleAssignedBedChange}
+          onPlaceChange={handlePlaceChange}
           onAdminNotesChange={handleAdminNotesChange}
           onSave={saveLogisticsChanges}
           onOpenUserProfile={openUserProfile}

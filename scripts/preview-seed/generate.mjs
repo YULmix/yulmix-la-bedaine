@@ -16,6 +16,8 @@ import { OPTION_VALUES } from './options.js';
 
 export const TEST_MEMBER_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_MEMBER_NAME = 'Test Member';
+// Bedrooms each event has, with a double bed in each (#113).
+const ROOMS = 8;
 
 const THEMES = [
   'La Bédaine Tropicale', 'La Bédaine des Couleurs', 'La Bédaine Disco', 'La Bédaine Western',
@@ -183,8 +185,9 @@ function generateAttendee(faker, { name, type, partiesConfig, paid }) {
     dietary_other: dietary === 'other' ? faker.helpers.arrayElement(DIETARY_OTHER) : '',
     bed_reason: bedReason,
     bed_reason_other: bedReason === 'other' ? faker.helpers.arrayElement(BED_REASON_OTHER) : '',
-    assigned_bed: sleeping === 'bed' && paid && faker.datatype.boolean({ probability: 0.6 })
-      ? `Chambre ${faker.number.int({ min: 1, max: 8 })}`
+    // Not an attendee field: the room an admin puts them in, as a place assignment below (#114).
+    room: sleeping === 'bed' && paid && faker.datatype.boolean({ probability: 0.6 })
+      ? `Chambre ${faker.number.int({ min: 1, max: ROOMS })}`
       : ''
   };
 }
@@ -383,18 +386,41 @@ ${sorted.map((r) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${r.da
 WHERE p.user_id = v.user_id AND p.event_id = v.event_id;
 ALTER TABLE public.user_parties ENABLE TRIGGER USER;`);
 
-    // Beds an admin assigned (the one attendee field written directly).
-    const beds = sorted.flatMap((r) => r.attendees
-      .map((a, i) => ({ r, position: i + 1, bed: a.assigned_bed }))
-      .filter(({ bed }) => bed));
-    if (beds.length) {
+    // Sleeping places (#113): every event has ROOMS rooms with a double bed, and a yard for tents.
+    // Admins put some paid attendees who asked for a bed in a room (#114).
+    const eventIds = events.map((e) => `${lit(e.id)}::uuid`).join(', ');
+    out.push(`
+INSERT INTO public.event_locations (event_id, name, sort_order)
+SELECT e.id, r.name, r.sort_order
+FROM unnest(ARRAY[${eventIds}]) AS e(id)
+CROSS JOIN (
+  SELECT 'Chambre ' || n, n FROM generate_series(1, ${ROOMS}) AS n
+  UNION ALL SELECT 'Cour', ${ROOMS + 1}
+) AS r(name, sort_order);
+
+INSERT INTO public.event_places (location_id, label, type, capacity)
+SELECT l.id,
+       CASE WHEN l.name = 'Cour' THEN 'Tentes' ELSE 'Lit double' END,
+       CASE WHEN l.name = 'Cour' THEN 'camping' ELSE 'bed' END,
+       CASE WHEN l.name = 'Cour' THEN 12 ELSE 2 END
+FROM public.event_locations l
+WHERE l.event_id IN (${eventIds});`);
+
+    const rooms = sorted.flatMap((r) => r.attendees
+      .map((a, i) => ({ r, position: i + 1, room: a.room }))
+      .filter(({ room }) => room));
+    if (rooms.length) {
       out.push(`
-UPDATE public.attendees a
-SET assigned_bed = v.bed
-FROM public.user_parties p, (VALUES
-${beds.map(({ r, position, bed }) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${position}, ${lit(bed)})`).join(',\n')}
-) AS v(user_id, event_id, position, bed)
-WHERE p.user_id = v.user_id AND p.event_id = v.event_id AND a.party_id = p.id AND a.position = v.position;`);
+INSERT INTO public.place_assignments (place_id, attendee_id)
+SELECT pl.id, a.id
+FROM (VALUES
+${rooms.map(({ r, position, room }) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${position}, ${lit(room)})`).join(',\n')}
+) AS v(user_id, event_id, position, room)
+JOIN public.user_parties p ON p.user_id = v.user_id AND p.event_id = v.event_id
+  AND p.status <> 'cancelled' AND NOT p.is_waitlisted
+JOIN public.attendees a ON a.party_id = p.id AND a.position = v.position
+JOIN public.event_locations l ON l.event_id = v.event_id AND l.name = v.room
+JOIN public.event_places pl ON pl.location_id = l.id;`);
     }
     out.push('');
   }
@@ -451,7 +477,7 @@ ${flags}
 parties AS (
   SELECT p.id, p.created_at, pr.email, f.promoted, f.problem, p.is_waitlisted,
          p.payment_status = 'paid' AS paid,
-         EXISTS (SELECT 1 FROM public.attendees a WHERE a.party_id = p.id AND a.assigned_bed ~ '\\S') AS has_bed
+         EXISTS (SELECT 1 FROM public.attendee_places ap WHERE ap.party_id = p.id) AS has_bed
   FROM public.user_parties p
   JOIN public.profiles pr ON pr.id = p.user_id
   JOIN flags f ON f.user_id = p.user_id
@@ -493,7 +519,7 @@ CROSS JOIN LATERAL (VALUES
   ('registration', NOT p.is_waitlisted),
   ('waitlist', p.is_waitlisted),
   ('payment', p.payment_status = 'paid'),
-  ('accommodation', EXISTS (SELECT 1 FROM public.attendees a WHERE a.party_id = p.id AND a.assigned_bed ~ '\\S'))
+  ('accommodation', EXISTS (SELECT 1 FROM public.attendee_places ap WHERE ap.party_id = p.id))
 ) AS t(template, applies)
 WHERE t.applies
 ON CONFLICT (party_id, template) DO NOTHING;

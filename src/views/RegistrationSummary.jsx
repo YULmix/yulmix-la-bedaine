@@ -135,10 +135,10 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                       </Tag>
                     )}
                   </div>
-                  {attendee.assigned_bed && (
+                  {attendee.place && (
                     <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 rounded-control tint-ok px-2.5 py-1 text-sm text-ok">
                       <BedDouble aria-hidden="true" className="size-4" />
-                      {fr.confirmedAssignmentLabel} <span className="font-data">{attendee.assigned_bed}</span>
+                      {fr.confirmedAssignmentLabel} <span className="font-data">{attendee.place.bed_label}</span>
                     </p>
                   )}
                 </div>

@@ -4,10 +4,13 @@ import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
   E2E_EVENT_THEME,
+  deleteLocations,
   getParty,
   seedActiveEventWithMemberParty,
+  seedPlaces,
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
+import { pickPlace, placeOption, placePickers } from './support/placePicker.js';
 import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
@@ -28,15 +31,19 @@ let seeded;
 
 test.beforeAll(async () => {
   seeded = await seedActiveEventWithMemberParty();
+  await seedPlaces(seeded.eventId);
 });
 
 test.afterAll(async () => {
-  if (seeded) await teardownActiveEventWithMemberParty(seeded);
+  if (seeded) {
+    await deleteLocations(seeded.eventId);
+    await teardownActiveEventWithMemberParty(seeded);
+  }
 });
 
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
 const panel = (page) => page.getByRole('tabpanel');
-const bedInputs = (page) => panel(page).getByPlaceholder(fr.assignedBedPlaceholder);
+const bedInputs = (page) => placePickers(panel(page));
 // Modals are native <dialog>s, labelled by their title.
 const modal = (page, title) => page.getByRole('dialog', { name: title });
 const closeModal = (dialog) => dialog.getByRole('button', { name: fr.close, exact: true }).click();
@@ -61,7 +68,7 @@ async function expectUsersTabActive(page) {
   await expect(panel(page).getByRole('heading', { name: USERS_HEADING })).toBeVisible();
   // Only the active panel is rendered: nothing from logistics is in the DOM.
   await expect(page.getByRole('heading', { name: LOGISTICS_HEADING })).toHaveCount(0);
-  await expect(page.getByPlaceholder(fr.assignedBedPlaceholder)).toHaveCount(0);
+  await expect(page.getByRole('combobox')).toHaveCount(0);
 }
 
 async function expectLogisticsTabActive(page) {
@@ -252,8 +259,13 @@ test.describe('admin tabs', () => {
     }
     await expectWithinViewportWidth(page, panel(page).locator('textarea'));
     await shot(page, 'mobile-tab-logistics');
+    // The open list fits the phone too.
+    await bedInputs(page).first().click();
+    await expectWithinViewportWidth(page, placeOption(page, 'Chambre 1 · Lit A'));
+    await expectNoHorizontalOverflow(page);
+    await shot(page, 'mobile-tab-logistics-picker');
     // Reveal the save button (draft only; never clicked here).
-    await bedInputs(page).first().fill('Brouillon mobile');
+    await placeOption(page, 'Chambre 1 · Lit A').click();
     await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.saveAssignments }));
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-tab-logistics-editing');
@@ -265,7 +277,7 @@ test.describe('admin tabs', () => {
     await expect(saveButton).toHaveCount(0);
     await expect(bedInputs(page).first()).toHaveValue('');
 
-    await bedInputs(page).first().fill('Chambre 9 - Brouillon');
+    await pickPlace(page, bedInputs(page).first(), 'Chambre 1 · Lit A');
     await panel(page).locator('textarea').fill('Note non sauvegardée');
     await expect(saveButton).toBeVisible();
 
@@ -274,19 +286,19 @@ test.describe('admin tabs', () => {
     await tab(page, LOGISTICS_TAB).click();
     await expectLogisticsTabActive(page);
 
-    await expect(bedInputs(page).first()).toHaveValue('Chambre 9 - Brouillon');
+    await expect(bedInputs(page).first()).toHaveValue('Chambre 1 · Lit A');
     await expect(panel(page).locator('textarea')).toHaveValue('Note non sauvegardée');
     await expect(saveButton).toBeVisible();
 
     // Nothing was written: the draft only lives in page state.
     const party = await getParty(seeded.partyId);
-    expect(party.attendees[0].assigned_bed).toBe('');
+    expect(party.attendees[0].place).toBeNull();
     expect(party.admin_notes).toBeNull();
   });
 
   test('saving a bed assignment persists across reload', async ({ page }) => {
     await openAdmin(page, '?tab=logistics');
-    await bedInputs(page).nth(1).fill('Chambre 2 - Lit simple');
+    await pickPlace(page, bedInputs(page).nth(1), 'Salon · Sofa');
     await panel(page).locator('textarea').fill('Arrive tard vendredi');
     const saveButton = panel(page).getByRole('button', { name: fr.saveAssignments });
     await saveButton.click();
@@ -296,12 +308,12 @@ test.describe('admin tabs', () => {
 
     await page.reload();
     await expectLogisticsTabActive(page);
-    await expect(bedInputs(page).nth(1)).toHaveValue('Chambre 2 - Lit simple');
+    await expect(bedInputs(page).nth(1)).toHaveValue('Salon · Sofa');
     await expect(bedInputs(page).first()).toHaveValue('');
     await expect(panel(page).locator('textarea')).toHaveValue('Arrive tard vendredi');
 
     const party = await getParty(seeded.partyId);
-    expect(party.attendees[1].assigned_bed).toBe('Chambre 2 - Lit simple');
+    expect(party.attendees[1].place?.bed_label).toBe('Salon · Sofa');
     expect(party.attendees[1].name).toBe(E2E_ATTENDEES[1].name);
     expect(party.admin_notes).toBe('Arrive tard vendredi');
   });
@@ -312,5 +324,5 @@ test('member visiting /admin?tab=logistics is blocked and sees no tabs', async (
   await page.goto('/admin?tab=logistics');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
-  await expect(page.getByPlaceholder(fr.assignedBedPlaceholder)).toHaveCount(0);
+  await expect(page.getByRole('combobox')).toHaveCount(0);
 });

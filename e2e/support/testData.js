@@ -121,20 +121,11 @@ export async function getParty(partyId) {
   return check(
     await db
       .from('user_parties')
-      .select('attendees(*), admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .select('attendees(*, place:attendee_places(place_id, bed_label)), admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
       .eq('id', partyId)
       .order('position', { referencedTable: 'attendees' })
       .single(),
     'read e2e party'
-  );
-}
-
-// An admin assigning a bed to the party's nth attendee (1-based), as the Logistique tab does.
-export async function assignBed(partyId, position, bed) {
-  const db = await adminClient();
-  check(
-    await db.from('attendees').update({ assigned_bed: bed }).eq('party_id', partyId).eq('position', position),
-    'assign e2e bed'
   );
 }
 
@@ -190,9 +181,39 @@ export async function getPlaceLabels(partyId) {
   return Object.fromEntries(rows.map(row => [row.attendee_name, row.bed_label]));
 }
 
+// The event's locations, and so its places. Whoever still holds one is unassigned first: an
+// occupied place can't be deleted.
 export async function deleteLocations(eventId) {
   const db = await adminClient();
+  const placeIds = (await getLocations(eventId)).flatMap(location => location.places.map(place => place.id));
+  check(await db.from('place_assignments').delete().in('place_id', placeIds), 'unassign e2e places');
   check(await db.from('event_locations').delete().eq('event_id', eventId), 'delete e2e locations');
+}
+
+// Replaces the event's places with a small house (#114): two single beds in "Chambre 1" and a
+// sofa for two in "Salon". Returns the place ids by "<location> · <place>".
+export const E2E_PLACES = [
+  { name: 'Chambre 1', places: [{ label: 'Lit A', type: 'bed', capacity: 1 }, { label: 'Lit B', type: 'bed', capacity: 1 }] },
+  { name: 'Salon', places: [{ label: 'Sofa', type: 'sofa', capacity: 2 }] }
+];
+export async function seedPlaces(eventId) {
+  await deleteLocations(eventId);
+  const db = await adminClient();
+  const ids = {};
+  for (const [order, { name, places }] of E2E_PLACES.entries()) {
+    const location = check(
+      await db.from('event_locations').insert({ event_id: eventId, name, sort_order: order }).select('id').single(),
+      'create e2e location'
+    );
+    const rows = check(
+      await db.from('event_places')
+        .insert(places.map((place, index) => ({ ...place, location_id: location.id, sort_order: index })))
+        .select('id, label'),
+      'create e2e places'
+    );
+    rows.forEach(row => { ids[`${name} · ${row.label}`] = row.id; });
+  }
+  return ids;
 }
 
 export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {

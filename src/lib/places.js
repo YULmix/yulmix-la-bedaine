@@ -1,0 +1,60 @@
+import { ACCOMMODATION_OPTIONS, getOptionLabel } from './registrationOptions.js';
+
+// Sleeping places of an event (#112), for the Logistique tab's place picker (#114). Pure, so the
+// ordering and counting rules are tested on their own (places.test.js).
+
+const bySortOrder = (a, b) => a.sort_order - b.sort_order;
+
+/** The event's locations (with their `event_places` embedded) as one list of places, in display order. */
+export const flattenPlaces = (locations) => [...(locations || [])]
+  .sort(bySortOrder)
+  .flatMap(location => [...(location.event_places || [])].sort(bySortOrder).map(place => ({
+    id: place.id,
+    label: place.label,
+    type: place.type,
+    capacity: place.capacity,
+    locationName: location.name
+  })));
+
+/**
+ * How many attendees each place holds, counting unsaved Logistique changes
+ * (`changes[partyId].attendees[index]` = a place id, or null to unassign) over the saved places.
+ */
+export const placeOccupancy = (parties, changes = {}) => {
+  const occupancy = new Map();
+  (parties || []).forEach(party => (party.attendees || []).forEach((attendee, index) => {
+    const pending = changes[party.id]?.attendees?.[index];
+    const placeId = pending !== undefined ? pending : attendee.place?.place_id;
+    if (placeId) occupancy.set(placeId, (occupancy.get(placeId) || 0) + 1);
+  }));
+  return occupancy;
+};
+
+/**
+ * The places an attendee can be given, in picking order: open places of the type they asked for,
+ * then other open places, then full ones (still pickable: overbooking is allowed). The place the
+ * attendee holds now doesn't count against them.
+ */
+export const placeOptions = (places, occupancy, { preference, currentPlaceId } = {}) => {
+  const options = places.map(place => {
+    const taken = (occupancy.get(place.id) || 0) - (place.id === currentPlaceId ? 1 : 0);
+    const remaining = place.capacity - taken;
+    return { place, remaining, full: remaining <= 0, matches: !!preference && place.type === preference };
+  });
+  const rank = option => (option.full ? 2 : option.matches ? 0 : 1);
+  // Array.prototype.sort is stable: within a rank, display order is kept.
+  return options.sort((a, b) => rank(a) - rank(b));
+};
+
+const normalise = text => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+const words = text => normalise(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Options whose location, place or type has a word starting with each word of the query. */
+export const searchPlaceOptions = (options, query) => {
+  const wanted = words(query || '');
+  if (!wanted.length) return options;
+  return options.filter(({ place }) => {
+    const haystack = words(`${place.locationName} ${place.label} ${getOptionLabel(ACCOMMODATION_OPTIONS, place.type, '')}`);
+    return wanted.every(word => haystack.some(candidate => candidate.startsWith(word)));
+  });
+};

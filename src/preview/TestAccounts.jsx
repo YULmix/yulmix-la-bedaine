@@ -78,7 +78,7 @@ const useTestAccounts = (enabled) => {
       let problemParties = new Set();
       if (eventId) {
         const { data: partyRows } = await supabase.from('user_parties')
-          .select('id, user_id, status, is_waitlisted, payment_status, attendees(assigned_bed)').eq('event_id', eventId);
+          .select('id, user_id, status, is_waitlisted, payment_status, attendees(place:attendee_places(place_id))').eq('event_id', eventId);
         parties = partyRows || [];
         const { data: problems } = await supabase.from('email_log')
           .select('party_id').in('party_id', parties.map(p => p.id)).in('status', ['failed', 'pending']);
@@ -90,7 +90,7 @@ const useTestAccounts = (enabled) => {
         return {
           ...profile,
           party,
-          hasBed: !!party?.attendees?.some(a => a.assigned_bed?.trim()),
+          hasBed: !!party?.attendees?.some(a => a.place),
           emailProblem: !!party && problemParties.has(party.id)
         };
       });
