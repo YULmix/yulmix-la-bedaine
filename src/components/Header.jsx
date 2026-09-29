@@ -110,9 +110,9 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
         <Suspense fallback={null}><TestAccountMarker email={user?.email} /></Suspense>
       )}
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 md:px-6">
-        <Link to="/" className="mr-auto flex items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
+        <Link to="/" className="mr-auto flex shrink-0 items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
           <img src={yulmixLogo} alt="" aria-hidden="true" className="h-7 w-auto" />
-          <span className="hidden font-display text-lg text-ink min-[400px]:inline">{fr.brandName}</span>
+          <span className="hidden whitespace-nowrap font-display text-base text-ink min-[440px]:inline sm:text-lg">{fr.brandName}</span>
         </Link>
 
         {isAuthenticated && !isDeleted && (
@@ -130,23 +130,23 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
           </nav>
         )}
 
-        <div ref={menu.ref} className="relative">
+        <div ref={menu.ref} className="relative min-w-0">
           <button
             onClick={() => menu.setOpen(!menu.open)}
             aria-expanded={menu.open}
             aria-haspopup="menu"
             className={cx(
-              'inline-flex min-h-11 items-center gap-2 rounded-full border px-1.5 text-sm font-semibold transition duration-150',
+              'inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-1.5 text-sm font-semibold transition duration-150',
               isAuthenticated ? 'border-line pr-3 hover:border-edge' : 'border-neon bg-neon px-4 text-night hover:brightness-110'
             )}
           >
             {isAuthenticated ? (
               <>
-                <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-raised font-data text-xs text-neon">
+                <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-raised font-data text-xs text-neon">
                   {initials(userDisplayName)}
                 </span>
-                <span className="max-w-32 truncate sm:max-w-48">{userDisplayName}</span>
-                <ChevronDown aria-hidden="true" className="size-4 text-faint" />
+                <span className="min-w-0 max-w-32 truncate sm:max-w-48">{userDisplayName}</span>
+                <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-faint" />
               </>
             ) : fr.signIn}
           </button>
