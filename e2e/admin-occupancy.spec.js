@@ -32,9 +32,11 @@ test.afterEach(async () => {
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
 const panel = page => page.getByRole('tabpanel');
 const occupancy = page => panel(page).locator('section').filter({ has: page.getByRole('heading', { name: fr.occupancyTitle }) });
-const unassigned = page => occupancy(page).getByText(fr.occupancyUnassigned).locator('xpath=following-sibling::p[1]');
-const location = (page, name) => occupancy(page).locator('summary').filter({ hasText: name });
-const left = count => (count === 1 ? fr.occupancyLeftOne : fr.occupancyLeftOther).replace('{count}', count);
+const unassigned = count => (count === 1 ? fr.occupancyUnassignedOne : fr.occupancyUnassignedOther).replace('{count}', count);
+// A location's row: its name, its assigned/capacity, and a chip per place with its own.
+const location = (page, name) => occupancy(page).getByRole('listitem').filter({ has: page.getByRole('heading', { name, exact: true }) });
+const locationRatio = (page, name) => location(page, name).getByRole('heading').locator('xpath=following-sibling::*[1]');
+const chip = (page, locationName, label) => location(page, locationName).getByRole('listitem').filter({ hasText: label });
 const picker = (page, name) => panel(page).getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 
 const assign = async (page, name, place) => {
@@ -49,9 +51,10 @@ test('the overview follows assignments made in Logistique, and warns about an ov
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin');
 
-  await expect(unassigned(page)).toHaveText('2');
-  await expect(location(page, 'Chambre 1')).toContainText(`0/2, ${left(2)}`);
-  await expect(location(page, 'Salon')).toContainText(`0/2, ${left(2)}`);
+  await expect(occupancy(page).getByText(unassigned(2))).toBeVisible();
+  await expect(locationRatio(page, 'Chambre 1')).toHaveText('0/2');
+  await expect(locationRatio(page, 'Salon')).toHaveText('0/2');
+  await expect(chip(page, 'Chambre 1', 'Lit A')).toContainText('0/1');
 
   // Both of the member's attendees in the one-person Lit A.
   await tab(page, fr.adminTabLogistics).click();
@@ -59,22 +62,15 @@ test('the overview follows assignments made in Logistique, and warns about an ov
   await assign(page, BOB, 'Chambre 1 · Lit A');
 
   await tab(page, fr.adminTabOverview).click();
-  await expect(unassigned(page)).toHaveText('0');
-  // Lit A's extra person doesn't take Lit B's spot.
-  await expect(location(page, 'Chambre 1')).toContainText(`2/2, ${left(1)}`);
-  await expect(location(page, 'Salon')).toContainText(`0/2, ${left(2)}`);
+  await expect(occupancy(page).getByText(fr.occupancyAllPlaced)).toBeVisible();
+  await expect(locationRatio(page, 'Chambre 1')).toHaveText('2/2');
+  await expect(locationRatio(page, 'Salon')).toHaveText('0/2');
+  await expect(chip(page, 'Chambre 1', 'Lit A')).toContainText('2/1');
+  await expect(chip(page, 'Chambre 1', 'Lit B')).toContainText('0/1');
   await expect(panel(page).getByText(fr.overbookedTitleOne.replace('{count}', 1))).toBeVisible();
   await expect(panel(page).getByText(
     fr.overbookedPlace.replace('{location}', 'Chambre 1').replace('{place}', 'Lit A').replace('{taken}', 2).replace('{capacity}', 1)
   )).toBeVisible();
-
-  // The location's places are on expand.
-  // (Not getByRole: it skips the hidden rows, so it would find the location's own item instead.)
-  const litA = location(page, 'Chambre 1').locator('xpath=following-sibling::ul/li').filter({ hasText: 'Lit A' });
-  await expect(litA).toBeHidden();
-  await location(page, 'Chambre 1').click();
-  await expect(litA).toBeVisible();
-  await expect(litA).toContainText('2/1');
 });
 
 test('an event without places shows no occupancy', async ({ page }) => {

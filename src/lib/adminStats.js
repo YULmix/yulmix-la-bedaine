@@ -85,8 +85,7 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
  * @param {Array} allParties user_parties rows (with attendees and their `place`)
  * @param {Array} places the event's places, from flattenPlaces()
  * @returns {{ locations: Array, unassigned: number, overbooked: Array }} each location with its
- *   capacity, assigned and left (open spots in places not yet full, so an overbooked place doesn't
- *   eat into its neighbours'), and its places with their `assigned` count.
+ *   capacity and assigned, and its places with their `assigned` count.
  */
 export const computePlaceStats = (allParties, places) => {
   const parties = allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
@@ -97,13 +96,12 @@ export const computePlaceStats = (allParties, places) => {
     // flattenPlaces() keeps a location's places together.
     let location = locations.at(-1);
     if (location?.id !== place.locationId) {
-      location = { id: place.locationId, name: place.locationName, capacity: 0, assigned: 0, left: 0, places: [] };
+      location = { id: place.locationId, name: place.locationName, capacity: 0, assigned: 0, places: [] };
       locations.push(location);
     }
     location.places.push({ ...place, assigned });
     location.capacity += place.capacity;
     location.assigned += assigned;
-    location.left += Math.max(place.capacity - assigned, 0);
   });
   const unassigned = parties.reduce((count, party) => count + (party.attendees || []).filter(attendee => !attendee.place).length, 0);
   const overbooked = locations.flatMap(location => location.places).filter(place => place.assigned > place.capacity);

@@ -68,12 +68,11 @@ describe('computePlaceStats', () => {
     { id: 'c', status: 'cancelled', attendees: [unplaced] }
   ];
 
-  test('occupancy per location: capacity, assigned, and spots left in places not yet full', () => {
+  test('occupancy per location and per place', () => {
     const { locations } = computePlaceStats(placeParties, places);
-    expect(locations.map(({ id, name, capacity, assigned, left }) => ({ id, name, capacity, assigned, left }))).toEqual([
-      // Lit A is overbooked (2 for 1); its extra person doesn't use up Lit B's two spots.
-      { id: 'l1', name: 'Chambre 2', capacity: 3, assigned: 2, left: 2 },
-      { id: 'l2', name: 'Salon', capacity: 1, assigned: 1, left: 0 }
+    expect(locations.map(({ id, name, capacity, assigned }) => ({ id, name, capacity, assigned }))).toEqual([
+      { id: 'l1', name: 'Chambre 2', capacity: 3, assigned: 2 },
+      { id: 'l2', name: 'Salon', capacity: 1, assigned: 1 }
     ]);
     expect(locations[0].places.map(place => [place.id, place.assigned])).toEqual([['bedA', 2], ['bedB', 0]]);
   });

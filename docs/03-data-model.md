@@ -294,8 +294,8 @@ defines places.
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in
   `src/lib/places.js`): open places of the attendee's preferred type first, then other open ones,
   then full ones, still pickable with a warning. Saving upserts or deletes the attendee's row.
-- Vue d'ensemble shows, for an event with places, each location's occupancy (its places on
-  expand), the attendees still without a place (waitlisted and cancelled parties left out), and
+- Vue d'ensemble shows, for an event with places, each location's occupancy (and each of its
+  places'), the attendees still without a place (waitlisted and cancelled parties left out), and
   the overbooked places (`computePlaceStats()` in `src/lib/adminStats.js`). Without places it
   keeps the requested/assigned bed count.
 
