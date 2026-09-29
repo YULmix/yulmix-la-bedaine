@@ -17,6 +17,10 @@ erDiagram
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
+  EVENTS ||--o{ EVENT_LOCATIONS : "sleeps people in"
+  EVENT_LOCATIONS ||--o{ EVENT_PLACES : "holds"
+  EVENT_PLACES ||--o{ PLACE_ASSIGNMENTS : "held by"
+  ATTENDEES ||--o| PLACE_ASSIGNMENTS : "holds (on delete cascade)"
 
   AUTH_USERS {
     uuid id PK
@@ -89,7 +93,27 @@ erDiagram
     text sleeping_preference "CHECK, '' = not answered"
     text bed_reason "CHECK"
     text dietary_needs "CHECK"
-    text assigned_bed "admin-only"
+    text assigned_bed "admin-only; replaced by PLACE_ASSIGNMENTS in #114"
+  }
+  EVENT_LOCATIONS {
+    uuid id PK
+    uuid event_id FK
+    text name
+    text note "nullable"
+    int sort_order
+  }
+  EVENT_PLACES {
+    uuid id PK
+    uuid location_id FK
+    text label
+    text type "bed|sofa|floor|camping|outside_other"
+    int capacity "default 1; exceeding it is allowed"
+    int sort_order
+  }
+  PLACE_ASSIGNMENTS {
+    uuid id PK
+    uuid place_id FK "NO ACTION: an occupied place can't be deleted"
+    uuid attendee_id FK "UNIQUE: one place per attendee"
   }
   APP_FEEDBACK {
     uuid id PK
@@ -126,7 +150,7 @@ values of `src/lib/registrationOptions.js`; `''` means "not answered", as it did
 | `sleeping_preference` (+ `_other`) | `''`, `camping`, `floor`, `bed`, `sofa`, `outside_other` |
 | `bed_reason` (+ `_other`) | `''`, `health`, `children`, `comfort`, `other` |
 | `dietary_needs` (+ `dietary_other`) | `''`, `none`, `vegetarian`, `vegan`, `gluten_free`, `other` |
-| `assigned_bed` | free text set by an admin (#94); replaced by place assignments in #113 |
+| `assigned_bed` | free text set by an admin (#94); replaced by [place assignments](#sleeping-locations-and-places) in #114 |
 
 **One write path.** The form saves a party and its attendees in one transaction with
 `save_registration(p_event_id, p_attendees, p_party, p_user_id)`, a `SECURITY INVOKER` function, so
@@ -236,7 +260,37 @@ flowchart TD
     A1["BEFORE INSERT/UPDATE/DELETE → guard_attendee_write()<br/>only through save_registration(), or an admin's bed"]
     A2["AFTER UPDATE OF assigned_bed → request_party_email()<br/>when an attendee gets a bed"]
   end
+  subgraph places["event_locations / event_places / place_assignments"]
+    L1["BEFORE INSERT/UPDATE on place_assignments → enforce_place_assignment()<br/>active party, same event"]
+    L2["AFTER UPDATE on user_parties → release_inactive_party_places()<br/>cancelled or newly waitlisted"]
+    L3["BEFORE UPDATE OF event_id / location_id → keep_places_in_their_event()"]
+  end
 ```
+
+### Sleeping locations and places
+
+An event's **locations** (`event_locations`: a room, the yard…) hold **places** (`event_places`: a
+bed, a sofa…, with a type from the sleeping-preference list and a capacity). An attendee holds at
+most one place for the whole event, as a `place_assignments` row (`UNIQUE (attendee_id)`, a foreign
+key to `attendees` with `ON DELETE CASCADE`). Readers use the `attendee_places` view below; no copy
+of the label is stored. Migration: `supabase/migrations/20260929024111_event_locations_and_places.sql` (#113).
+
+- **Capacity is advisory.** Nothing stops more people than `capacity` in a place: organisers may
+  overbook on purpose, and the UI warns.
+- **Freeing places.** Removing an attendee from the party deletes their assignment (the cascade).
+  A party that is cancelled or becomes waitlisted loses its assignments
+  (`trg_release_inactive_party_places`).
+- **Who can be assigned.** `trg_enforce_place_assignment` refuses an attendee of a cancelled or
+  waitlisted party (`place_assignment_party_inactive`) and a place of another event
+  (`place_assignment_wrong_event`). A location can't move to another event, nor a place to another
+  event's location (`place_event_fixed`).
+- **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting an occupied place, or the
+  location holding it, fails; the editor lists who is in it first.
+- Places are edited in the event dialog of the Événements tab
+  (`src/components/admin/EventLocations.jsx`); every change is saved immediately.
+- Until #114, `attendees.assigned_bed` stays the free-text bed that the member summary, the
+  Logistique tab and the accommodation email read. #114 moves them to `attendee_places` and drops
+  the column; there are no free-text beds after that.
 
 ### Capacity and waitlisting
 
@@ -320,6 +374,7 @@ trigger is a no-op, since there is nothing to compute the close date from.
 
 | View | Purpose | Notes |
 |---|---|---|
+| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `event_places` × `event_locations`, with `bed_label` = `"<location> · <place>"` (#113) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
 | `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | `WITH (security_invoker = true)`, so the querying user's RLS applies: members see only their own rows. `SELECT` for `authenticated` only |
 
 `registration_summary_view` no longer exists. It was unused and bypassed RLS, and was dropped in

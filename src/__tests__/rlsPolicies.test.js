@@ -970,6 +970,176 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
   });
 });
 
+// #113: per-event sleeping locations and places, and which place each attendee holds.
+describe('🛏️ locations, places and assignments (#113)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000001131';
+  const OTHER_EVENT_ID = 'a0000000-a000-a000-a000-a00000001132';
+  const person = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', ...fields });
+
+  let memberClient;
+  let adminAuthClient;
+  let memberParty;
+  let adminParty;
+
+  const attendeesOf = async (partyId) => (await adminAuthClient.from('attendees')
+    .select('id, name').eq('party_id', partyId).order('position')).data;
+  const addLocation = async (name, eventId = EVENT_ID) => {
+    const { data, error } = await adminAuthClient.from('event_locations')
+      .insert({ event_id: eventId, name }).select('id').single();
+    if (error) throw error;
+    return data.id;
+  };
+  const addPlace = async (locationId, label, type = 'bed') => {
+    const { data, error } = await adminAuthClient.from('event_places')
+      .insert({ location_id: locationId, label, type }).select('id').single();
+    if (error) throw error;
+    return data.id;
+  };
+  const assign = (placeId, attendeeId) => adminAuthClient.from('place_assignments')
+    .insert({ place_id: placeId, attendee_id: attendeeId });
+  const bedsOf = async (partyId) => (await adminAuthClient.from('attendee_places')
+    .select('attendee_name, bed_label').eq('party_id', partyId).order('attendee_name')).data
+    .map(({ attendee_name: name, bed_label: bed }) => [name, bed]);
+
+  const cleanUp = async () => {
+    await adminAuthClient.from('user_parties').delete().in('event_id', [EVENT_ID, OTHER_EVENT_ID]);
+    await adminAuthClient.from('event_locations').delete().in('event_id', [EVENT_ID, OTHER_EVENT_ID]);
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert([
+      { id: EVENT_ID, theme: 'Locations Test', status: 'ACTIVE', selling_price_whole_event: 100, max_attendees: 3 },
+      { id: OTHER_EVENT_ID, theme: 'Other Locations Test', status: 'DRAFT' }
+    ]);
+    if (error) throw error;
+  });
+
+  beforeEach(async () => {
+    await cleanUp();
+    memberParty = await saveOk(memberClient, EVENT_ID, [person('Ann'), person('Bob')]);
+    adminParty = await saveOk(adminAuthClient, EVENT_ID, [person('Zed')]);
+  });
+
+  afterAll(cleanUp);
+
+  test("members can't write locations, places or assignments", async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const locationId = await addLocation('Chambre 1');
+    const placeId = await addPlace(locationId, 'Lit A');
+
+    const writes = [
+      memberClient.from('event_locations').insert({ event_id: EVENT_ID, name: 'Hax' }),
+      memberClient.from('event_places').insert({ location_id: locationId, label: 'Hax', type: 'bed' }),
+      memberClient.from('place_assignments').insert({ place_id: placeId, attendee_id: ann.id })
+    ];
+    for (const { error } of await Promise.all(writes)) expect(error).not.toBeNull();
+    expect(await bedsOf(memberParty.id)).toEqual([]);
+  });
+
+  test('a member reads where their own attendees sleep, and nothing else', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const [zed] = await attendeesOf(adminParty.id);
+    const bedroom = await addLocation('Chambre 2');
+    const bed = await addPlace(bedroom, 'Lit A');
+    await addPlace(bedroom, 'Lit B');
+    const yard = await addLocation('Cour');
+    const tent = await addPlace(yard, 'Tente', 'camping');
+    expect((await assign(bed, ann.id)).error).toBeNull();
+    expect((await assign(tent, zed.id)).error).toBeNull();
+
+    const { data: mine } = await memberClient.from('attendee_places').select('attendee_name, bed_label');
+    expect(mine).toEqual([{ attendee_name: 'Ann', bed_label: 'Chambre 2 · Lit A' }]);
+    expect((await memberClient.from('event_places').select('label')).data).toEqual([{ label: 'Lit A' }]);
+    expect((await memberClient.from('event_locations').select('name')).data).toEqual([{ name: 'Chambre 2' }]);
+    expect((await memberClient.from('place_assignments').select('attendee_id')).data).toEqual([{ attendee_id: ann.id }]);
+  });
+
+  test('the label follows renames; a member saving keeps the place; removing the attendee frees it', async () => {
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    const locationId = await addLocation('Salon');
+    const sofa = await addPlace(locationId, 'Sofa', 'sofa');
+    await assign(sofa, ann.id);
+    await assign(sofa, bob.id); // over capacity: allowed, the UI warns
+
+    await adminAuthClient.from('event_locations').update({ name: 'Grand salon' }).eq('id', locationId);
+    await adminAuthClient.from('event_places').update({ label: 'Canapé' }).eq('id', sofa);
+    expect(await bedsOf(memberParty.id)).toEqual([['Ann', 'Grand salon · Canapé'], ['Bob', 'Grand salon · Canapé']]);
+
+    await saveOk(memberClient, EVENT_ID, [person('Bobby', { id: bob.id })]);
+    expect(await bedsOf(memberParty.id)).toEqual([['Bobby', 'Grand salon · Canapé']]);
+  });
+
+  test('one place per attendee', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const locationId = await addLocation('Chambre 3');
+    await assign(await addPlace(locationId, 'Lit A'), ann.id);
+    expect((await assign(await addPlace(locationId, 'Lit B'), ann.id)).error).not.toBeNull();
+  });
+
+  test('cancelling the party frees its places, and a cancelled party cannot be assigned', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const placeId = await addPlace(await addLocation('Chambre 4'), 'Lit A');
+    await assign(placeId, ann.id);
+
+    expect((await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', memberParty.id)).error).toBeNull();
+    expect(await bedsOf(memberParty.id)).toEqual([]);
+    expect((await assign(placeId, ann.id)).error?.message).toBe('place_assignment_party_inactive');
+  });
+
+  test('a party that becomes waitlisted frees its places, and a waitlisted party cannot be assigned', async () => {
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    const placeId = await addPlace(await addLocation('Chambre 5'), 'Lit A');
+    await assign(placeId, ann.id);
+
+    // 3 places: Zed plus a member party grown to 3 people is over capacity.
+    const party = await saveOk(memberClient, EVENT_ID, [
+      person('Ann', { id: ann.id }), person('Bob', { id: bob.id }), person('Cat')
+    ]);
+    expect(party.is_waitlisted).toBe(true);
+    expect(await bedsOf(memberParty.id)).toEqual([]);
+    expect((await assign(placeId, ann.id)).error?.message).toBe('place_assignment_party_inactive');
+  });
+
+  test("a place of another event can't be assigned, and places can't move to another event", async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const otherLocation = await addLocation('Ailleurs', OTHER_EVENT_ID);
+    const otherPlace = await addPlace(otherLocation, 'Lit Z');
+    expect((await assign(otherPlace, ann.id)).error?.message).toBe('place_assignment_wrong_event');
+
+    const locationId = await addLocation('Chambre 6');
+    const placeId = await addPlace(locationId, 'Lit A');
+    const { error: moveLocation } = await adminAuthClient.from('event_locations')
+      .update({ event_id: OTHER_EVENT_ID }).eq('id', locationId);
+    expect(moveLocation?.message).toBe('place_event_fixed');
+    const { error: movePlace } = await adminAuthClient.from('event_places')
+      .update({ location_id: otherLocation }).eq('id', placeId);
+    expect(movePlace?.message).toBe('place_event_fixed');
+
+    // Within the same event, a place can change location.
+    const { error: sameEvent } = await adminAuthClient.from('event_places')
+      .update({ location_id: await addLocation('Chambre 7') }).eq('id', placeId);
+    expect(sameEvent).toBeNull();
+  });
+
+  test('an occupied place or location cannot be deleted; an empty one can', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const locationId = await addLocation('Chambre 8');
+    const placeId = await addPlace(locationId, 'Lit A');
+    const emptyPlaceId = await addPlace(locationId, 'Lit B');
+    await assign(placeId, ann.id);
+
+    expect((await adminAuthClient.from('event_places').delete().eq('id', placeId)).error).not.toBeNull();
+    expect((await adminAuthClient.from('event_locations').delete().eq('id', locationId)).error).not.toBeNull();
+    expect((await adminAuthClient.from('event_places').delete().eq('id', emptyPlaceId)).error).toBeNull();
+    const { data: places } = await adminAuthClient.from('event_places').select('id').eq('location_id', locationId);
+    expect(places).toEqual([{ id: placeId }]);
+  });
+});
+
 // #36: "Supprimer mon compte" is a soft delete through delete_my_account(). Each test uses its
 // own throwaway user (created with the service role's auth admin API), since a deleted account
 // can't be restored through the API and the seeded member is shared by every other suite.
