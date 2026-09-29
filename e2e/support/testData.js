@@ -79,6 +79,9 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     max_attendees: 90,
     event_start_date: null,
     x_reg_close_weeks: 1,
+    // The column defaults: registration opened long ago, so no intent phase unless a spec asks.
+    reg_start_date: '2026-05-01',
+    z_intent_months: 2,
     external_links: [],
     venue_id: venueId,
     ...eventOverrides

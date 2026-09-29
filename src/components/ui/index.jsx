@@ -2,7 +2,7 @@
 // derived from the locked design language in .ulpi/design/DESIGN.md. Build screens out of these
 // instead of re-styling raw elements, so the same control never looks different in two places.
 import { useEffect, useId, useRef } from 'react';
-import { Check, Minus, Plus, X } from 'lucide-react';
+import { Check, Loader2, Minus, Plus, X } from 'lucide-react';
 import fr from '../../locales/fr.json';
 
 const cx = (...classes) => classes.filter(Boolean).join(' ');
@@ -39,6 +39,7 @@ export const Button = ({ variant = 'primary', size = 'md', className, type = 'bu
     )}
     {...props}
   >
+    {loading && <Loader2 aria-hidden="true" className="size-4.5 shrink-0 animate-spin" />}
     {children}
   </button>
 );
