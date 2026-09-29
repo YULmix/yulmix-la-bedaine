@@ -14,7 +14,7 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0001](./0001-supabase-as-the-only-backend.md) | Supabase is the only backend; the SPA talks to Postgres directly | accepted |
 | [0002](./0002-single-schema-file-no-migrations.md) | A single append-only `schema.sql` instead of migrations | superseded by 0013 |
 | [0003](./0003-pricing-as-a-pure-module.md) | Pricing lives in one pure, tested module | accepted |
-| [0004](./0004-per-attendee-logistics-inside-attendees.md) | Per-person logistics live inside the `attendees` JSONB | accepted |
+| [0004](./0004-per-attendee-logistics-inside-attendees.md) | Per-person logistics live inside the `attendees` JSONB | superseded by 0018 |
 | [0005](./0005-waitlist-instead-of-blocking.md) | Over capacity waitlists, never blocks | accepted |
 | [0006](./0006-french-values-in-payment-and-status-columns.md) | Payment status is stored in French | superseded by 0012 |
 | [0007](./0007-selling-price-not-cost-drives-member-pricing.md) | The admin-set selling price, not the cost estimate, determines what members pay | accepted; repricing updated by 0017 |
@@ -28,3 +28,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0015](./0015-dedicated-preview-supabase-project.md) | A dedicated free-tier Supabase project for Vercel Preview, instead of sharing production | accepted |
 | [0016](./0016-edge-function-for-transactional-email.md) | Transactional email is sent by one Supabase Edge Function, triggered from Postgres | accepted |
 | [0017](./0017-lock-price-per-registration.md) | A registration keeps the base price and ratio it was made at; a price change only affects new ones | accepted; reverses the repricing of #32/#109 |
+| [0018](./0018-attendees-in-their-own-table.md) | Attendees live in their own table, referenced by foreign key; no derived copies on `user_parties` | accepted, not yet implemented (#126); supersedes 0004 |

@@ -1,5 +1,8 @@
 # Per-person logistics live inside the attendees JSONB
 
+> **Superseded by [ADR 0018](./0018-attendees-in-their-own-table.md):** attendees move to their own
+> table. Per-person logistics stay per person, as columns of that table.
+
 Sleeping preference, bed reason and dietary needs are stored per attendee, as fields on each object
 in `user_parties.attendees`, while the top-level `logistics` column keeps only party-wide things
 (transport, volunteering, and an admin-assigned sleeping spot). The requirements originally put
