@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
-import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
+import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -9,6 +9,7 @@ import AdminLogisticsView from '../components/admin/AdminLogisticsView';
 import AdminUserManagement from '../components/admin/AdminUserManagement';
 import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
+import { AdminVenues } from '../components/admin/AdminVenues';
 import EventEditor from '../components/admin/EventEditor';
 import { DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
@@ -39,6 +40,7 @@ const ADMIN_TABS = [
   { id: 'logistics', labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
   { id: 'budget', labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote },
   { id: 'events', labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
+  { id: 'venues', labelKey: 'adminTabVenues', shortKey: 'adminTabVenuesShort', icon: MapPin },
   { id: 'tools', labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
 ];
 const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
@@ -826,6 +828,20 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
+    if (activeTab === 'venues') {
+      return (
+        <AdminVenues
+          venueId={searchParams.get('venue')}
+          events={events}
+          locationId={searchParams.get('location')}
+          onOpen={venueId => updateParams({ venue: venueId, location: null })}
+          onLocationChange={locationId => updateParams({ location: locationId })}
+          onBack={() => navigate('/admin?tab=venues')}
+          onVenueChange={refreshEvents}
+          notify={addToast}
+        />
+      );
+    }
     if (activeTab === 'tools') {
       return (
         <div className="grid gap-6 xl:grid-cols-2">
@@ -903,7 +919,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         aria-label={fr.adminTabsAriaLabel}
         onKeyDown={handleTabKeyDown}
         className={cx(
-          'fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
+          'fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
           'md:static md:mb-8 md:flex md:gap-1 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none'
         )}
       >

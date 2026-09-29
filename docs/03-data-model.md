@@ -327,7 +327,10 @@ event's locations to a venue of its own and the address from `events.venue_addre
   (`src/components/admin/EventLocations.jsx`), which creates the event's venue when it has none
   (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
   transaction, returning the existing venue if there is one);
-  every change is saved immediately. A venues tab (#146) and a venue picker (#147) replace this.
+  every change is saved immediately. The Sites tab (`src/components/admin/AdminVenues.jsx`,
+  `/admin?tab=venues&venue=<id>`, #146) lists every venue with its capacity and events, edits one
+  with the same editor (occupants: its events not archived), and archives or restores it. The
+  venue picker (#147) replaces the editor's version.
   The Logistique tab lists the venue's places less the event's exclusions, at the event's
   capacities (`flattenPlaces()` in `src/lib/places.js`). They are
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in

@@ -1,4 +1,4 @@
-import { flattenPlaces, placeOccupancy, placeOptions, searchPlaceOptions } from './places';
+import { flattenPlaces, placeOccupancy, venueTotals, placeOptions, searchPlaceOptions } from './places';
 
 const locations = [
   {
@@ -26,6 +26,12 @@ test('flattenPlaces leaves out the places the event excludes and uses its capaci
     { place_id: 'sofa', is_excluded: false, capacity: 4 }
   ];
   expect(flattenPlaces(locations, overrides).map(p => [p.id, p.capacity])).toEqual([['bedA', 1], ['sofa', 4]]);
+});
+
+test('venueTotals counts locations, places and capacity', () => {
+  expect(venueTotals(locations)).toEqual({ locations: 2, places: 3, capacity: 4 });
+  expect(venueTotals([])).toEqual({ locations: 0, places: 0, capacity: 0 });
+  expect(venueTotals([{ places: [] }])).toEqual({ locations: 1, places: 0, capacity: 0 });
 });
 
 test('placeOccupancy counts saved places, overridden by unsaved changes', () => {

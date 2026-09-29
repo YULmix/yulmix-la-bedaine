@@ -26,6 +26,16 @@ export const flattenPlaces = (locations, overrides = []) => {
       })));
 };
 
+/** A venue's size: its locations, places and total sleeping capacity (`locations` embed `places`). */
+export const venueTotals = (locations) => {
+  const places = (locations || []).flatMap(location => location.places || []);
+  return {
+    locations: (locations || []).length,
+    places: places.length,
+    capacity: places.reduce((sum, place) => sum + place.capacity, 0)
+  };
+};
+
 /**
  * How many attendees each place holds, counting unsaved Logistique changes
  * (`changes[partyId].attendees[index]` = a place id, or null to unassign) over the saved places.

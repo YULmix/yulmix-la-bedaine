@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -168,6 +168,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /admin-event-editor\.spec\.js/,
       dependencies: ['admin-remount']
+    },
+    {
+      // Reseeds the same shared active event and edits its venue, so it runs after
+      // admin-event-editor, on its own. The phone checks use a phone viewport inside the spec.
+      name: 'admin-venues',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-venues\.spec\.js/,
+      dependencies: ['admin-event-editor']
     }
   ],
   webServer: {

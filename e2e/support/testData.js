@@ -128,6 +128,13 @@ export async function setVenueAddress(eventId, address) {
   check(await db.from('venues').update({ address }).eq('id', await venueOf(db, eventId)), 'set e2e venue address');
 }
 
+// Archives (or restores) the e2e event's venue.
+export async function setVenueArchived(eventId, archived) {
+  const db = await adminClient();
+  check(await db.from('venues').update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', await venueOf(db, eventId)), 'archive e2e venue');
+}
+
 // Takes the event off its venue, as if it never had one. The next seed puts it back.
 export async function unlinkVenue(eventId) {
   const db = await adminClient();
