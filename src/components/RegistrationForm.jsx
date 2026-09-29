@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  ArrowLeft, ArrowRight, Ban, BedDouble, CarFront, Caravan, Check, Hand, Layers, Leaf, Sofa, Sprout,
-  Tent, Trash2, UserPlus, Utensils, WheatOff
+  ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, Sprout, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
+import { ACCOMMODATION_ICONS } from './accommodationIcons';
 import { supabase } from '../lib/supabase';
 import { saveRegistration } from '../lib/parties';
 import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
@@ -38,7 +38,6 @@ const PRESENCE_OPTIONS = [
   { value: 'Main', label: fr.participationMainShort }
 ];
 
-const ACCOMMODATION_ICONS = { camping: Tent, floor: Layers, bed: BedDouble, sofa: Sofa, outside_other: Caravan };
 const DIETARY_ICONS = { none: Ban, vegetarian: Leaf, vegan: Sprout, gluten_free: WheatOff, other: Utensils };
 const TRANSPORT_ICONS = { offer: CarFront, need: Hand };
 

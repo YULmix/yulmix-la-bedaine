@@ -13,6 +13,7 @@ export const flattenPlaces = (locations) => [...(locations || [])]
     label: place.label,
     type: place.type,
     capacity: place.capacity,
+    locationId: location.id,
     locationName: location.name
   })));
 

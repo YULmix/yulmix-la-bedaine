@@ -66,7 +66,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [userProfileModal, setUserProfileModal] = useState(null);
   const [userEventHistory, setUserEventHistory] = useState([]);
   const [logisticsChanges, setLogisticsChanges] = useState({});
-  // The active event's sleeping places (#113), flattened for the Logistique tab's picker.
+  // The active event's sleeping places (#113), flattened for the Logistique tab's picker and the
+  // overview's occupancy (#115).
   const [places, setPlaces] = useState([]);
   // The active event's admin-only budget (event_budgets row, null if never saved) and its unsaved
   // edits, kept here so they survive switching tabs.
@@ -116,15 +117,16 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     };
   }, [activeEventState?.id, isAdmin]);
 
-  // Places are edited in the Événements tab's event dialog, so reload them on reaching Logistique.
+  // Places are edited in the Événements tab's event dialog, so reload them on reaching a tab that
+  // shows them.
   useEffect(() => {
-    if (activeTab === 'logistics' && activeEventState?.id) fetchPlaces(activeEventState.id);
+    if (['overview', 'logistics'].includes(activeTab) && activeEventState?.id) fetchPlaces(activeEventState.id);
   }, [activeTab, activeEventState?.id]);
 
   const fetchPlaces = async (eventId) => {
     const { data, error: placesError } = await supabase
       .from('event_locations')
-      .select('name, sort_order, event_places(id, label, type, capacity, sort_order)')
+      .select('id, name, sort_order, event_places(id, label, type, capacity, sort_order)')
       .eq('event_id', eventId);
     if (placesError) {
       console.error('Error fetching places:', placesError);
@@ -817,7 +819,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         />
       );
     }
-    return <AdminOverview event={activeEventState} budget={budget} parties={parties} onOpenParty={openPartyEdit} />;
+    return <AdminOverview event={activeEventState} budget={budget} parties={parties} places={places} onOpenParty={openPartyEdit} />;
   };
 
   const unsavedLogistics = Object.keys(logisticsChanges).length;

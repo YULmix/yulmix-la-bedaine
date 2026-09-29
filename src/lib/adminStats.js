@@ -1,4 +1,5 @@
 import { PAYMENT_STATUS, isActiveRegistration } from './registrationOptions.js';
+import { placeOccupancy } from './places.js';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
 // attendees is stored on the party).
@@ -75,4 +76,34 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
     received,
     outstanding: totalDue - received
   };
+};
+
+/**
+ * Sleeping-place figures for the overview of an event with locations (#115). Cancelled and
+ * waitlisted parties hold no places (the database releases them), and aren't counted as
+ * unassigned either.
+ * @param {Array} allParties user_parties rows (with attendees and their `place`)
+ * @param {Array} places the event's places, from flattenPlaces()
+ * @returns {{ locations: Array, unassigned: number, overbooked: Array }} each location with its
+ *   capacity and assigned, and its places with their `assigned` count.
+ */
+export const computePlaceStats = (allParties, places) => {
+  const parties = allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
+  const occupancy = placeOccupancy(parties);
+  const locations = [];
+  places.forEach(place => {
+    const assigned = occupancy.get(place.id) || 0;
+    // flattenPlaces() keeps a location's places together.
+    let location = locations.at(-1);
+    if (location?.id !== place.locationId) {
+      location = { id: place.locationId, name: place.locationName, capacity: 0, assigned: 0, places: [] };
+      locations.push(location);
+    }
+    location.places.push({ ...place, assigned });
+    location.capacity += place.capacity;
+    location.assigned += assigned;
+  });
+  const unassigned = parties.reduce((count, party) => count + (party.attendees || []).filter(attendee => !attendee.place).length, 0);
+  const overbooked = locations.flatMap(location => location.places).filter(place => place.assigned > place.capacity);
+  return { locations, unassigned, overbooked };
 };

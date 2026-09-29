@@ -573,5 +573,13 @@
   "placePickerWaitlisted": "Sur la liste d'attente : pas de place tant que l'inscription n'est pas confirmée.",
   "placeOverbooked": "Capacité dépassée : {taken} personnes pour {capacity}.",
   "logisticsNoPlacesTitle": "Aucune place définie pour cet événement",
-  "logisticsNoPlacesHint": "Ajoutez les lieux et leurs places dans l'onglet Événements (modifier l'événement, section Couchage) pour pouvoir les attribuer."
+  "logisticsNoPlacesHint": "Ajoutez les lieux et leurs places dans l'onglet Événements (modifier l'événement, section Couchage) pour pouvoir les attribuer.",
+  "occupancyTitle": "Couchage",
+  "occupancyTaken": "places prises",
+  "occupancyUnassignedOne": "{count} personne sans place",
+  "occupancyUnassignedOther": "{count} personnes sans place",
+  "occupancyAllPlaced": "Tout le monde a une place",
+  "overbookedTitleOne": "{count} place dépasse sa capacité",
+  "overbookedTitleOther": "{count} places dépassent leur capacité",
+  "overbookedPlace": "{location}, {place} : {taken} personnes pour {capacity}"
 }

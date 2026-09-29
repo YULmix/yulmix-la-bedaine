@@ -15,8 +15,8 @@ const locations = [
 ];
 
 test('flattenPlaces lists places by location order, then place order', () => {
-  expect(flattenPlaces(locations).map(p => [p.id, p.locationName])).toEqual([
-    ['bedA', 'Chambre 2'], ['bedB', 'Chambre 2'], ['sofa', 'Salon']
+  expect(flattenPlaces(locations).map(p => [p.id, p.locationId, p.locationName])).toEqual([
+    ['bedA', 'l1', 'Chambre 2'], ['bedB', 'l1', 'Chambre 2'], ['sofa', 'l2', 'Salon']
   ]);
 });
 
