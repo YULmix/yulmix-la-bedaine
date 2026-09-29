@@ -681,6 +681,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
 
   const ADMIN_FIELDS_EVENT_ID = 'a0000000-a000-a000-a000-a00000000094';
   const ADMIN_FIELDS_PARTY_ID = 'a0000000-a000-a000-a000-a00000000095';
+  const ADMIN_FIELDS_VENUE_ID = 'a0000000-a000-a000-a000-a00000000096';
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const attendee = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', is_new_member: false, ...fields });
 
@@ -713,14 +714,16 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
     adminAuthClient = await signIn('admin@test.local');
+    const { error: venueError } = await adminAuthClient.from('venues').upsert({ id: ADMIN_FIELDS_VENUE_ID, name: 'Admin Fields Venue' });
+    if (venueError) throw venueError;
     const { error } = await adminAuthClient.from('events').upsert({
-      id: ADMIN_FIELDS_EVENT_ID, theme: 'Admin Fields Test', status: 'ACTIVE', selling_price_whole_event: 100
+      id: ADMIN_FIELDS_EVENT_ID, theme: 'Admin Fields Test', status: 'ACTIVE', selling_price_whole_event: 100, venue_id: ADMIN_FIELDS_VENUE_ID
     });
     if (error) throw error;
-    await adminAuthClient.from('event_locations').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
-    const { data: location } = await adminAuthClient.from('event_locations')
-      .insert({ event_id: ADMIN_FIELDS_EVENT_ID, name: 'Ch' }).select('id').single();
-    const { data: places } = await adminAuthClient.from('event_places')
+    await adminAuthClient.from('locations').delete().eq('venue_id', ADMIN_FIELDS_VENUE_ID);
+    const { data: location } = await adminAuthClient.from('locations')
+      .insert({ venue_id: ADMIN_FIELDS_VENUE_ID, name: 'Ch' }).select('id').single();
+    const { data: places } = await adminAuthClient.from('places')
       .insert([{ location_id: location.id, label: 'B1', type: 'bed' }, { location_id: location.id, label: 'B2', type: 'bed' }])
       .select('id, label');
     placeIds = Object.fromEntries(places.map(place => [place.label, place.id]));
@@ -732,7 +735,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
 
   afterAll(async () => {
     await adminAuthClient.from('user_parties').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
-    await adminAuthClient.from('event_locations').delete().eq('event_id', ADMIN_FIELDS_EVENT_ID);
+    await adminAuthClient.from('locations').delete().eq('venue_id', ADMIN_FIELDS_VENUE_ID);
   });
 
   test('a member creating a party cannot set payment, notes or beds', async () => {
@@ -979,12 +982,22 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
   });
 });
 
-// #113: per-event sleeping locations and places, and which place each attendee holds.
-describe('🛏️ locations, places and assignments (#113)', () => {
+// #113, #145: a venue's locations and places, shared by the events held there, and which place
+// each attendee holds for their event.
+describe('🛏️ venues, locations, places and assignments (#113, #145)', () => {
   jest.setTimeout(30000);
 
   const EVENT_ID = 'a0000000-a000-a000-a000-a00000001131';
   const OTHER_EVENT_ID = 'a0000000-a000-a000-a000-a00000001132';
+  // Another edition at EVENT_ID's venue.
+  const SAME_VENUE_EVENT_ID = 'a0000000-a000-a000-a000-a00000001133';
+  const VENUE_ID = 'a0000000-a000-a000-a000-a00000001451';
+  const OTHER_VENUE_ID = 'a0000000-a000-a000-a000-a00000001452';
+  const EVENTS = [
+    { id: EVENT_ID, theme: 'Locations Test', status: 'ACTIVE', selling_price_whole_event: 100, max_attendees: 3, venue_id: VENUE_ID },
+    { id: OTHER_EVENT_ID, theme: 'Other Locations Test', status: 'DRAFT', venue_id: OTHER_VENUE_ID },
+    { id: SAME_VENUE_EVENT_ID, theme: 'Same Venue Test', status: 'ACTIVE', selling_price_whole_event: 100, venue_id: VENUE_ID }
+  ];
   const person = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', ...fields });
 
   let memberClient;
@@ -994,35 +1007,42 @@ describe('🛏️ locations, places and assignments (#113)', () => {
 
   const attendeesOf = async (partyId) => (await adminAuthClient.from('attendees')
     .select('id, name').eq('party_id', partyId).order('position')).data;
-  const addLocation = async (name, eventId = EVENT_ID) => {
-    const { data, error } = await adminAuthClient.from('event_locations')
-      .insert({ event_id: eventId, name }).select('id').single();
+  const addLocation = async (name, venueId = VENUE_ID) => {
+    const { data, error } = await adminAuthClient.from('locations')
+      .insert({ venue_id: venueId, name }).select('id').single();
     if (error) throw error;
     return data.id;
   };
   const addPlace = async (locationId, label, type = 'bed') => {
-    const { data, error } = await adminAuthClient.from('event_places')
+    const { data, error } = await adminAuthClient.from('places')
       .insert({ location_id: locationId, label, type }).select('id').single();
     if (error) throw error;
     return data.id;
   };
   const assign = (placeId, attendeeId) => adminAuthClient.from('place_assignments')
     .insert({ place_id: placeId, attendee_id: attendeeId });
+  const override = (eventId, placeId, fields) => adminAuthClient.from('event_place_overrides')
+    .upsert({ event_id: eventId, place_id: placeId, ...fields });
   const bedsOf = async (partyId) => (await adminAuthClient.from('attendee_places')
     .select('attendee_name, bed_label').eq('party_id', partyId).order('attendee_name')).data
     .map(({ attendee_name: name, bed_label: bed }) => [name, bed]);
 
+  // Venues can't be deleted (they are archived), so the test venues stay, emptied.
   const cleanUp = async () => {
-    await adminAuthClient.from('user_parties').delete().in('event_id', [EVENT_ID, OTHER_EVENT_ID]);
-    await adminAuthClient.from('event_locations').delete().in('event_id', [EVENT_ID, OTHER_EVENT_ID]);
+    const eventIds = EVENTS.map(event => event.id);
+    await adminAuthClient.from('user_parties').delete().in('event_id', eventIds);
+    await adminAuthClient.from('event_place_overrides').delete().in('event_id', eventIds);
+    await adminAuthClient.from('locations').delete().in('venue_id', [VENUE_ID, OTHER_VENUE_ID]);
+    const { error } = await adminAuthClient.from('events').upsert(EVENTS);
+    if (error) throw error;
   };
 
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
     adminAuthClient = await signIn('admin@test.local');
-    const { error } = await adminAuthClient.from('events').upsert([
-      { id: EVENT_ID, theme: 'Locations Test', status: 'ACTIVE', selling_price_whole_event: 100, max_attendees: 3 },
-      { id: OTHER_EVENT_ID, theme: 'Other Locations Test', status: 'DRAFT' }
+    const { error } = await adminAuthClient.from('venues').upsert([
+      { id: VENUE_ID, name: 'Le Chalet', address: '1 ch. du Lac', archived_at: null },
+      { id: OTHER_VENUE_ID, name: 'Ailleurs', address: '2 rue Secrète', archived_at: null }
     ]);
     if (error) throw error;
   });
@@ -1035,18 +1055,37 @@ describe('🛏️ locations, places and assignments (#113)', () => {
 
   afterAll(cleanUp);
 
-  test("members can't write locations, places or assignments", async () => {
+  test("members can't write venues, locations, places, overrides or assignments", async () => {
     const [ann] = await attendeesOf(memberParty.id);
     const locationId = await addLocation('Chambre 1');
     const placeId = await addPlace(locationId, 'Lit A');
 
     const writes = [
-      memberClient.from('event_locations').insert({ event_id: EVENT_ID, name: 'Hax' }),
-      memberClient.from('event_places').insert({ location_id: locationId, label: 'Hax', type: 'bed' }),
+      memberClient.from('venues').insert({ name: 'Hax' }),
+      memberClient.from('locations').insert({ venue_id: VENUE_ID, name: 'Hax' }),
+      memberClient.from('places').insert({ location_id: locationId, label: 'Hax', type: 'bed' }),
+      memberClient.from('event_place_overrides').insert({ event_id: EVENT_ID, place_id: placeId, is_excluded: true }),
       memberClient.from('place_assignments').insert({ place_id: placeId, attendee_id: ann.id })
     ];
     for (const { error } of await Promise.all(writes)) expect(error).not.toBeNull();
+    const { data: renamed } = await memberClient.from('venues').update({ name: 'Hax' }).eq('id', VENUE_ID).select('id');
+    expect(renamed ?? []).toEqual([]);
+    expect((await adminAuthClient.from('venues').select('name').eq('id', VENUE_ID).single()).data.name).toBe('Le Chalet');
     expect(await bedsOf(memberParty.id)).toEqual([]);
+  });
+
+  test('anyone who sees an event sees its venue; nobody deletes a venue', async () => {
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY);
+    for (const client of [memberClient, anonClient]) {
+      const { data } = await client.from('events').select('venue:venues(name, address)').eq('id', EVENT_ID).single();
+      expect(data.venue).toEqual({ name: 'Le Chalet', address: '1 ch. du Lac' });
+      // A draft event is hidden, and so is its venue.
+      expect((await client.from('venues').select('id').eq('id', OTHER_VENUE_ID)).data).toEqual([]);
+    }
+
+    const { error } = await adminAuthClient.from('venues').delete().eq('id', OTHER_VENUE_ID);
+    expect(error).not.toBeNull();
+    expect((await adminAuthClient.from('venues').select('id').eq('id', OTHER_VENUE_ID)).data).toHaveLength(1);
   });
 
   test('a member reads where their own attendees sleep, and nothing else', async () => {
@@ -1060,10 +1099,10 @@ describe('🛏️ locations, places and assignments (#113)', () => {
     expect((await assign(bed, ann.id)).error).toBeNull();
     expect((await assign(tent, zed.id)).error).toBeNull();
 
-    const { data: mine } = await memberClient.from('attendee_places').select('attendee_name, bed_label');
-    expect(mine).toEqual([{ attendee_name: 'Ann', bed_label: 'Chambre 2 · Lit A' }]);
-    expect((await memberClient.from('event_places').select('label')).data).toEqual([{ label: 'Lit A' }]);
-    expect((await memberClient.from('event_locations').select('name')).data).toEqual([{ name: 'Chambre 2' }]);
+    const { data: mine } = await memberClient.from('attendee_places').select('attendee_name, event_id, bed_label');
+    expect(mine).toEqual([{ attendee_name: 'Ann', event_id: EVENT_ID, bed_label: 'Chambre 2 · Lit A' }]);
+    expect((await memberClient.from('places').select('label')).data).toEqual([{ label: 'Lit A' }]);
+    expect((await memberClient.from('locations').select('name')).data).toEqual([{ name: 'Chambre 2' }]);
     expect((await memberClient.from('place_assignments').select('attendee_id')).data).toEqual([{ attendee_id: ann.id }]);
   });
 
@@ -1074,8 +1113,8 @@ describe('🛏️ locations, places and assignments (#113)', () => {
     await assign(sofa, ann.id);
     await assign(sofa, bob.id); // over capacity: allowed, the UI warns
 
-    await adminAuthClient.from('event_locations').update({ name: 'Grand salon' }).eq('id', locationId);
-    await adminAuthClient.from('event_places').update({ label: 'Canapé' }).eq('id', sofa);
+    await adminAuthClient.from('locations').update({ name: 'Grand salon' }).eq('id', locationId);
+    await adminAuthClient.from('places').update({ label: 'Canapé' }).eq('id', sofa);
     expect(await bedsOf(memberParty.id)).toEqual([['Ann', 'Grand salon · Canapé'], ['Bob', 'Grand salon · Canapé']]);
 
     await saveOk(memberClient, EVENT_ID, [person('Bobby', { id: bob.id })]);
@@ -1113,25 +1152,25 @@ describe('🛏️ locations, places and assignments (#113)', () => {
     expect((await assign(placeId, ann.id)).error?.message).toBe('place_assignment_party_inactive');
   });
 
-  test("a place of another event can't be assigned, and places can't move to another event", async () => {
+  test("a place of another venue can't be assigned, and places can't move to another venue", async () => {
     const [ann] = await attendeesOf(memberParty.id);
-    const otherLocation = await addLocation('Ailleurs', OTHER_EVENT_ID);
+    const otherLocation = await addLocation('Ailleurs', OTHER_VENUE_ID);
     const otherPlace = await addPlace(otherLocation, 'Lit Z');
     expect((await assign(otherPlace, ann.id)).error?.message).toBe('place_assignment_wrong_event');
 
     const locationId = await addLocation('Chambre 6');
     const placeId = await addPlace(locationId, 'Lit A');
-    const { error: moveLocation } = await adminAuthClient.from('event_locations')
-      .update({ event_id: OTHER_EVENT_ID }).eq('id', locationId);
-    expect(moveLocation?.message).toBe('place_event_fixed');
-    const { error: movePlace } = await adminAuthClient.from('event_places')
+    const { error: moveLocation } = await adminAuthClient.from('locations')
+      .update({ venue_id: OTHER_VENUE_ID }).eq('id', locationId);
+    expect(moveLocation?.message).toBe('place_venue_fixed');
+    const { error: movePlace } = await adminAuthClient.from('places')
       .update({ location_id: otherLocation }).eq('id', placeId);
-    expect(movePlace?.message).toBe('place_event_fixed');
+    expect(movePlace?.message).toBe('place_venue_fixed');
 
-    // Within the same event, a place can change location.
-    const { error: sameEvent } = await adminAuthClient.from('event_places')
+    // Within the same venue, a place can change location.
+    const { error: sameVenue } = await adminAuthClient.from('places')
       .update({ location_id: await addLocation('Chambre 7') }).eq('id', placeId);
-    expect(sameEvent).toBeNull();
+    expect(sameVenue).toBeNull();
   });
 
   test('an occupied place or location cannot be deleted; an empty one can', async () => {
@@ -1141,11 +1180,72 @@ describe('🛏️ locations, places and assignments (#113)', () => {
     const emptyPlaceId = await addPlace(locationId, 'Lit B');
     await assign(placeId, ann.id);
 
-    expect((await adminAuthClient.from('event_places').delete().eq('id', placeId)).error).not.toBeNull();
-    expect((await adminAuthClient.from('event_locations').delete().eq('id', locationId)).error).not.toBeNull();
-    expect((await adminAuthClient.from('event_places').delete().eq('id', emptyPlaceId)).error).toBeNull();
-    const { data: places } = await adminAuthClient.from('event_places').select('id').eq('location_id', locationId);
+    expect((await adminAuthClient.from('places').delete().eq('id', placeId)).error).not.toBeNull();
+    expect((await adminAuthClient.from('locations').delete().eq('id', locationId)).error).not.toBeNull();
+    expect((await adminAuthClient.from('places').delete().eq('id', emptyPlaceId)).error).toBeNull();
+    const { data: places } = await adminAuthClient.from('places').select('id').eq('location_id', locationId);
     expect(places).toEqual([{ id: placeId }]);
+  });
+
+  test('two events at one venue share its places, each with its own assignments', async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const yanParty = await saveOk(adminAuthClient, SAME_VENUE_EVENT_ID, [person('Yan')]);
+    const [yan] = await attendeesOf(yanParty.id);
+    const bed = await addPlace(await addLocation('Chambre 9'), 'Lit A');
+
+    expect((await assign(bed, ann.id)).error).toBeNull();
+    expect((await assign(bed, yan.id)).error).toBeNull();
+    const { data } = await adminAuthClient.from('attendee_places')
+      .select('attendee_name, event_id').eq('place_id', bed).order('attendee_name');
+    expect(data).toEqual([
+      { attendee_name: 'Ann', event_id: EVENT_ID },
+      { attendee_name: 'Yan', event_id: SAME_VENUE_EVENT_ID }
+    ]);
+  });
+
+  test("an event excludes a place or changes its capacity; excluding one its attendees hold is refused", async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const yanParty = await saveOk(adminAuthClient, SAME_VENUE_EVENT_ID, [person('Yan')]);
+    const [yan] = await attendeesOf(yanParty.id);
+    const locationId = await addLocation('Chambre 10');
+    const bed = await addPlace(locationId, 'Lit A');
+    const sofa = await addPlace(locationId, 'Sofa', 'sofa');
+    await assign(bed, ann.id);
+
+    // Ann (this event) holds it: refused. The other edition at the venue may exclude it.
+    expect((await override(EVENT_ID, bed, { is_excluded: true })).error?.message).toBe('place_exclusion_occupied');
+    expect((await override(SAME_VENUE_EVENT_ID, bed, { is_excluded: true })).error).toBeNull();
+    expect((await assign(bed, yan.id)).error?.message).toBe('place_assignment_place_excluded');
+
+    expect((await override(EVENT_ID, sofa, { capacity: 3 })).error).toBeNull();
+    expect((await override(EVENT_ID, sofa, { is_excluded: false, capacity: null })).error).not.toBeNull();
+    const otherPlace = await addPlace(await addLocation('Ailleurs', OTHER_VENUE_ID), 'Lit Z');
+    expect((await override(EVENT_ID, otherPlace, { is_excluded: true })).error?.message).toBe('place_override_wrong_venue');
+
+    // The venue's own place is unchanged.
+    const { data: place } = await adminAuthClient.from('places').select('capacity').eq('id', sofa).single();
+    expect(place.capacity).toBe(1);
+    expect((await memberClient.from('event_place_overrides').select('place_id')).data).toEqual([]);
+  });
+
+  test("changing an event's venue clears its assignments and overrides, not another event's", async () => {
+    const [ann] = await attendeesOf(memberParty.id);
+    const yanParty = await saveOk(adminAuthClient, SAME_VENUE_EVENT_ID, [person('Yan')]);
+    const [yan] = await attendeesOf(yanParty.id);
+    const bed = await addPlace(await addLocation('Chambre 11'), 'Lit A');
+    const sofa = await addPlace(await addLocation('Salon 2'), 'Sofa', 'sofa');
+    await assign(bed, ann.id);
+    await assign(bed, yan.id);
+    await override(EVENT_ID, sofa, { is_excluded: true });
+
+    // Saving the same venue again changes nothing.
+    expect((await adminAuthClient.from('events').update({ venue_id: VENUE_ID }).eq('id', EVENT_ID)).error).toBeNull();
+    expect(await bedsOf(memberParty.id)).toEqual([['Ann', 'Chambre 11 · Lit A']]);
+
+    expect((await adminAuthClient.from('events').update({ venue_id: OTHER_VENUE_ID }).eq('id', EVENT_ID)).error).toBeNull();
+    expect(await bedsOf(memberParty.id)).toEqual([]);
+    expect((await adminAuthClient.from('event_place_overrides').select('place_id').eq('event_id', EVENT_ID)).data).toEqual([]);
+    expect(await bedsOf(yanParty.id)).toEqual([['Yan', 'Chambre 11 · Lit A']]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, MapPin, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
@@ -13,6 +13,10 @@ const capacityOf = places => places.reduce((sum, place) => sum + place.capacity,
 // A capacity change is written this long after the last Stepper click, so tapping + five times is
 // one write, not five racing ones.
 const CAPACITY_WRITE_DELAY_MS = 400;
+
+// Deleting a place someone holds: this event's occupants are known here, another event's (at the
+// same venue) only through the foreign key's refusal.
+const FOREIGN_KEY_VIOLATION = '23503';
 
 // A text input that saves when it loses focus (or on Enter), and only if the value changed. A
 // required value left empty goes back to what it was.
@@ -122,12 +126,75 @@ const PlaceRow = ({ place, occupants, onUpdate, onCapacity, onDelete }) => {
   );
 };
 
-// Locations and places of an event (#113), on the Couchage section of the event editor. Every
-// change is saved right away: the rows are separate tables, and assignments point at them. Field
-// edits show at once and are written behind; adding, removing and moving rows reload from the
-// database. Deleting a place someone holds is refused, here with their names and in the database
-// by a foreign key.
-export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => {
+// The venue's name and address, saved like the rest of the section. Shared by every event held
+// there, which the hint says.
+const VenueCard = ({ venue, onUpdate }) => (
+  <Card as="section" aria-labelledby="venue-card-title" className="space-y-4 p-4 sm:p-5">
+    <div className="space-y-1">
+      <h3 id="venue-card-title" className="flex items-center gap-2 text-lg font-semibold text-ink">
+        <MapPin aria-hidden="true" className="size-4.5 text-neon" strokeWidth={1.75} />{fr.venueTitle}
+      </h3>
+      <p className="max-w-prose text-sm text-faint">{fr.venueSharedHint}</p>
+    </div>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label={fr.venueNameLabel}>
+        {({ id }) => <BlurInput id={id} required value={venue.name} onCommit={name => onUpdate({ name })} />}
+      </Field>
+      <Field label={fr.venueAddressLabel}>
+        {({ id }) => <BlurInput id={id} value={venue.address} onCommit={address => onUpdate({ address: address || null })} />}
+      </Field>
+    </div>
+  </Card>
+);
+
+// The Couchage section of the event editor: the event's venue (#145), its locations and places
+// (#113). Until the venues tab (#146) and the venue picker (#147), this is where a venue is
+// created and edited; an event without one offers to create it.
+export const EventSleepingPlan = ({ event, locationId, onLocationChange, onVenueChange }) => {
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const createVenue = async () => {
+    setCreating(true);
+    const { data: venue, error: venueError } = await supabase.from('venues')
+      .insert({ name: event.theme }).select('id').single();
+    const { error: linkError } = venueError
+      ? { error: venueError }
+      : await supabase.from('events').update({ venue_id: venue.id }).eq('id', event.id);
+    if (linkError) {
+      console.error('Error creating the venue:', linkError);
+      setError(dbErrorMessage(linkError, fr.venueCreateError));
+    } else {
+      await onVenueChange();
+    }
+    setCreating(false);
+  };
+
+  if (!event.venue_id) {
+    return (
+      <div className="space-y-5">
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+        <Card>
+          <EmptyState icon={MapPin} title={fr.venueNone}
+            action={<Button onClick={createVenue} loading={creating}><Plus aria-hidden="true" className="size-4.5" />{fr.venueCreate}</Button>}>
+            {fr.venueNoneHint}
+          </EmptyState>
+        </Card>
+      </div>
+    );
+  }
+  return (
+    <VenuePlan key={event.venue_id} eventId={event.id} venueId={event.venue_id}
+      locationId={locationId} onLocationChange={onLocationChange} onVenueChange={onVenueChange} />
+  );
+};
+
+// Every change is saved right away: the rows are separate tables, and assignments point at them.
+// Field edits show at once and are written behind; adding, removing and moving rows reload from
+// the database. Deleting a place someone of this event holds is refused, here with their names;
+// the database refuses it for anyone at the venue (a foreign key).
+const VenuePlan = ({ eventId, venueId, locationId, onLocationChange, onVenueChange }) => {
+  const [venue, setVenue] = useState(null);
   const [locations, setLocations] = useState(null);
   const [error, setError] = useState(null);
   const [occupants, setOccupants] = useState({});
@@ -139,32 +206,34 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
   const capacityWrites = useRef({});
 
   const load = useCallback(async () => {
-    const [locationsResult, assignmentsResult] = await Promise.all([
+    const [venueResult, locationsResult, assignmentsResult] = await Promise.all([
+      supabase.from('venues').select('id, name, address').eq('id', venueId).single(),
       supabase
-        .from('event_locations')
-        .select('id, name, note, sort_order, created_at, event_places(id, label, type, capacity, sort_order, created_at)')
-        .eq('event_id', eventId),
+        .from('locations')
+        .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
+        .eq('venue_id', venueId),
       supabase
         .from('attendee_places')
         .select('place_id, attendee_name')
         .eq('event_id', eventId)
     ]);
-    const loadError = locationsResult.error || assignmentsResult.error;
+    const loadError = venueResult.error || locationsResult.error || assignmentsResult.error;
     if (loadError) {
       console.error('Error loading locations:', loadError);
       setError(fr.locationsLoadError);
       setLocations(current => current || []);
       return;
     }
+    setVenue(venueResult.data);
     setLocations(locationsResult.data
-      .map(location => ({ ...location, places: [...location.event_places].sort(bySortOrder) }))
+      .map(location => ({ ...location, places: [...location.places].sort(bySortOrder) }))
       .sort(bySortOrder));
     const names = {};
     assignmentsResult.data.forEach(({ place_id: placeId, attendee_name: name }) => {
       (names[placeId] ||= []).push(name);
     });
     setOccupants(names);
-  }, [eventId]);
+  }, [eventId, venueId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -184,7 +253,9 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
     inFlight.current -= 1;
     if (result.error) {
       console.error('Error saving locations:', result.error);
-      setError(dbErrorMessage(result.error, fr.locationsSaveError));
+      setError(result.error.code === FOREIGN_KEY_VIOLATION
+        ? fr.placeOccupiedByAnotherEvent
+        : dbErrorMessage(result.error, fr.locationsSaveError));
       setStatus('idle');
       await load();
     } else {
@@ -203,7 +274,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
   const flushCapacity = useCallback(() => {
     Object.entries(capacityWrites.current).forEach(([placeId, { timer, capacity }]) => {
       clearTimeout(timer);
-      supabase.from('event_places').update({ capacity }).eq('id', placeId).then(({ error: writeError }) => {
+      supabase.from('places').update({ capacity }).eq('id', placeId).then(({ error: writeError }) => {
         if (writeError) console.error('Error saving capacity:', writeError);
       });
     });
@@ -213,7 +284,14 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
 
   const patchLocation = (id, fields) => {
     setLocations(current => current.map(location => (location.id === id ? { ...location, ...fields } : location)));
-    return track(supabase.from('event_locations').update(fields).eq('id', id));
+    return track(supabase.from('locations').update(fields).eq('id', id));
+  };
+
+  // The event's page shows the venue's address, so the editor's events reload after a change.
+  const patchVenue = async (fields) => {
+    setVenue(current => ({ ...current, ...fields }));
+    const result = await track(supabase.from('venues').update(fields).eq('id', venueId));
+    if (!result.error) onVenueChange();
   };
 
   const patchPlaceLocally = (id, fields) => setLocations(current => current.map(location => ({
@@ -223,7 +301,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
 
   const patchPlace = (id, fields) => {
     patchPlaceLocally(id, fields);
-    return track(supabase.from('event_places').update(fields).eq('id', id));
+    return track(supabase.from('places').update(fields).eq('id', id));
   };
 
   const setCapacity = (id, capacity) => {
@@ -232,14 +310,14 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
     setStatus('saving');
     const timer = setTimeout(() => {
       delete capacityWrites.current[id];
-      track(supabase.from('event_places').update({ capacity }).eq('id', id));
+      track(supabase.from('places').update({ capacity }).eq('id', id));
     }, CAPACITY_WRITE_DELAY_MS);
     capacityWrites.current[id] = { timer, capacity };
   };
 
   const addLocation = async () => {
-    const { data } = await trackAndReload(supabase.from('event_locations').insert({
-      event_id: eventId,
+    const { data } = await trackAndReload(supabase.from('locations').insert({
+      venue_id: venueId,
       name: fr.locationDefaultName.replace('{n}', locations.length + 1),
       sort_order: nextSortOrder(locations)
     }).select('id').single());
@@ -247,15 +325,15 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
   };
 
   const duplicateLocation = async (location) => {
-    const { data, error: insertError } = await track(supabase.from('event_locations').insert({
-      event_id: eventId,
+    const { data, error: insertError } = await track(supabase.from('locations').insert({
+      venue_id: venueId,
       name: fr.locationCopyName.replace('{name}', location.name),
       note: location.note,
       sort_order: nextSortOrder(locations)
     }).select('id').single());
     if (insertError) return;
     if (location.places.length) {
-      await track(supabase.from('event_places').insert(location.places.map(({ label, type, capacity, sort_order: sortOrder }) => ({
+      await track(supabase.from('places').insert(location.places.map(({ label, type, capacity, sort_order: sortOrder }) => ({
         location_id: data.id, label, type, capacity, sort_order: sortOrder
       }))));
     }
@@ -271,7 +349,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
     const writes = reordered
       .map((location, order) => ({ location, order }))
       .filter(({ location, order }) => location.sort_order !== order)
-      .map(({ location, order }) => supabase.from('event_locations').update({ sort_order: order }).eq('id', location.id));
+      .map(({ location, order }) => supabase.from('locations').update({ sort_order: order }).eq('id', location.id));
     await trackAndReload(Promise.all(writes).then(results => results.find(result => result.error) || {}));
   };
 
@@ -279,7 +357,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
   const occupantCount = places => occupantsOf(places).length;
 
   const deleteLocation = async (location) => {
-    await trackAndReload(supabase.from('event_locations').delete().eq('id', location.id));
+    await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
     onLocationChange(null);
   };
 
@@ -294,7 +372,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
     const typeLabel = getOptionLabel(ACCOMMODATION_OPTIONS, type);
     const first = location.places.filter(place => place.type === type).length + 1;
     const sortOrder = nextSortOrder(location.places);
-    return trackAndReload(supabase.from('event_places').insert(Array.from({ length: count }, (_, i) => ({
+    return trackAndReload(supabase.from('places').insert(Array.from({ length: count }, (_, i) => ({
       location_id: location.id,
       label: fr.placeDefaultLabel.replace('{type}', typeLabel).replace('{n}', first + i),
       type,
@@ -305,7 +383,7 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
   const deletePlace = (place) => {
     const names = occupants[place.id] || [];
     if (names.length) return setBlocked({ name: place.label, names });
-    trackAndReload(supabase.from('event_places').delete().eq('id', place.id));
+    trackAndReload(supabase.from('places').delete().eq('id', place.id));
   };
 
   if (!locations) {
@@ -329,6 +407,8 @@ export const EventSleepingPlan = ({ eventId, locationId, onLocationChange }) => 
         <SaveStatus status={status} />
       </div>
       {error && <Notice tone="bad" role="alert">{error}</Notice>}
+
+      {venue && <VenueCard venue={venue} onUpdate={patchVenue} />}
 
       {locations.length === 0 ? (
         <Card>

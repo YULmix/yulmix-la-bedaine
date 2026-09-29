@@ -119,15 +119,22 @@ afterwards. Nobody gets an invoice after they have already settled.
 Requesting a bed requires a reason (`health`, `children`, `comfort`) because beds are scarce.
 _Avoid_: accommodation type, room.
 
-**Location** (fr. *lieu*, `event_locations`)
-Somewhere people sleep at a given event: a room, the yard, a campground. Defined per event by the
-organisers, with an optional note. Holds places.
-_Avoid_: room (a location isn't always one), venue (that's the event's address).
+**Venue** (fr. *site*, `venues`)
+Where an event takes place: a name, an address, and the locations in it. Defined once and reused
+by every edition held there; an event uses one, and its address is the venue's. Archived, never
+deleted.
+_Avoid_: location (that's inside a venue), lieu (the French for location).
 
-**Place** (fr. *place*, `event_places`)
-A spot inside a location: a bed, a sofa, floor space… Has a type from the sleeping-preference list
+**Location** (fr. *lieu*, `locations`)
+Somewhere people sleep, inside a venue: a room, the yard, a campground. With an optional note.
+Holds places.
+_Avoid_: room (a location isn't always one), venue (that's the whole site).
+
+**Place** (fr. *place*, `places`)
+A bed, a sofa, floor space… inside a location. Has a type from the sleeping-preference list
 (so a preference and a place can be matched) and a capacity, how many people it is meant for
-(default 1). Exceeding the capacity is allowed; the UI warns.
+(default 1). Exceeding the capacity is allowed; the UI warns. An event may exclude a place for its
+edition or give it another capacity (`event_place_overrides`); the venue's place is unchanged.
 _Avoid_: bed (only one type of place), spot.
 
 **Assignment** (fr. *attribution*, `place_assignments`)

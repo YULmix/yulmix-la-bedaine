@@ -11,7 +11,7 @@ import {
   type Party
 } from './emails.ts';
 
-const event: EventInfo = { theme: 'La Bédaine 2027', venue_address: '123 ch. du Lac, Val-David', event_start_date: '2027-06-12', is_active: true };
+const event: EventInfo = { theme: 'La Bédaine 2027', venue: { address: '123 ch. du Lac, Val-David' }, event_start_date: '2027-06-12', is_active: true };
 const party = (overrides: Partial<Party> = {}): Party => ({
   id: 'p1',
   status: 'registered',

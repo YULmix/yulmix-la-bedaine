@@ -13,6 +13,7 @@ import RegistrationPage from './views/RegistrationPage';
 import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
+import { EVENT_WITH_VENUE } from './lib/venue';
 
 const signInWithGoogle = async () => {
   try {
@@ -152,7 +153,7 @@ function App() {
     try {
       const { data: events, error } = await supabase
         .from('events')
-        .select('*')
+        .select(EVENT_WITH_VENUE)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

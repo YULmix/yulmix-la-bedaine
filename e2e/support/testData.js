@@ -55,6 +55,7 @@ async function saveParty(db, eventId, userId, attendees, what) {
 // other's dates through the shared, reused event.
 export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
   const db = await adminClient();
+  const venueId = await e2eVenueId(db);
 
   const existing = check(
     await db.from('events').select('id').eq('theme', E2E_EVENT_THEME).limit(1),
@@ -79,6 +80,7 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     event_start_date: null,
     x_reg_close_weeks: 1,
     external_links: [],
+    venue_id: venueId,
     ...eventOverrides
   };
   let eventId;
@@ -96,6 +98,40 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
   const partyId = await saveParty(db, eventId, MEMBER_ID, E2E_ATTENDEES, 'create e2e party');
 
   return { eventId, partyId };
+}
+
+// The e2e event's venue (#145), found by name or created. Venues are never deleted, so it is
+// reused from run to run.
+const E2E_VENUE_NAME = 'E2E Venue';
+async function e2eVenueId(db) {
+  const existing = check(await db.from('venues').select('id').eq('name', E2E_VENUE_NAME).limit(1), 'find e2e venue');
+  if (existing.length) return existing[0].id;
+  return check(await db.from('venues').insert({ name: E2E_VENUE_NAME }).select('id').single(), 'create e2e venue').id;
+}
+
+async function venueOf(db, eventId) {
+  return check(await db.from('events').select('venue_id').eq('id', eventId).single(), 'read e2e event venue').venue_id;
+}
+
+// The event's venue as the app reads it, or null (#145).
+export async function getEventVenue(eventId) {
+  const db = await adminClient();
+  return check(
+    await db.from('events').select('venue:venues(id, name, address)').eq('id', eventId).single(),
+    'read e2e event venue'
+  ).venue;
+}
+
+// Sets the e2e venue's address (null to clear it).
+export async function setVenueAddress(eventId, address) {
+  const db = await adminClient();
+  check(await db.from('venues').update({ address }).eq('id', await venueOf(db, eventId)), 'set e2e venue address');
+}
+
+// Takes the event off its venue, as if it never had one. The next seed puts it back.
+export async function unlinkVenue(eventId) {
+  const db = await adminClient();
+  check(await db.from('events').update({ venue_id: null }).eq('id', eventId), 'unlink e2e venue');
 }
 
 // The event's admin-only budget row (#109), or null.
@@ -143,18 +179,17 @@ export async function deleteParty(partyId) {
   check(await db.from('user_parties').delete().eq('id', partyId), 'delete extra party');
 }
 
-// The event's sleeping locations with their places (#113), in display order.
+// The sleeping locations of the event's venue with their places (#113, #145), in display order.
 export async function getLocations(eventId) {
   const db = await adminClient();
-  const locations = check(
+  return check(
     await db
-      .from('event_locations')
-      .select('id, name, sort_order, event_places(id, label, type, capacity)')
-      .eq('event_id', eventId)
+      .from('locations')
+      .select('id, name, sort_order, places(id, label, type, capacity)')
+      .eq('venue_id', await venueOf(db, eventId))
       .order('sort_order'),
     'read e2e locations'
   );
-  return locations.map(({ event_places: places, ...location }) => ({ ...location, places }));
 }
 
 // Puts the party's attendee at `position` (from 1) in the place (the Logistique dropdown is #114).
@@ -182,13 +217,13 @@ export async function getPlaceLabels(partyId) {
   return Object.fromEntries(rows.map(row => [row.attendee_name, row.bed_label]));
 }
 
-// The event's locations, and so its places. Whoever still holds one is unassigned first: an
-// occupied place can't be deleted.
+// The locations of the event's venue, and so their places. Whoever still holds one is unassigned
+// first: an occupied place can't be deleted.
 export async function deleteLocations(eventId) {
   const db = await adminClient();
   const placeIds = (await getLocations(eventId)).flatMap(location => location.places.map(place => place.id));
   check(await db.from('place_assignments').delete().in('place_id', placeIds), 'unassign e2e places');
-  check(await db.from('event_locations').delete().eq('event_id', eventId), 'delete e2e locations');
+  check(await db.from('locations').delete().eq('venue_id', await venueOf(db, eventId)), 'delete e2e locations');
 }
 
 // Replaces the event's places with a small house (#114): two single beds in "Chambre 1" and a
@@ -200,14 +235,15 @@ export const E2E_PLACES = [
 export async function seedPlaces(eventId) {
   await deleteLocations(eventId);
   const db = await adminClient();
+  const venueId = await venueOf(db, eventId);
   const ids = {};
   for (const [order, { name, places }] of E2E_PLACES.entries()) {
     const location = check(
-      await db.from('event_locations').insert({ event_id: eventId, name, sort_order: order }).select('id').single(),
+      await db.from('locations').insert({ venue_id: venueId, name, sort_order: order }).select('id').single(),
       'create e2e location'
     );
     const rows = check(
-      await db.from('event_places')
+      await db.from('places')
         .insert(places.map((place, index) => ({ ...place, location_id: location.id, sort_order: index })))
         .select('id, label'),
       'create e2e places'

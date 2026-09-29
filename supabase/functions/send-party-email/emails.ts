@@ -23,7 +23,8 @@ export interface Party {
 
 export interface EventInfo {
   theme: string;
-  venue_address: string | null;
+  // The event's venue (#145), embedded; null when it has none.
+  venue: { address: string | null } | null;
   event_start_date: string | null;
   is_active: boolean | null;
 }
@@ -221,7 +222,7 @@ export function buildContext(
     eventTheme: event.theme,
     amount: formatAmount(party.calculated_amount_owed),
     eventDate: formatDate(event.event_start_date),
-    venueAddress: event.venue_address?.trim() || null,
+    venueAddress: event.venue?.address?.trim() || null,
     attendeeNames,
     siteUrl: settings.siteUrl,
     interacEmail: settings.interacEmail

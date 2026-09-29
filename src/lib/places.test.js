@@ -3,11 +3,11 @@ import { flattenPlaces, placeOccupancy, placeOptions, searchPlaceOptions } from 
 const locations = [
   {
     id: 'l2', name: 'Salon', sort_order: 1,
-    event_places: [{ id: 'sofa', label: 'Canapé', type: 'sofa', capacity: 2, sort_order: 0 }]
+    places: [{ id: 'sofa', label: 'Canapé', type: 'sofa', capacity: 2, sort_order: 0 }]
   },
   {
     id: 'l1', name: 'Chambre 2', sort_order: 0,
-    event_places: [
+    places: [
       { id: 'bedB', label: 'Lit B', type: 'bed', capacity: 1, sort_order: 1 },
       { id: 'bedA', label: 'Lit A', type: 'bed', capacity: 1, sort_order: 0 }
     ]
@@ -18,6 +18,14 @@ test('flattenPlaces lists places by location order, then place order', () => {
   expect(flattenPlaces(locations).map(p => [p.id, p.locationId, p.locationName])).toEqual([
     ['bedA', 'l1', 'Chambre 2'], ['bedB', 'l1', 'Chambre 2'], ['sofa', 'l2', 'Salon']
   ]);
+});
+
+test('flattenPlaces leaves out the places the event excludes and uses its capacities', () => {
+  const overrides = [
+    { place_id: 'bedB', is_excluded: true, capacity: null },
+    { place_id: 'sofa', is_excluded: false, capacity: 4 }
+  ];
+  expect(flattenPlaces(locations, overrides).map(p => [p.id, p.capacity])).toEqual([['bedA', 1], ['sofa', 4]]);
 });
 
 test('placeOccupancy counts saved places, overridden by unsaved changes', () => {

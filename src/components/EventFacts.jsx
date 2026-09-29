@@ -1,6 +1,6 @@
 import { CalendarDays, Clock, ExternalLink, MapPin, Phone, ScrollText, Users } from 'lucide-react';
 import fr from '../locales/fr.json';
-import { getGoogleMapsUrl } from '../lib/venue';
+import { eventAddress, getGoogleMapsUrl } from '../lib/venue';
 import { formatEventDates } from '../lib/eventDisplay';
 
 const Fact = ({ icon: Icon, label, children }) => (
@@ -18,14 +18,15 @@ const Fact = ({ icon: Icon, label, children }) => (
 const EventFacts = ({ event }) => {
   const dates = formatEventDates(event);
   const links = event.external_links || [];
+  const address = eventAddress(event);
   return (
     <div className="space-y-8">
       <dl className="grid gap-5 sm:grid-cols-2">
         {dates && <Fact icon={CalendarDays} label={fr.dates}>{dates}</Fact>}
-        {event.venue_address && (
+        {address && (
           <Fact icon={MapPin} label={fr.venue}>
-            <a href={getGoogleMapsUrl(event.venue_address)} target="_blank" rel="noopener noreferrer" className="underline decoration-edge underline-offset-4 hover:decoration-neon">
-              {event.venue_address}
+            <a href={getGoogleMapsUrl(address)} target="_blank" rel="noopener noreferrer" className="underline decoration-edge underline-offset-4 hover:decoration-neon">
+              {address}
             </a>
           </Fact>
         )}

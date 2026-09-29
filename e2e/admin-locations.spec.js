@@ -1,15 +1,20 @@
-// Sleeping locations and places (#113), on the Couchage section of the event editor page. Every
-// change saves right away; an occupied place or location can't be deleted, and says who's in it.
+// Sleeping locations and places (#113) of the event's venue (#145), on the Couchage section of the
+// event editor page. Every change saves right away; an occupied place or location can't be
+// deleted, and says who's in it.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  E2E_EVENT_THEME,
   assignPlace,
   deleteLocations,
+  getEventVenue,
   getLocations,
   getPlaceLabels,
   seedActiveEventWithMemberParty,
+  setVenueAddress,
   teardownActiveEventWithMemberParty,
-  unassignPlace
+  unassignPlace,
+  unlinkVenue
 } from './support/testData.js';
 import { readFileSync } from 'node:fs';
 
@@ -22,20 +27,24 @@ let seeded;
 test.beforeEach(async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty();
   await deleteLocations(seeded.eventId);
+  await setVenueAddress(seeded.eventId, null);
   await loginAs(page, TEST_USERS.admin);
 });
 test.afterEach(async () => {
-  if (seeded?.eventId) await deleteLocations(seeded.eventId);
+  if (seeded?.eventId) {
+    await deleteLocations(seeded.eventId);
+    await setVenueAddress(seeded.eventId, null);
+  }
   await teardownActiveEventWithMemberParty(seeded ?? {});
   seeded = null;
 });
 
-const openSleeping = async (page) => {
+const openSleeping = async (page, ready = fr.sleepingAutosave) => {
   await page.goto('/admin?tab=events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.edit }).click();
   await page.getByRole('tab', { name: fr.eventFieldsetSleeping }).click();
   const section = page.getByRole('tabpanel', { name: fr.eventFieldsetSleeping });
-  await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
+  await expect(section.getByText(ready)).toBeVisible();
   return section;
 };
 
@@ -150,4 +159,35 @@ test("an occupied place or location can't be deleted, and says who is in it", as
   await page.getByRole('button', { name: fr.placeDelete.replace('{label}', 'Canapé') }).click();
   await expect.poll(async () => (await getLocations(seeded.eventId))[0].places).toEqual([]);
   await expect(page.getByText(fr.placesEmpty)).toBeVisible();
+});
+
+test("the section edits the event's venue, and members see its address", async ({ page, browser }) => {
+  const section = await openSleeping(page);
+  const venueCard = section.getByRole('region', { name: fr.venueTitle });
+  await expect(venueCard.getByText(fr.venueSharedHint)).toBeVisible();
+  await fillAndLeave(venueCard.getByLabel(fr.venueAddressLabel), '17 rue Stewart, Stanstead');
+  await expect(section.getByText(fr.sleepingSaved)).toBeVisible();
+  await expect.poll(async () => (await getEventVenue(seeded.eventId)).address).toBe('17 rue Stewart, Stanstead');
+  // The general section no longer has an address of its own.
+  await page.getByRole('tab', { name: fr.eventSectionDetails }).click();
+  await expect(page.getByLabel(fr.venueAddressLabel)).toHaveCount(0);
+
+  const member = await browser.newPage();
+  await loginAs(member, TEST_USERS.member);
+  await expect(member.getByRole('link', { name: '17 rue Stewart, Stanstead' }).first()).toBeVisible();
+  await member.close();
+});
+
+test('an event without a venue offers to create one, named after it', async ({ page }) => {
+  // Each run leaves one venue behind: venues are archived, never deleted.
+  await unlinkVenue(seeded.eventId);
+  const section = await openSleeping(page, fr.venueNone);
+  await screenshot(page, 'sleeping-no-venue');
+
+  await section.getByRole('button', { name: fr.venueCreate }).click();
+  await expect(section.getByRole('region', { name: fr.venueTitle })).toBeVisible();
+  await expect(section.getByLabel(fr.venueNameLabel)).toHaveValue(E2E_EVENT_THEME);
+  await expect(section.getByText(fr.locationsEmpty)).toBeVisible();
+  const venue = await getEventVenue(seeded.eventId);
+  expect(venue.name).toBe(E2E_EVENT_THEME);
 });

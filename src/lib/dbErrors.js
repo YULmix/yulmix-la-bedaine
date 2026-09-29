@@ -12,7 +12,10 @@ const DB_ERRORS = {
     .replace('{date}', formatDate(closeDate)),
   place_assignment_party_inactive: () => fr.dbErrorPlaceAssignmentPartyInactive,
   place_assignment_wrong_event: () => fr.dbErrorPlaceAssignmentWrongEvent,
-  place_event_fixed: () => fr.dbErrorPlaceEventFixed
+  place_assignment_place_excluded: () => fr.dbErrorPlaceAssignmentPlaceExcluded,
+  place_exclusion_occupied: () => fr.dbErrorPlaceExclusionOccupied,
+  place_override_wrong_venue: () => fr.dbErrorPlaceOverrideWrongVenue,
+  place_venue_fixed: () => fr.dbErrorPlaceVenueFixed
 };
 
 const parseDetails = (details) => {

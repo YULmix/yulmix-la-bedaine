@@ -1,6 +1,6 @@
 import { CalendarDays, MapPin } from 'lucide-react';
 import fr from '../../locales/fr.json';
-import { getGoogleMapsUrl } from '../../lib/venue';
+import { eventAddress, getGoogleMapsUrl } from '../../lib/venue';
 import { formatEventDates } from '../../lib/eventDisplay';
 import { cx } from '../ui';
 
@@ -10,6 +10,7 @@ const PosterHeader = ({ event, title, description, compact = false, children }) 
   const heading = title || event?.theme;
   const text = description ?? event?.description;
   const dates = event ? formatEventDates(event) : '';
+  const address = eventAddress(event);
 
   return (
     <header className={cx('relative isolate overflow-hidden rounded-card border border-line bg-surface animate-rise', compact ? 'min-h-44' : 'min-h-72 sm:min-h-80')}>
@@ -26,7 +27,7 @@ const PosterHeader = ({ event, title, description, compact = false, children }) 
         <p className="font-data text-xs uppercase tracking-widest text-muted">{fr.appTitle}</p>
         <h1 className={cx('font-display text-ink', compact ? 'text-display-md sm:text-4xl' : 'text-display-lg')}>{heading}</h1>
         {text && !compact && <p className="max-w-2xl text-base text-muted line-clamp-3">{text}</p>}
-        {event && (dates || event.venue_address) && (
+        {event && (dates || address) && (
           <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 font-data text-sm text-ink">
             {dates && (
               <li className="inline-flex items-center gap-2">
@@ -34,16 +35,16 @@ const PosterHeader = ({ event, title, description, compact = false, children }) 
                 {dates}
               </li>
             )}
-            {event.venue_address && (
+            {address && (
               <li className="min-w-0">
                 <a
-                  href={getGoogleMapsUrl(event.venue_address)}
+                  href={getGoogleMapsUrl(address)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex max-w-full items-center gap-2 underline decoration-edge underline-offset-4 hover:decoration-neon"
                 >
                   <MapPin aria-hidden="true" className="size-4 shrink-0 text-neon" strokeWidth={1.75} />
-                  <span className="truncate">{event.venue_address}</span>
+                  <span className="truncate">{address}</span>
                 </a>
               </li>
             )}
