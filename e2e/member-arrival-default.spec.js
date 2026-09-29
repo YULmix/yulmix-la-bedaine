@@ -1,5 +1,6 @@
-// A new registration's transport arrival defaults to the event's first day (#123); a saved
-// arrival is never overwritten, and the input stays inside the event's dates and its container.
+// A new registration's transport arrival defaults to the event's first day and its departure to
+// the last (#123); saved times are never overwritten, and the inputs stay inside the event's
+// dates and their container.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
@@ -34,6 +35,7 @@ test.afterEach(async () => {
 });
 
 const arrival = page => page.getByLabel(fr.transportArrival);
+const departure = page => page.getByLabel(fr.transportDeparture);
 
 // Steps 1 and 2 hold no required input: jump straight to the transport step ("Coups de main").
 // A new registration prefills the member's name asynchronously (#133); moving forward validates
@@ -43,7 +45,7 @@ const openTransportStep = async page => {
   await page.getByRole('navigation', { name: fr.registrationStepsLabel }).getByRole('button', { name: new RegExp(fr.stepHelp) }).click();
 };
 
-test('a new registration pre-fills arrival with the first day and lets the member change it', async ({ page }) => {
+test('a new registration pre-fills arrival and departure with the first and last day and lets the member change them', async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty(EVENT);
   await deleteParty(seeded.partyId);
 
@@ -54,49 +56,56 @@ test('a new registration pre-fills arrival with the first day and lets the membe
   await expect(arrival(page)).toHaveValue(`${START}T12:00`);
   await expect(arrival(page)).toHaveAttribute('min', `${START}T00:00`);
   await expect(arrival(page)).toHaveAttribute('max', `${LAST}T23:59`);
+  await expect(departure(page)).toHaveValue(`${LAST}T15:00`);
+  await expect(departure(page)).toHaveAttribute('min', `${START}T00:00`);
+  await expect(departure(page)).toHaveAttribute('max', `${LAST}T23:59`);
 
-  await arrival(page).fill(`${LAST}T18:30`);
+  await arrival(page).fill(`${START}T18:30`);
   await page.getByRole('navigation', { name: fr.registrationStepsLabel }).getByRole('button', { name: new RegExp(fr.stepReview) }).click();
   await page.getByRole('button', { name: fr.saveRegistrationButton }).click();
 
   await expect.poll(() => findMemberParty(seeded.eventId)).not.toBeNull();
   const saved = await findMemberParty(seeded.eventId);
   seeded.partyId = saved.id;
-  expect(saved.transport.arrival).toContain(`${LAST}T18:30`);
+  expect(saved.transport.arrival).toContain(`${START}T18:30`);
+  expect(saved.transport.departure).toContain(`${LAST}T15:00`);
 });
 
-test('an existing registration keeps its saved arrival', async ({ page }) => {
+test('an existing registration keeps its saved arrival and departure', async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty(EVENT);
-  await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${LAST}T09:15`, departure: '' });
+  await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${START}T09:15`, departure: `${START}T20:45` });
 
   await loginAs(page, TEST_USERS.member);
   await page.goto('/inscription');
   await openTransportStep(page);
-  await expect(arrival(page)).toHaveValue(`${LAST}T09:15`);
+  await expect(arrival(page)).toHaveValue(`${START}T09:15`);
+  await expect(departure(page)).toHaveValue(`${START}T20:45`);
 });
 
-test('an existing registration with no saved arrival gets the default', async ({ page }) => {
+test('an existing registration with no saved times gets the defaults', async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty(EVENT);
 
   await loginAs(page, TEST_USERS.member);
   await page.goto('/inscription');
   await openTransportStep(page);
   await expect(arrival(page)).toHaveValue(`${START}T12:00`);
+  await expect(departure(page)).toHaveValue(`${LAST}T15:00`);
 });
 
-test("an admin editing a member's registration keeps the saved arrival", async ({ page }) => {
+test("an admin editing a member's registration keeps the saved arrival and departure", async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty(EVENT);
-  await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${LAST}T09:15`, departure: '' });
+  await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${START}T09:15`, departure: `${START}T20:45` });
 
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin?tab=users');
   await page.getByRole('button', { name: fr.editRegistrationButton }).first().click();
   const dialog = page.getByRole('dialog');
   await openTransportStep(dialog);
-  await expect(dialog.getByLabel(fr.transportArrival)).toHaveValue(`${LAST}T09:15`);
+  await expect(dialog.getByLabel(fr.transportArrival)).toHaveValue(`${START}T09:15`);
+  await expect(dialog.getByLabel(fr.transportDeparture)).toHaveValue(`${START}T20:45`);
 });
 
-test('an event without a start date leaves arrival blank, with no bounds', async ({ page }) => {
+test('an event without a start date leaves arrival and departure blank, with no bounds', async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty();
   await deleteParty(seeded.partyId);
   seeded.partyId = null;
@@ -105,6 +114,7 @@ test('an event without a start date leaves arrival blank, with no bounds', async
   await page.goto('/inscription');
   await openTransportStep(page);
   await expect(arrival(page)).toHaveValue('');
+  await expect(departure(page)).toHaveValue('');
   await expect(arrival(page)).not.toHaveAttribute('min');
   await expect(arrival(page)).not.toHaveAttribute('max');
 });

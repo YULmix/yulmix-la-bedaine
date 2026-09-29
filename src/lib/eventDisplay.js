@@ -55,22 +55,26 @@ export const initials = (name = '') => name
 const pad = (n) => String(n).padStart(2, '0');
 const toDateInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
-/** Time of day pre-filled on the arrival input: a neutral midday, easy to change. */
+/** Times of day pre-filled on the arrival and departure inputs: neutral, and easy to change. */
 export const DEFAULT_ARRIVAL_TIME = '12:00';
+// Later than the arrival time, so a one-day event still leaves arrival before departure.
+export const DEFAULT_DEPARTURE_TIME = '15:00';
 
 /**
- * Bounds and default for the registration's arrival input (a datetime-local, "YYYY-MM-DDTHH:mm").
- * The event runs from event_start_date for duration_days days; the last allowed instant is the
- * end of its final day. All three are '' when the event has no event_start_date yet.
+ * Bounds and defaults for the registration's arrival and departure inputs (datetime-local,
+ * "YYYY-MM-DDTHH:mm"). The event runs from event_start_date for duration_days days; the last
+ * allowed instant is the end of its final day. Arrival defaults to the first day, departure to
+ * the last. Everything is '' when the event has no event_start_date yet.
  */
-export const getArrivalRange = (event) => {
+export const getTravelRange = (event) => {
   const start = parseDate(event?.event_start_date);
-  if (!start || Number.isNaN(start.getTime())) return { min: '', max: '', defaultValue: '' };
+  if (!start || Number.isNaN(start.getTime())) return { min: '', max: '', defaultArrival: '', defaultDeparture: '' };
   const days = Math.max(event.duration_days || 1, 1);
   const last = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1);
   return {
     min: `${toDateInput(start)}T00:00`,
     max: `${toDateInput(last)}T23:59`,
-    defaultValue: `${toDateInput(start)}T${DEFAULT_ARRIVAL_TIME}`
+    defaultArrival: `${toDateInput(start)}T${DEFAULT_ARRIVAL_TIME}`,
+    defaultDeparture: `${toDateInput(last)}T${DEFAULT_DEPARTURE_TIME}`
   };
 };
