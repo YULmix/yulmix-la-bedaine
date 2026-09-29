@@ -8,7 +8,7 @@ import { saveRegistration } from '../lib/parties';
 import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
-import { plural } from '../lib/eventDisplay';
+import { plural, getArrivalRange } from '../lib/eventDisplay';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from './Toast';
 import { Button, Card, ChipGroup, Field, Input, Notice, Stepper, Textarea, Toggle, cx } from './ui';
@@ -143,6 +143,15 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const formTopRef = useRef(null);
   const isEditing = !!userRegistration;
 
+  const arrivalRange = useMemo(() => getArrivalRange(event), [event]);
+
+  // A new registration starts with arrival on the event's first day (#123): most people come
+  // then. Only while the field is still empty, so it never overwrites what the member picked.
+  useEffect(() => {
+    if (isEditing) return;
+    setTransportArrival(current => current || arrivalRange.defaultValue);
+  }, [isEditing, arrivalRange.defaultValue]);
+
   // Initialize with existing registration or default attendee
   useEffect(() => {
     if (!userRegistration?.attendees) return;
@@ -168,7 +177,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setSameForEveryone(rest.every(att => LOGISTICS_FIELDS.every(field => att[field] === first[field])));
     setTransportType(userRegistration.transport?.type || '');
     setTransportSeats(userRegistration.transport?.seats || 0);
-    setTransportArrival(toLocalDateTime(userRegistration.transport?.arrival));
+    // Keep a saved arrival; only fall back to the event's first day when none was ever saved.
+    setTransportArrival(toLocalDateTime(userRegistration.transport?.arrival) || arrivalRange.defaultValue);
     setTransportDeparture(toLocalDateTime(userRegistration.transport?.departure));
     setVolunteeringSelections(userRegistration.logistics?.volunteering || []);
     setVolunteeringOtherDetail(userRegistration.logistics?.volunteering_other || '');
@@ -567,11 +577,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={fr.transportArrival}>
-                  {({ id }) => <Input id={id} type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} />}
+                <Field label={fr.transportArrival} className="min-w-0">
+                  {({ id }) => <Input id={id} type="datetime-local" min={arrivalRange.min || undefined} max={arrivalRange.max || undefined} className="min-w-0 max-w-full" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} />}
                 </Field>
-                <Field label={fr.transportDeparture}>
-                  {({ id }) => <Input id={id} type="datetime-local" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
+                <Field label={fr.transportDeparture} className="min-w-0">
+                  {({ id }) => <Input id={id} type="datetime-local" className="min-w-0 max-w-full" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
                 </Field>
               </div>
             </Card>

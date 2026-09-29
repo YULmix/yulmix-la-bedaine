@@ -51,3 +51,26 @@ export const initials = (name = '') => name
   .slice(0, 2)
   .map(part => part[0].toUpperCase())
   .join('') || '?';
+
+const pad = (n) => String(n).padStart(2, '0');
+const toDateInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+/** Time of day pre-filled on the arrival input: a neutral midday, easy to change. */
+export const DEFAULT_ARRIVAL_TIME = '12:00';
+
+/**
+ * Bounds and default for the registration's arrival input (a datetime-local, "YYYY-MM-DDTHH:mm").
+ * The event runs from event_start_date for duration_days days; the last allowed instant is the
+ * end of its final day. All three are '' when the event has no event_start_date yet.
+ */
+export const getArrivalRange = (event) => {
+  const start = parseDate(event?.event_start_date);
+  if (!start || Number.isNaN(start.getTime())) return { min: '', max: '', defaultValue: '' };
+  const days = Math.max(event.duration_days || 1, 1);
+  const last = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1);
+  return {
+    min: `${toDateInput(start)}T00:00`,
+    max: `${toDateInput(last)}T23:59`,
+    defaultValue: `${toDateInput(start)}T${DEFAULT_ARRIVAL_TIME}`
+  };
+};
