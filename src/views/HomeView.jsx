@@ -58,20 +58,26 @@ const InviteCard = ({ event, isIntent }) => (
   </Card>
 );
 
+// Long enough to read a sentence and reach for the close button (#155).
+const TOAST_DURATION_MS = 7000;
+
 const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick }) => {
   const { registration, setRegistration, loading, error, refetch } = useMyRegistration(activeEvent, isAuthenticated);
-  const { toasts, addToast, removeToast } = useToasts();
+  const { toasts, addToast, removeToast } = useToasts(TOAST_DURATION_MS);
   const location = useLocation();
   const navigate = useNavigate();
-  const justSaved = !!location.state?.justSaved;
+  // Set by /inscription: 'created' after the confirmation screen, 'updated' straight after an edit.
+  const savedKind = location.state?.justSaved;
+  const justSaved = !!savedKind;
   const announcedSave = useRef(false);
 
-  // Coming back from /inscription after a save: celebrate once (toast + pass stamp), then clear
-  // the router state so a refresh doesn't replay it.
+  // Coming back from /inscription after a save: stamp the pass once, then clear the router state
+  // so a refresh doesn't replay it. An edit is announced with a toast; a new registration already
+  // was, by the confirmation screen it came from.
   useEffect(() => {
     if (!justSaved || announcedSave.current) return;
     announcedSave.current = true;
-    addToast(fr.registrationSuccess, 'success');
+    if (savedKind === 'updated') addToast(fr.changesSavedToast, 'success');
     const timer = setTimeout(() => navigate('.', { replace: true, state: null }), 1200);
     return () => clearTimeout(timer);
   }, [justSaved]);

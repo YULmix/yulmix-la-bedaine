@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import RegistrationForm from '../components/RegistrationForm';
+import RegistrationConfirmation from '../components/RegistrationConfirmation';
 import { Button, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
 import { getEventPhase } from '../lib/eventPhase';
@@ -12,6 +14,8 @@ import { isActiveRegistration } from '../lib/registrationOptions';
 const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
   const navigate = useNavigate();
   const { registration: row, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
+  // The party a new registration just saved: the page then confirms it instead of the form (#155).
+  const [savedParty, setSavedParty] = useState(null);
   // Registering again after cancelling starts a fresh form; the save reuses the cancelled row.
   const registration = isActiveRegistration(row) ? row : null;
 
@@ -19,6 +23,13 @@ const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
 
   const isIntent = getEventPhase(activeEvent) === 'INTENT_PHASE';
   const title = registration ? fr.editRegistrationTitle : isIntent ? fr.intentFormTitle : fr.registrationFormTitle;
+  const showPass = () => navigate('/', { state: { justSaved: 'created' } });
+  // A new registration gets a confirmation to read; an edit goes straight back to its pass, which
+  // announces the change with a toast.
+  const handleSaved = (party) => {
+    if (registration) navigate('/', { state: { justSaved: 'updated' } });
+    else setSavedParty(party);
+  };
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 md:px-6 md:pt-8">
@@ -27,14 +38,16 @@ const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
           <p className="truncate font-data text-xs uppercase tracking-widest text-neon">{activeEvent.theme}</p>
           <h1 className="text-lg font-semibold text-ink">{title}</h1>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => navigate('/')} aria-label={fr.cancel}>
+        <Button variant="ghost" size="icon" onClick={savedParty ? showPass : () => navigate('/')} aria-label={savedParty ? fr.close : fr.cancel}>
           <X aria-hidden="true" className="size-5" />
         </Button>
       </div>
 
-      {error && <Notice tone="bad" className="mb-6">{error}</Notice>}
+      {error && !savedParty && <Notice tone="bad" className="mb-6">{error}</Notice>}
 
-      {loading ? (
+      {savedParty ? (
+        <RegistrationConfirmation registration={savedParty} event={activeEvent} isIntent={isIntent} onContinue={showPass} />
+      ) : loading ? (
         <div aria-busy="true" className="space-y-4">
           <span className="sr-only">{fr.loadingRegistrationMessage}</span>
           <Skeleton className="h-2 w-full" />
@@ -47,7 +60,7 @@ const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
           userRegistration={registration}
           isIntent={isIntent}
           onCancel={() => navigate('/')}
-          onRegistrationSuccess={() => navigate('/', { state: { justSaved: true } })}
+          onRegistrationSuccess={handleSaved}
         />
       )}
     </main>

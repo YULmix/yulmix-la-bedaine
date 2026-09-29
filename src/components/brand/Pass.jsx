@@ -36,7 +36,7 @@ const STAMP_TONES = {
 
 // The amount label comes from the same decision as the stamp, so the two can't disagree: an
 // intent or waitlisted party is only an estimate (they're told not to pay yet), a paid one has paid.
-const getStamp = (registration, isIntent) => {
+export const getStamp = (registration, isIntent) => {
   if (isIntent) return { tone: 'intent', label: fr.stampIntent, amountLabel: fr.estimatedAmountDueLabel };
   if (registration.is_waitlisted) return { tone: 'waitlist', label: fr.stampWaitlist, amountLabel: fr.estimatedAmountDueLabel };
   if (registration.payment_status === PAYMENT_STATUS.PAID) return { tone: 'paid', label: fr.stampPaid, amountLabel: fr.amountPaid };

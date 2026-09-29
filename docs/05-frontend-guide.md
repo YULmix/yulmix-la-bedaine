@@ -177,6 +177,13 @@ type, radii, motion, voice) and the screens are specified in
 **Toasts.** Screens that write data use the shared `useToasts` hook and render `ToastContainer`
 (`src/components/Toast.jsx`), a bottom-center stack above the sticky bars.
 
+**Saving a registration says so (#155).** A new registration is confirmed in place:
+`RegistrationPage` swaps the form for `RegistrationConfirmation`, which says it is saved and what
+to do about paying (Interac details, "don't pay yet" for a waitlisted party or an intention). The
+member reaches the pass by choosing to. An edit goes straight back to the pass with a
+"Modifications enregistrées" toast, because there is nothing new to explain. Either way, never
+navigate home after a save without one of the two. `Button` shows a spinner while `loading`.
+
 **Option lists.** Add new choices to `src/lib/registrationOptions.js`, never inline in JSX.
 `getOptionLabel(options, value, fallback)` and `getDietaryRequestsLabel(csv)` handle display.
 
