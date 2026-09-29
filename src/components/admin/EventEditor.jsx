@@ -1,10 +1,11 @@
-import { ArrowLeft, BedDouble, Check, FileText, Plus, Save, Trash2, TriangleAlert, Undo2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, FileText, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
 import { NUMBER_FIELDS } from '../../lib/eventDraft';
 import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
 import { EventVenuePlan } from './EventVenue';
+import SaveBar from './SaveBar';
 
 const SECTIONS = [
   { id: 'details', labelKey: 'eventSectionDetails', icon: FileText },
@@ -67,38 +68,6 @@ const LinksEditor = ({ links, errors = {}, onChange }) => {
     </div>
   );
 };
-
-// Sticky in the thumb zone, above the phone tab bar (3.5rem + safe area), so Save is always one
-// tap away however long the form gets.
-const SaveBar = ({ dirtyCount, invalid, saving, onSave, onDiscard }) => (
-  <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 md:bottom-4">
-    <div className={cx(
-      'flex flex-wrap items-center gap-3 rounded-card border bg-surface/95 px-4 py-3 shadow-pop backdrop-blur-md sm:px-5',
-      dirtyCount ? 'border-warn/50' : 'border-line'
-    )}>
-      <p role="status" className={cx('flex min-w-0 flex-1 items-center gap-2 text-sm', dirtyCount ? 'text-warn' : 'text-faint')}>
-        {invalid
-          ? <><TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-bad" strokeWidth={1.75} /><span className="text-bad">{fr.eventEditorInvalid}</span></>
-          : dirtyCount
-            ? fr.eventEditorUnsaved.replace('{n}', dirtyCount)
-            : <><Check aria-hidden="true" className="size-4 shrink-0" strokeWidth={2} />{fr.eventEditorAllSaved}</>}
-      </p>
-      <div className="flex gap-2">
-        {dirtyCount > 0 && (
-          <Button variant="ghost" onClick={onDiscard} disabled={saving}>
-            <Undo2 aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-            <span className="hidden sm:inline">{fr.eventEditorDiscard}</span>
-            <span className="sr-only sm:hidden">{fr.eventEditorDiscard}</span>
-          </Button>
-        )}
-        <Button onClick={onSave} disabled={!dirtyCount || invalid} loading={saving}>
-          <Save aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-          {saving ? fr.savingInProgress : fr.save}
-        </Button>
-      </div>
-    </div>
-  </div>
-);
 
 const DetailsForm = ({ value, onChange, errors }) => {
   const text = field => ({ value: value(field) ?? '', onChange: e => onChange(field, e.target.value) });

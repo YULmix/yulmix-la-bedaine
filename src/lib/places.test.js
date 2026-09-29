@@ -36,11 +36,11 @@ test('venueTotals counts locations, places and capacity', () => {
 
 test('placeOccupancy counts saved places, overridden by unsaved changes', () => {
   const parties = [
-    { id: 'p1', attendees: [{ place: { place_id: 'bedA' } }, { place: { place_id: 'sofa' } }] },
-    { id: 'p2', attendees: [{ place: null }, { place: { place_id: 'sofa' } }] }
+    { id: 'p1', attendees: [{ id: 'a1', place: { place_id: 'bedA' } }, { id: 'a2', place: { place_id: 'sofa' } }] },
+    { id: 'p2', attendees: [{ id: 'a3', place: null }, { id: 'a4', place: { place_id: 'sofa' } }] }
   ];
   // p1's second attendee moved off the sofa, p2's first one put on it.
-  const changes = { p1: { attendees: { 1: null } }, p2: { attendees: { 0: 'sofa' } } };
+  const changes = { p1: { places: { a2: null } }, p2: { places: { a3: 'sofa' } } };
   expect(placeOccupancy(parties, changes)).toEqual(new Map([['bedA', 1], ['sofa', 2]]));
 });
 

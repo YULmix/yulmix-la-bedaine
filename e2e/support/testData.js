@@ -169,6 +169,12 @@ export async function getOverrides(eventId) {
   ]));
 }
 
+// Leaves one of the venue's places out of the event (#147), as the event editor would.
+export async function excludePlace(eventId, placeId) {
+  const db = await adminClient();
+  check(await db.from('event_place_overrides').upsert({ event_id: eventId, place_id: placeId, is_excluded: true, capacity: null }), 'exclude e2e place');
+}
+
 // Takes the event off its venue, as if it never had one. The next seed puts it back.
 export async function unlinkVenue(eventId) {
   const db = await adminClient();

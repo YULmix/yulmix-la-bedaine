@@ -116,6 +116,10 @@ Notes on specific choices:
   anyone's (`p_user_id`). It marks the party it is saving in a transaction-local setting
   (`bedaine.saving_party`); the attendees trigger only lets writes to that party through.
   PostgREST offers clients no way to set it (`set_config` isn't exposed).
+- **`save_logistics()` is `SECURITY INVOKER` too** (#150): the Logistique tab's one Save writes
+  every pending `place_assignments` row and `admin_notes` through it, under the caller's RLS and
+  the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
+  own subtransaction, all or nothing, and returns the parties it refused with their error code.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

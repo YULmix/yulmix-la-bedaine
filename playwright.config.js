@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -200,6 +200,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-registration-confirmation\.spec\.js/,
       dependencies: ['member-arrival-default']
+    },
+    {
+      // Reseeds the same shared active event with places and a second party, so it runs after
+      // member-registration-confirmation, on its own.
+      name: 'admin-logistics-batch-save',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-logistics-batch-save\.spec\.js/,
+      dependencies: ['member-registration-confirmation']
     }
   ],
   webServer: {
