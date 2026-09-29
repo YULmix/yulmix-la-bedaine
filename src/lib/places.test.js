@@ -1,4 +1,4 @@
-import { flattenPlaces, placeOccupancy, venueTotals, placeOptions, searchPlaceOptions } from './places';
+import { flattenPlaces, overrideWrite, placeOccupancy, venueTotals, placeOptions, searchPlaceOptions } from './places';
 
 const locations = [
   {
@@ -66,4 +66,24 @@ test('searchPlaceOptions matches location, place or type, ignoring case and acce
   expect(ids('CHAMBRE 2 lit b')).toEqual(['bedB']);
   expect(ids('sofa')).toEqual(['sofa']); // the type's French label
   expect(ids('lit')).toEqual(['bedA', 'bedB']);
+});
+
+describe('overrideWrite', () => {
+  const bed = { id: 'bed', capacity: 2 };
+
+  test('excluding a place with no override inserts one', () => {
+    expect(overrideWrite(bed, null, { is_excluded: true })).toEqual({ op: 'upsert', row: { is_excluded: true, capacity: null } });
+  });
+
+  test('a capacity for this event is stored, and back to the venue\'s it goes away', () => {
+    expect(overrideWrite(bed, null, { capacity: 3 })).toEqual({ op: 'upsert', row: { is_excluded: false, capacity: 3 } });
+    expect(overrideWrite(bed, { is_excluded: false, capacity: 3 }, { capacity: 2 })).toEqual({ op: 'delete' });
+    expect(overrideWrite(bed, null, { capacity: 2 })).toEqual({ op: 'none' });
+  });
+
+  test('including a place again keeps its capacity for this event', () => {
+    expect(overrideWrite(bed, { is_excluded: true, capacity: 3 }, { is_excluded: false }))
+      .toEqual({ op: 'upsert', row: { is_excluded: false, capacity: 3 } });
+    expect(overrideWrite(bed, { is_excluded: true, capacity: null }, { is_excluded: false })).toEqual({ op: 'delete' });
+  });
 });

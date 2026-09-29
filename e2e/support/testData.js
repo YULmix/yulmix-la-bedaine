@@ -135,6 +135,31 @@ export async function setVenueArchived(eventId, archived) {
     .eq('id', await venueOf(db, eventId)), 'archive e2e venue');
 }
 
+// A venue found by name or created (never deleted, so reused across runs), archived or not.
+export async function ensureVenue(name, { archived = false } = {}) {
+  const db = await adminClient();
+  const existing = check(await db.from('venues').select('id').eq('name', name).limit(1), 'find venue');
+  const id = existing.length
+    ? existing[0].id
+    : check(await db.from('venues').insert({ name }).select('id').single(), 'create venue').id;
+  check(await db.from('venues').update({ archived_at: archived ? new Date().toISOString() : null }).eq('id', id), 'archive venue');
+  return id;
+}
+
+// The event's settings of its venue's places (#147), by "<location> · <place>".
+export async function getOverrides(eventId) {
+  const db = await adminClient();
+  const rows = check(
+    await db.from('event_place_overrides')
+      .select('is_excluded, capacity, place:places(label, location:locations(name))')
+      .eq('event_id', eventId),
+    'read e2e overrides'
+  );
+  return Object.fromEntries(rows.map(row => [
+    `${row.place.location.name} · ${row.place.label}`, { is_excluded: row.is_excluded, capacity: row.capacity }
+  ]));
+}
+
 // Takes the event off its venue, as if it never had one. The next seed puts it back.
 export async function unlinkVenue(eventId) {
   const db = await adminClient();
