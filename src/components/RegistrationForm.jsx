@@ -176,6 +176,23 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setMessageToOrganizers(userRegistration.message_to_organizers || '');
   }, [userRegistration]);
 
+  // A new registration starts with the member as its first attendee (#133): whoever registers
+  // almost always comes. Only while that name is still empty, so it never overwrites typing.
+  useEffect(() => {
+    if (isEditing || adminMode) return undefined;
+    let ignore = false;
+    const prefillName = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
+      const name = (data?.full_name || user.user_metadata?.full_name || '').trim();
+      if (ignore || !name) return;
+      setAttendees(current => (current[0].name ? current : [{ ...current[0], name }, ...current.slice(1)]));
+    };
+    prefillName();
+    return () => { ignore = true; };
+  }, [isEditing, adminMode]);
+
   // Sync logistics across attendees when "same for everyone" is enabled
   useEffect(() => {
     if (!sameForEveryone || attendees.length < 2) return;
