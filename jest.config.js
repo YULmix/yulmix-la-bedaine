@@ -28,8 +28,11 @@ export default {
     '<rootDir>/src/__tests__/rlsPolicies.test.js',
     // e2e/ is Playwright's suite, run via `npm run test:e2e`, not Jest — its testMatch
     // pattern (*.spec.js) otherwise collides with Jest's own default.
-    '<rootDir>/e2e/'
+    '<rootDir>/e2e/',
+    // Agent worktrees (a full second checkout of the repo) live here.
+    '<rootDir>/.claude/'
   ],
+  modulePathIgnorePatterns: ['<rootDir>/.claude/'],
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',
     '!src/**/*.test.{js,jsx}',
