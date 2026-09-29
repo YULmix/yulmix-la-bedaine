@@ -5,7 +5,7 @@ const parties = [
     id: 'a',
     payment_status: 'paid',
     attendees: [
-      { type: 'Adult', participation: 'Whole', sleeping_preference: 'bed', assigned_bed: 'Ch. 1', dietary_needs: 'vegan' },
+      { type: 'Adult', participation: 'Whole', sleeping_preference: 'bed', place: { place_id: 'p1', bed_label: 'Ch. 1' }, dietary_needs: 'vegan' },
       { type: 'Kid', participation: 'After-Party', sleeping_preference: 'bed', dietary_needs: 'none' }
     ]
   },
@@ -46,7 +46,7 @@ test('computeAdminStats leaves cancelled parties out of every count and amount',
     status: 'cancelled',
     payment_status: 'paid',
     is_waitlisted: true,
-    attendees: [{ type: 'Adult', participation: 'Whole', is_new_member: true, sleeping_preference: 'bed', assigned_bed: 'Ch. 2', dietary_needs: 'vegan' }]
+    attendees: [{ type: 'Adult', participation: 'Whole', is_new_member: true, sleeping_preference: 'bed', place: { place_id: 'p2', bed_label: 'Ch. 2' }, dietary_needs: 'vegan' }]
   };
   const amountOf = party => ({ a: 360, b: 90, c: 500 }[party.id]);
   expect(computeAdminStats([...parties, cancelled], amountOf)).toEqual(computeAdminStats(parties, amountOf));

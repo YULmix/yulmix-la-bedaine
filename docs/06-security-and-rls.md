@@ -75,7 +75,7 @@ Derived from production's schema as captured in the baseline migration
 | `event_locations`, `event_places`, `place_assignments` | admin, or a member for their own attendees' assignments and the places and locations those hold (#113; anon has no grant at all) | admin only | admin only | admin only; an occupied place, or its location, can't be deleted (foreign key) |
 | `email_log` | admin only (members get a filtered summary of their own party through `my_party_emails()`, #93) | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
 | `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
-| `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126) | same as the party, but only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`; an admin may also change an `assigned_bed` directly | same, through `save_registration()` (or the cascade when an admin deletes the party) |
+| `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126) | same as the party, but only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | same, through `save_registration()` (or the cascade when an admin deletes the party) |
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
 | `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
@@ -104,10 +104,10 @@ Notes on specific choices:
   RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
   whatever a non-admin end user sends for `payment_status` and `admin_notes`: on insert they become
   `unpaid` and no notes, on update the stored values stay, so a paid party stays paid through a
-  member's own save (#31) or when they re-register over their cancelled row (#35). An attendee's
-  `assigned_bed` is written only by an admin, directly: `save_registration()` never writes it, and
-  `trg_guard_attendee_write` refuses every other client write to `attendees` (#126). A bed stays
-  with its attendee (by id) through renames and reorders. `service_role` and direct connections
+  member's own save (#31) or when they re-register over their cancelled row (#35). Where an
+  attendee sleeps is a `place_assignments` row, which only an admin writes (#114), and
+  `trg_guard_attendee_write` refuses every client write to `attendees` outside `save_registration()`
+  (#126). A place stays with its attendee (by id) through renames and reorders. `service_role` and direct connections
   are not restricted.
 - **`save_registration()` is `SECURITY INVOKER`** (ADR 0018): it runs with the caller's RLS on
   `user_parties` and `attendees`, so a member can only save their own registration, and an admin

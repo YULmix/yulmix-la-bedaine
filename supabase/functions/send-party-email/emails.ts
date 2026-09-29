@@ -8,7 +8,8 @@ export type Template = 'registration' | 'waitlist' | 'promotion' | 'payment' | '
 
 export interface Attendee {
   name?: string;
-  assigned_bed?: unknown;
+  // The attendee's place (#114), from the attendee_places view; null when they have none.
+  place?: { place_id: string } | null;
 }
 
 export interface Party {
@@ -33,7 +34,7 @@ export interface Recipient {
 }
 
 export const hasAssignedBed = (attendees: Attendee[] | null): boolean =>
-  (attendees ?? []).some(a => typeof a.assigned_bed === 'string' && /\S/.test(a.assigned_bed));
+  (attendees ?? []).some(a => !!a.place);
 
 // The emails this party is owed now and hasn't been sent (or claimed) yet, in sending order.
 // State-based rather than event-based: it only looks at the committed row and email_log, so it

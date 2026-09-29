@@ -170,7 +170,6 @@
   "logisticsTableSleepingPref": "Préférence hébergement",
   "logisticsViewTitle": "Assignation des lits",
   "logisticsViewDescription": "Assignez les places de couchage individuellement et ajoutez des notes internes.",
-  "assignedBedPlaceholder": "ex: Chambre 2 - Lit simple",
   "adminNotesPlaceholder": "Notes internes...",
   "participantFallback": "Participant",
   "messageToOrganizers": "Message aux organisateurs",
@@ -565,5 +564,14 @@
   "occupiedDeleteBody": "« {name} » est encore attribué à ces personnes. Retirez-les d'abord dans l'onglet Logistique.",
   "dbErrorPlaceAssignmentPartyInactive": "Une inscription annulée ou sur liste d'attente ne peut pas recevoir de place.",
   "dbErrorPlaceAssignmentWrongEvent": "Cette place appartient à un autre événement.",
-  "dbErrorPlaceEventFixed": "Un lieu ou une place ne peut pas changer d'événement."
+  "dbErrorPlaceEventFixed": "Un lieu ou une place ne peut pas changer d'événement.",
+  "placePickerPlaceholder": "Choisir une place…",
+  "placePickerNoMatch": "Aucune place ne correspond.",
+  "placePickerFull": "complet",
+  "placePickerRemaining": "{remaining} libre(s) sur {capacity}",
+  "placePickerUnassign": "Retirer la place",
+  "placePickerWaitlisted": "Sur la liste d'attente : pas de place tant que l'inscription n'est pas confirmée.",
+  "placeOverbooked": "Capacité dépassée : {taken} personnes pour {capacity}.",
+  "logisticsNoPlacesTitle": "Aucune place définie pour cet événement",
+  "logisticsNoPlacesHint": "Ajoutez les lieux et leurs places dans l'onglet Événements (modifier l'événement, section Couchage) pour pouvoir les attribuer."
 }

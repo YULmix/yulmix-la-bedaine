@@ -135,9 +135,6 @@ Which place an attendee holds, for the whole event (no per-night occupancy). Adm
 attendee's `sleeping_preference` is a request, the assignment is the answer. People see it as
 `"<location> · <place>"` (`attendee_places.bed_label`).
 
-**Assigned spot** (`attendees.assigned_bed`)
-The free-text bed an organiser typed before places existed. Replaced by assignments in #114.
-
 **Volunteering** (fr. *bénévolat*)
 A multi-select of jobs a party offers to take on (food purchase, cooking, DJ, setup, cleanup,
 neighbours, parking, art initiative, pharmacy…). Stored party-wide, not per attendee.

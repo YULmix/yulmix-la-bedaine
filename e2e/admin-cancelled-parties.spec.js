@@ -77,7 +77,9 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   await page.goto('/admin?tab=logistics');
   await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
   await expect(panel(page).getByRole('button', { name: cancelledMember.fullName })).toHaveCount(0);
-  await expect(panel(page).getByPlaceholder(fr.assignedBedPlaceholder)).toHaveCount(E2E_ATTENDEES.length);
+  for (const attendee of E2E_ATTENDEES) {
+    await expect(panel(page).getByText(attendee.name, { exact: true })).toHaveCount(1);
+  }
 
   // CSV export: a header row, the active party, and the totals row. No cancelled party.
   await page.goto('/admin?tab=tools');

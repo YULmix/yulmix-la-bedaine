@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { BedDouble, Save } from 'lucide-react';
+import { BedDouble, Save, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
-import { Button, Card, EmptyState, Input, Tag, Textarea } from '../ui';
+import { placeOccupancy, placeOptions } from '../../lib/places';
+import { Button, Card, EmptyState, Notice, Tag, Textarea } from '../ui';
 import { FilterPills } from './AdminUserManagement';
+import PlacePicker from './PlacePicker';
 
 const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
-const hasUnassigned = party => (party.attendees || []).some(a => !a.assigned_bed);
+const hasUnassigned = party => !party.is_waitlisted && (party.attendees || []).some(a => !a.place);
 
 const FILTERS = [
   { id: 'all', labelKey: 'filterAll', test: () => true },
@@ -14,12 +16,14 @@ const FILTERS = [
   { id: 'unassigned', labelKey: 'filterUnassigned', test: hasUnassigned }
 ];
 
-// Per-party sleeping assignments and private admin notes. Unsaved edits live in the parent
-// (`logisticsChanges`) so they survive switching admin tabs.
+// Per-attendee sleeping places (#114) and private admin notes. Unsaved edits live in the parent
+// (`logisticsChanges`) so they survive switching admin tabs. `places` are the event's, from
+// flattenPlaces(); with none, there is nothing to assign until they're defined (Événements tab).
 const AdminLogisticsView = ({
   parties,
+  places,
   logisticsChanges,
-  onAssignedBedChange,
+  onPlaceChange,
   onAdminNotesChange,
   onSave,
   onOpenUserProfile
@@ -28,6 +32,8 @@ const AdminLogisticsView = ({
   const counts = useMemo(() => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])), [parties]);
   const activeFilter = FILTERS.find(f => f.id === filter) || FILTERS[0];
   const visible = parties.filter(activeFilter.test);
+  const occupancy = useMemo(() => placeOccupancy(parties, logisticsChanges), [parties, logisticsChanges]);
+  const placesById = useMemo(() => new Map(places.map(place => [place.id, place])), [places]);
 
   return (
     <section className="space-y-4">
@@ -35,6 +41,8 @@ const AdminLogisticsView = ({
         <h2 className="text-xl font-semibold text-ink">{fr.logisticsViewTitle}</h2>
         <p className="mt-2 max-w-prose text-muted">{fr.logisticsViewDescription}</p>
       </div>
+
+      {places.length === 0 && <Notice tone="info" title={fr.logisticsNoPlacesTitle}>{fr.logisticsNoPlacesHint}</Notice>}
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
@@ -66,11 +74,14 @@ const AdminLogisticsView = ({
 
                 <ul className="space-y-3">
                   {partyAttendees.map((attendee, index) => {
-                    const assignedValue = changes.attendees && changes.attendees[index] !== undefined
-                      ? changes.attendees[index]
-                      : (attendee.assigned_bed || '');
+                    const savedPlaceId = attendee.place?.place_id ?? null;
+                    const pending = changes.attendees?.[index];
+                    const placeId = pending !== undefined ? pending : savedPlaceId;
+                    const place = placesById.get(placeId);
+                    const overbooked = place && occupancy.get(place.id) > place.capacity;
                     const attendeeName = attendee.name || `${fr.participantFallback} #${index + 1}`;
-                    const bedInputId = `assigned-bed-${party.id}-${index}`;
+                    const pickerId = `place-${party.id}-${index}`;
+                    const noteId = `${pickerId}-note`;
                     const reason = attendee.bed_reason === 'other' && attendee.bed_reason_other
                       ? attendee.bed_reason_other
                       : attendee.bed_reason ? getOptionLabel(BED_REASON_OPTIONS, attendee.bed_reason) : '';
@@ -79,7 +90,7 @@ const AdminLogisticsView = ({
                       : getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference);
 
                     return (
-                      <li key={index} className="grid gap-2 rounded-control bg-night/60 p-3 sm:grid-cols-[1fr_12rem] sm:items-center">
+                      <li key={attendee.id || index} className="grid gap-2 rounded-control bg-night/60 p-3 sm:grid-cols-[1fr_16rem] sm:items-start">
                         <div className="min-w-0">
                           <p className="font-semibold text-ink">{attendeeName}</p>
                           <p className="text-sm text-muted">
@@ -87,16 +98,26 @@ const AdminLogisticsView = ({
                             {reason && <span className="text-faint">{`, ${reason}`}</span>}
                           </p>
                         </div>
-                        <div>
-                          <label htmlFor={bedInputId} className="sr-only">{`${fr.logisticsTableSleepingAssigned}, ${attendeeName}`}</label>
-                          <Input
-                            id={bedInputId}
-                            value={assignedValue}
-                            onChange={(e) => onAssignedBedChange(party.id, index, e.target.value)}
-                            placeholder={fr.assignedBedPlaceholder}
-                            className="font-data"
-                          />
-                        </div>
+                        {places.length > 0 && (
+                          <div>
+                            <PlacePicker
+                              id={pickerId}
+                              label={`${fr.logisticsTableSleepingAssigned}, ${attendeeName}`}
+                              options={placeOptions(places, occupancy, { preference: attendee.sleeping_preference, currentPlaceId: placeId })}
+                              value={placeId}
+                              onChange={newPlaceId => onPlaceChange(party.id, index, newPlaceId === savedPlaceId ? undefined : newPlaceId)}
+                              disabled={party.is_waitlisted}
+                              describedBy={party.is_waitlisted || overbooked ? noteId : undefined}
+                            />
+                            {party.is_waitlisted && <p id={noteId} className="mt-1.5 text-sm text-faint">{fr.placePickerWaitlisted}</p>}
+                            {!party.is_waitlisted && overbooked && (
+                              <p id={noteId} className="mt-1.5 flex items-center gap-1.5 text-sm text-warn">
+                                <TriangleAlert aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
+                                {fr.placeOverbooked.replace('{taken}', occupancy.get(place.id)).replace('{capacity}', place.capacity)}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </li>
                     );
                   })}

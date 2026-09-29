@@ -18,7 +18,7 @@ const party = (overrides: Partial<Party> = {}): Party => ({
   is_waitlisted: false,
   payment_status: 'unpaid',
   calculated_amount_owed: 280,
-  attendees: [{ name: 'Léonie Carré', assigned_bed: '' }, { name: 'Gatien Carré' }],
+  attendees: [{ name: 'Léonie Carré', place: null }, { name: 'Gatien Carré' }],
   ...overrides
 });
 
@@ -31,7 +31,7 @@ Deno.test('nothing is owed twice', () => {
 });
 
 Deno.test('a waitlisted registration gets the waitlist notice only', () => {
-  const p = party({ is_waitlisted: true, payment_status: 'paid', attendees: [{ assigned_bed: 'Ch. 1' }] });
+  const p = party({ is_waitlisted: true, payment_status: 'paid', attendees: [{ place: { place_id: 'p1' } }] });
   assert.deepEqual(dueTemplates(p, event, []), ['waitlist']);
 });
 
@@ -46,7 +46,7 @@ Deno.test('a registered party pushed to the waitlist and back is told both times
 });
 
 Deno.test('payment and bed assignment follow the confirmation', () => {
-  const p = party({ payment_status: 'paid', attendees: [{ name: 'A', assigned_bed: 'Ch. 2' }] });
+  const p = party({ payment_status: 'paid', attendees: [{ name: 'A', place: { place_id: 'p2' } }] });
   assert.deepEqual(dueTemplates(p, event, []), ['registration', 'payment', 'accommodation']);
   assert.deepEqual(dueTemplates(p, event, ['registration', 'payment', 'accommodation']), []);
 });
@@ -56,10 +56,10 @@ Deno.test('cancelled parties and inactive events are owed nothing', () => {
   assert.deepEqual(dueTemplates(party(), { ...event, is_active: false }, []), []);
 });
 
-Deno.test('a blank or non-string bed is not an assignment', () => {
-  assert.equal(hasAssignedBed([{ assigned_bed: '  ' }, { assigned_bed: null }, {}]), false);
+Deno.test('an attendee with no place is not an assignment', () => {
+  assert.equal(hasAssignedBed([{ place: null }, {}]), false);
   assert.equal(hasAssignedBed(null), false);
-  assert.equal(hasAssignedBed([{ assigned_bed: 'Sofa' }]), true);
+  assert.equal(hasAssignedBed([{ place: null }, { place: { place_id: 'p1' } }]), true);
 });
 
 Deno.test('amounts and dates use the fr-CA formats', () => {

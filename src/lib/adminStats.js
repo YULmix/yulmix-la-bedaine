@@ -55,7 +55,7 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
       if (attendee.is_new_member) newMembers += 1;
       if (attendee.sleeping_preference) accommodation[attendee.sleeping_preference] = (accommodation[attendee.sleeping_preference] || 0) + 1;
       if (attendee.sleeping_preference === 'bed') bedRequests += 1;
-      if (attendee.assigned_bed) bedsAssigned += 1;
+      if (attendee.place) bedsAssigned += 1;
       if (attendee.dietary_needs && attendee.dietary_needs !== 'none') dietary[attendee.dietary_needs] = (dietary[attendee.dietary_needs] || 0) + 1;
     });
   });

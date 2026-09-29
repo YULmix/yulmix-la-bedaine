@@ -2,8 +2,11 @@
 // own table (ADR 0018). Screens receive a party with an `attendees` array in display order, as
 // they did when the attendees were a JSON column.
 
-/** Columns for a party with its attendees embedded; add more embeds after it if needed. */
-export const PARTY_WITH_ATTENDEES = '*, attendees(*)';
+/**
+ * Columns for a party with its attendees embedded; add more embeds after it if needed. Each
+ * attendee has `place`: `{ place_id, bed_label }` from the attendee_places view, or null (#114).
+ */
+export const PARTY_WITH_ATTENDEES = '*, attendees(*, place:attendee_places(place_id, bed_label))';
 
 /** Orders the embedded attendees by position. Apply to any query selecting PARTY_WITH_ATTENDEES. */
 export const orderAttendees = (query) => query.order('position', { referencedTable: 'attendees' });
