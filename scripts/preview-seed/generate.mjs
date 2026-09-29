@@ -437,6 +437,10 @@ JOIN public.events e ON e.id = v.event_id
 JOIN public.locations l ON l.venue_id = e.venue_id AND l.name = v.room
 JOIN public.places pl ON pl.location_id = l.id;`);
     }
+    // Past editions keep the layout they had (#148): they were inserted archived, so nothing
+    // froze them as archiving does.
+    out.push(`
+SELECT private.freeze_event_layout(id) FROM public.events WHERE status = 'ARCHIVED' ORDER BY created_at;`);
     out.push('');
   }
 

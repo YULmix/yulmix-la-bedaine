@@ -1263,6 +1263,122 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
   });
 });
 
+// #148: archiving an event freezes its venue layout into a copy only it uses.
+describe('🧊 archived events keep their layout (#148)', () => {
+  jest.setTimeout(30000);
+
+  const PAST_EVENT_ID = 'a0000000-a000-a000-a000-a00000001481';
+  const NEXT_EVENT_ID = 'a0000000-a000-a000-a000-a00000001482';
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+
+  let adminAuthClient;
+  let venueId; // a fresh live venue per test: venues are never deleted
+  let pastParty;
+  let nextParty;
+  let places; // "<location> · <place>" → id, at the live venue
+
+  const attendeeOf = async (partyId) => (await adminAuthClient.from('attendees').select('id').eq('party_id', partyId).single()).data.id;
+  const bedOf = async (partyId) => (await adminAuthClient.from('attendee_places').select('bed_label').eq('party_id', partyId)).data.map(r => r.bed_label);
+  const venueOf = async (eventId) => (await adminAuthClient.from('events').select('venue:venues(id, name, snapshot_of, archived_at)').eq('id', eventId).single()).data.venue;
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+
+  beforeAll(async () => {
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().in('event_id', [PAST_EVENT_ID, NEXT_EVENT_ID]);
+    // Un-archive (allowed by SQL) so the events can be put on today's venue.
+    await ok(adminAuthClient.from('events').upsert([
+      { id: PAST_EVENT_ID, theme: 'Freeze Past', status: 'ACTIVE', selling_price_whole_event: 100 },
+      { id: NEXT_EVENT_ID, theme: 'Freeze Next', status: 'DRAFT', selling_price_whole_event: 100 }
+    ]));
+    venueId = (await ok(adminAuthClient.from('venues').insert({ name: 'Le Moulin', address: '3 rue du Moulin' }).select('id').single())).id;
+    await ok(adminAuthClient.from('events').update({ venue_id: venueId }).in('id', [PAST_EVENT_ID, NEXT_EVENT_ID]));
+    const room = (await ok(adminAuthClient.from('locations').insert({ venue_id: venueId, name: 'Chambre 1' }).select('id').single())).id;
+    const rows = await ok(adminAuthClient.from('places').insert([
+      { location_id: room, label: 'Lit A', type: 'bed', capacity: 2 },
+      { location_id: room, label: 'Lit B', type: 'bed', capacity: 1 }
+    ]).select('id, label'));
+    places = Object.fromEntries(rows.map(r => [`Chambre 1 · ${r.label}`, r.id]));
+    pastParty = await saveOk(adminAuthClient, PAST_EVENT_ID, [person('Paula')]);
+    await ok(adminAuthClient.from('events').update({ status: 'ACTIVE' }).eq('id', NEXT_EVENT_ID));
+    nextParty = await saveOk(adminAuthClient, NEXT_EVENT_ID, [person('Nico')]);
+    await ok(adminAuthClient.from('place_assignments').insert([
+      { place_id: places['Chambre 1 · Lit A'], attendee_id: await attendeeOf(pastParty.id) },
+      { place_id: places['Chambre 1 · Lit A'], attendee_id: await attendeeOf(nextParty.id) }
+    ]));
+    await ok(adminAuthClient.from('event_place_overrides').insert({ event_id: PAST_EVENT_ID, place_id: places['Chambre 1 · Lit B'], is_excluded: true }));
+  });
+
+  test('archiving moves the event onto a frozen copy; later venue edits only reach the others', async () => {
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', PAST_EVENT_ID));
+    const frozen = await venueOf(PAST_EVENT_ID);
+    expect(frozen).toMatchObject({ name: 'Le Moulin', snapshot_of: venueId });
+    expect(frozen.archived_at).not.toBeNull();
+    expect(await bedOf(pastParty.id)).toEqual(['Chambre 1 · Lit A']);
+    // Its exclusion went with it, onto the copy's Lit B.
+    const overrides = await ok(adminAuthClient.from('event_place_overrides')
+      .select('is_excluded, place:places(label, location:locations(venue_id))').eq('event_id', PAST_EVENT_ID));
+    expect(overrides).toEqual([{ is_excluded: true, place: { label: 'Lit B', location: { venue_id: frozen.id } } }]);
+
+    // Rename, resize, add, remove at the live venue: the next edition sees it all…
+    await ok(adminAuthClient.from('locations').update({ name: 'Grande chambre' }).eq('venue_id', venueId));
+    await ok(adminAuthClient.from('places').update({ label: 'Queen' }).eq('id', places['Chambre 1 · Lit A']));
+    expect((await adminAuthClient.from('places').delete().eq('id', places['Chambre 1 · Lit B'])).error).toBeNull();
+    expect(await bedOf(nextParty.id)).toEqual(['Grande chambre · Queen']);
+
+    // …the archived one still shows what it had.
+    expect(await bedOf(pastParty.id)).toEqual(['Chambre 1 · Lit A']);
+    const frozenPlaces = await ok(adminAuthClient.from('places').select('label, capacity, location:locations!inner(venue_id)')
+      .eq('location.venue_id', frozen.id).order('label'));
+    expect(frozenPlaces.map(p => [p.label, p.capacity])).toEqual([['Lit A', 2], ['Lit B', 1]]);
+
+    // The live venue's occupied place no longer holds the archived attendee: it can go once the
+    // next edition lets go of it.
+    await adminAuthClient.from('place_assignments').delete().eq('place_id', places['Chambre 1 · Lit A']);
+    expect((await adminAuthClient.from('places').delete().eq('id', places['Chambre 1 · Lit A'])).error).toBeNull();
+    expect(await bedOf(pastParty.id)).toEqual(['Chambre 1 · Lit A']);
+  });
+
+  test('a frozen layout, and an archived event\'s venue and overrides, cannot change', async () => {
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', PAST_EVENT_ID));
+    const frozen = await venueOf(PAST_EVENT_ID);
+    const [frozenRoom] = await ok(adminAuthClient.from('locations').select('id').eq('venue_id', frozen.id));
+    const [frozenBed] = await ok(adminAuthClient.from('places').select('id').eq('location_id', frozenRoom.id).eq('label', 'Lit A'));
+
+    const refused = [
+      adminAuthClient.from('venues').update({ name: 'Autre' }).eq('id', frozen.id),
+      adminAuthClient.from('venues').insert({ name: 'Faux', snapshot_of: venueId }),
+      adminAuthClient.from('locations').update({ name: 'Autre' }).eq('id', frozenRoom.id),
+      adminAuthClient.from('locations').insert({ venue_id: frozen.id, name: 'Nouveau' }),
+      adminAuthClient.from('places').update({ capacity: 5 }).eq('id', frozenBed.id),
+      adminAuthClient.from('places').delete().eq('id', frozenBed.id),
+      adminAuthClient.from('places').insert({ location_id: frozenRoom.id, label: 'Lit C', type: 'bed' })
+    ];
+    for (const { error } of await Promise.all(refused)) expect(error?.message).toBe('venue_layout_frozen');
+
+    for (const query of [
+      adminAuthClient.from('events').update({ venue_id: venueId }).eq('id', PAST_EVENT_ID),
+      adminAuthClient.from('event_place_overrides').delete().eq('event_id', PAST_EVENT_ID)
+    ]) expect((await query).error?.message).toBe('event_layout_frozen');
+    expect(await bedOf(pastParty.id)).toEqual(['Chambre 1 · Lit A']);
+
+    // Archiving the copy's venue itself (archived_at) is not a layout change.
+    expect((await adminAuthClient.from('venues').update({ archived_at: new Date().toISOString() }).eq('id', frozen.id)).error).toBeNull();
+  });
+
+  test('un-archiving keeps the frozen copy and its places; archiving again copies nothing more', async () => {
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', PAST_EVENT_ID));
+    const frozen = await venueOf(PAST_EVENT_ID);
+    await ok(adminAuthClient.from('events').update({ status: 'DRAFT' }).eq('id', PAST_EVENT_ID));
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', PAST_EVENT_ID));
+    expect((await venueOf(PAST_EVENT_ID)).id).toBe(frozen.id);
+    expect(await ok(adminAuthClient.from('venues').select('id').eq('snapshot_of', venueId))).toHaveLength(1);
+    expect(await bedOf(pastParty.id)).toEqual(['Chambre 1 · Lit A']);
+  });
+});
+
 // #36: "Supprimer mon compte" is a soft delete through delete_my_account(). Each test uses its
 // own throwaway user (created with the service role's auth admin API), since a deleted account
 // can't be restored through the API and the seeded member is shared by every other suite.

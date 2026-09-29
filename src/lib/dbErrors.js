@@ -15,7 +15,9 @@ const DB_ERRORS = {
   place_assignment_place_excluded: () => fr.dbErrorPlaceAssignmentPlaceExcluded,
   place_exclusion_occupied: () => fr.dbErrorPlaceExclusionOccupied,
   place_override_wrong_venue: () => fr.dbErrorPlaceOverrideWrongVenue,
-  place_venue_fixed: () => fr.dbErrorPlaceVenueFixed
+  place_venue_fixed: () => fr.dbErrorPlaceVenueFixed,
+  venue_layout_frozen: () => fr.dbErrorVenueLayoutFrozen,
+  event_layout_frozen: () => fr.dbErrorEventLayoutFrozen
 };
 
 const parseDetails = (details) => {

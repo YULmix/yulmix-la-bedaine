@@ -7,6 +7,8 @@ import {
   assignPlace,
   deleteLocations,
   getEventVenue,
+  getPlaceLabels,
+  renamePlace,
   seedActiveEventWithMemberParty,
   seedPlaces,
   setVenueArchived,
@@ -28,6 +30,8 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async () => {
   if (seeded?.eventId) {
+    // The seed puts the event back on its live venue (one test archives it onto a frozen copy).
+    await seedActiveEventWithMemberParty();
     await deleteLocations(seeded.eventId);
     await setVenueArchived(seeded.eventId, false);
   }
@@ -103,4 +107,33 @@ test('on a phone the tab bar fits seven tabs, Logistique reads « Dodo » and Si
   await expect(bar.getByRole('tab', { name: fr.adminTabVenues })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await screenshot(page, 'venues-phone');
+});
+
+test('an archived edition keeps its layout and who slept where, under its venue', async ({ page }) => {
+  const { name } = await getEventVenue(seeded.eventId);
+  await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
+
+  await page.goto('/admin?tab=events');
+  await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
+  await page.getByRole('dialog', { name: fr.archiveEventConfirmTitle }).getByRole('button', { name: fr.archiveEventButton }).click();
+  await expect.poll(async () => (await getEventVenue(seeded.eventId)).name).toBe(name);
+
+  // The live venue changes; the archived edition doesn't follow.
+  await renamePlace(placeIds['Chambre 1 · Lit A'], 'Queen');
+  expect(await getPlaceLabels(seeded.partyId)).toEqual({ 'Alice E2E': 'Chambre 1 · Lit A' });
+
+  // One row for the venue (its frozen copy isn't listed), still naming the archived edition.
+  await page.goto('/admin?tab=venues');
+  await expect(venueRow(page, name)).toHaveCount(1);
+  await expect(venueRow(page, name).getByText(fr.venueUsedBy.replace('{events}', E2E_EVENT_THEME))).toBeVisible();
+
+  // Its Couchage section shows the layout as it was, without controls.
+  await page.goto(`/admin/events/${seeded.eventId}?section=sleeping`);
+  const section = page.getByRole('tabpanel', { name: fr.eventFieldsetSleeping });
+  await expect(section.getByText(fr.eventVenueFrozen)).toBeVisible();
+  const chambre = section.getByRole('region', { name: 'Chambre 1' });
+  await expect(chambre.getByRole('listitem', { name: 'Lit A' }).getByText(fr.placeOccupants.replace('{names}', 'Alice E2E'), { exact: false })).toBeVisible();
+  await expect(section.getByRole('switch')).toHaveCount(0);
+  await expect(section.getByLabel(fr.eventVenuePickerLabel)).toBeDisabled();
+  await screenshot(page, 'archived-event-layout');
 });
