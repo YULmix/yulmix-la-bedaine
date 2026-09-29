@@ -90,6 +90,13 @@ test('an edition excludes a place and resizes another; the venue stays as it is'
   await section.getByRole('switch', { name: available('Chambre 1 · Lit B') }).click();
   await expect.poll(() => getOverrides(seeded.eventId)).toEqual({});
 
+  // Off and on again quickly: the writes land in order, so nothing is left excluded.
+  const litA = section.getByRole('switch', { name: available('Chambre 1 · Lit A') });
+  await litA.click();
+  await litA.click();
+  await expect(section.getByText(fr.sleepingSaved)).toBeVisible();
+  await expect.poll(() => getOverrides(seeded.eventId)).toEqual({});
+
   // No place editing here: that's the Sites tab.
   await expect(section.getByRole('button', { name: fr.locationAdd })).toHaveCount(0);
   await section.getByRole('button', { name: fr.eventVenueEdit }).click();

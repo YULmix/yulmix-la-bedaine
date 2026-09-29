@@ -78,6 +78,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   const [blocked, setBlocked] = useState(null);
   const overridesRef = useRef({});
   const capacityTimers = useRef({});
+  const placeQueues = useRef({});
   const inFlight = useRef(0);
   const venueId = event.venue_id;
 
@@ -95,7 +96,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
           .eq('venue_id', venueId)
         : { data: [] },
       supabase.from('event_place_overrides').select('place_id, is_excluded, capacity').eq('event_id', event.id),
-      supabase.from('attendee_places').select('place_id, attendee_name').eq('event_id', event.id)
+      supabase.from('attendee_places').select('place_id, attendee_name').eq('event_id', event.id).order('attendee_name')
     ]);
     const loadError = venuesResult.error || locationsResult.error || overridesResult.error || occupantsResult.error;
     if (loadError) {
@@ -136,12 +137,24 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
     return result;
   };
 
-  // Writes what the screen shows for one place: its override row, or none.
+  // Writes what the screen shows for one place: its override row, or none. One place's writes go
+  // out one after the other, each built when its turn comes, so a quick off/on can't land in the
+  // wrong order: the last one written is what the screen shows.
   const syncOverride = (placeId) => {
-    const row = overridesRef.current[placeId];
-    return track(row
-      ? supabase.from('event_place_overrides').upsert({ event_id: event.id, place_id: placeId, ...row })
-      : supabase.from('event_place_overrides').delete().eq('event_id', event.id).eq('place_id', placeId));
+    const turn = (placeQueues.current[placeId] || Promise.resolve()).then(() => {
+      const row = overridesRef.current[placeId];
+      return track(row
+        ? supabase.from('event_place_overrides').upsert({ event_id: event.id, place_id: placeId, ...row })
+        : supabase.from('event_place_overrides').delete().eq('event_id', event.id).eq('place_id', placeId));
+    });
+    placeQueues.current[placeId] = turn;
+    return turn;
+  };
+
+  // Capacity writes still waiting are dropped: the venue change clears this event's overrides.
+  const dropPendingCapacities = () => {
+    Object.values(capacityTimers.current).forEach(clearTimeout);
+    capacityTimers.current = {};
   };
 
   const applyChange = (place, change) => {
@@ -183,19 +196,23 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
     capacityTimers.current = {};
   }, [event.id]);
 
-  const assigned = Object.values(occupants).flat();
+  const assigned = Object.values(occupants).flat().sort((a, b) => a.localeCompare(b, 'fr'));
 
   const changeVenue = async (nextVenueId) => {
+    dropPendingCapacities();
     setChangingVenue(true);
-    const { error: updateError } = await supabase.from('events').update({ venue_id: nextVenueId }).eq('id', event.id);
-    setChangingVenue(false);
-    setPendingVenue(null);
-    if (updateError) {
-      console.error('Error changing the venue:', updateError);
-      return setError(dbErrorMessage(updateError, fr.eventVenueSaveError));
+    try {
+      const { error: updateError } = await supabase.from('events').update({ venue_id: nextVenueId }).eq('id', event.id);
+      if (updateError) throw updateError;
+      setError(null);
+      await onVenueChange();
+    } catch (changeError) {
+      console.error('Error changing the venue:', changeError);
+      setError(dbErrorMessage(changeError, fr.eventVenueSaveError));
+    } finally {
+      setChangingVenue(false);
+      setPendingVenue(null);
     }
-    setError(null);
-    await onVenueChange();
   };
 
   const pickVenue = (nextVenueId) => {
@@ -205,6 +222,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   };
 
   const createVenue = async () => {
+    dropPendingCapacities();
     setChangingVenue(true);
     try {
       const { error: createError } = await supabase.rpc('create_event_venue', { p_event_id: event.id });
