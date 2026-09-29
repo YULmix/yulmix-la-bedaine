@@ -8,7 +8,7 @@ import { saveRegistration } from '../lib/parties';
 import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
-import { plural } from '../lib/eventDisplay';
+import { plural, getTravelRange } from '../lib/eventDisplay';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from './Toast';
 import { Button, Card, ChipGroup, Field, Input, Notice, Stepper, Textarea, Toggle, cx } from './ui';
@@ -143,6 +143,17 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const formTopRef = useRef(null);
   const isEditing = !!userRegistration;
 
+  const travelRange = useMemo(() => getTravelRange(event), [event]);
+
+  // A new registration starts with arrival on the event's first day and departure on its last
+  // (#123): most people stay the whole event. Only while a field is still empty, so it never
+  // overwrites what the member picked.
+  useEffect(() => {
+    if (isEditing) return;
+    setTransportArrival(current => current || travelRange.defaultArrival);
+    setTransportDeparture(current => current || travelRange.defaultDeparture);
+  }, [isEditing, travelRange.defaultArrival, travelRange.defaultDeparture]);
+
   // Initialize with existing registration or default attendee
   useEffect(() => {
     if (!userRegistration?.attendees) return;
@@ -168,8 +179,9 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setSameForEveryone(rest.every(att => LOGISTICS_FIELDS.every(field => att[field] === first[field])));
     setTransportType(userRegistration.transport?.type || '');
     setTransportSeats(userRegistration.transport?.seats || 0);
-    setTransportArrival(toLocalDateTime(userRegistration.transport?.arrival));
-    setTransportDeparture(toLocalDateTime(userRegistration.transport?.departure));
+    // Keep saved times; only fall back to the event's first and last day when none was ever saved.
+    setTransportArrival(toLocalDateTime(userRegistration.transport?.arrival) || travelRange.defaultArrival);
+    setTransportDeparture(toLocalDateTime(userRegistration.transport?.departure) || travelRange.defaultDeparture);
     setVolunteeringSelections(userRegistration.logistics?.volunteering || []);
     setVolunteeringOtherDetail(userRegistration.logistics?.volunteering_other || '');
     setMusicRequests(userRegistration.music_requests || '');
@@ -567,11 +579,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={fr.transportArrival}>
-                  {({ id }) => <Input id={id} type="datetime-local" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} />}
+                <Field label={fr.transportArrival} className="min-w-0">
+                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} />}
                 </Field>
-                <Field label={fr.transportDeparture}>
-                  {({ id }) => <Input id={id} type="datetime-local" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
+                <Field label={fr.transportDeparture} className="min-w-0">
+                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
                 </Field>
               </div>
             </Card>

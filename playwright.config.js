@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -184,6 +184,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /admin-event-venue\.spec\.js/,
       dependencies: ['admin-venues']
+    },
+    {
+      // Reseeds the same shared active event with its own dates, so it runs after
+      // admin-event-venue, on its own.
+      name: 'member-arrival-default',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-arrival-default\.spec\.js/,
+      dependencies: ['admin-event-venue']
     }
   ],
   webServer: {
