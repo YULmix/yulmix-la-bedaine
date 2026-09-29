@@ -41,8 +41,8 @@ const picker = (page, name) => panel(page).getByRole('combobox', { name: `${fr.l
 
 const assign = async (page, name, place) => {
   await pickPlace(page, picker(page, name), place);
-  await panel(page).getByRole('button', { name: fr.saveAssignments }).click();
-  await expect(page.getByText(fr.logisticsUpdatedToast).last()).toBeVisible();
+  await panel(page).getByRole('button', { name: fr.logisticsSaveAll }).click();
+  await expect(page.getByText(fr.logisticsAllSavedToast).last()).toBeVisible();
 };
 
 test('the overview follows assignments made in Logistique, and warns about an overbooked place', async ({ page }) => {

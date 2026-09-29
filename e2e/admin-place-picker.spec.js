@@ -48,13 +48,14 @@ test.afterEach(async () => {
 const panel = page => page.getByRole('tabpanel');
 const pickerIn = (scope, name) => scope.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 const picker = (page, name) => pickerIn(panel(page), name);
-// The party card holding the attendee called `name` (the one with a save button, not the row).
+// The party card holding the attendee called `name` (the one with the notes, not the row).
 const card = (page, name) => panel(page).getByRole('listitem')
-  .filter({ has: page.getByRole('button', { name: fr.saveAssignments }) })
+  .filter({ has: page.getByRole('textbox', { name: fr.logisticsTableAdminNotes }) })
   .filter({ has: pickerIn(page, name) });
-const saveCard = async (page, name) => {
-  await card(page, name).getByRole('button', { name: fr.saveAssignments }).click();
-  await expect(page.getByText(fr.logisticsUpdatedToast).last()).toBeVisible();
+// Saves everything pending (#150): one bar for the whole tab.
+const saveAll = async (page) => {
+  await panel(page).getByRole('button', { name: fr.logisticsSaveAll }).click();
+  await expect(page.getByText(fr.logisticsAllSavedToast).last()).toBeVisible();
 };
 const bedsOf = async (partyId) => (await getParty(partyId)).attendees.map(a => [a.name, a.place?.bed_label ?? '']);
 
@@ -82,7 +83,7 @@ test('an admin assigns, reassigns and unassigns places; search narrows, preferen
   await picker(page, ALICE).press('ArrowDown');
   await picker(page, ALICE).press('Enter');
   await expect(picker(page, ALICE)).toHaveValue('Chambre 1 · Lit A');
-  await saveCard(page, ALICE);
+  await saveAll(page);
   await expect.poll(() => bedsOf(seeded.partyId)).toEqual([[ALICE, 'Chambre 1 · Lit A'], [BOB, '']]);
 
   // Lit A is now full: listed last, marked, and still pickable with a warning.
@@ -93,18 +94,18 @@ test('an admin assigns, reassigns and unassigns places; search narrows, preferen
   await full.click();
   // Both people in the bed are warned.
   await expect(card(page, BOB).getByText(fr.placeOverbooked.replace('{taken}', 2).replace('{capacity}', 1))).toHaveCount(2);
-  await saveCard(page, BOB);
+  await saveAll(page);
   await expect.poll(() => bedsOf(seeded.partyId)).toEqual([[ALICE, 'Chambre 1 · Lit A'], [BOB, 'Chambre 1 · Lit A']]);
 
   // Reassign, then unassign.
   await pickPlace(page, picker(page, BOB), 'Chambre 1 · Lit B', 'lit b');
-  await saveCard(page, BOB);
+  await saveAll(page);
   await expect.poll(() => bedsOf(seeded.partyId)).toEqual([[ALICE, 'Chambre 1 · Lit A'], [BOB, 'Chambre 1 · Lit B']]);
 
   await picker(page, BOB).click();
   await page.getByRole('option', { name: fr.placePickerUnassign }).click();
   await expect(picker(page, BOB)).toHaveValue('');
-  await saveCard(page, BOB);
+  await saveAll(page);
   await expect.poll(() => bedsOf(seeded.partyId)).toEqual([[ALICE, 'Chambre 1 · Lit A'], [BOB, '']]);
 
   // Picking the saved place again is no change at all.

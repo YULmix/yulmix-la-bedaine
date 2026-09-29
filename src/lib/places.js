@@ -51,12 +51,13 @@ export const venueTotals = (locations) => {
 
 /**
  * How many attendees each place holds, counting unsaved Logistique changes
- * (`changes[partyId].attendees[index]` = a place id, or null to unassign) over the saved places.
+ * (`changes[partyId].places[attendeeId]` = a place id, or null to unassign; see logisticsDraft.js)
+ * over the saved places.
  */
 export const placeOccupancy = (parties, changes = {}) => {
   const occupancy = new Map();
-  (parties || []).forEach(party => (party.attendees || []).forEach((attendee, index) => {
-    const pending = changes[party.id]?.attendees?.[index];
+  (parties || []).forEach(party => (party.attendees || []).forEach(attendee => {
+    const pending = changes[party.id]?.places?.[attendee.id];
     const placeId = pending !== undefined ? pending : attendee.place?.place_id;
     if (placeId) occupancy.set(placeId, (occupancy.get(placeId) || 0) + 1);
   }));

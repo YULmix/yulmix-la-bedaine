@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
+import { useBlocker, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
@@ -26,6 +26,7 @@ import {
 import { tierCountsOf } from '../lib/adminStats';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { flattenPlaces } from '../lib/places';
+import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
 import { EVENT_WITH_VENUE } from '../lib/venue';
 import { dbErrorMessage } from '../lib/dbErrors';
 import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
@@ -82,7 +83,11 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [realtimeChannel, setRealtimeChannel] = useState(null);
   const [userProfileModal, setUserProfileModal] = useState(null);
   const [userEventHistory, setUserEventHistory] = useState([]);
+  // The Logistique tab's unsaved places and notes (lib/logisticsDraft.js), why the last save
+  // refused a party ({ [partyId]: French message }), and whether a save is running (#150).
   const [logisticsChanges, setLogisticsChanges] = useState({});
+  const [logisticsErrors, setLogisticsErrors] = useState({});
+  const [savingLogistics, setSavingLogistics] = useState(false);
   // The active event's sleeping places (#113), flattened for the Logistique tab's picker and the
   // overview's occupancy (#115).
   const [places, setPlaces] = useState([]);
@@ -370,15 +375,21 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     if (eventDraft) storeDraft(eventDraft.eventId, eventDraft.changes);
   }, [eventDraft]);
 
-  // Closing or reloading the browser tab with unsaved edits asks first. (They'd be restored from
-  // sessionStorage on a reload, but not in a new tab.)
+  // Closing or reloading the browser tab with unsaved edits asks first. (The event editor's would
+  // be restored from sessionStorage on a reload, but not in a new tab; the Logistique tab's live
+  // only here.)
   const hasUnsavedEvent = !!eventDraft && events.some(event => event.id === eventDraft.eventId && dirtyFields(event, eventDraft.changes).length > 0);
+  const unsavedLogistics = countChanges(logisticsChanges);
   useEffect(() => {
-    if (!hasUnsavedEvent) return;
+    if (!hasUnsavedEvent && !unsavedLogistics) return;
     const warn = (event) => { event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [hasUnsavedEvent]);
+  }, [hasUnsavedEvent, unsavedLogistics]);
+
+  // Leaving the admin pages in the app drops the Logistique draft with this component, so it asks
+  // too (#150). Moving between admin tabs keeps the draft and doesn't ask.
+  const leaveBlocker = useBlocker(({ nextLocation }) => unsavedLogistics > 0 && !nextLocation.pathname.startsWith('/admin'));
 
   const handleEventFieldChange = (field, value) => {
     setEventDraft(prev => ({ ...prev, eventId: editEventId, changes: { ...(prev?.eventId === editEventId ? prev.changes : {}), [field]: value } }));
@@ -512,66 +523,42 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     setUserEventHistory([]);
   };
 
-  // Logistics updates
-  const handleAdminNotesChange = (partyId, value) => {
-    setLogisticsChanges(prev => ({
-      ...prev,
-      [partyId]: {
-        ...prev[partyId],
-        adminNotes: value
-      }
-    }));
+  // Logistics updates: edits stay a draft until the one Save (#150).
+  const handleAdminNotesChange = (party, value) => setLogisticsChanges(prev => setNotesChange(prev, party, value));
+
+  // placeId: a place id, or null to unassign.
+  const handlePlaceChange = (party, attendeeId, placeId) => setLogisticsChanges(prev => setPlaceChange(prev, party, attendeeId, placeId));
+
+  const discardLogisticsChanges = () => {
+    setLogisticsChanges({});
+    setLogisticsErrors({});
   };
 
-  // placeId: a place id, null to unassign, or undefined to drop the change (back to what's saved).
-  const handlePlaceChange = (partyId, attendeeIndex, placeId) => {
-    setLogisticsChanges(prev => {
-      const attendees = { ...prev[partyId]?.attendees };
-      if (placeId === undefined) delete attendees[attendeeIndex];
-      else attendees[attendeeIndex] = placeId;
-      const partyChanges = { ...prev[partyId], attendees };
-      const next = { ...prev, [partyId]: partyChanges };
-      if (!Object.keys(attendees).length && partyChanges.adminNotes === undefined) delete next[partyId];
-      return next;
-    });
-  };
-
-  const saveLogisticsChanges = async (partyId) => {
-    const changes = logisticsChanges[partyId];
-    if (!changes) return;
-
-    const party = parties.find(p => p.id === partyId);
-    if (!party) return;
-
+  // One call, each party saved entirely or not at all (save_logistics). Refused parties keep their
+  // draft and show why; the others are cleared.
+  const saveLogisticsChanges = async () => {
+    const sent = logisticsChanges;
+    if (!Object.keys(sent).length) return;
+    setSavingLogistics(true);
     try {
-      // One place per attendee (place_assignments.attendee_id is unique): upsert, or delete.
-      const placeWrites = Object.entries(changes.attendees || {})
-        .map(([index, placeId]) => ({ attendee: (party.attendees || [])[index], placeId }))
-        .filter(({ attendee, placeId }) => attendee && placeId !== (attendee.place?.place_id ?? null))
-        .map(({ attendee, placeId }) => (placeId
-          ? supabase.from('place_assignments').upsert({ attendee_id: attendee.id, place_id: placeId }, { onConflict: 'attendee_id' })
-          : supabase.from('place_assignments').delete().eq('attendee_id', attendee.id)));
-      const partyUpdate = changes.adminNotes !== undefined
-        ? [supabase.from('user_parties').update({ admin_notes: changes.adminNotes }).eq('id', partyId)]
-        : [];
+      const { data: failures, error } = await supabase.rpc('save_logistics', { p_changes: logisticsPayload(sent) });
+      if (error) throw error;
 
-      const results = await Promise.all([...placeWrites, ...partyUpdate]);
-      const failed = results.find(result => result.error);
-      if (failed) throw failed.error;
+      await fetchParties(activeEventState.id);
+      setLogisticsChanges(current => draftAfterSave(current, sent, failures.map(failure => failure.party_id)));
+      setLogisticsErrors(Object.fromEntries(failures.map(failure => [failure.party_id, dbErrorMessage(failure, fr.saveError)])));
 
-      addToast(fr.logisticsUpdatedToast, 'success');
-
-      // Clear changes and refresh
-      setLogisticsChanges(prev => {
-        const newChanges = { ...prev };
-        delete newChanges[partyId];
-        return newChanges;
-      });
-
-      fetchParties(activeEventState.id);
+      if (!failures.length) {
+        addToast(fr.logisticsAllSavedToast, 'success');
+      } else {
+        const names = failures.map(failure => parties.find(p => p.id === failure.party_id)?.profiles?.full_name || fr.defaultUserFallback);
+        addToast(fr.logisticsSomeFailedToast.replace('{n}', failures.length).replace('{names}', names.join(', ')), 'error');
+      }
     } catch (error) {
       console.error('Error saving logistics:', error);
       addToast(dbErrorMessage(error, fr.saveError), 'error');
+    } finally {
+      setSavingLogistics(false);
     }
   };
 
@@ -863,9 +850,13 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
           parties={activeParties}
           places={places}
           logisticsChanges={logisticsChanges}
+          logisticsErrors={logisticsErrors}
+          unsavedCount={unsavedLogistics}
+          saving={savingLogistics}
           onPlaceChange={handlePlaceChange}
           onAdminNotesChange={handleAdminNotesChange}
           onSave={saveLogisticsChanges}
+          onDiscard={discardLogisticsChanges}
           onOpenUserProfile={openUserProfile}
         />
       );
@@ -898,8 +889,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
     return <AdminOverview event={activeEventState} budget={budget} parties={parties} places={places} onOpenParty={openPartyEdit} />;
   };
-
-  const unsavedLogistics = Object.keys(logisticsChanges).length;
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-16">
@@ -990,6 +979,16 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         {pendingPayment && fr.paymentToggleConfirm
           .replace('{action}', getPaymentStatusShortLabel(pendingPayment.newStatus))
           .replace('{name}', pendingPayment.party.profiles?.full_name || fr.defaultUserFallback)}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={leaveBlocker.state === 'blocked'}
+        title={fr.logisticsLeaveTitle}
+        confirmLabel={fr.logisticsLeaveConfirm}
+        onConfirm={() => leaveBlocker.proceed()}
+        onCancel={() => leaveBlocker.reset()}
+      >
+        {fr.logisticsLeaveBody.replace('{n}', unsavedLogistics)}
       </ConfirmDialog>
 
       <ConfirmDialog

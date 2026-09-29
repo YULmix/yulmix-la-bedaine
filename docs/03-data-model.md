@@ -184,6 +184,12 @@ ordered by `position` (`PARTY_WITH_ATTENDEES` in `src/lib/parties.js`). Screens 
 `attendees` array, as they did with the JSON, each attendee with `place` (or null). PostgREST
 embeds the view one-to-one, through `place_assignments.attendee_id`'s unique foreign key.
 
+**Assigning.** The Logistique tab keeps places and admin notes as a draft (`src/lib/logisticsDraft.js`)
+and saves them all with `save_logistics(p_changes)` (#150): `[{ party_id, places: { <attendee id>:
+<place id> | null }, admin_notes? }]`. Each party is saved entirely or not at all; the function
+returns the refused ones (`[{ party_id, code, message, details }]`, `message` being the error code),
+and the tab keeps their drafts.
+
 ## JSONB payload shapes
 
 Three columns carry structured data. These shapes are a contract between the form and the admin

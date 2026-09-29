@@ -11,6 +11,10 @@ const DB_ERRORS = {
     .replace('{event}', event ?? '')
     .replace('{date}', formatDate(closeDate)),
   place_assignment_party_inactive: () => fr.dbErrorPlaceAssignmentPartyInactive,
+  admin_only: () => fr.dbErrorAdminOnly,
+  logistics_party_not_found: () => fr.dbErrorLogisticsPartyNotFound,
+  logistics_attendee_not_in_party: () => fr.dbErrorLogisticsAttendeeNotInParty,
+  logistics_changes_invalid: () => fr.dbErrorLogisticsChangesInvalid,
   place_assignment_wrong_event: () => fr.dbErrorPlaceAssignmentWrongEvent,
   place_assignment_place_excluded: () => fr.dbErrorPlaceAssignmentPlaceExcluded,
   place_exclusion_occupied: () => fr.dbErrorPlaceExclusionOccupied,

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { BedDouble, Save, TriangleAlert } from 'lucide-react';
+import { BedDouble, CircleAlert, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { placeOccupancy, placeOptions } from '../../lib/places';
-import { Button, Card, EmptyState, Notice, Tag, Textarea } from '../ui';
+import { Card, EmptyState, Notice, Tag, Textarea } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
+import SaveBar from './SaveBar';
 
 const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
 const hasUnassigned = party => !party.is_waitlisted && (party.attendees || []).some(a => !a.place);
@@ -17,15 +18,21 @@ const FILTERS = [
 ];
 
 // Per-attendee sleeping places (#114) and private admin notes. Unsaved edits live in the parent
-// (`logisticsChanges`) so they survive switching admin tabs. `places` are the event's, from
-// flattenPlaces(); with none, there is nothing to assign until they're defined (Événements tab).
+// (`logisticsChanges`, see lib/logisticsDraft.js) so they survive switching admin tabs, and are
+// all saved at once from the bar at the bottom (#150); `logisticsErrors` holds why a party's save
+// was refused. `places` are the event's, from flattenPlaces(); with none, there is nothing to
+// assign until they're defined (Événements tab).
 const AdminLogisticsView = ({
   parties,
   places,
   logisticsChanges,
+  logisticsErrors,
+  unsavedCount,
+  saving,
   onPlaceChange,
   onAdminNotesChange,
   onSave,
+  onDiscard,
   onOpenUserProfile
 }) => {
   const [filter, setFilter] = useState('all');
@@ -53,12 +60,13 @@ const AdminLogisticsView = ({
           const profile = party.profiles || {};
           const partyAttendees = party.attendees || [];
           const changes = logisticsChanges[party.id] || {};
-          const hasChanges = changes.adminNotes !== undefined || (changes.attendees && Object.keys(changes.attendees).length > 0);
+          const hasChanges = !!logisticsChanges[party.id];
+          const saveError = hasChanges && logisticsErrors[party.id];
           const notesId = `admin-notes-${party.id}`;
 
           return (
             <li key={party.id}>
-              <Card className={`h-full p-4 sm:p-5 ${hasChanges ? 'border-warn/50' : ''}`}>
+              <Card className={`h-full p-4 sm:p-5 ${saveError ? 'border-bad/60' : hasChanges ? 'border-warn/50' : ''}`}>
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <button
@@ -72,10 +80,17 @@ const AdminLogisticsView = ({
                   {hasChanges && <Tag tone="warn">{fr.unsavedTag}</Tag>}
                 </div>
 
+                {saveError && (
+                  <p className="mb-4 flex items-start gap-2 text-sm text-bad">
+                    <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" strokeWidth={1.75} />
+                    {saveError}
+                  </p>
+                )}
+
                 <ul className="space-y-3">
                   {partyAttendees.map((attendee, index) => {
                     const savedPlaceId = attendee.place?.place_id ?? null;
-                    const pending = changes.attendees?.[index];
+                    const pending = changes.places?.[attendee.id];
                     const placeId = pending !== undefined ? pending : savedPlaceId;
                     const place = placesById.get(placeId);
                     const overbooked = place && occupancy.get(place.id) > place.capacity;
@@ -105,7 +120,7 @@ const AdminLogisticsView = ({
                               label={`${fr.logisticsTableSleepingAssigned}, ${attendeeName}`}
                               options={placeOptions(places, occupancy, { preference: attendee.sleeping_preference, currentPlaceId: placeId })}
                               value={placeId}
-                              onChange={newPlaceId => onPlaceChange(party.id, index, newPlaceId === savedPlaceId ? undefined : newPlaceId)}
+                              onChange={newPlaceId => onPlaceChange(party, attendee.id, newPlaceId)}
                               disabled={party.is_waitlisted}
                               describedBy={party.is_waitlisted || overbooked ? noteId : undefined}
                             />
@@ -128,26 +143,19 @@ const AdminLogisticsView = ({
                   <Textarea
                     id={notesId}
                     value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                    onChange={(e) => onAdminNotesChange(party.id, e.target.value)}
+                    onChange={(e) => onAdminNotesChange(party, e.target.value)}
                     rows={2}
                     placeholder={fr.adminNotesPlaceholder}
                   />
                 </div>
 
-                {/* Below the fields it saves, so on a phone it's right under the thumb after editing */}
-                {hasChanges && (
-                  <div className="mt-4 flex sm:justify-end">
-                    <Button onClick={() => onSave(party.id)} className="w-full sm:w-auto">
-                      <Save aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-                      {fr.saveAssignments}
-                    </Button>
-                  </div>
-                )}
               </Card>
             </li>
           );
         })}
       </ul>
+
+      <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} saveLabel={fr.logisticsSaveAll} />
     </section>
   );
 };

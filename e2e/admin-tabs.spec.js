@@ -264,22 +264,23 @@ test.describe('admin tabs', () => {
     await expectWithinViewportWidth(page, placeOption(page, 'Chambre 1 · Lit A'));
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-tab-logistics-picker');
-    // Reveal the save button (draft only; never clicked here).
+    // A draft enables the save bar (never clicked here).
     await placeOption(page, 'Chambre 1 · Lit A').click();
-    await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.saveAssignments }));
+    await expect(panel(page).getByRole('button', { name: fr.logisticsSaveAll })).toBeEnabled();
+    await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.logisticsSaveAll }));
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-tab-logistics-editing');
   });
 
   test('unsaved logistics edits survive switching tabs', async ({ page }) => {
     await openAdmin(page, '?tab=logistics');
-    const saveButton = panel(page).getByRole('button', { name: fr.saveAssignments });
-    await expect(saveButton).toHaveCount(0);
+    const saveButton = panel(page).getByRole('button', { name: fr.logisticsSaveAll });
+    await expect(saveButton).toBeDisabled();
     await expect(bedInputs(page).first()).toHaveValue('');
 
     await pickPlace(page, bedInputs(page).first(), 'Chambre 1 · Lit A');
     await panel(page).locator('textarea').fill('Note non sauvegardée');
-    await expect(saveButton).toBeVisible();
+    await expect(saveButton).toBeEnabled();
 
     await tab(page, USERS_TAB).click();
     await expectUsersTabActive(page);
@@ -288,7 +289,7 @@ test.describe('admin tabs', () => {
 
     await expect(bedInputs(page).first()).toHaveValue('Chambre 1 · Lit A');
     await expect(panel(page).locator('textarea')).toHaveValue('Note non sauvegardée');
-    await expect(saveButton).toBeVisible();
+    await expect(saveButton).toBeEnabled();
 
     // Nothing was written: the draft only lives in page state.
     const party = await getParty(seeded.partyId);
@@ -300,11 +301,11 @@ test.describe('admin tabs', () => {
     await openAdmin(page, '?tab=logistics');
     await pickPlace(page, bedInputs(page).nth(1), 'Salon · Sofa');
     await panel(page).locator('textarea').fill('Arrive tard vendredi');
-    const saveButton = panel(page).getByRole('button', { name: fr.saveAssignments });
+    const saveButton = panel(page).getByRole('button', { name: fr.logisticsSaveAll });
     await saveButton.click();
 
-    await expect(page.getByText(fr.logisticsUpdatedToast)).toBeVisible();
-    await expect(saveButton).toHaveCount(0);
+    await expect(page.getByText(fr.logisticsAllSavedToast)).toBeVisible();
+    await expect(saveButton).toBeDisabled();
 
     await page.reload();
     await expectLogisticsTabActive(page);
