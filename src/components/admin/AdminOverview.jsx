@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import fr from '../../locales/fr.json';
 import { formatCurrency } from '../../lib/format';
-import { computeAdminStats } from '../../lib/adminStats';
+import { computeAdminStats, computePlaceStats } from '../../lib/adminStats';
 import { attendeePrice, calculateBreakEvenPrice, priceRatiosOf, totalPriceShares } from '../../lib/pricingEngine';
 import { ACCOMMODATION_OPTIONS, DIETARY_OPTIONS, TIER_OPTIONS, getOptionLabel, isActiveRegistration } from '../../lib/registrationOptions';
 import { Card, Stat } from '../ui';
 import EmailProblems from './EmailProblems';
+import PlaceOccupancy, { OverbookedPlaces } from './PlaceOccupancy';
 
 // Horizontal bars without a background track: the number is the information, the bar is the
 // shape. Widths are relative to the largest value in the list.
@@ -35,9 +36,11 @@ const TIER_LABEL_KEYS = {
   kids: 'exportKids'
 };
 
-// `budget` is the event's admin-only event_budgets row, or null when none was saved yet.
-const AdminOverview = ({ event, budget, parties, onOpenParty }) => {
+// `budget` is the event's admin-only event_budgets row, or null when none was saved yet. `places`
+// are the event's sleeping places (flattenPlaces()); without any, the bed counts stand in.
+const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
+  const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
   const capacity = event?.max_attendees || 0;
 
@@ -66,6 +69,7 @@ const AdminOverview = ({ event, budget, parties, onOpenParty }) => {
       <h2 className="sr-only">{fr.adminTabOverview}</h2>
 
       <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
+      {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}
 
       {/* KPI strip: one ruled row, not a grid of identical cards. */}
       <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line sm:grid-cols-4">
@@ -149,7 +153,7 @@ const AdminOverview = ({ event, budget, parties, onOpenParty }) => {
             emptyLabel={fr.adminNoData}
             rows={ACCOMMODATION_OPTIONS.filter(opt => stats.accommodation[opt.value]).map(opt => ({ key: opt.value, value: stats.accommodation[opt.value], label: opt.label }))}
           />
-          {stats.bedRequests > 0 && (
+          {!placeStats && stats.bedRequests > 0 && (
             <p className="mt-4 text-sm text-faint">{fr.kpiBedsAssigned.replace('{assigned}', stats.bedsAssigned).replace('{requested}', stats.bedRequests)}</p>
           )}
         </Card>
@@ -161,6 +165,8 @@ const AdminOverview = ({ event, budget, parties, onOpenParty }) => {
           />
         </Card>
       </div>
+
+      {placeStats && <PlaceOccupancy stats={placeStats} />}
     </div>
   );
 };
