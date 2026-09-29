@@ -113,8 +113,33 @@ export const DIETARY_OPTIONS = [
   { value: 'vegetarian', label: fr.vegetarian },
   { value: 'vegan', label: fr.vegan },
   { value: 'gluten_free', label: fr.glutenFree },
+  { value: 'dairy_free', label: fr.dairyFree },
   { value: 'other', label: fr.otherDietary }
 ];
+
+// An attendee's dietary needs (#153): an array of DIETARY_OPTIONS values, empty = not answered.
+// 'none' only on its own, 'other' goes with dietary_other (the database enforces both).
+// Older data (edit history, a stale row) may hold a single value: read it as a one-element array.
+export const dietaryNeedsOf = (value) => {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+};
+
+const dietaryOrder = (values) => DIETARY_OPTIONS.map(option => option.value).filter(value => values.includes(value));
+
+// The selection after a chip toggle (`next` is the toggled array): choosing « Aucune restriction »
+// clears the others, choosing anything else clears it. Kept in DIETARY_OPTIONS order.
+export const nextDietaryNeeds = (previous, next) => {
+  const added = next.filter(value => !previous.includes(value));
+  if (added.includes('none')) return ['none'];
+  return dietaryOrder(added.length ? next.filter(value => value !== 'none') : next);
+};
+
+// The French labels of an attendee's needs to show (not « Aucune restriction »), « Autre »
+// replaced by what they wrote.
+export const dietaryLabelsOf = (attendee) => dietaryNeedsOf(attendee.dietary_needs)
+  .filter(value => value !== 'none')
+  .map(value => (value === 'other' && attendee.dietary_other ? attendee.dietary_other : getOptionLabel(DIETARY_OPTIONS, value)));
 
 // Generic label lookup: returns the French label for a raw DB value, or 'fallback' if not found/empty.
 export const getOptionLabel = (options, value, fallback = 'Non spécifié') => {

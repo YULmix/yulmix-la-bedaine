@@ -12,7 +12,7 @@ import MyPartyEmails from '../components/MyPartyEmails';
 import { Button, Card, ConfirmDialog, Tag } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
-  DIETARY_OPTIONS,
+  dietaryLabelsOf,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
   getOptionLabel,
@@ -129,11 +129,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                         {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other ? `: ${attendee.sleeping_preference_other}` : ''}
                       </Tag>
                     )}
-                    {attendee.dietary_needs && attendee.dietary_needs !== 'none' && (
-                      <Tag icon={Utensils}>
-                        {attendee.dietary_needs === 'other' && attendee.dietary_other ? attendee.dietary_other : getOptionLabel(DIETARY_OPTIONS, attendee.dietary_needs)}
-                      </Tag>
-                    )}
+                    {dietaryLabelsOf(attendee).map(label => <Tag key={label} icon={Utensils}>{label}</Tag>)}
                   </div>
                   {attendee.place && (
                     <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 rounded-control tint-ok px-2.5 py-1 text-sm text-ok">

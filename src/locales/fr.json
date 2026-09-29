@@ -157,6 +157,8 @@
   "foodPreferences": "Préférences alimentaires",
   "foodRequirements": "Besoins alimentaires",
   "glutenFree": "Sans gluten",
+  "dairyFree": "Sans produits laitiers",
+  "dietaryOtherRequired": "Précisez la restriction alimentaire, ou décochez « Autre ».",
   "instructions": "Instructions",
   "lastEdited": "Dernière modification",
   "loading": "Chargement...",

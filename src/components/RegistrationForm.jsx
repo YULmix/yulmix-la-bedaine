@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, Sprout, Trash2, UserPlus, Utensils, WheatOff
+  ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, MilkOff, Sprout, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
 import { ACCOMMODATION_ICONS } from './accommodationIcons';
 import { supabase } from '../lib/supabase';
@@ -17,7 +17,9 @@ import {
   BED_REASON_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
-  DIETARY_OPTIONS
+  DIETARY_OPTIONS,
+  dietaryNeedsOf,
+  nextDietaryNeeds
 } from '../lib/registrationOptions';
 
 const STEPS = [
@@ -38,7 +40,7 @@ const PRESENCE_OPTIONS = [
   { value: 'Main', label: fr.participationMainShort }
 ];
 
-const DIETARY_ICONS = { none: Ban, vegetarian: Leaf, vegan: Sprout, gluten_free: WheatOff, other: Utensils };
+const DIETARY_ICONS = { none: Ban, vegetarian: Leaf, vegan: Sprout, gluten_free: WheatOff, dairy_free: MilkOff, other: Utensils };
 const TRANSPORT_ICONS = { offer: CarFront, need: Hand };
 
 const withIcons = (options, icons) => options.map(option => ({ ...option, icon: icons[option.value] }));
@@ -47,6 +49,9 @@ const DIETARY_CHIPS = withIcons(DIETARY_OPTIONS, DIETARY_ICONS);
 const TRANSPORT_CHIPS = [{ value: '', label: fr.transportTypeNone, icon: Ban }, ...withIcons(TRANSPORT_TYPES, TRANSPORT_ICONS)];
 
 const LOGISTICS_FIELDS = ['sleepingPreference', 'sleepingPreferenceOther', 'dietaryNeeds', 'bedReason', 'bedReasonOther', 'dietaryOther'];
+// dietaryNeeds is an array, so compare by value.
+const sameChoice = (a, b) => (Array.isArray(a) ? JSON.stringify(a) === JSON.stringify(b) : a === b);
+const needsDietaryDetail = attendee => attendee.dietaryNeeds.includes('other') && !attendee.dietaryOther.trim();
 
 const newAttendee = (id) => ({
   id,
@@ -56,7 +61,7 @@ const newAttendee = (id) => ({
   isNewMember: false,
   sleepingPreference: '',
   sleepingPreferenceOther: '',
-  dietaryNeeds: '',
+  dietaryNeeds: [],
   bedReason: '',
   bedReasonOther: '',
   dietaryOther: ''
@@ -65,8 +70,10 @@ const newAttendee = (id) => ({
 const toLocalDateTime = (value) => (value && value.includes('T') ? value.slice(0, 16) : value || '');
 
 // Per-attendee sleeping + food choices. Rendered once for the whole group ("mêmes choix pour
-// tout le monde") or once per attendee.
-const StayChoices = ({ attendee, onChange, idPrefix }) => (
+// tout le monde") or once per attendee. onChange takes a field and its value, or several fields.
+// Dietary needs are several choices (#153): « Aucune restriction » alone, and unticking « Autre »
+// drops its text.
+const StayChoices = ({ attendee, onChange, idPrefix, dietError }) => (
   <div className="space-y-6">
     <div className="space-y-3">
       <ChipGroup
@@ -103,13 +110,17 @@ const StayChoices = ({ attendee, onChange, idPrefix }) => (
       <ChipGroup
         label={fr.dietaryNeeds}
         name={`${idPrefix}-diet`}
+        multiple
         options={DIETARY_CHIPS}
         value={attendee.dietaryNeeds}
-        onChange={value => onChange('dietaryNeeds', value)}
+        onChange={value => {
+          const dietaryNeeds = nextDietaryNeeds(attendee.dietaryNeeds, value);
+          onChange(dietaryNeeds.includes('other') ? { dietaryNeeds } : { dietaryNeeds, dietaryOther: '' });
+        }}
       />
-      {attendee.dietaryNeeds === 'other' && (
-        <Field label={fr.pleaseSpecify}>
-          {({ id }) => <Input id={id} value={attendee.dietaryOther} onChange={e => onChange('dietaryOther', e.target.value)} placeholder={fr.dietaryOtherPlaceholder} />}
+      {attendee.dietaryNeeds.includes('other') && (
+        <Field label={fr.pleaseSpecify} error={dietError} htmlFor={`diet-other-${idPrefix}`}>
+          {({ id, describedBy, invalid }) => <Input id={id} aria-describedby={describedBy} invalid={invalid} value={attendee.dietaryOther} onChange={e => onChange('dietaryOther', e.target.value)} placeholder={fr.dietaryOtherPlaceholder} />}
         </Field>
       )}
     </div>
@@ -129,6 +140,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [error, setError] = useState(null);
   const [step, setStep] = useState(0);
   const [nameErrors, setNameErrors] = useState({});
+  const [dietErrors, setDietErrors] = useState({});
 
   const [sameForEveryone, setSameForEveryone] = useState(true);
   const [transportType, setTransportType] = useState('');
@@ -166,7 +178,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       isNewMember: attendee.is_new_member || false,
       sleepingPreference: attendee.sleeping_preference || '',
       sleepingPreferenceOther: attendee.sleeping_preference_other || '',
-      dietaryNeeds: attendee.dietary_needs || '',
+      dietaryNeeds: dietaryNeedsOf(attendee.dietary_needs),
       bedReason: attendee.bed_reason || '',
       bedReasonOther: attendee.bed_reason_other || '',
       dietaryOther: attendee.dietary_other || '',
@@ -176,7 +188,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     // Only start in "same for everyone" mode if the saved choices really are identical; otherwise
     // the sync below would overwrite everyone's choices with the first attendee's.
     const [first, ...rest] = formattedAttendees;
-    setSameForEveryone(rest.every(att => LOGISTICS_FIELDS.every(field => att[field] === first[field])));
+    setSameForEveryone(rest.every(att => LOGISTICS_FIELDS.every(field => sameChoice(att[field], first[field]))));
     setTransportType(userRegistration.transport?.type || '');
     setTransportSeats(userRegistration.transport?.seats || 0);
     // Keep saved times; only fall back to the event's first and last day when none was ever saved.
@@ -209,7 +221,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   useEffect(() => {
     if (!sameForEveryone || attendees.length < 2) return;
     const first = attendees[0];
-    const needsSync = attendees.some(att => LOGISTICS_FIELDS.some(field => att[field] !== first[field]));
+    const needsSync = attendees.some(att => LOGISTICS_FIELDS.some(field => !sameChoice(att[field], first[field])));
     if (needsSync) {
       setAttendees(attendees.map(att => ({
         ...att,
@@ -244,14 +256,21 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     if (attendees.length > 1) setAttendees(attendees.filter(attendee => attendee.id !== id));
   };
 
+  // A field and its value, or an object of several fields.
+  const changesOf = (field, value) => (typeof field === 'object' ? field : { [field]: value });
+
   const handleAttendeeChange = (id, field, value) => {
-    setAttendees(attendees.map(attendee => (attendee.id === id ? { ...attendee, [field]: value } : attendee)));
+    const changes = changesOf(field, value);
+    setAttendees(attendees.map(attendee => (attendee.id === id ? { ...attendee, ...changes } : attendee)));
     if (field === 'name' && value.trim()) setNameErrors(prev => ({ ...prev, [id]: undefined }));
+    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) setDietErrors(prev => ({ ...prev, [id]: undefined }));
   };
 
   // "Mêmes choix pour tout le monde": edits go to everyone at once.
   const handleGroupStayChange = (field, value) => {
-    setAttendees(attendees.map(attendee => ({ ...attendee, [field]: value })));
+    const changes = changesOf(field, value);
+    setAttendees(attendees.map(attendee => ({ ...attendee, ...changes })));
+    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) setDietErrors({});
   };
 
   const handleAgeChange = (id, type) => {
@@ -277,8 +296,23 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     return true;
   };
 
+  // « Autre » needs its text (the database refuses it blank).
+  const validateDietary = () => {
+    const errors = Object.fromEntries(attendees.filter(needsDietaryDetail).map(attendee => [attendee.id, fr.dietaryOtherRequired]));
+    setDietErrors(errors);
+    const firstInvalid = attendees.find(attendee => errors[attendee.id]);
+    if (firstInvalid) {
+      setStep(1);
+      const idPrefix = sameForEveryone || attendees.length === 1 ? 'group' : firstInvalid.id;
+      requestAnimationFrame(() => document.getElementById(`diet-other-${idPrefix}`)?.focus());
+      return false;
+    }
+    return true;
+  };
+
   const goToStep = (index) => {
     if (index > step && step === 0 && !validateNames()) return;
+    if (index > step && step === 1 && !validateDietary()) return;
     setStep(index);
     requestAnimationFrame(() => formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -289,7 +323,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       goToStep(step + 1);
       return;
     }
-    if (!validateNames()) return;
+    if (!validateNames() || !validateDietary()) return;
     if (!event || !event.id) {
       setError(fr.eventNotSpecifiedError);
       addToast(fr.eventNotSpecifiedError, 'error');
@@ -326,7 +360,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         dietary_needs: attendee.dietaryNeeds,
         bed_reason: attendee.bedReason,
         bed_reason_other: attendee.bedReasonOther,
-        dietary_other: attendee.dietaryOther
+        dietary_other: attendee.dietaryNeeds.includes('other') ? attendee.dietaryOther.trim() : ''
       }));
 
       // Party-wide answers only; everything about a person is on their attendee row.
@@ -430,7 +464,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((s, index) => {
             const isCurrent = index === step;
-            const hasError = index === 0 && Object.values(nameErrors).some(Boolean);
+            const hasError = (index === 0 && Object.values(nameErrors).some(Boolean)) || (index === 1 && Object.values(dietErrors).some(Boolean));
             return (
               <li key={s.id}>
                 <button
@@ -544,7 +578,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
             )}
             {sameForEveryone || attendees.length === 1 ? (
               <Card className="p-5">
-                <StayChoices attendee={attendees[0]} onChange={handleGroupStayChange} idPrefix="group" />
+                <StayChoices attendee={attendees[0]} onChange={handleGroupStayChange} idPrefix="group" dietError={dietErrors[attendees[0].id]} />
               </Card>
             ) : (
               <ul className="space-y-4">
@@ -556,6 +590,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                         attendee={attendee}
                         onChange={(field, value) => handleAttendeeChange(attendee.id, field, value)}
                         idPrefix={attendee.id}
+                        dietError={dietErrors[attendee.id]}
                       />
                     </Card>
                   </li>

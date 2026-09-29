@@ -95,7 +95,7 @@ erDiagram
     bool is_new_member
     text sleeping_preference "CHECK, '' = not answered"
     text bed_reason "CHECK"
-    text dietary_needs "CHECK"
+    text_array dietary_needs "CHECK, {} = not answered"
   }
   VENUES {
     uuid id PK
@@ -163,7 +163,7 @@ values of `src/lib/registrationOptions.js`; `''` means "not answered", as it did
 | `participation` | `Whole`, `Main`, `After-Party` (kids) |
 | `sleeping_preference` (+ `_other`) | `''`, `camping`, `floor`, `bed`, `sofa`, `outside_other` |
 | `bed_reason` (+ `_other`) | `''`, `health`, `children`, `comfort`, `other` |
-| `dietary_needs` (+ `dietary_other`) | `''`, `none`, `vegetarian`, `vegan`, `gluten_free`, `other` |
+| `dietary_needs` (+ `dietary_other`) | an array (#153), `{}` = not answered, of `none`, `vegetarian`, `vegan`, `gluten_free`, `dairy_free`, `other`: each at most once, `none` only on its own, and `dietary_other` filled exactly when `other` is chosen |
 
 **One write path.** The form saves a party and its attendees in one transaction with
 `save_registration(p_event_id, p_attendees, p_party, p_user_id)`, a `SECURITY INVOKER` function, so

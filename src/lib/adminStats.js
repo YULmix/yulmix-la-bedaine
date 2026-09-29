@@ -1,4 +1,4 @@
-import { PAYMENT_STATUS, isActiveRegistration } from './registrationOptions.js';
+import { PAYMENT_STATUS, dietaryNeedsOf, isActiveRegistration } from './registrationOptions.js';
 import { placeOccupancy } from './places.js';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
@@ -57,7 +57,9 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
       if (attendee.sleeping_preference) accommodation[attendee.sleeping_preference] = (accommodation[attendee.sleeping_preference] || 0) + 1;
       if (attendee.sleeping_preference === 'bed') bedRequests += 1;
       if (attendee.place) bedsAssigned += 1;
-      if (attendee.dietary_needs && attendee.dietary_needs !== 'none') dietary[attendee.dietary_needs] = (dietary[attendee.dietary_needs] || 0) + 1;
+      // Several needs per attendee (#153): each counts once, so totals can exceed the head count.
+      dietaryNeedsOf(attendee.dietary_needs).filter(need => need !== 'none')
+        .forEach(need => { dietary[need] = (dietary[need] || 0) + 1; });
     });
   });
 

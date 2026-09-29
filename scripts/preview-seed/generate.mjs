@@ -170,10 +170,15 @@ function generateAttendee(faker, { name, type, partiesConfig, paid }) {
     { value: 'sofa', weight: 1 }, { value: 'outside_other', weight: 1 }
   ]);
   const bedReason = sleeping === 'bed' ? faker.helpers.arrayElement(OPTION_VALUES.bedReason) : '';
-  const dietary = faker.helpers.weightedArrayElement([
+  // Several needs per attendee (#153): sometimes a second one, never with « none ».
+  const firstNeed = faker.helpers.weightedArrayElement([
     { value: 'none', weight: 12 }, { value: 'vegetarian', weight: 3 }, { value: 'vegan', weight: 2 },
-    { value: 'gluten_free', weight: 1 }, { value: 'other', weight: 2 }
+    { value: 'gluten_free', weight: 1 }, { value: 'dairy_free', weight: 1 }, { value: 'other', weight: 2 }
   ]);
+  const secondNeed = firstNeed !== 'none' && faker.datatype.boolean({ probability: 0.25 })
+    ? faker.helpers.arrayElement(['gluten_free', 'dairy_free'].filter(value => value !== firstNeed))
+    : null;
+  const dietary = secondNeed ? [firstNeed, secondNeed] : [firstNeed];
   return {
     name,
     type,
@@ -182,7 +187,7 @@ function generateAttendee(faker, { name, type, partiesConfig, paid }) {
     sleeping_preference: sleeping,
     sleeping_preference_other: sleeping === 'outside_other' ? faker.helpers.arrayElement(SLEEPING_OTHER) : '',
     dietary_needs: dietary,
-    dietary_other: dietary === 'other' ? faker.helpers.arrayElement(DIETARY_OTHER) : '',
+    dietary_other: dietary.includes('other') ? faker.helpers.arrayElement(DIETARY_OTHER) : '',
     bed_reason: bedReason,
     bed_reason_other: bedReason === 'other' ? faker.helpers.arrayElement(BED_REASON_OTHER) : '',
     // Not an attendee field: the room an admin puts them in, as a place assignment below (#114).

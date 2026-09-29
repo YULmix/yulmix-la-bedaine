@@ -5,15 +5,15 @@ const parties = [
     id: 'a',
     payment_status: 'paid',
     attendees: [
-      { type: 'Adult', participation: 'Whole', sleeping_preference: 'bed', place: { place_id: 'p1', bed_label: 'Ch. 1' }, dietary_needs: 'vegan' },
-      { type: 'Kid', participation: 'After-Party', sleeping_preference: 'bed', dietary_needs: 'none' }
+      { type: 'Adult', participation: 'Whole', sleeping_preference: 'bed', place: { place_id: 'p1', bed_label: 'Ch. 1' }, dietary_needs: ['vegan', 'gluten_free'] },
+      { type: 'Kid', participation: 'After-Party', sleeping_preference: 'bed', dietary_needs: ['none'] }
     ]
   },
   {
     id: 'b',
     payment_status: 'unpaid',
     is_waitlisted: true,
-    attendees: [{ type: 'Teenager', participation: 'Main', is_new_member: true, sleeping_preference: 'camping' }]
+    attendees: [{ type: 'Teenager', participation: 'Main', is_new_member: true, sleeping_preference: 'camping', dietary_needs: ['gluten_free'] }]
   }
 ];
 
@@ -30,7 +30,8 @@ test('computeAdminStats counts from attendees and splits money by payment status
   expect(stats.tiers).toEqual({ adult_whole: 1, adult_main: 0, teen_whole: 0, teen_main: 1, kids: 1 });
   expect(stats.newMembers).toBe(1);
   expect(stats.accommodation).toEqual({ bed: 2, camping: 1 });
-  expect(stats.dietary).toEqual({ vegan: 1 });
+  // Each need counts once per attendee; « Aucune restriction » isn't a need.
+  expect(stats.dietary).toEqual({ vegan: 1, gluten_free: 2 });
   expect(stats.bedRequests).toBe(2);
   expect(stats.bedsAssigned).toBe(1);
   expect(stats.paidParties).toBe(1);
@@ -38,6 +39,11 @@ test('computeAdminStats counts from attendees and splits money by payment status
   expect(stats.totalDue).toBe(450);
   expect(stats.received).toBe(360);
   expect(stats.outstanding).toBe(90);
+});
+
+test('computeAdminStats reads a single dietary value from older data', () => {
+  const legacy = [{ id: 'l', attendees: [{ type: 'Adult', participation: 'Whole', dietary_needs: 'vegan' }, { type: 'Adult', participation: 'Whole', dietary_needs: '' }] }];
+  expect(computeAdminStats(legacy, () => 0).dietary).toEqual({ vegan: 1 });
 });
 
 test('computeAdminStats leaves cancelled parties out of every count and amount', () => {
