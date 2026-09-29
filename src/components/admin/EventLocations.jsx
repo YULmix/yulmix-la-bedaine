@@ -184,16 +184,19 @@ export const EventSleepingPlan = ({ event, locationId, onLocationChange, onVenue
     );
   }
   return (
-    <VenuePlan key={event.venue_id} eventId={event.id} venueId={event.venue_id}
+    <VenuePlan key={event.venue_id} eventIds={[event.id]} venueId={event.venue_id}
       locationId={locationId} onLocationChange={onLocationChange} onVenueChange={onVenueChange} />
   );
 };
 
-// Every change is saved right away: the rows are separate tables, and assignments point at them.
-// Field edits show at once and are written behind; adding, removing and moving rows reload from
-// the database. Deleting a place someone of this event holds is refused, here with their names;
-// the database refuses it for anyone at the venue (a foreign key).
-const VenuePlan = ({ eventId, venueId, locationId, onLocationChange, onVenueChange }) => {
+// A venue, its locations and places (#145), shared by the event editor's Couchage section and the
+// venues tab (#146). Occupants are those of `eventIds`: the event being edited, or the venue's
+// events still to come. Every change is saved right away: the rows are separate tables, and
+// assignments point at them. Field edits show at once and are written behind; adding, removing
+// and moving rows reload from the database. Deleting a place one of those occupants holds is
+// refused, here with their names; the database refuses it for anyone at the venue (a foreign key).
+export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onVenueChange }) => {
+  const eventKey = eventIds.join(',');
   const [venue, setVenue] = useState(null);
   const [locations, setLocations] = useState(null);
   const [error, setError] = useState(null);
@@ -212,10 +215,9 @@ const VenuePlan = ({ eventId, venueId, locationId, onLocationChange, onVenueChan
         .from('locations')
         .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
         .eq('venue_id', venueId),
-      supabase
-        .from('attendee_places')
-        .select('place_id, attendee_name')
-        .eq('event_id', eventId)
+      eventIds.length
+        ? supabase.from('attendee_places').select('place_id, attendee_name').in('event_id', eventIds)
+        : { data: [] }
     ]);
     const loadError = venueResult.error || locationsResult.error || assignmentsResult.error;
     if (loadError) {
@@ -233,7 +235,8 @@ const VenuePlan = ({ eventId, venueId, locationId, onLocationChange, onVenueChan
       (names[placeId] ||= []).push(name);
     });
     setOccupants(names);
-  }, [eventId, venueId]);
+    // eventKey stands for eventIds, a new array on every render.
+  }, [eventKey, venueId]);
 
   useEffect(() => { load(); }, [load]);
 
