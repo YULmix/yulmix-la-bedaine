@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -122,6 +122,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /attendees-edit\.spec\.js/,
       dependencies: ['attendee-price-rounding']
+    },
+    {
+      // Reseeds the same shared active event and gives it sleeping locations, so it runs after
+      // attendees-edit, on its own.
+      name: 'admin-locations',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-locations\.spec\.js/,
+      dependencies: ['attendees-edit']
     }
   ],
   webServer: {

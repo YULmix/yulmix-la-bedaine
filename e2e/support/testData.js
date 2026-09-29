@@ -151,6 +151,50 @@ export async function deleteParty(partyId) {
   check(await db.from('user_parties').delete().eq('id', partyId), 'delete extra party');
 }
 
+// The event's sleeping locations with their places (#113), in display order.
+export async function getLocations(eventId) {
+  const db = await adminClient();
+  const locations = check(
+    await db
+      .from('event_locations')
+      .select('id, name, sort_order, event_places(id, label, type, capacity)')
+      .eq('event_id', eventId)
+      .order('sort_order'),
+    'read e2e locations'
+  );
+  return locations.map(({ event_places: places, ...location }) => ({ ...location, places }));
+}
+
+// Puts the party's attendee at `position` (from 1) in the place (the Logistique dropdown is #114).
+export async function assignPlace(placeId, partyId, position) {
+  const db = await adminClient();
+  const { id: attendeeId } = check(
+    await db.from('attendees').select('id').eq('party_id', partyId).eq('position', position).single(),
+    'read e2e attendee'
+  );
+  check(await db.from('place_assignments').insert({ place_id: placeId, attendee_id: attendeeId }), 'assign e2e place');
+}
+
+export async function unassignPlace(placeId) {
+  const db = await adminClient();
+  check(await db.from('place_assignments').delete().eq('place_id', placeId), 'unassign e2e place');
+}
+
+// The "<location> · <place>" label of each of the party's assigned attendees, by name.
+export async function getPlaceLabels(partyId) {
+  const db = await adminClient();
+  const rows = check(
+    await db.from('attendee_places').select('attendee_name, bed_label').eq('party_id', partyId),
+    'read e2e place labels'
+  );
+  return Object.fromEntries(rows.map(row => [row.attendee_name, row.bed_label]));
+}
+
+export async function deleteLocations(eventId) {
+  const db = await adminClient();
+  check(await db.from('event_locations').delete().eq('event_id', eventId), 'delete e2e locations');
+}
+
 export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {
   const db = await adminClient();
   if (partyId) check(await db.from('user_parties').delete().eq('id', partyId), 'delete e2e party');
