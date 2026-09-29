@@ -14,6 +14,7 @@ no component library.
 | `/inscription` | `RegistrationPage`: the 4-step registration form, create or edit | Authenticated |
 | `/event-details` | `EventDetailsView` | Authenticated |
 | `/admin` | `AdminView`, tabs `?tab=overview\|users\|logistics\|events\|tools` | Authenticated **and** admin |
+| `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=details\|sleeping&location=<id>`), same admin shell | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
 
 `ProtectedRoute` (`src/App.jsx`) renders a skeleton while auth resolves, redirects
@@ -45,6 +46,7 @@ flowchart TD
   ADMIN -->|"?tab=users"| USERS["AdminUserManagement"]
   ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView"]
   ADMIN -->|"?tab=events"| EVENTS["AdminEvents"]
+  ADMIN -->|"/admin/events/:id"| EDITOR["EventEditor<br/>details draft, sleeping plan"]
   ADMIN -->|"?tab=budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
   ADMIN -->|"?tab=tools"| TOOLS["AdminTools<br/>export, feedback"]
 ```

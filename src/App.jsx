@@ -291,7 +291,9 @@ function App() {
             </ProtectedRoute>
           } />
 
-          <Route path="/admin" element={
+          {/* /admin/* so AdminView stays mounted between its tabs and the event editor
+              (/admin/events/:id), keeping unsaved drafts. */}
+          <Route path="/admin/*" element={
             <ProtectedRoute {...guard} adminOnly>
               <AdminView
                 activeEvent={activeEvent}
