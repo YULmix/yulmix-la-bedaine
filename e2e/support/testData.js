@@ -190,7 +190,7 @@ export async function getParty(partyId) {
   return check(
     await db
       .from('user_parties')
-      .select('attendees(*, place:attendee_places(place_id, bed_label)), admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .select('attendees(*, place:attendee_places(place_id, bed_label)), transport, admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
       .eq('id', partyId)
       .order('position', { referencedTable: 'attendees' })
       .single(),
@@ -204,6 +204,21 @@ export async function createParty(eventId, userId, attendees) {
   const db = await adminClient();
   check(await db.from('user_parties').delete().eq('event_id', eventId).eq('user_id', userId), 'delete old extra party');
   return saveParty(db, eventId, userId, attendees, 'create extra party');
+}
+
+// The seeded member's registration for an event (id and transport), or null.
+export async function findMemberParty(eventId) {
+  const db = await adminClient();
+  return check(
+    await db.from('user_parties').select('id, transport').eq('event_id', eventId).eq('user_id', MEMBER_ID).maybeSingle(),
+    'find e2e member party'
+  );
+}
+
+// Sets the transport JSON of a registration, as if the member had saved it earlier.
+export async function setPartyTransport(partyId, transport) {
+  const db = await adminClient();
+  check(await db.from('user_parties').update({ transport }).eq('id', partyId), 'set e2e party transport');
 }
 
 export async function deleteParty(partyId) {
