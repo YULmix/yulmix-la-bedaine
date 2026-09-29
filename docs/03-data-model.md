@@ -324,7 +324,9 @@ event's locations to a venue of its own and the address from `events.venue_addre
   event at the venue, or the location holding it, fails; the editor lists who of this event is in
   it first.
 - The venue, its locations and places are edited in the Couchage section of the event editor
-  (`src/components/admin/EventLocations.jsx`), which creates the event's venue when it has none;
+  (`src/components/admin/EventLocations.jsx`), which creates the event's venue when it has none
+  (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
+  transaction, returning the existing venue if there is one);
   every change is saved immediately. A venues tab (#146) and a venue picker (#147) replace this.
   The Logistique tab lists the venue's places less the event's exclusions, at the event's
   capacities (`flattenPlaces()` in `src/lib/places.js`). They are

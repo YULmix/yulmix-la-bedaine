@@ -10,6 +10,10 @@ const event = {
 };
 
 describe('dirtyFields', () => {
+  test('ignores fields the event no longer has', () => {
+    expect(dirtyFields({ theme: 'Disco' }, { venue_address: '1 rue du Lac', theme: 'Rétro' })).toEqual(['theme']);
+  });
+
   test('ignores fields typed back to their saved value', () => {
     expect(dirtyFields(event, { theme: 'Disco', max_attendees: '90', reg_start_date: '' })).toEqual([]);
   });

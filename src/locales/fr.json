@@ -546,7 +546,7 @@
   "venueNoneHint": "Créez le site où il se tient, puis ses lieux et ses places. Il pourra resservir aux prochaines éditions.",
   "venueCreate": "Créer le site",
   "venueCreateError": "Le site n'a pas été créé.",
-  "placeOccupiedByAnotherEvent": "Quelqu'un d'un autre événement sur ce site occupe cette place : elle ne peut pas être supprimée.",
+  "placeOccupiedUnseen": "Quelqu'un occupe encore une place ici, pour cet événement ou un autre sur ce site : rien n'a été supprimé. La liste des occupants est à jour.",
   "locationsEmpty": "Aucun lieu sur ce site.",
   "locationsLoadError": "Impossible de charger les lieux.",
   "locationsSaveError": "La modification des lieux n'a pas été enregistrée.",

@@ -367,3 +367,36 @@ CREATE TRIGGER trg_keep_place_in_its_venue
 BEFORE UPDATE OF location_id ON public.places
 FOR EACH ROW
 EXECUTE FUNCTION private.keep_places_in_their_venue();
+
+-- ---------------------------------------------------------------------------------------------
+-- Creating an event's venue, from the event editor until the venue picker exists (#147): the
+-- venue and the link to it in one transaction, so a failure leaves no venue behind (they can't be
+-- deleted). An event that already has one gets it back, so a double click creates one venue.
+-- SECURITY INVOKER: the tables' RLS applies, so only an admin can.
+
+CREATE FUNCTION public.create_event_venue(p_event_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_event public.events%ROWTYPE;
+    v_venue uuid;
+BEGIN
+    SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING MESSAGE = 'event_not_found', ERRCODE = 'no_data_found';
+    END IF;
+    IF v_event.venue_id IS NOT NULL THEN
+        RETURN v_event.venue_id;
+    END IF;
+
+    INSERT INTO public.venues (name) VALUES (v_event.theme) RETURNING id INTO v_venue;
+    UPDATE public.events SET venue_id = v_venue WHERE id = p_event_id;
+    RETURN v_venue;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_event_venue(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_event_venue(uuid) TO authenticated;

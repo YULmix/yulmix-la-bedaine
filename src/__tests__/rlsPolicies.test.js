@@ -1228,6 +1228,20 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
     expect((await memberClient.from('event_place_overrides').select('place_id')).data).toEqual([]);
   });
 
+  test('create_event_venue: admins only, one venue per event however often it is called', async () => {
+    await adminAuthClient.from('events').update({ venue_id: null }).eq('id', OTHER_EVENT_ID);
+    const { error: memberError } = await memberClient.rpc('create_event_venue', { p_event_id: OTHER_EVENT_ID });
+    expect(memberError).not.toBeNull();
+
+    const { data: first, error } = await adminAuthClient.rpc('create_event_venue', { p_event_id: OTHER_EVENT_ID });
+    expect(error).toBeNull();
+    const { data: again } = await adminAuthClient.rpc('create_event_venue', { p_event_id: OTHER_EVENT_ID });
+    expect(again).toBe(first);
+    const { data: event } = await adminAuthClient.from('events')
+      .select('venue:venues(id, name)').eq('id', OTHER_EVENT_ID).single();
+    expect(event.venue).toEqual({ id: first, name: 'Other Locations Test' });
+  });
+
   test("changing an event's venue clears its assignments and overrides, not another event's", async () => {
     const [ann] = await attendeesOf(memberParty.id);
     const yanParty = await saveOk(adminAuthClient, SAME_VENUE_EVENT_ID, [person('Yan')]);

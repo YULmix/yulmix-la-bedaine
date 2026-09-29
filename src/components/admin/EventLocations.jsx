@@ -14,8 +14,8 @@ const capacityOf = places => places.reduce((sum, place) => sum + place.capacity,
 // one write, not five racing ones.
 const CAPACITY_WRITE_DELAY_MS = 400;
 
-// Deleting a place someone holds: this event's occupants are known here, another event's (at the
-// same venue) only through the foreign key's refusal.
+// Deleting a place (or location) someone holds, whom this screen didn't know about: someone of
+// another event at the venue, or assigned since it loaded. The foreign key refuses it.
 const FOREIGN_KEY_VIOLATION = '23503';
 
 // A text input that saves when it loses focus (or on Enter), and only if the value changed. A
@@ -154,20 +154,20 @@ export const EventSleepingPlan = ({ event, locationId, onLocationChange, onVenue
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
 
+  // One call: the venue and the event's link to it are written together (create_event_venue).
   const createVenue = async () => {
     setCreating(true);
-    const { data: venue, error: venueError } = await supabase.from('venues')
-      .insert({ name: event.theme }).select('id').single();
-    const { error: linkError } = venueError
-      ? { error: venueError }
-      : await supabase.from('events').update({ venue_id: venue.id }).eq('id', event.id);
-    if (linkError) {
-      console.error('Error creating the venue:', linkError);
-      setError(dbErrorMessage(linkError, fr.venueCreateError));
-    } else {
+    try {
+      const { error: createError } = await supabase.rpc('create_event_venue', { p_event_id: event.id });
+      if (createError) throw createError;
+      setError(null);
       await onVenueChange();
+    } catch (createError) {
+      console.error('Error creating the venue:', createError);
+      setError(dbErrorMessage(createError, fr.venueCreateError));
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   };
 
   if (!event.venue_id) {
@@ -254,7 +254,7 @@ const VenuePlan = ({ eventId, venueId, locationId, onLocationChange, onVenueChan
     if (result.error) {
       console.error('Error saving locations:', result.error);
       setError(result.error.code === FOREIGN_KEY_VIOLATION
-        ? fr.placeOccupiedByAnotherEvent
+        ? fr.placeOccupiedUnseen
         : dbErrorMessage(result.error, fr.locationsSaveError));
       setStatus('idle');
       await load();

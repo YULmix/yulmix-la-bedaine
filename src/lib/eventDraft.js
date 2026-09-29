@@ -36,8 +36,13 @@ const isHttpUrl = (text) => {
   }
 };
 
-/** The draft's fields whose value differs from the saved event, in draft order. */
+/**
+ * The draft's fields whose value differs from the saved event, in draft order. A field the event
+ * no longer has (a stored draft from before a column was dropped, e.g. venue_address in #145) is
+ * ignored rather than sent.
+ */
 export const dirtyFields = (event, changes) => Object.keys(changes || {})
+  .filter(field => !event || Object.hasOwn(event, field))
   .filter(field => !same(normalise(field, changes[field]), normalise(field, event?.[field])));
 
 /**
