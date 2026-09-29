@@ -63,6 +63,28 @@ const SignedOutHome = () => (
   </PageMain>
 );
 
+// Guards a route on the app's auth state. Declared at module level on purpose: a component defined
+// inside App would be a new type on every App render (Supabase fires an auth event whenever the
+// browser tab regains focus), and React would remount the whole page under it, dropping every
+// unsaved edit.
+const ProtectedRoute = ({ ready, isAuthenticated, isAdmin, adminOnly = false, children }) => {
+  if (!ready) return <ShellSkeleton />;
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (adminOnly && !isAdmin) {
+    return (
+      <PageMain>
+        <EmptyState icon={LockKeyhole} title={fr.adminOnlyAccessMessage} action={<Link to="/" className="font-semibold text-neon underline underline-offset-4">{fr.backToHome}</Link>} />
+      </PageMain>
+    );
+  }
+
+  return children;
+};
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -163,25 +185,6 @@ function App() {
     }
   };
 
-  // Protected Route component for admin access
-  const ProtectedRoute = ({ children, adminOnly = false }) => {
-    if (loading || !eventsLoaded) return <ShellSkeleton />;
-
-    if (!isAuthenticated) {
-      return <Navigate to="/" replace />;
-    }
-
-    if (adminOnly && !isAdmin) {
-      return (
-        <PageMain>
-          <EmptyState icon={LockKeyhole} title={fr.adminOnlyAccessMessage} action={<Link to="/" className="font-semibold text-neon underline underline-offset-4">{fr.backToHome}</Link>} />
-        </PageMain>
-      );
-    }
-
-    return children;
-  };
-
   const handleEventClick = (event) => {
     setSelectedEvent(event);
     setIsModalOpen(true);
@@ -232,6 +235,8 @@ function App() {
 
   if (loading) return <ShellSkeleton />;
 
+  const guard = { ready: !loading && eventsLoaded, isAuthenticated, isAdmin };
+
   return (
     <div className="flex min-h-dvh flex-col bg-night text-ink">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-80 focus:rounded-control focus:bg-neon focus:px-4 focus:py-2 focus:text-night">{fr.skipToContent}</a>
@@ -273,13 +278,13 @@ function App() {
           } />
 
           <Route path="/inscription" element={
-            <ProtectedRoute>
+            <ProtectedRoute {...guard}>
               <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
             </ProtectedRoute>
           } />
 
           <Route path="/event-details" element={
-            <ProtectedRoute>
+            <ProtectedRoute {...guard}>
               <PageMain>
                 <EventDetailsView activeEvent={activeEvent} />
               </PageMain>
@@ -287,7 +292,7 @@ function App() {
           } />
 
           <Route path="/admin" element={
-            <ProtectedRoute adminOnly={true}>
+            <ProtectedRoute {...guard} adminOnly>
               <AdminView
                 activeEvent={activeEvent}
                 otherEvents={otherEvents}

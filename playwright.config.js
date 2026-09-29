@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -153,6 +153,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-prefill-name\.spec\.js/,
       dependencies: ['admin-occupancy']
+    },
+    {
+      // Reseeds the same shared active event, so it runs after member-prefill-name, on its own.
+      name: 'admin-remount',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-remount\.spec\.js/,
+      dependencies: ['member-prefill-name']
     }
   ],
   webServer: {

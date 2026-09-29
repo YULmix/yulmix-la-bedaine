@@ -16,9 +16,12 @@ no component library.
 | `/admin` | `AdminView`, tabs `?tab=overview\|users\|logistics\|events\|tools` | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
 
-`ProtectedRoute` (`src/App.jsx:140`) renders a spinner while auth resolves, redirects
+`ProtectedRoute` (`src/App.jsx`) renders a skeleton while auth resolves, redirects
 unauthenticated users to `/`, and shows an "Accès réservé aux administrateurs" panel for
-non-admins. It is a UX guard only — the real boundary is RLS.
+non-admins. It is a UX guard only — the real boundary is RLS. It is declared at module level on
+purpose: declared inside `App`, it was a new component type on every `App` render (Supabase fires
+an auth event whenever the tab regains focus), so the page under it remounted and lost unsaved
+edits (#139). Don't declare components inside another component's render.
 
 ## Component map
 
