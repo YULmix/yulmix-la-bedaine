@@ -16,6 +16,10 @@ erDiagram
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
+  EVENTS ||--o{ EVENT_LOCATIONS : "sleeps people in (admin-only)"
+  EVENT_LOCATIONS ||--o{ EVENT_PLACES : "holds"
+  EVENT_PLACES ||--o{ PLACE_ASSIGNMENTS : "assigned to"
+  USER_PARTIES ||--o{ PLACE_ASSIGNMENTS : "one per attendee"
 
   AUTH_USERS {
     uuid id PK
@@ -56,6 +60,27 @@ erDiagram
     numeric contingency_pct "default 20"
     numeric total_cost "trigger: sum of lines"
     timestamptz updated_at
+  }
+  EVENT_LOCATIONS {
+    uuid id PK
+    uuid event_id FK
+    text name
+    text note "nullable"
+    int sort_order
+  }
+  EVENT_PLACES {
+    uuid id PK
+    uuid location_id FK
+    text label
+    text type "bed|sofa|floor|camping|outside_other"
+    int capacity "default 1; exceeding it is allowed"
+    int sort_order
+  }
+  PLACE_ASSIGNMENTS {
+    uuid id PK
+    uuid place_id FK "NO ACTION: an occupied place can't be deleted"
+    uuid party_id FK
+    uuid attendee_id "attendees[].id; UNIQUE (party_id, attendee_id)"
   }
   USER_PARTIES {
     uuid id PK
@@ -112,6 +137,7 @@ the admin screens, and nothing validates them — treat changes here as breaking
 ```json
 [
   {
+    "id": "2f1c…",                    // stable uuid, given by the database (#113)
     "name": "Jean Tremblay",
     "type": "Adult",                  // 'Adult' | 'Teenager' | 'Kid'
     "participation": "Whole",         // 'Whole' | 'Main' | 'After-Party'
@@ -119,10 +145,22 @@ the admin screens, and nothing validates them — treat changes here as breaking
     "sleeping_preference": "bed",     // camping | floor | bed | sofa
     "bed_reason": "health",           // health | children | comfort (required if bed)
     "dietary_needs": "vegetarian",    // none | vegetarian | vegan | gluten_free | other
-    "dietary_other": ""
+    "dietary_other": "",
+    "assigned_bed": "Chambre 2 · Lit A" // organisers only; see below
   }
 ]
 ```
+
+**`id`** is stamped by `trg_assign_attendee_ids` (BEFORE INSERT/UPDATE, #113): a client keeps an
+attendee's id by sending it back (the registration form does), but can't invent one, reuse
+another attendee's, or give one to two people. A save without ids (an older client) gets the stored
+ids back by name; anyone left gets a new uuid. `place_assignments` is keyed by it.
+
+**`assigned_bed`** is where the attendee sleeps, admin-write only (#94). On an event with no
+locations it is free text an organiser types. Once the event has
+[locations](#sleeping-locations-and-places-113), it is a mirror of the attendee's
+`place_assignments` row, `"<location> · <place>"`, kept by triggers whoever writes; the member
+summary and the accommodation email read it either way.
 
 **What the schema documents and the counts trigger expects**
 (the baseline migration's `COMMENT ON COLUMN … attendees`; `update_attendee_counts` has since
@@ -154,7 +192,7 @@ Derived, never authored. Exists so admin dashboards can aggregate without unpack
 
 ```json
 {
-  "sleeping":       { "pref": "bed", "reason": "health", "assigned": "Chambre 2, lit A" },
+  "sleeping":       { "pref": "bed", "reason": "health" },
   "food_requests":  { "requests": "vegetarian, gluten_free", "notes": "free text" },
   "volunteering":   ["cook_meal", "dj_evening"]
 }
@@ -162,8 +200,9 @@ Derived, never authored. Exists so admin dashboards can aggregate without unpack
 
 - `sleeping.pref` / `reason` are copied from the **first attendee only**
   (`src/components/RegistrationForm.jsx:264`) — a party-level summary of per-person data.
-- `sleeping.assigned` is **admin-write only**: the member asks, the organiser answers
-  (`src/views/AdminView.jsx:366`).
+- There is no `sleeping.assigned`: what an organiser allocates is per attendee,
+  `attendees[].assigned_bed`, above. (Older docs named a party-level `sleeping.assigned`; nothing
+  writes or reads it.)
 - `food_requests.requests` is a comma-joined string of raw option values across all attendees, and
   admin aggregation does substring matching on it (`src/views/AdminView.jsx:939`) — fragile, but
   currently the only food summary there is.
@@ -239,8 +278,43 @@ flowchart TD
     U4["AFTER UPDATE → log_registration_edit()"]
     U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
     U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
+    U7["BEFORE INSERT/UPDATE → assign_attendee_ids()<br/>stable attendees[].id (#113)"]
+    U8["BEFORE INSERT/UPDATE → sync_assigned_bed_from_places()<br/>assigned_bed mirrors the assignments (#113)"]
+    U9["AFTER UPDATE → release_stale_place_assignments()<br/>cancelled/waitlisted party or removed attendee (#113)"]
+  end
+  subgraph places["event_locations / event_places / place_assignments"]
+    L1["AFTER INSERT on event_locations → clear_free_text_beds_on_new_location()"]
+    L2["AFTER UPDATE of names/labels → resync_after_place_change()"]
+    L3["BEFORE INSERT/UPDATE on place_assignments → enforce_place_assignment()"]
+    L4["AFTER INSERT/UPDATE/DELETE on place_assignments → resync_after_assignment_change()"]
   end
 ```
+
+### Sleeping locations and places (#113)
+
+An event's **locations** (`event_locations`: a room, the yard…) hold **places** (`event_places`:
+a bed, a sofa…, with a type from the sleeping-preference list and a capacity). An attendee holds
+at most one place for the whole event, as a `place_assignments` row keyed by
+`(party_id, attendee_id)`. All three tables are admin-only; members see the mirrored
+`attendees[].assigned_bed` on their own party. Migration:
+`supabase/migrations/20260929000115_event_locations_and_places.sql`.
+
+- **Capacity is advisory.** No constraint stops more people than `capacity` in a place: organisers
+  may overbook on purpose, and the UI warns.
+- **The mirror.** Any change to an assignment, or a rename of its place or location, rewrites the
+  label on the party. On an event with locations the `user_parties` BEFORE trigger recomputes every
+  `assigned_bed` from the assignments, so free text sent by anyone (admin included) is dropped.
+- **Freeing places.** Cancelling a party, or it being waitlisted, deletes its assignments; removing
+  an attendee from the party deletes theirs. A cancelled or waitlisted party can't be assigned
+  (`place_assignment_party_inactive`), nor can an id that isn't one of the party's attendees
+  (`place_assignment_unknown_attendee`) or a place of another event (`place_assignment_wrong_event`).
+- **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting an occupied place, or the
+  location holding it, fails; the editor lists who is in it first.
+- **The first location** of an event clears its free-text `assigned_bed` values. That can't send an
+  email (a bed disappearing never does), and a party re-assigned later from the list already has
+  `accommodation` in `email_log`, so it isn't emailed again.
+- Places are edited in the event dialog of the Événements tab
+  (`src/components/admin/EventLocations.jsx`); every change is saved immediately.
 
 ### Capacity and waitlisting
 

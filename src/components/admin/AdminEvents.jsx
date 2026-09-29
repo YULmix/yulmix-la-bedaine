@@ -2,6 +2,7 @@ import { Archive, CalendarPlus, Pencil, Plus, Power, Trash2 } from 'lucide-react
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
 import { Button, Card, Dialog, EmptyState, Field, Input, Tag, Textarea, Toggle } from '../ui';
+import { EventLocationsEditor } from './EventLocations';
 
 const STATUS = {
   ACTIVE: { tone: 'ok', key: 'eventStatusActive' },
@@ -95,7 +96,8 @@ const RowListEditor = ({ label, rows, fields, onChange, onAdd, onRemove, addLabe
 );
 
 // The event's descriptive fields, grouped into fieldsets so the dialog reads top-down. Money
-// (price, ratios, budget) is edited in the Budget tab (#109).
+// (price, ratios, budget) is edited in the Budget tab (#109). The sleeping locations (#113) save
+// as they are edited, not with the dialog's Save.
 export const EventEditDialog = ({
   event,
   changes,
@@ -161,6 +163,10 @@ export const EventEditDialog = ({
               addLabel={fr.eventExternalLinksAddRow}
               removeLabel={fr.eventExternalLinksRemoveRow}
             />
+          </Fieldset>
+
+          <Fieldset legend={fr.eventFieldsetSleeping}>
+            <EventLocationsEditor eventId={event.id} />
           </Fieldset>
         </div>
       )}

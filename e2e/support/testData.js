@@ -83,6 +83,8 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     await db.from('user_parties').delete().eq('event_id', eventId).eq('user_id', MEMBER_ID),
     'delete old e2e party'
   );
+  // Sleeping locations (#113) end free-text beds, which other specs use: start without any.
+  check(await db.from('event_locations').delete().eq('event_id', eventId), 'delete e2e locations');
   const party = check(
     await db
       .from('user_parties')
@@ -146,6 +148,40 @@ export async function createParty(eventId, userId, attendees) {
 export async function deleteParty(partyId) {
   const db = await adminClient();
   check(await db.from('user_parties').delete().eq('id', partyId), 'delete extra party');
+}
+
+// The event's sleeping locations with their places (#113), in display order.
+export async function getLocations(eventId) {
+  const db = await adminClient();
+  const locations = check(
+    await db
+      .from('event_locations')
+      .select('id, name, sort_order, event_places(id, label, type, capacity)')
+      .eq('event_id', eventId)
+      .order('sort_order'),
+    'read e2e locations'
+  );
+  return locations.map(({ event_places: places, ...location }) => ({ ...location, places }));
+}
+
+// Puts attendee #attendeeIndex of the party in the place (the Logistique dropdown is #114).
+export async function assignPlace(placeId, partyId, attendeeIndex) {
+  const db = await adminClient();
+  const { attendees } = check(await db.from('user_parties').select('attendees').eq('id', partyId).single(), 'read e2e attendees');
+  check(
+    await db.from('place_assignments').insert({ place_id: placeId, party_id: partyId, attendee_id: attendees[attendeeIndex].id }),
+    'assign e2e place'
+  );
+}
+
+export async function unassignPlace(placeId) {
+  const db = await adminClient();
+  check(await db.from('place_assignments').delete().eq('place_id', placeId), 'unassign e2e place');
+}
+
+export async function deleteLocations(eventId) {
+  const db = await adminClient();
+  check(await db.from('event_locations').delete().eq('event_id', eventId), 'delete e2e locations');
 }
 
 export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {

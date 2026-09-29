@@ -9,7 +9,10 @@ const DB_ERRORS = {
   root_admin_cannot_be_deleted: () => fr.dbErrorRootAdminCannotBeDeleted,
   account_deletion_locked: ({ event, close_date: closeDate }) => fr.dbErrorAccountDeletionLocked
     .replace('{event}', event ?? '')
-    .replace('{date}', formatDate(closeDate))
+    .replace('{date}', formatDate(closeDate)),
+  place_assignment_party_inactive: () => fr.dbErrorPlaceAssignmentPartyInactive,
+  place_assignment_unknown_attendee: () => fr.dbErrorPlaceAssignmentUnknownAttendee,
+  place_assignment_wrong_event: () => fr.dbErrorPlaceAssignmentWrongEvent
 };
 
 const parseDetails = (details) => {

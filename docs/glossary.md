@@ -113,13 +113,30 @@ afterwards. Nobody gets an invoice after they have already settled.
 
 ## Logistics
 
-**Sleeping preference** (fr. *hébergement*) — one of `camping`, `floor`, `bed`, `sofa`.
+**Sleeping preference** (fr. *hébergement*) — one of `camping`, `floor`, `bed`, `sofa`,
+`outside_other`.
 Requesting a bed requires a reason (`health`, `children`, `comfort`) because beds are scarce.
 _Avoid_: accommodation type, room.
 
-**Assigned spot** (`logistics.sleeping.assigned`)
-The sleeping place an organiser has actually allocated. Admin-write only; the member's `pref` is
-a request, `assigned` is the answer.
+**Location** (fr. *lieu*, `event_locations`)
+Somewhere people sleep at a given event: a room, the yard, a campground. Defined per event by the
+organisers, with an optional note. Holds places.
+_Avoid_: room (a location isn't always one), venue (that's the event's address).
+
+**Place** (fr. *place*, `event_places`)
+A spot inside a location: a bed, a sofa, floor space… Has a type from the sleeping-preference list
+(so a preference and a place can be matched) and a capacity, how many people it is meant for
+(default 1). Exceeding the capacity is allowed; the UI warns.
+_Avoid_: bed (only one type of place), spot.
+
+**Assignment** (fr. *attribution*, `place_assignments`)
+Which place an attendee holds, for the whole event (no per-night occupancy). Admin-write only; the
+member's sleeping preference is a request, the assignment is the answer.
+
+**Assigned spot** (`attendees[].assigned_bed`)
+What an attendee sees as their sleeping place. On an event with locations it is the assignment's
+label, `"<location> · <place>"`, kept in sync by the database; on an event without any, free text
+an organiser typed. There is no party-level `logistics.sleeping.assigned`, whatever older notes say.
 
 **Volunteering** (fr. *bénévolat*)
 A multi-select of jobs a party offers to take on (food purchase, cooking, DJ, setup, cleanup,

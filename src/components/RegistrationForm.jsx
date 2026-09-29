@@ -150,6 +150,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     if (!userRegistration?.attendees) return;
     const formattedAttendees = userRegistration.attendees.map((attendee, index) => ({
       id: `attendee-${index}`,
+      // The database's stable id (#113): sent back so the attendee keeps it, and their place.
+      attendeeId: attendee.id,
       name: attendee.name || '',
       type: attendee.type || 'Adult',
       participation: attendee.participation || 'Whole',
@@ -287,6 +289,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       }
 
       const attendeesData = attendees.map(attendee => ({
+        ...(attendee.attendeeId && { id: attendee.attendeeId }),
         name: attendee.name.trim(),
         type: attendee.type,
         participation: attendee.participation,
