@@ -1,4 +1,4 @@
-// Sleeping locations and places (#113), edited in the event dialog of the Événements tab. Every
+// Sleeping locations and places (#113), on the Couchage section of the event editor page. Every
 // change saves right away; an occupied place or location can't be deleted, and says who's in it.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
@@ -21,24 +21,29 @@ test.describe.configure({ mode: 'serial' });
 let seeded;
 test.beforeEach(async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty();
+  await deleteLocations(seeded.eventId);
   await loginAs(page, TEST_USERS.admin);
 });
 test.afterEach(async () => {
-  await teardownActiveEventWithMemberParty(seeded ?? {});
   if (seeded?.eventId) await deleteLocations(seeded.eventId);
+  await teardownActiveEventWithMemberParty(seeded ?? {});
   seeded = null;
 });
 
-const openEditor = async (page) => {
+const openSleeping = async (page) => {
   await page.goto('/admin?tab=events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.edit }).click();
-  const dialog = page.getByRole('dialog', { name: fr.editEventMetadataTitle });
-  await expect(dialog.getByRole('group', { name: fr.eventFieldsetSleeping })).toBeVisible();
-  return dialog;
+  await page.getByRole('tab', { name: fr.eventFieldsetSleeping }).click();
+  const section = page.getByRole('tabpanel', { name: fr.eventFieldsetSleeping });
+  await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
+  return section;
 };
 
+const locationList = page => page.getByRole('navigation', { name: fr.locationsListLabel });
+const selectLocation = (page, name) => locationList(page).getByRole('button', { name: new RegExp(`^${name}`) }).click();
+
 const screenshot = async (page, name) => {
-  if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}.png` });
+  if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}.png`, fullPage: true });
 };
 
 // Types into a save-on-blur field and leaves it.
@@ -47,48 +52,73 @@ const fillAndLeave = async (input, value) => {
   await input.press('Tab');
 };
 
-test('an admin adds, renames, reorders and fills locations; changes are saved immediately', async ({ page }) => {
-  let dialog = await openEditor(page);
-  await expect(dialog.getByText(fr.locationsEmpty)).toBeVisible();
+const locationNames = async eventId => (await getLocations(eventId)).map(l => l.name);
+const placesOf = async (eventId, name) => ((await getLocations(eventId)).find(l => l.name === name)?.places || [])
+  .map(({ label, type, capacity }) => ({ label, type, capacity }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
-  await dialog.getByRole('button', { name: fr.locationAdd }).click();
-  await fillAndLeave(dialog.getByLabel(fr.locationNameLabel).first(), 'Chambre 2');
-  await dialog.getByRole('button', { name: fr.locationAdd }).click();
-  await expect(dialog.getByLabel(fr.locationNameLabel)).toHaveCount(2);
-  await fillAndLeave(dialog.getByLabel(fr.locationNameLabel).nth(1), 'Cour');
-  await expect.poll(async () => (await getLocations(seeded.eventId)).map(l => l.name)).toEqual(['Chambre 2', 'Cour']);
+test('an admin builds a sleeping plan: locations, places in bulk, reorder, duplicate; all saved as it goes', async ({ page }) => {
+  const section = await openSleeping(page);
+  await expect(section.getByText(fr.locationsEmpty)).toBeVisible();
 
-  await dialog.getByRole('button', { name: fr.locationMoveUp.replace('{name}', 'Cour') }).click();
-  await expect.poll(async () => (await getLocations(seeded.eventId)).map(l => l.name)).toEqual(['Cour', 'Chambre 2']);
-  await expect(dialog.getByLabel(fr.locationNameLabel).first()).toHaveValue('Cour');
+  await section.getByRole('button', { name: fr.locationAdd }).click();
+  await fillAndLeave(page.getByLabel(fr.locationNameLabel), 'Chambre 2');
+  await locationList(page).getByRole('button', { name: fr.locationAdd }).click();
+  await expect(page.getByLabel(fr.locationNameLabel)).toHaveValue(fr.locationDefaultName.replace('{n}', 2));
+  await fillAndLeave(page.getByLabel(fr.locationNameLabel), 'Cour');
+  await expect.poll(() => locationNames(seeded.eventId)).toEqual(['Chambre 2', 'Cour']);
 
-  const chambre = dialog.getByRole('listitem', { name: 'Chambre 2' });
-  await chambre.getByRole('button', { name: fr.placeAdd }).click();
-  await fillAndLeave(chambre.getByLabel(fr.placeLabelLabel), 'Lit A');
-  await chambre.getByLabel(fr.placeTypeLabel).selectOption('sofa');
-  await fillAndLeave(chambre.getByLabel(fr.placeCapacityLabel), '2');
-  await expect(chambre.getByText(fr.locationTotals.replace('{places}', 1).replace('{capacity}', 2))).toBeVisible();
-  await expect.poll(async () => (await getLocations(seeded.eventId))[1].places)
-    .toEqual([expect.objectContaining({ label: 'Lit A', type: 'sofa', capacity: 2 })]);
+  await page.getByRole('button', { name: fr.locationMoveUp.replace('{name}', 'Cour') }).click();
+  await expect.poll(() => locationNames(seeded.eventId)).toEqual(['Cour', 'Chambre 2']);
+  await expect(locationList(page).getByRole('button').first()).toHaveText(/^Cour/);
 
-  // Nothing waits for the dialog's Save: closing and reopening shows what was stored.
-  await dialog.getByRole('button', { name: fr.cancel }).click();
-  dialog = await openEditor(page);
-  await expect(dialog.getByLabel(fr.locationNameLabel)).toHaveCount(2);
-  await expect(dialog.getByRole('listitem', { name: 'Chambre 2' }).getByLabel(fr.placeLabelLabel)).toHaveValue('Lit A');
-  await dialog.getByRole('group', { name: fr.eventFieldsetSleeping }).scrollIntoViewIfNeeded();
+  // Three beds in one go, numbered after the type.
+  await selectLocation(page, 'Chambre 2');
+  const chambre = page.getByRole('region', { name: 'Chambre 2' });
+  const addCount = chambre.getByRole('group', { name: fr.placeAddCountLabel });
+  await addCount.getByRole('button', { name: fr.stepperMore }).click();
+  await addCount.getByRole('button', { name: fr.stepperMore }).click();
+  await chambre.getByLabel(fr.placeAddTypeLabel).selectOption('bed');
+  await chambre.getByRole('button', { name: fr.placeAddButton }).click();
+  const bed = n => fr.placeDefaultLabel.replace('{type}', fr.accommodationBed).replace('{n}', n);
+  await expect.poll(() => placesOf(seeded.eventId, 'Chambre 2')).toEqual([1, 2, 3].map(n => ({ label: bed(n), type: 'bed', capacity: 1 })));
+
+  // Edit one: rename, retype, and a capacity of 3 (two clicks, one debounced write).
+  const first = chambre.getByRole('listitem', { name: bed(1) });
+  await first.getByLabel(fr.placeTypeLabel).selectOption('sofa');
+  await first.getByRole('button', { name: fr.stepperMore }).click();
+  await first.getByRole('button', { name: fr.stepperMore }).click();
+  await fillAndLeave(first.getByLabel(fr.placeLabelLabel), 'Sofa');
+  await expect.poll(() => placesOf(seeded.eventId, 'Chambre 2'))
+    .toEqual([{ label: bed(2), type: 'bed', capacity: 1 }, { label: bed(3), type: 'bed', capacity: 1 }, { label: 'Sofa', type: 'sofa', capacity: 3 }]);
+  await expect(section.getByText(fr.sleepingSaved, { exact: true })).toBeVisible();
+  await expect(chambre.getByText(fr.locationTotals.replace('{places}', 3).replace('{capacity}', 5))).toBeVisible();
+
+  await chambre.getByRole('button', { name: fr.locationDuplicate.replace('{name}', 'Chambre 2') }).click();
+  const copyName = fr.locationCopyName.replace('{name}', 'Chambre 2');
+  await expect(page.getByRole('region', { name: copyName })).toBeVisible();
+  await expect.poll(() => placesOf(seeded.eventId, copyName)).toEqual(await placesOf(seeded.eventId, 'Chambre 2'));
+
+  // The page is addressed by the URL: a reload comes back to the same location.
+  await page.reload();
+  await expect(page.getByRole('region', { name: copyName }).getByLabel(fr.locationNameLabel)).toHaveValue(copyName);
   await screenshot(page, 'locations-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
-  await dialog.getByRole('group', { name: fr.eventFieldsetSleeping }).scrollIntoViewIfNeeded();
-  await screenshot(page, 'locations-phone');
+  await expect(page.getByRole('button', { name: fr.locationsBackToList })).toBeVisible();
+  await screenshot(page, 'locations-phone-detail');
+  await page.getByRole('button', { name: fr.locationsBackToList }).click();
+  await expect(locationList(page)).toBeVisible();
+  await expect(page.getByRole('region', { name: copyName })).toBeHidden();
+  await screenshot(page, 'locations-phone-list');
 });
 
 test("an occupied place or location can't be deleted, and says who is in it", async ({ page }) => {
-  let dialog = await openEditor(page);
-  await dialog.getByRole('button', { name: fr.locationAdd }).click();
-  await fillAndLeave(dialog.getByLabel(fr.locationNameLabel), 'Salon');
-  const salon = dialog.getByRole('listitem', { name: 'Salon' });
-  await salon.getByRole('button', { name: fr.placeAdd }).click();
+  const section = await openSleeping(page);
+  await section.getByRole('button', { name: fr.locationAdd }).click();
+  await fillAndLeave(page.getByLabel(fr.locationNameLabel), 'Salon');
+  const salon = page.getByRole('region', { name: 'Salon' });
+  await salon.getByLabel(fr.placeAddTypeLabel).selectOption('sofa');
+  await salon.getByRole('button', { name: fr.placeAddButton }).click();
   await fillAndLeave(salon.getByLabel(fr.placeLabelLabel), 'Sofa');
   await expect.poll(async () => (await getLocations(seeded.eventId))[0]?.places.map(p => p.label)).toEqual(['Sofa']);
 
@@ -96,10 +126,10 @@ test("an occupied place or location can't be deleted, and says who is in it", as
   await assignPlace(sofa.id, seeded.partyId, 1);
   expect(await getPlaceLabels(seeded.partyId)).toEqual({ 'Alice E2E': 'Salon · Sofa' });
 
-  await dialog.getByRole('button', { name: fr.cancel }).click();
-  dialog = await openEditor(page);
-  const occupied = dialog.getByRole('listitem', { name: 'Salon' });
+  await page.reload();
+  const occupied = page.getByRole('region', { name: 'Salon' });
   await expect(occupied.getByText(fr.placeOccupants.replace('{names}', 'Alice E2E'))).toBeVisible();
+  await expect(page.getByRole('navigation', { name: fr.locationsListLabel }).getByText('1/1')).toBeVisible();
 
   for (const name of [fr.placeDelete.replace('{label}', 'Sofa'), fr.locationDelete.replace('{name}', 'Salon')]) {
     await occupied.getByRole('button', { name }).click();
@@ -116,8 +146,8 @@ test("an occupied place or location can't be deleted, and says who is in it", as
 
   // Once empty, the place goes.
   await unassignPlace(sofa.id);
-  await dialog.getByRole('button', { name: fr.cancel }).click();
-  dialog = await openEditor(page);
-  await dialog.getByRole('button', { name: fr.placeDelete.replace('{label}', 'Canapé') }).click();
+  await page.reload();
+  await page.getByRole('button', { name: fr.placeDelete.replace('{label}', 'Canapé') }).click();
   await expect.poll(async () => (await getLocations(seeded.eventId))[0].places).toEqual([]);
+  await expect(page.getByText(fr.placesEmpty)).toBeVisible();
 });

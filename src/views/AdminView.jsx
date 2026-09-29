@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
@@ -8,7 +8,8 @@ import AdminOverview from '../components/admin/AdminOverview';
 import AdminLogisticsView from '../components/admin/AdminLogisticsView';
 import AdminUserManagement from '../components/admin/AdminUserManagement';
 import AdminBudget from '../components/admin/AdminBudget';
-import { AdminEventList, EventEditDialog } from '../components/admin/AdminEvents';
+import { AdminEventList } from '../components/admin/AdminEvents';
+import EventEditor from '../components/admin/EventEditor';
 import { DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
 import PartyEmailLog from '../components/admin/PartyEmailLog';
@@ -25,6 +26,7 @@ import { tierCountsOf } from '../lib/adminStats';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { flattenPlaces } from '../lib/places';
 import { dbErrorMessage } from '../lib/dbErrors';
+import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
@@ -42,24 +44,37 @@ const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
 
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // The event editor is its own route, /admin/events/:eventId (?section=&location=), under the
+  // same admin shell: the Événements tab stays selected and this component stays mounted.
+  const editMatch = useMatch('/admin/events/:eventId');
+  const editEventId = editMatch?.params.eventId ?? null;
   const requestedTab = searchParams.get('tab');
-  const activeTab = ADMIN_TABS.some(tab => tab.id === requestedTab) ? requestedTab : DEFAULT_ADMIN_TAB;
-  const selectTab = (tabId) => {
+  const activeTab = editEventId ? 'events'
+    : ADMIN_TABS.some(tab => tab.id === requestedTab) ? requestedTab : DEFAULT_ADMIN_TAB;
+  // Sets or clears (null) query params, keeping the others. Pushes a history entry, so Back
+  // walks back through tabs and editor sections.
+  const updateParams = (params) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
-      next.set('tab', tabId);
+      Object.entries(params).forEach(([key, value]) => (value == null ? next.delete(key) : next.set(key, value)));
       return next;
     });
   };
+  const selectTab = (tabId) => navigate(`/admin?tab=${tabId}`);
+  const editSection = searchParams.get('section') === 'sleeping' ? 'sleeping' : 'details';
+  const editLocationId = searchParams.get('location');
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeEventState, setActiveEventState] = useState(activeEvent || null);
-  const [editingEvent, setEditingEvent] = useState(null);
   const [editingParty, setEditingParty] = useState(null);
-  const [eventChanges, setEventChanges] = useState({});
+  // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
+  // sessionStorage) so they survive switching tabs and sections, and reloads.
+  const [eventDraft, setEventDraft] = useState(null);
+  const [savingEvent, setSavingEvent] = useState(false);
   const { toasts, addToast, removeToast } = useToasts(1699);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [realtimeChannel, setRealtimeChannel] = useState(null);
@@ -328,52 +343,62 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
   };
 
-  // Inline editing for event metadata
+  const editingEvent = editEventId ? events.find(event => event.id === editEventId) : null;
+  const eventChanges = eventDraft?.eventId === editEventId ? eventDraft.changes : {};
+  const eventDirty = editingEvent ? dirtyFields(editingEvent, eventChanges) : [];
+  const eventErrors = validateDraft(editingEvent, eventChanges);
+
+  // Opening an event picks up a draft left in sessionStorage (a reload, a closed tab…).
+  useEffect(() => {
+    if (!editEventId || eventDraft?.eventId === editEventId) return;
+    const stored = loadStoredDraft(editEventId);
+    setEventDraft({ eventId: editEventId, changes: stored || {}, restored: !!stored });
+  }, [editEventId, eventDraft?.eventId]);
+
+  useEffect(() => {
+    if (eventDraft) storeDraft(eventDraft.eventId, eventDraft.changes);
+  }, [eventDraft]);
+
+  // Closing or reloading the browser tab with unsaved edits asks first. (They'd be restored from
+  // sessionStorage on a reload, but not in a new tab.)
+  const hasUnsavedEvent = !!eventDraft && events.some(event => event.id === eventDraft.eventId && dirtyFields(event, eventDraft.changes).length > 0);
+  useEffect(() => {
+    if (!hasUnsavedEvent) return;
+    const warn = (event) => { event.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedEvent]);
+
   const handleEventFieldChange = (field, value) => {
-    setEventChanges(prev => ({ ...prev, [field]: value }));
-  };
-  // Helper for updating external links array
-  const handleExternalLinksChange = (index, field, value) => {
-    const current = eventChanges.external_links ?? editingEvent?.external_links ?? [];
-    // Copy the row: editing it in place would change the loaded event too.
-    const updated = current.map((row, i) => (i === index ? { ...row, [field]: value } : row));
-    handleEventFieldChange('external_links', updated);
+    setEventDraft(prev => ({ ...prev, eventId: editEventId, changes: { ...(prev?.eventId === editEventId ? prev.changes : {}), [field]: value } }));
   };
 
-  const addExternalLinksRow = () => {
-    const current = eventChanges.external_links ?? editingEvent?.external_links ?? [];
-    handleEventFieldChange('external_links', [...current, { label: '', url: '' }]);
-  };
+  const discardEventChanges = () => setEventDraft({ eventId: editEventId, changes: {}, restored: false });
 
-  const removeExternalLinksRow = (index) => {
-    const current = eventChanges.external_links ?? editingEvent?.external_links ?? [];
-    const updated = current.filter((_, i) => i !== index);
-    handleEventFieldChange('external_links', updated);
+  const refreshEvents = async () => {
+    const { data, error: eventsError } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+    if (eventsError) throw eventsError;
+    setEvents(data || []);
+    setActiveEventState(data?.find(e => e.is_active) || data?.[0]);
   };
 
   const saveEventChanges = async () => {
-    if (!editingEvent) return;
-    
-    // If no changes were made, just close the modal with info message
-    if (Object.keys(eventChanges).length === 0) {
-      addToast(fr.noChangesMade, 'info');
-      setEditingEvent(null);
-      return;
-    }
-    
+    if (!editingEvent || !eventDirty.length || Object.keys(eventErrors).length) return;
+    setSavingEvent(true);
     try {
       const { error } = await supabase
         .from('events')
-        .update(eventChanges)
+        .update(draftUpdate(editingEvent, eventChanges))
         .eq('id', editingEvent.id);
       if (error) throw error;
+      await refreshEvents();
+      discardEventChanges();
       addToast(fr.eventMetadataUpdatedToast, 'success');
-      setEventChanges({});
-      setEditingEvent(null);
-      fetchAllData();
     } catch (err) {
       console.error('Error updating event:', err);
-      addToast(err.message || fr.updateError, 'error');
+      addToast(dbErrorMessage(err, fr.updateError), 'error');
+    } finally {
+      setSavingEvent(false);
     }
   };
 
@@ -753,12 +778,40 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       );
     }
     if (activeTab === 'events') {
+      const backToEvents = () => navigate('/admin?tab=events');
+      if (editEventId && !editingEvent) {
+        return (
+          <EmptyState icon={CalendarRange} title={fr.eventEditorNotFound}
+            action={<Button variant="secondary" onClick={backToEvents}>{fr.eventEditorBack}</Button>} />
+        );
+      }
+      if (editingEvent) {
+        return (
+          <EventEditor
+            event={editingEvent}
+            section={editSection}
+            onSectionChange={section => updateParams({ section: section === 'details' ? null : section })}
+            locationId={editLocationId}
+            onLocationChange={locationId => updateParams({ location: locationId })}
+            changes={eventChanges}
+            dirtyCount={eventDirty.length}
+            errors={eventErrors}
+            restored={!!eventDraft?.restored && eventDirty.length > 0}
+            saving={savingEvent}
+            onChange={handleEventFieldChange}
+            onSave={saveEventChanges}
+            onDiscard={discardEventChanges}
+            onBack={backToEvents}
+          />
+        );
+      }
       return (
         <AdminEventList
           events={events}
+          draftEventId={hasUnsavedEvent ? eventDraft.eventId : null}
           onActivate={handleActivateEvent}
           onArchive={setPendingArchive}
-          onEdit={(event) => { setEditingEvent(event); setEventChanges({}); }}
+          onEdit={(event) => navigate(`/admin/events/${event.id}`)}
         />
       );
     }
@@ -846,7 +899,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         {ADMIN_TABS.map(tab => {
           const isActive = tab.id === activeTab;
           const Icon = tab.icon;
-          const showDot = tab.id === 'logistics' && unsavedLogistics > 0;
+          const showDot = (tab.id === 'logistics' && unsavedLogistics > 0) || (tab.id === 'events' && hasUnsavedEvent);
           return (
             <button
               key={tab.id}
@@ -876,17 +929,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       <div role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`} key={activeTab} className="animate-step">
         {renderPanel()}
       </div>
-
-      <EventEditDialog
-        event={editingEvent}
-        changes={eventChanges}
-        onChange={handleEventFieldChange}
-        onLinkChange={handleExternalLinksChange}
-        onAddLinkRow={addExternalLinksRow}
-        onRemoveLinkRow={removeExternalLinksRow}
-        onSave={saveEventChanges}
-        onClose={() => setEditingEvent(null)}
-      />
 
       <UserProfileDialog profile={userProfileModal} history={userEventHistory} onClose={closeUserProfile} />
 

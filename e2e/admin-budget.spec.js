@@ -183,12 +183,12 @@ test('a new price and ratio apply to new registrations; existing ones keep their
   }
 });
 
-test('the event dialog and the tools tab no longer hold money settings', async ({ page }) => {
+test('the event editor and the tools tab no longer hold money settings', async ({ page }) => {
   await page.goto('/admin?tab=tools');
   await expect(panel(page).getByRole('heading', { name: fr.scenarioSimulatorTitle })).toHaveCount(0);
   await page.goto('/admin?tab=events');
   await panel(page).getByRole('button', { name: fr.edit }).click();
-  const dialog = page.getByRole('dialog', { name: fr.editEventMetadataTitle });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel(fr.eventSellingPriceLabel)).toHaveCount(0);
+  // The editor nests its own section tabpanel, so look page-wide.
+  await expect(page.getByLabel(fr.eventTitle)).toBeVisible();
+  await expect(page.getByLabel(fr.eventSellingPriceLabel)).toHaveCount(0);
 });
