@@ -110,13 +110,15 @@ test('on a phone the tab bar fits seven tabs, Logistique reads « Dodo » and Si
 });
 
 test('an archived edition keeps its layout and who slept where, under its venue', async ({ page }) => {
-  const { name } = await getEventVenue(seeded.eventId);
+  const { id: liveId, name } = await getEventVenue(seeded.eventId);
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
   await page.goto('/admin?tab=events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
   await page.getByRole('dialog', { name: fr.archiveEventConfirmTitle }).getByRole('button', { name: fr.archiveEventButton }).click();
-  await expect.poll(async () => (await getEventVenue(seeded.eventId)).name).toBe(name);
+  // Archived: the event is now on a frozen copy (same name, another venue).
+  await expect.poll(async () => (await getEventVenue(seeded.eventId)).id).not.toBe(liveId);
+  expect((await getEventVenue(seeded.eventId)).name).toBe(name);
 
   // The live venue changes; the archived edition doesn't follow.
   await renamePlace(placeIds['Chambre 1 · Lit A'], 'Queen');
