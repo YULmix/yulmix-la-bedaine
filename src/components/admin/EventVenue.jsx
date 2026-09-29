@@ -28,7 +28,7 @@ const venueOption = venue => fr.eventVenueOption
 
 // One place, as this event sees it: available or not this edition, and its capacity for this
 // event (the venue's by default). Who of this event sleeps there, if anyone.
-const PlaceSetting = ({ place, locationName, override, occupants, onExclude, onCapacity }) => {
+const PlaceSetting = ({ place, locationName, override, occupants, frozen, onExclude, onCapacity }) => {
   const excluded = !!override?.is_excluded;
   const capacity = override?.capacity ?? place.capacity;
   const overbooked = occupants.length > capacity;
@@ -37,6 +37,16 @@ const PlaceSetting = ({ place, locationName, override, occupants, onExclude, onC
     capacity !== place.capacity ? fr.placeVenueCapacity.replace('{capacity}', place.capacity) : null,
     excluded ? fr.placeExcluded : occupants.length ? fr.placeOccupants.replace('{names}', occupants.join(', ')) : fr.placeFree
   ].filter(Boolean).join(' · ');
+  if (frozen) {
+    return (
+      <li aria-label={place.label} className={cx('py-3', excluded && 'opacity-60')}>
+        <span className="block text-base text-ink">{place.label}</span>
+        <span className="block text-sm text-faint">
+          {[fr.placeEventCapacity.replace('{capacity}', capacity), details].join(' · ')}
+        </span>
+      </li>
+    );
+  }
   return (
     <li aria-label={place.label} className={cx('py-2', excluded && 'opacity-60')}>
       <Toggle
@@ -81,6 +91,8 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   const placeQueues = useRef({});
   const inFlight = useRef(0);
   const venueId = event.venue_id;
+  // An archived event keeps the layout it had (#148): shown, not changed.
+  const frozen = event.status === 'ARCHIVED';
 
   const setOverrideState = (next) => {
     overridesRef.current = next;
@@ -255,8 +267,8 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="max-w-prose text-muted">{fr.eventVenueHint}</p>
-        {venueId && <SaveStatus status={status} />}
+        <p className="max-w-prose text-muted">{frozen ? fr.eventVenueFrozen : fr.eventVenueHint}</p>
+        {venueId && !frozen && <SaveStatus status={status} />}
       </div>
       {error && <Notice tone="bad" role="alert">{error}</Notice>}
 
@@ -267,13 +279,13 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
         <div className="flex flex-wrap items-end gap-3">
           <Field label={fr.eventVenuePickerLabel} className="min-w-60 flex-1">
             {({ id }) => (
-              <Select id={id} value={venueId ?? ''} disabled={changingVenue} onChange={e => pickVenue(e.target.value)}>
+              <Select id={id} value={venueId ?? ''} disabled={changingVenue || frozen} onChange={e => pickVenue(e.target.value)}>
                 {!venueId && <option value="">{fr.eventVenuePickerPlaceholder}</option>}
                 {offered.map(v => <option key={v.id} value={v.id}>{venueOption(v)}</option>)}
               </Select>
             )}
           </Field>
-          {venueId ? (
+          {frozen ? null : venueId ? (
             <Button variant="secondary" onClick={() => navigate(`/admin?tab=venues&venue=${venueId}`)}>
               <Pencil aria-hidden="true" className="size-4" />{fr.eventVenueEdit}
             </Button>
@@ -288,12 +300,12 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
 
       {!venueId ? (
         <Card>
-          <EmptyState icon={MapPin} title={fr.venueNone}>{fr.eventVenueNoneHint}</EmptyState>
+          <EmptyState icon={MapPin} title={fr.venueNone}>{!frozen && fr.eventVenueNoneHint}</EmptyState>
         </Card>
       ) : places.length === 0 ? (
         <Card>
           <EmptyState icon={MapPin} title={fr.locationsEmpty}
-            action={<Button onClick={() => navigate(`/admin?tab=venues&venue=${venueId}`)}><Pencil aria-hidden="true" className="size-4.5" />{fr.eventVenueEdit}</Button>}>
+            action={!frozen && <Button onClick={() => navigate(`/admin?tab=venues&venue=${venueId}`)}><Pencil aria-hidden="true" className="size-4.5" />{fr.eventVenueEdit}</Button>}>
             {fr.eventVenueEmptyHint}
           </EmptyState>
         </Card>
@@ -324,6 +336,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
                     locationName={location.name}
                     override={overrides[place.id]}
                     occupants={occupants[place.id] || []}
+                    frozen={frozen}
                     onExclude={excluded => exclude(place, location.name, excluded)}
                     onCapacity={capacity => setCapacity(place, capacity)}
                   />

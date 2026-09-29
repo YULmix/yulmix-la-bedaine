@@ -45,9 +45,8 @@ erDiagram
 
 ## Consequences
 
-- A change to a venue shows in every event held there, archived ones included, until #148 keeps an
-  archived event's layout as it was. Meanwhile a place an archived event's attendee held can't be
-  deleted (the foreign key), which keeps past assignments intact.
+- A change to a venue shows in every event held there that isn't archived. An archived event keeps
+  the layout it had: archiving copies its venue ([ADR 0020](./0020-freeze-archived-event-layout.md), #148).
 - The event editor's Couchage section edits the event's venue (and creates it if the event has
   none) until the venues tab (#146) and the venue picker (#147) exist.
 - Occupancy is always per event: counting a place's occupants means counting the assignments of

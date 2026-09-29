@@ -7,9 +7,9 @@ import { venueTotals } from '../../lib/places';
 import { Button, Dialog, EmptyState, Field, Input, Notice, Skeleton, Tag, Toggle } from '../ui';
 import { VenuePlan } from './EventLocations';
 
-// The events held at a venue, and those still to come (not archived): whose occupants the venue
-// page shows, and who changing it affects.
-const eventsAt = (events, venueId) => events.filter(event => event.venue_id === venueId);
+// The events held at a venue: on it, or on one of its frozen copies (an archived edition, #148).
+// Those still to come (not archived) are whose occupants the venue page shows.
+const eventsAt = (events, venueIds) => events.filter(event => venueIds.includes(event.venue_id));
 const upcoming = events => events.filter(event => event.status !== 'ARCHIVED');
 
 const Totals = ({ totals }) => (
@@ -81,7 +81,7 @@ const VenueList = ({ events, onOpen }) => {
 
   useEffect(() => {
     supabase.from('venues')
-      .select('id, name, address, archived_at, locations(places(capacity))')
+      .select('id, name, address, archived_at, snapshot_of, locations(places(capacity))')
       .order('name')
       .then(({ data, error: loadError }) => {
         if (loadError) {
@@ -102,8 +102,11 @@ const VenueList = ({ events, onOpen }) => {
     );
   }
 
-  const archivedCount = venues.filter(venue => venue.archived_at).length;
-  const shown = venues.filter(venue => showArchived || !venue.archived_at);
+  // Frozen copies (#148) aren't venues to manage: their events show under the venue copied.
+  const live = venues.filter(venue => !venue.snapshot_of);
+  const copiesOf = id => [id, ...venues.filter(venue => venue.snapshot_of === id).map(venue => venue.id)];
+  const archivedCount = live.filter(venue => venue.archived_at).length;
+  const shown = live.filter(venue => showArchived || !venue.archived_at);
 
   return (
     <section className="space-y-4">
@@ -136,7 +139,7 @@ const VenueList = ({ events, onOpen }) => {
                 </div>
                 {venue.address && <p className="text-sm text-muted">{venue.address}</p>}
                 <Totals totals={venueTotals(venue.locations)} />
-                <EventNames events={eventsAt(events, venue.id)} />
+                <EventNames events={eventsAt(events, copiesOf(venue.id))} />
               </div>
               <Button size="sm" variant="secondary" onClick={() => onOpen(venue.id)}
                 aria-label={fr.venueOpen.replace('{name}', venue.name)}>
@@ -154,14 +157,18 @@ const VenueList = ({ events, onOpen }) => {
 
 // One venue: its name, address, locations and places (the editor the event page uses), with the
 // occupants of its events still to come, and archiving.
-const VenuePage = ({ venueId, events, locationId, onLocationChange, onBack, onVenueChange, notify }) => {
+const VenuePage = ({ venueId, events, locationId, onLocationChange, onOpen, onBack, onVenueChange, notify }) => {
   const [venue, setVenue] = useState(undefined);
   const [archiving, setArchiving] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from('venues').select('id, name, archived_at').eq('id', venueId).maybeSingle();
+    const [venueResult, copiesResult] = await Promise.all([
+      supabase.from('venues').select('id, name, archived_at, snapshot_of').eq('id', venueId).maybeSingle(),
+      supabase.from('venues').select('id').eq('snapshot_of', venueId)
+    ]);
+    const error = venueResult.error || copiesResult.error;
     if (error) console.error('Error loading the venue:', error);
-    setVenue(data ?? null);
+    setVenue(venueResult.data ? { ...venueResult.data, copies: (copiesResult.data || []).map(copy => copy.id) } : null);
   }, [venueId]);
   useEffect(() => { load(); }, [load]);
 
@@ -176,7 +183,20 @@ const VenuePage = ({ venueId, events, locationId, onLocationChange, onBack, onVe
     return <EmptyState icon={MapPin} title={fr.venueNotFound} action={<Button variant="secondary" onClick={onBack}>{fr.venuesBack}</Button>} />;
   }
 
-  const held = eventsAt(events, venueId);
+  // A frozen copy (reached from an archived event) is shown for what it is, not edited.
+  if (venue.snapshot_of) {
+    return (
+      <section className="space-y-4">
+        {back}
+        <Notice tone="info" title={fr.venueSnapshotTitle.replace('{name}', venue.name)}
+          action={<Button variant="secondary" size="sm" onClick={() => onOpen(venue.snapshot_of)}>{fr.venueSnapshotOpenLive}</Button>}>
+          {fr.venueSnapshotBody}
+        </Notice>
+      </section>
+    );
+  }
+
+  const held = eventsAt(events, [venueId, ...venue.copies]);
   const toggleArchived = async () => {
     setArchiving(true);
     const archivedAt = venue.archived_at ? null : new Date().toISOString();

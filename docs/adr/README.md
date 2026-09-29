@@ -29,4 +29,5 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0016](./0016-edge-function-for-transactional-email.md) | Transactional email is sent by one Supabase Edge Function, triggered from Postgres | accepted |
 | [0017](./0017-lock-price-per-registration.md) | A registration keeps the base price and ratio it was made at; a price change only affects new ones | accepted; reverses the repricing of #32/#109 |
 | [0018](./0018-attendees-in-their-own-table.md) | Attendees live in their own table, referenced by foreign key; no derived copies on `user_parties` | accepted, implemented (#126); supersedes 0004 |
-| [0019](./0019-shared-venues.md) | Venues (and their locations and places) are shared by events; per-edition differences are overrides | accepted, implemented (#145) |
+| [0019](./0019-shared-venues.md) | Venues (and their locations and places) are shared by events; per-edition differences are overrides | accepted, implemented (#145); archived events refined by 0020 |
+| [0020](./0020-freeze-archived-event-layout.md) | Archiving an event copies its venue into a frozen venue only it uses, so past editions keep their layout | accepted, implemented (#148) |

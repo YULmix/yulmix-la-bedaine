@@ -319,7 +319,15 @@ event's locations to a venue of its own and the address from `events.venue_addre
 - **Changing venue.** An event whose `venue_id` changes loses its assignments and overrides
   (`trg_clear_event_places_on_venue_change`): they point at the old venue's places. The admin UI
   says who is affected and asks first (#147).
-- **Archived events** still show the venue as it is now; keeping the layout they had is #148.
+- **Archived events keep their layout** ([ADR 0020](./adr/0020-freeze-archived-event-layout.md),
+  #148). Archiving an event (`trg_freeze_layout_on_archive` → `private.freeze_event_layout()`)
+  copies its venue, locations and places into a frozen venue (`venues.snapshot_of` = the venue
+  copied, archived from birth) and moves the event, its assignments and overrides onto the copy
+  in the same transaction. Nothing may change a frozen layout (`venue_layout_frozen`), nor an
+  archived event's venue or overrides (`event_layout_frozen`). The live venue's places are then
+  free to change or go. The Sites tab lists the copy's event under the venue it copies; the
+  copies themselves aren't listed. An archived event's Couchage section is read-only.
+  Un-archiving (SQL only) leaves the event on its copy; archiving it again copies nothing.
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
   event at the venue, or the location holding it, fails; the editor lists who of this event is in
   it first.

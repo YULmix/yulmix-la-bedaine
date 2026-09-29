@@ -122,7 +122,8 @@ _Avoid_: accommodation type, room.
 **Venue** (fr. *site*, `venues`)
 Where an event takes place: a name, an address, and the locations in it. Defined once and reused
 by every edition held there; an event uses one, and its address is the venue's. Archived, never
-deleted.
+deleted. An archived event keeps a **frozen copy** of its venue (`venues.snapshot_of`), so later
+changes to the venue don't rewrite past editions.
 _Avoid_: location (that's inside a venue), lieu (the French for location).
 
 **Location** (fr. *lieu*, `locations`)

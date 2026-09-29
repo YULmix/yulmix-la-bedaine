@@ -101,10 +101,13 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
 }
 
 // The e2e event's venue (#145), found by name or created. Venues are never deleted, so it is
-// reused from run to run.
+// reused from run to run. Not a frozen copy of it (#148), which has the same name.
 const E2E_VENUE_NAME = 'E2E Venue';
 async function e2eVenueId(db) {
-  const existing = check(await db.from('venues').select('id').eq('name', E2E_VENUE_NAME).limit(1), 'find e2e venue');
+  const existing = check(
+    await db.from('venues').select('id').eq('name', E2E_VENUE_NAME).is('snapshot_of', null).order('created_at').limit(1),
+    'find e2e venue'
+  );
   if (existing.length) return existing[0].id;
   return check(await db.from('venues').insert({ name: E2E_VENUE_NAME }).select('id').single(), 'create e2e venue').id;
 }
@@ -138,7 +141,10 @@ export async function setVenueArchived(eventId, archived) {
 // A venue found by name or created (never deleted, so reused across runs), archived or not.
 export async function ensureVenue(name, { archived = false } = {}) {
   const db = await adminClient();
-  const existing = check(await db.from('venues').select('id').eq('name', name).limit(1), 'find venue');
+  const existing = check(
+    await db.from('venues').select('id').eq('name', name).is('snapshot_of', null).order('created_at').limit(1),
+    'find venue'
+  );
   const id = existing.length
     ? existing[0].id
     : check(await db.from('venues').insert({ name }).select('id').single(), 'create venue').id;
@@ -303,12 +309,20 @@ export async function seedPlaces(eventId) {
 export async function teardownActiveEventWithMemberParty({ eventId, partyId }) {
   const db = await adminClient();
   if (partyId) check(await db.from('user_parties').delete().eq('id', partyId), 'delete e2e party');
+  // Back to a draft, not archived: archiving freezes the event's venue layout into a copy (#148),
+  // one more per test for nothing.
   if (eventId) {
     check(
-      await db.from('events').update({ is_active: false, status: 'ARCHIVED' }).eq('id', eventId),
-      'archive e2e event'
+      await db.from('events').update({ is_active: false, status: 'DRAFT' }).eq('id', eventId),
+      'deactivate e2e event'
     );
   }
+}
+
+// Renames one of the venue's places (#148 checks an archived edition doesn't follow).
+export async function renamePlace(placeId, label) {
+  const db = await adminClient();
+  check(await db.from('places').update({ label }).eq('id', placeId), 'rename e2e place');
 }
 
 // Throwaway members, for specs that do something a shared test user can't undo (deleting an
