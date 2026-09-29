@@ -25,6 +25,7 @@ import {
 import { tierCountsOf } from '../lib/adminStats';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { flattenPlaces } from '../lib/places';
+import { EVENT_WITH_VENUE } from '../lib/venue';
 import { dbErrorMessage } from '../lib/dbErrors';
 import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
 import { useToasts } from '../hooks/useToasts';
@@ -132,22 +133,31 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     };
   }, [activeEventState?.id, isAdmin]);
 
-  // Places are edited in the Événements tab's event dialog, so reload them on reaching a tab that
-  // shows them.
+  // Places are edited in the event editor, so reload them on reaching a tab that shows them.
   useEffect(() => {
-    if (['overview', 'logistics'].includes(activeTab) && activeEventState?.id) fetchPlaces(activeEventState.id);
-  }, [activeTab, activeEventState?.id]);
+    if (['overview', 'logistics'].includes(activeTab) && activeEventState?.id) fetchPlaces(activeEventState);
+  }, [activeTab, activeEventState?.id, activeEventState?.venue_id]);
 
-  const fetchPlaces = async (eventId) => {
-    const { data, error: placesError } = await supabase
-      .from('event_locations')
-      .select('id, name, sort_order, event_places(id, label, type, capacity, sort_order)')
-      .eq('event_id', eventId);
+  // The places of the event's venue (#145), less the ones this event excludes, at this event's
+  // capacity.
+  const fetchPlaces = async (event) => {
+    if (!event.venue_id) return setPlaces([]);
+    const [locationsResult, overridesResult] = await Promise.all([
+      supabase
+        .from('locations')
+        .select('id, name, sort_order, places(id, label, type, capacity, sort_order)')
+        .eq('venue_id', event.venue_id),
+      supabase
+        .from('event_place_overrides')
+        .select('place_id, is_excluded, capacity')
+        .eq('event_id', event.id)
+    ]);
+    const placesError = locationsResult.error || overridesResult.error;
     if (placesError) {
       console.error('Error fetching places:', placesError);
       return;
     }
-    setPlaces(flattenPlaces(data));
+    setPlaces(flattenPlaces(locationsResult.data, overridesResult.data));
   };
 
   const fetchAllData = async () => {
@@ -157,7 +167,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       // Fetch all events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('*')
+        .select(EVENT_WITH_VENUE)
         .order('created_at', { ascending: false });
       if (eventsError) throw eventsError;
       setEvents(eventsData || []);
@@ -376,7 +386,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const discardEventChanges = () => setEventDraft({ eventId: editEventId, changes: {}, restored: false });
 
   const refreshEvents = async () => {
-    const { data, error: eventsError } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+    const { data, error: eventsError } = await supabase.from('events').select(EVENT_WITH_VENUE).order('created_at', { ascending: false });
     if (eventsError) throw eventsError;
     setEvents(data || []);
     setActiveEventState(data?.find(e => e.is_active) || data?.[0]);
@@ -793,6 +803,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             onSectionChange={section => updateParams({ section: section === 'details' ? null : section })}
             locationId={editLocationId}
             onLocationChange={locationId => updateParams({ location: locationId })}
+            onVenueChange={refreshEvents}
             changes={eventChanges}
             dirtyCount={eventDirty.length}
             errors={eventErrors}

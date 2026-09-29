@@ -116,10 +116,8 @@ const DetailsForm = ({ value, onChange, errors }) => {
           {({ id, describedBy, invalid }) => <Input id={id} aria-describedby={describedBy} invalid={invalid} {...text('theme')} />}
         </Field>
         <Field label={fr.eventDescriptionLabel}>{({ id }) => <Textarea id={id} rows={4} {...text('description')} />}</Field>
-        <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
-          <Field label={fr.eventVenueAddressLabel}>{({ id }) => <Input id={id} {...text('venue_address')} />}</Field>
-          {numberField('duration_days', 'eventDurationLabel')}
-        </div>
+        {/* The address is the venue's (#145), edited in the Couchage section. */}
+        <div className="sm:max-w-40">{numberField('duration_days', 'eventDurationLabel')}</div>
       </EditorCard>
 
       <EditorCard id="event-calendar" title={fr.eventFieldsetCalendar}>
@@ -154,6 +152,7 @@ const EventEditor = ({
   onSectionChange,
   locationId,
   onLocationChange,
+  onVenueChange,
   changes,
   dirtyCount,
   errors,
@@ -215,7 +214,7 @@ const EventEditor = ({
 
       <div role="tabpanel" id={`event-section-panel-${section}`} aria-labelledby={`event-section-${section}`} key={section} className="animate-step">
         {section === 'sleeping' ? (
-          <EventSleepingPlan eventId={event.id} locationId={locationId} onLocationChange={onLocationChange} />
+          <EventSleepingPlan event={event} locationId={locationId} onLocationChange={onLocationChange} onVenueChange={onVenueChange} />
         ) : (
           <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
             <nav aria-label={fr.eventEditorJumpLabel} className="hidden lg:block">

@@ -1,21 +1,30 @@
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from './registrationOptions.js';
 
-// Sleeping places of an event (#112), for the Logistique tab's place picker (#114). Pure, so the
+// Sleeping places of an event (#112, #145), for the Logistique tab's place picker (#114). Pure, so the
 // ordering and counting rules are tested on their own (places.test.js).
 
 const bySortOrder = (a, b) => a.sort_order - b.sort_order;
 
-/** The event's locations (with their `event_places` embedded) as one list of places, in display order. */
-export const flattenPlaces = (locations) => [...(locations || [])]
-  .sort(bySortOrder)
-  .flatMap(location => [...(location.event_places || [])].sort(bySortOrder).map(place => ({
-    id: place.id,
-    label: place.label,
-    type: place.type,
-    capacity: place.capacity,
-    locationId: location.id,
-    locationName: location.name
-  })));
+/**
+ * The venue's locations (with their `places` embedded) as one list of places, in display order,
+ * as the event sees them (#145): without the places it excludes, at its capacity where it
+ * overrides one (`overrides` are event_place_overrides rows).
+ */
+export const flattenPlaces = (locations, overrides = []) => {
+  const overrideOf = new Map((overrides || []).map(row => [row.place_id, row]));
+  return [...(locations || [])]
+    .sort(bySortOrder)
+    .flatMap(location => [...(location.places || [])].sort(bySortOrder)
+      .filter(place => !overrideOf.get(place.id)?.is_excluded)
+      .map(place => ({
+        id: place.id,
+        label: place.label,
+        type: place.type,
+        capacity: overrideOf.get(place.id)?.capacity ?? place.capacity,
+        locationId: location.id,
+        locationName: location.name
+      })));
+};
 
 /**
  * How many attendees each place holds, counting unsaved Logistique changes

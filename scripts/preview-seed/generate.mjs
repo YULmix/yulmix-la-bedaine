@@ -266,6 +266,8 @@ export function generatePreviewSeed(config = DEFAULT_CONFIG, seedOverride) {
     sellingPrice: config.pastEvents.sellingPrice,
     maxAttendees: 0
   }));
+  // Venues are shared (#145): this edition is back at last year's.
+  if (pastEvents.length) activeEvent.venue = pastEvents[0].venue;
 
   const registrations = [];
   for (const registrant of pickRegistrants(faker, members, config.activeEvent.registrations, testMember)) {
@@ -335,14 +337,25 @@ WHERE u.id IN (${members.map((m) => `${lit(m.id)}`).join(', ')});
 
   // Past events first: only_one_active_event allows any number of inactive ones.
   const events = [...pastEvents, activeEvent];
+  // One venue per address, named after its town; archived unless the active event is there.
+  const venues = [...new Set(events.map((e) => e.venue))].map((address) => ({
+    address,
+    name: `Chalet ${address.split(', ')[1]}`,
+    archived: address !== activeEvent.venue
+  }));
+  const venueAddresses = venues.map((v) => lit(v.address)).join(', ');
+  out.push(`-- Venues (#145)
+INSERT INTO public.venues (name, address, archived_at) VALUES
+${venues.map((v) => `  (${lit(v.name)}, ${lit(v.address)}, ${v.archived ? 'now()' : 'NULL'})`).join(',\n')};
+`);
   out.push(`-- Events: ${pastEvents.length} archived + 1 active (registration open, event in ${ACTIVE_EVENT_START_DAYS} days)
 INSERT INTO public.events (
-  id, theme, description, venue_address, duration_days, points_of_contact,
+  id, theme, description, venue_id, duration_days, points_of_contact,
   z_intent_months, x_reg_close_weeks, reg_start_date, event_start_date,
   status, is_active, is_reg_open, selling_price_whole_event, max_attendees,
   external_links, instructions, created_at
 ) VALUES
-${events.map((e) => `  (${lit(e.id)}, ${lit(e.theme)}, ${lit(e.description)}, ${lit(e.venue)}, 3,
+${events.map((e) => `  (${lit(e.id)}, ${lit(e.theme)}, ${lit(e.description)}, (SELECT id FROM public.venues WHERE address = ${lit(e.venue)}), 3,
    'Inscriptions (Simon), Bénévolat (Dave), Nourriture (Melina), Stationnement (Khaled), Premiers soins (Mach)',
    2, ${REG_CLOSE_WEEKS}, ${dateExpr(e.regStartDays)}, ${dateExpr(e.startDays)},
    ${lit(e.active ? 'ACTIVE' : 'ARCHIVED')}, ${e.active}, ${e.active}, ${e.sellingPrice}, ${e.maxAttendees},
@@ -386,25 +399,26 @@ ${sorted.map((r) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${r.da
 WHERE p.user_id = v.user_id AND p.event_id = v.event_id;
 ALTER TABLE public.user_parties ENABLE TRIGGER USER;`);
 
-    // Sleeping places (#113): every event has ROOMS rooms with a double bed, and a yard for tents.
+    // Sleeping places (#113): every venue has ROOMS rooms with a double bed, and a yard for tents.
     // Admins put some paid attendees who asked for a bed in a room (#114).
-    const eventIds = events.map((e) => `${lit(e.id)}::uuid`).join(', ');
     out.push(`
-INSERT INTO public.event_locations (event_id, name, sort_order)
-SELECT e.id, r.name, r.sort_order
-FROM unnest(ARRAY[${eventIds}]) AS e(id)
+INSERT INTO public.locations (venue_id, name, sort_order)
+SELECT v.id, r.name, r.sort_order
+FROM public.venues v
 CROSS JOIN (
   SELECT 'Chambre ' || n, n FROM generate_series(1, ${ROOMS}) AS n
   UNION ALL SELECT 'Cour', ${ROOMS + 1}
-) AS r(name, sort_order);
+) AS r(name, sort_order)
+WHERE v.address IN (${venueAddresses});
 
-INSERT INTO public.event_places (location_id, label, type, capacity)
+INSERT INTO public.places (location_id, label, type, capacity)
 SELECT l.id,
        CASE WHEN l.name = 'Cour' THEN 'Tentes' ELSE 'Lit double' END,
        CASE WHEN l.name = 'Cour' THEN 'camping' ELSE 'bed' END,
        CASE WHEN l.name = 'Cour' THEN 12 ELSE 2 END
-FROM public.event_locations l
-WHERE l.event_id IN (${eventIds});`);
+FROM public.locations l
+JOIN public.venues v ON v.id = l.venue_id
+WHERE v.address IN (${venueAddresses});`);
 
     const rooms = sorted.flatMap((r) => r.attendees
       .map((a, i) => ({ r, position: i + 1, room: a.room }))
@@ -419,8 +433,9 @@ ${rooms.map(({ r, position, room }) => `  (${lit(r.userId)}::uuid, ${lit(r.event
 JOIN public.user_parties p ON p.user_id = v.user_id AND p.event_id = v.event_id
   AND p.status <> 'cancelled' AND NOT p.is_waitlisted
 JOIN public.attendees a ON a.party_id = p.id AND a.position = v.position
-JOIN public.event_locations l ON l.event_id = v.event_id AND l.name = v.room
-JOIN public.event_places pl ON pl.location_id = l.id;`);
+JOIN public.events e ON e.id = v.event_id
+JOIN public.locations l ON l.venue_id = e.venue_id AND l.name = v.room
+JOIN public.places pl ON pl.location_id = l.id;`);
     }
     out.push('');
   }

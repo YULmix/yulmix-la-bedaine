@@ -17,9 +17,12 @@ erDiagram
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
-  EVENTS ||--o{ EVENT_LOCATIONS : "sleeps people in"
-  EVENT_LOCATIONS ||--o{ EVENT_PLACES : "holds"
-  EVENT_PLACES ||--o{ PLACE_ASSIGNMENTS : "held by"
+  VENUES ||--o{ EVENTS : "hosts"
+  VENUES ||--o{ LOCATIONS : "sleeps people in"
+  LOCATIONS ||--o{ PLACES : "holds"
+  PLACES ||--o{ PLACE_ASSIGNMENTS : "held by"
+  EVENTS ||--o{ EVENT_PLACE_OVERRIDES : "excludes or resizes"
+  PLACES ||--o{ EVENT_PLACE_OVERRIDES : "overridden by"
   ATTENDEES ||--o| PLACE_ASSIGNMENTS : "holds (on delete cascade)"
 
   AUTH_USERS {
@@ -38,7 +41,7 @@ erDiagram
     uuid id PK
     text theme
     text description
-    text venue_address
+    uuid venue_id FK "nullable until picked (#145)"
     int duration_days
     text points_of_contact
     int z_intent_months "intent window, months"
@@ -94,14 +97,26 @@ erDiagram
     text bed_reason "CHECK"
     text dietary_needs "CHECK"
   }
-  EVENT_LOCATIONS {
+  VENUES {
     uuid id PK
-    uuid event_id FK
+    text name
+    text address "the event's address"
+    timestamptz archived_at "archived, never deleted"
+  }
+  LOCATIONS {
+    uuid id PK
+    uuid venue_id FK
     text name
     text note "nullable"
     int sort_order
   }
-  EVENT_PLACES {
+  EVENT_PLACE_OVERRIDES {
+    uuid event_id PK
+    uuid place_id PK
+    bool is_excluded
+    int capacity "nullable: the place's own"
+  }
+  PLACES {
     uuid id PK
     uuid location_id FK
     text label
@@ -259,24 +274,34 @@ flowchart TD
   subgraph attendees
     A1["BEFORE INSERT/UPDATE/DELETE → guard_attendee_write()<br/>only through save_registration()"]
   end
-  subgraph places["event_locations / event_places / place_assignments"]
-    L1["BEFORE INSERT/UPDATE on place_assignments → enforce_place_assignment()<br/>active party, same event"]
+  subgraph places["venues / locations / places / event_place_overrides / place_assignments"]
+    L1["BEFORE INSERT/UPDATE on place_assignments → enforce_place_assignment()<br/>active party, event's venue, not excluded"]
     L2["AFTER UPDATE on user_parties → release_inactive_party_places()<br/>cancelled or newly waitlisted"]
-    L3["BEFORE UPDATE OF event_id / location_id → keep_places_in_their_event()"]
+    L3["BEFORE UPDATE OF venue_id / location_id → keep_places_in_their_venue()"]
     L4["AFTER INSERT on place_assignments → request_party_email()<br/>an attendee is given a place"]
+    L5["BEFORE INSERT/UPDATE on event_place_overrides → enforce_place_override()<br/>event's venue, not excluding an occupied place"]
+    L6["AFTER UPDATE OF venue_id on events → clear_event_places_on_venue_change()"]
   end
 ```
 
 ### Sleeping locations and places
 
-An event's **locations** (`event_locations`: a room, the yard…) hold **places** (`event_places`: a
-bed, a sofa…, with a type from the sleeping-preference list and a capacity). An attendee holds at
-most one place for the whole event, as a `place_assignments` row (`UNIQUE (attendee_id)`, a foreign
-key to `attendees` with `ON DELETE CASCADE`). Readers use the `attendee_places` view below; no copy
-of the label is stored. Migrations: `20260929024111_event_locations_and_places.sql` (#113) and
-`20260929030708_place_assignments_replace_assigned_bed.sql` (#114), which dropped the free-text
-`attendees.assigned_bed` they replace. There are no free-text beds: an event that assigns beds
-defines places.
+A **venue** (`venues`: name, address) is where an event takes place, defined once and reused by
+every edition held there ([ADR 0019](./adr/0019-shared-venues.md)). An event uses at most one
+(`events.venue_id`, NULL until picked), and its address is the venue's. A venue's **locations**
+(`locations`: a room, the yard…) hold **places** (`places`: a bed, a sofa…, with a type from the
+sleeping-preference list and a capacity). What is particular to one edition is an
+`event_place_overrides` row: the place is excluded this time (`is_excluded`), or has another
+capacity for this event (`capacity`); the venue itself is unchanged. Venues are archived
+(`archived_at`), never deleted: `authenticated` has no `DELETE` grant on them.
+
+An attendee holds at most one place for the whole event, as a `place_assignments` row
+(`UNIQUE (attendee_id)`, a foreign key to `attendees` with `ON DELETE CASCADE`), so two events at
+one venue each assign its places to their own people. Readers use the `attendee_places` view
+below; no copy of the label is stored. Migrations: `20260929024111_event_locations_and_places.sql`
+(#113), `20260929030708_place_assignments_replace_assigned_bed.sql` (#114), which dropped the
+free-text `attendees.assigned_bed`, and `20260929162040_shared_venues.sql` (#145), which moved each
+event's locations to a venue of its own and the address from `events.venue_address` to it.
 
 - **Capacity is advisory.** Nothing stops more people than `capacity` in a place: organisers may
   overbook on purpose, and the UI warns.
@@ -284,13 +309,27 @@ defines places.
   A party that is cancelled or becomes waitlisted loses its assignments
   (`trg_release_inactive_party_places`).
 - **Who can be assigned.** `trg_enforce_place_assignment` refuses an attendee of a cancelled or
-  waitlisted party (`place_assignment_party_inactive`) and a place of another event
-  (`place_assignment_wrong_event`). A location can't move to another event, nor a place to another
-  event's location (`place_event_fixed`).
-- **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting an occupied place, or the
-  location holding it, fails; the editor lists who is in it first.
-- Places are edited in the event dialog of the Événements tab
-  (`src/components/admin/EventLocations.jsx`); every change is saved immediately. They are
+  waitlisted party (`place_assignment_party_inactive`), a place that isn't at the event's venue
+  (`place_assignment_wrong_event`), and a place the event excludes
+  (`place_assignment_place_excluded`). A location can't move to another venue, nor a place to
+  another venue's location (`place_venue_fixed`).
+- **Exclusions and overrides.** `trg_enforce_place_override` refuses an override for a place that
+  isn't at the event's venue (`place_override_wrong_venue`), and excluding a place that an
+  attendee of that event holds (`place_exclusion_occupied`): they are moved first.
+- **Changing venue.** An event whose `venue_id` changes loses its assignments and overrides
+  (`trg_clear_event_places_on_venue_change`): they point at the old venue's places. The admin UI
+  says who is affected and asks first (#147).
+- **Archived events** still show the venue as it is now; keeping the layout they had is #148.
+- **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
+  event at the venue, or the location holding it, fails; the editor lists who of this event is in
+  it first.
+- The venue, its locations and places are edited in the Couchage section of the event editor
+  (`src/components/admin/EventLocations.jsx`), which creates the event's venue when it has none
+  (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
+  transaction, returning the existing venue if there is one);
+  every change is saved immediately. A venues tab (#146) and a venue picker (#147) replace this.
+  The Logistique tab lists the venue's places less the event's exclusions, at the event's
+  capacities (`flattenPlaces()` in `src/lib/places.js`). They are
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in
   `src/lib/places.js`): open places of the attendee's preferred type first, then other open ones,
   then full ones, still pickable with a warning. Saving upserts or deletes the attendee's row.
@@ -382,7 +421,7 @@ trigger is a no-op, since there is nothing to compute the close date from.
 
 | View | Purpose | Notes |
 |---|---|---|
-| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `event_places` × `event_locations`, with `bed_label` = `"<location> · <place>"` (#113) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
+| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `user_parties` (the event) × `places` × `locations`, with `bed_label` = `"<location> · <place>"` (#113, #145) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
 | `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | `WITH (security_invoker = true)`, so the querying user's RLS applies: members see only their own rows. `SELECT` for `authenticated` only |
 
 `registration_summary_view` no longer exists. It was unused and bypassed RLS, and was dropped in
