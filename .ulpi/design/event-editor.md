@@ -19,7 +19,7 @@ The editor is its own route under the admin shell (tab bar shown, Événements s
 survives reloads and works with Back. `/admin/*` is one route element, so the admin state (and
 every unsaved draft) stays mounted between the tabs and the editor:
 
-`/admin/events/<id>?section=details|sleeping&location=<id>`
+`/admin/events/<id>?section=details|sleeping`
 
 Other tabs link to `/admin?tab=<id>`; coming back to Événements shows the list, where an event
 with an unsaved draft is marked.
@@ -27,8 +27,8 @@ with an unsaved draft is marked.
 ```mermaid
 flowchart TD
   L["Événements list"] -->|Modifier| D["Editor: Détails"]
-  D <-->|section switch| S["Editor: Couchage"]
-  S -->|pick a location| SD["Location detail<br/>(right pane on lg, drill-in below lg)"]
+  D <-->|section switch| S["Editor: Couchage<br/>venue + this edition's places"]
+  S -->|Modifier le site| V["Sites tab: venue page<br/>locations and places"]
   D -->|Tous les événements| L
   S -->|Tous les événements| L
 ```
@@ -53,7 +53,26 @@ flowchart TD
   fully empty rows are dropped on save. Errors show under the field, and the save bar says why it
   can't save.
 
-## Couchage (sleeping plan)
+## Couchage (the event's venue, #147)
+
+Choosing where the edition happens and what of the venue it uses; the venue itself (its locations
+and places) is edited on its page of the Sites tab (#146), with the master-detail editor described
+under *Venue page* below. Saves as you go, and says so (same status line).
+
+- **Site card**: a `Select` of the venues not archived (the event's own stays listed if archived),
+  each option "<nom> · capacité n", the address under it, and *Modifier le site* (to the Sites
+  tab). Without a venue: placeholder *Choisir un site…* and *Créer un site pour cet événement*.
+- **Changing the venue** while attendees hold places: a confirm dialog lists them; confirming
+  clears their places with the change (database), cancelling changes nothing.
+- **Totals strip**: capacité du site, capacité cette édition, places disponibles `n/m`, personnes
+  placées.
+- **Per location**, a card listing its places: label, type, "capacité du site n" when this event
+  differs, who of the event is there; a `Stepper` for this event's capacity and a switch
+  *disponible*. An excluded place is dimmed and has no stepper. Excluding an occupied place is
+  refused with the names.
+- No location or place editing.
+
+## Venue page (Sites tab, #146)
 
 Saves as you go, and says so: a live status line (*Enregistré automatiquement* / *Enregistrement…* /
 *Enregistré* / error).

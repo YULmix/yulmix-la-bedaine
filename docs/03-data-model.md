@@ -323,14 +323,18 @@ event's locations to a venue of its own and the address from `events.venue_addre
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
   event at the venue, or the location holding it, fails; the editor lists who of this event is in
   it first.
-- The venue, its locations and places are edited in the Couchage section of the event editor
-  (`src/components/admin/EventLocations.jsx`), which creates the event's venue when it has none
+- A venue, its locations and places are edited on its page of the Sites tab
+  (`src/components/admin/AdminVenues.jsx`, `/admin?tab=venues&venue=<id>`, #146), which lists
+  every venue with its capacity and events, and archives or restores one. Occupants shown there
+  are those of its events not archived. Every change is saved immediately.
+- The event editor's Couchage section (`src/components/admin/EventVenue.jsx`, #147) picks the
+  event's venue (archived ones aren't offered) and sets this edition's exclusions and capacities
+  (`overrideWrite()` in `src/lib/places.js`: a row that changes nothing is deleted). Excluding a
+  place someone of the event holds is refused with their names. Changing the venue while
+  attendees hold places names them and asks first; the database then clears their places in the
+  same update. An event without a venue can get one named after it
   (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
-  transaction, returning the existing venue if there is one);
-  every change is saved immediately. The Sites tab (`src/components/admin/AdminVenues.jsx`,
-  `/admin?tab=venues&venue=<id>`, #146) lists every venue with its capacity and events, edits one
-  with the same editor (occupants: its events not archived), and archives or restores it. The
-  venue picker (#147) replaces the editor's version.
+  transaction, returning the existing venue if there is one). No location or place is edited there.
   The Logistique tab lists the venue's places less the event's exclusions, at the event's
   capacities (`flattenPlaces()` in `src/lib/places.js`). They are
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in

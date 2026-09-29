@@ -125,19 +125,23 @@ export const ChipGroup = ({ label, options, value, onChange, multiple = false, n
   );
 };
 
-export const Toggle = ({ checked, onChange, label, description, disabled, className }) => {
+// `switchLabel` names the switch when the visible label alone wouldn't say what it does (a list
+// of them); `aside` goes between the text and the switch.
+export const Toggle = ({ checked, onChange, label, description, disabled, className, switchLabel, aside }) => {
   const id = useId();
   return (
     <div className={cx('flex items-center justify-between gap-4', className)}>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <span id={`${id}-label`} className="block text-base text-ink">{label}</span>
         {description && <span className="block text-sm text-faint">{description}</span>}
       </div>
+      {aside}
       <button
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-labelledby={`${id}-label`}
+        aria-label={switchLabel}
+        aria-labelledby={switchLabel ? undefined : `${id}-label`}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className="relative inline-flex h-11 w-14 shrink-0 items-center justify-center disabled:opacity-50"

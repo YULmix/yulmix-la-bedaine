@@ -4,7 +4,7 @@ import { formatEventDates } from '../../lib/eventDisplay';
 import { NUMBER_FIELDS } from '../../lib/eventDraft';
 import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
-import { EventSleepingPlan } from './EventLocations';
+import { EventVenuePlan } from './EventVenue';
 
 const SECTIONS = [
   { id: 'details', labelKey: 'eventSectionDetails', icon: FileText },
@@ -150,8 +150,6 @@ const EventEditor = ({
   event,
   section,
   onSectionChange,
-  locationId,
-  onLocationChange,
   onVenueChange,
   changes,
   dirtyCount,
@@ -214,7 +212,7 @@ const EventEditor = ({
 
       <div role="tabpanel" id={`event-section-panel-${section}`} aria-labelledby={`event-section-${section}`} key={section} className="animate-step">
         {section === 'sleeping' ? (
-          <EventSleepingPlan event={event} locationId={locationId} onLocationChange={onLocationChange} onVenueChange={onVenueChange} />
+          <EventVenuePlan event={event} onVenueChange={onVenueChange} />
         ) : (
           <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
             <nav aria-label={fr.eventEditorJumpLabel} className="hidden lg:block">

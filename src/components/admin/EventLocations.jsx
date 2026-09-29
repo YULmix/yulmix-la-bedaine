@@ -147,51 +147,8 @@ const VenueCard = ({ venue, onUpdate }) => (
   </Card>
 );
 
-// The Couchage section of the event editor: the event's venue (#145), its locations and places
-// (#113). Until the venues tab (#146) and the venue picker (#147), this is where a venue is
-// created and edited; an event without one offers to create it.
-export const EventSleepingPlan = ({ event, locationId, onLocationChange, onVenueChange }) => {
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState(null);
-
-  // One call: the venue and the event's link to it are written together (create_event_venue).
-  const createVenue = async () => {
-    setCreating(true);
-    try {
-      const { error: createError } = await supabase.rpc('create_event_venue', { p_event_id: event.id });
-      if (createError) throw createError;
-      setError(null);
-      await onVenueChange();
-    } catch (createError) {
-      console.error('Error creating the venue:', createError);
-      setError(dbErrorMessage(createError, fr.venueCreateError));
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  if (!event.venue_id) {
-    return (
-      <div className="space-y-5">
-        {error && <Notice tone="bad" role="alert">{error}</Notice>}
-        <Card>
-          <EmptyState icon={MapPin} title={fr.venueNone}
-            action={<Button onClick={createVenue} loading={creating}><Plus aria-hidden="true" className="size-4.5" />{fr.venueCreate}</Button>}>
-            {fr.venueNoneHint}
-          </EmptyState>
-        </Card>
-      </div>
-    );
-  }
-  return (
-    <VenuePlan key={event.venue_id} eventIds={[event.id]} venueId={event.venue_id}
-      locationId={locationId} onLocationChange={onLocationChange} onVenueChange={onVenueChange} />
-  );
-};
-
-// A venue, its locations and places (#145), shared by the event editor's Couchage section and the
-// venues tab (#146). Occupants are those of `eventIds`: the event being edited, or the venue's
-// events still to come. Every change is saved right away: the rows are separate tables, and
+// A venue, its locations and places (#145), on the venue's page of the Sites tab (#146). Occupants
+// are those of `eventIds`, the venue's events still to come. Every change is saved right away: the rows are separate tables, and
 // assignments point at them. Field edits show at once and are written behind; adding, removing
 // and moving rows reload from the database. Deleting a place one of those occupants holds is
 // refused, here with their names; the database refuses it for anyone at the venue (a foreign key).

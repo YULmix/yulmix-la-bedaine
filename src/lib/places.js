@@ -26,6 +26,19 @@ export const flattenPlaces = (locations, overrides = []) => {
       })));
 };
 
+/**
+ * The write for one event's setting of one place (#147), after `change` (`{ is_excluded }` or
+ * `{ capacity }`) on its current event_place_overrides row (or null). A capacity equal to the
+ * place's own is no override; a row that neither excludes nor resizes is deleted, since the
+ * database doesn't keep one. Returns `{ op: 'upsert', row }`, `{ op: 'delete' }` or `{ op: 'none' }`.
+ */
+export const overrideWrite = (place, override, change) => {
+  const next = { is_excluded: override?.is_excluded ?? false, capacity: override?.capacity ?? null, ...change };
+  if (next.capacity === place.capacity) next.capacity = null;
+  if (!next.is_excluded && next.capacity == null) return override ? { op: 'delete' } : { op: 'none' };
+  return { op: 'upsert', row: { is_excluded: next.is_excluded, capacity: next.capacity } };
+};
+
 /** A venue's size: its locations, places and total sleeping capacity (`locations` embed `places`). */
 export const venueTotals = (locations) => {
   const places = (locations || []).flatMap(location => location.places || []);

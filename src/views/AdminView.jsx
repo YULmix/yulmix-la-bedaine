@@ -66,7 +66,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
   const selectTab = (tabId) => navigate(`/admin?tab=${tabId}`);
   const editSection = searchParams.get('section') === 'sleeping' ? 'sleeping' : 'details';
-  const editLocationId = searchParams.get('location');
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -803,8 +802,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             event={editingEvent}
             section={editSection}
             onSectionChange={section => updateParams({ section: section === 'details' ? null : section })}
-            locationId={editLocationId}
-            onLocationChange={locationId => updateParams({ location: locationId })}
             onVenueChange={refreshEvents}
             changes={eventChanges}
             dirtyCount={eventDirty.length}
