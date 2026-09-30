@@ -31,3 +31,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0018](./0018-attendees-in-their-own-table.md) | Attendees live in their own table, referenced by foreign key; no derived copies on `user_parties` | accepted, implemented (#126); supersedes 0004 |
 | [0019](./0019-shared-venues.md) | Venues (and their locations and places) are shared by events; per-edition differences are overrides | accepted, implemented (#145); archived events refined by 0020 |
 | [0020](./0020-freeze-archived-event-layout.md) | Archiving an event copies its venue into a frozen venue only it uses, so past editions keep their layout | accepted, implemented (#148) |
+| [0021](./0021-database-errors-are-codes.md) | Database errors are English codes with JSON parameters; the app maps them to French and never shows a raw message | accepted, implemented (#102) |

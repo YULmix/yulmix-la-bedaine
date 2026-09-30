@@ -60,3 +60,20 @@ test('after the close date, a member cannot cancel and is told why', async ({ pa
   const party = await getParty(seeded.partyId);
   expect(party.status).toBe('registered');
 });
+
+test('after the close date, removing an attendee is refused with the close date, in French', async ({ page }) => {
+  // The database refuses it (registration_attendee_removal_locked, #102); the app maps the code.
+  seeded = await seedActiveEventWithMemberParty({ event_start_date: inDays(3), x_reg_close_weeks: 1 });
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+
+  await page.getByRole('article', { name: fr.passLabel }).getByRole('button', { name: fr.editRegistration }).click();
+  await page.getByRole('button', { name: fr.removeAttendeeLabel.replace('{name}', 'Bob E2E') }).click();
+  await page.getByRole('button', { name: fr.saveChangesButton }).click();
+
+  const closeDate = new Date(`${inDays(-4)}T12:00:00`).toLocaleDateString('fr-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const refusal = fr.dbErrorAttendeeRemovalLocked.replace('{date}', closeDate);
+  // Both the form's error banner and a toast say it.
+  await expect(page.getByRole('main').getByText(refusal).first()).toBeVisible();
+  expect((await getParty(seeded.partyId)).attendees).toHaveLength(2);
+});

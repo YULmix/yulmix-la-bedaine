@@ -196,7 +196,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       await fetchFeedback();
     } catch (err) {
       console.error('Error fetching admin data:', err);
-      setError(err.message);
+      setError(dbErrorMessage(err, fr.loadErrorHint));
     } finally {
       setLoading(false);
     }
@@ -226,7 +226,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchFeedback();
     } catch (err) {
       console.error('Error resolving feedback:', err);
-      addToast(err.message || fr.error, 'error');
+      addToast(dbErrorMessage(err, fr.error), 'error');
     }
   };
 
@@ -306,7 +306,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       ));
     } catch (err) {
       console.error('Error fetching parties:', err);
-      setError(err.message);
+      setError(dbErrorMessage(err, fr.loadErrorHint));
     }
   };
 
@@ -334,7 +334,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       }
     } catch (err) {
       console.error('Error activating event:', err);
-      addToast(err.message || fr.eventActivationError, 'error');
+      addToast(dbErrorMessage(err, fr.eventActivationError), 'error');
     }
   };
 
@@ -352,7 +352,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchAllData();
     } catch (err) {
       console.error('Error archiving event:', err);
-      addToast(err.message || fr.eventArchivingError, 'error');
+      addToast(dbErrorMessage(err, fr.eventArchivingError), 'error');
     } finally {
       setConfirmBusy(false);
       setPendingArchive(null);
@@ -446,7 +446,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       if (err.code === 'PGRST202') {
         addToast(fr.adminToggleNotDeployedError, 'error');
       } else {
-        addToast(err.message || fr.updateError, 'error');
+        addToast(dbErrorMessage(err, fr.updateError), 'error');
       }
     }
   };
@@ -471,7 +471,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       fetchParties(activeEventState.id);
     } catch (err) {
       console.error('Error updating payment status:', err);
-      addToast(err.message || fr.updateError, 'error');
+      addToast(dbErrorMessage(err, fr.updateError), 'error');
     } finally {
       setConfirmBusy(false);
       setPendingPayment(null);

@@ -674,7 +674,8 @@ describe('🚪 member self-cancellation (#35)', () => {
   test('after the close date, a member cannot cancel but an admin can', async () => {
     await seed(startsIn(3));
     const { error: memberError } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
-    expect(memberError?.message).toMatch(/verrouillées/);
+    expect(memberError?.message).toBe('registration_cancel_locked');
+    expect(JSON.parse(memberError.details)).toHaveProperty('close_date');
     expect(await statusOf()).toBe('registered');
 
     const { error: adminError } = await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
@@ -978,7 +979,8 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
     const [ann] = await attendeesOf(memberParty.id);
 
     const { error: removeError } = await save(memberClient, ATTENDEES_EVENT_ID, [person('Ann', { id: ann.id })]);
-    expect(removeError?.message).toMatch(/verrouillées/);
+    expect(removeError?.message).toBe('registration_attendee_removal_locked');
+    expect(JSON.parse(removeError.details)).toHaveProperty('close_date');
 
     const { error: replaceError } = await save(memberClient, ATTENDEES_EVENT_ID, [person('Ann', { id: ann.id }), person('Cat')]);
     expect(replaceError).toBeNull();

@@ -11,6 +11,10 @@ project will not sustain.
 2. **The database is the authority.** Any rule that must hold — money, access, capacity — belongs in
    Postgres. A check in React is a convenience.
 3. **Never render a raw database value.** Map it through `src/lib/registrationOptions.js`.
+   The same goes for errors: SQL raises a code (`RAISE EXCEPTION USING MESSAGE = '<code>'`, with any
+   parameters as JSON in `DETAIL`), and the UI shows `dbErrorMessage(err, <French fallback>)`, never
+   `err.message`. A new code needs an entry in `src/lib/dbErrors.js` and a `fr.json` key. See
+   [ADR 0021](./adr/0021-database-errors-are-codes.md).
 4. **Schema changes are migrations.** Every schema change is a new file in `supabase/migrations/`
    (`supabase migration new <name>`), reviewed in the PR, and applied to production by CI when the
    PR merges, after an automatic backup. Merging a migration *is* shipping it. There are no
