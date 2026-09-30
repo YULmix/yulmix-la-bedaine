@@ -6,19 +6,32 @@ import { Card, Stat, cx } from '../ui';
 // French counts zero in the singular: « 0 demandé », « 0 place ».
 const count = (n, key) => fr[`${key}${n <= 1 ? 'One' : 'Other'}`].replace('{count}', n);
 
+// Demand against supply as « 26/12 »: amber when more people asked than there are places, green
+// when it fits, faint when nobody asked. Screen readers get the words.
+const demandTone = (requested, capacity) => {
+  if (!requested) return 'text-faint';
+  if (capacity == null) return 'text-muted';
+  return requested > capacity ? 'text-warn' : 'text-ok';
+};
+
 const TypeRow = ({ icon: Icon, label, requested, capacity }) => (
-  <li className="flex items-baseline justify-between gap-3 py-2">
-    <span className="flex min-w-0 items-center gap-2 text-ink">
-      {Icon
-        ? <Icon aria-hidden="true" className="size-4 shrink-0 self-center text-muted" strokeWidth={1.75} />
-        : <span aria-hidden="true" className="size-4 shrink-0" />}
-      <span className="truncate">{label}</span>
-    </span>
-    <span className={cx('shrink-0 text-right font-data text-sm', capacity != null && requested > capacity ? 'text-warn' : 'text-muted')}>
-      {count(requested, 'logisticsRequested')}
-      {capacity != null && ` · ${count(capacity, 'logisticsPlaces')}`}
-    </span>
-  </li>
+  <tr>
+    <th scope="row" className="py-2 pr-3 text-left font-normal text-ink">
+      <span className="flex min-w-0 items-center gap-2">
+        {Icon
+          ? <Icon aria-hidden="true" className="size-4 shrink-0 text-muted" strokeWidth={1.75} />
+          : <span aria-hidden="true" className="size-4 shrink-0" />}
+        <span className="truncate">{label}</span>
+      </span>
+    </th>
+    <td className={cx('py-2 text-right font-data', demandTone(requested, capacity))}>
+      <span aria-hidden="true">{`${requested}/${capacity ?? '–'}`}</span>
+      <span className="sr-only">
+        {count(requested, 'logisticsRequested')}
+        {capacity != null && `, ${count(capacity, 'logisticsPlaces')}`}
+      </span>
+    </td>
+  </tr>
 );
 
 // The Logistique tab's header (#166). `stats` is computePlaceStats() with the unsaved changes, so
@@ -38,19 +51,26 @@ const LogisticsSummary = ({ stats, demand, hasUnsaved }) => {
         <Stat label={fr.logisticsSummaryCapacity} value={capacity} />
         <Stat label={fr.logisticsSummaryOverbooked} value={stats.overbooked.length} tone={stats.overbooked.length ? 'warn' : undefined} />
       </div>
-      <h4 className="mt-5 text-sm font-semibold text-muted">{fr.logisticsSummaryByType}</h4>
-      <ul className="mt-1 divide-y divide-line">
-        {demand.types.map(row => (
-          <TypeRow
-            key={row.type}
-            icon={ACCOMMODATION_ICONS[row.type]}
-            label={getOptionLabel(ACCOMMODATION_OPTIONS, row.type)}
-            requested={row.requested}
-            capacity={row.capacity}
-          />
-        ))}
-        {demand.noPreference > 0 && <TypeRow label={fr.logisticsSummaryNoPreference} requested={demand.noPreference} />}
-      </ul>
+      <table className="mt-5 w-full text-sm">
+        <thead>
+          <tr className="border-b border-line text-left text-xs text-muted">
+            <th scope="col" className="pb-1.5 font-semibold">{fr.logisticsSummaryTypeHeader}</th>
+            <th scope="col" className="pb-1.5 text-right font-semibold">{fr.logisticsSummaryDemandHeader}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {demand.types.map(row => (
+            <TypeRow
+              key={row.type}
+              icon={ACCOMMODATION_ICONS[row.type]}
+              label={getOptionLabel(ACCOMMODATION_OPTIONS, row.type)}
+              requested={row.requested}
+              capacity={row.capacity}
+            />
+          ))}
+          {demand.noPreference > 0 && <TypeRow label={fr.logisticsSummaryNoPreference} requested={demand.noPreference} />}
+        </tbody>
+      </table>
     </Card>
   );
 };

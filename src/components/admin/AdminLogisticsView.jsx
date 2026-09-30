@@ -161,7 +161,7 @@ const AdminLogisticsView = ({
         })}
       </ul>
 
-      <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} saveLabel={fr.logisticsSaveAll} />
+      <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} />
     </section>
   );
 };

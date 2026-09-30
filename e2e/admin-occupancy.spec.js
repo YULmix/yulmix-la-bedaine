@@ -41,7 +41,7 @@ const picker = (page, name) => panel(page).getByRole('combobox', { name: `${fr.l
 
 const assign = async (page, name, place) => {
   await pickPlace(page, picker(page, name), place);
-  await panel(page).getByRole('button', { name: fr.logisticsSaveAll }).click();
+  await panel(page).getByRole('button', { name: fr.save, exact: true }).click();
   await expect(page.getByText(fr.logisticsAllSavedToast).last()).toBeVisible();
 };
 

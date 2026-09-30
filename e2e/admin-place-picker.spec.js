@@ -54,7 +54,7 @@ const card = (page, name) => panel(page).getByRole('listitem')
   .filter({ has: pickerIn(page, name) });
 // Saves everything pending (#150): one bar for the whole tab.
 const saveAll = async (page) => {
-  await panel(page).getByRole('button', { name: fr.logisticsSaveAll }).click();
+  await panel(page).getByRole('button', { name: fr.save, exact: true }).click();
   await expect(page.getByText(fr.logisticsAllSavedToast).last()).toBeVisible();
 };
 const bedsOf = async (partyId) => (await getParty(partyId)).attendees.map(a => [a.name, a.place?.bed_label ?? '']);

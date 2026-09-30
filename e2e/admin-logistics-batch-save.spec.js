@@ -55,7 +55,7 @@ const card = (page, name) => panel(page).getByRole('listitem')
   .filter({ has: page.getByRole('textbox', { name: fr.logisticsTableAdminNotes }) })
   .filter({ has: pickerIn(page, name) });
 const notes = (page, name) => card(page, name).getByRole('textbox', { name: fr.logisticsTableAdminNotes });
-const saveButton = page => panel(page).getByRole('button', { name: fr.logisticsSaveAll });
+const saveButton = page => panel(page).getByRole('button', { name: fr.save, exact: true });
 const discardButton = page => panel(page).getByRole('button', { name: fr.eventEditorDiscard });
 const pending = n => fr.eventEditorUnsaved.replace('{n}', n);
 const bedsOf = async (partyId) => (await getParty(partyId)).attendees.map(a => [a.name, a.place?.bed_label ?? '']);
@@ -194,16 +194,15 @@ const expectTotals = async (page, { placed, toPlace, capacity, overbooked }) => 
   await expect(stat(page, fr.logisticsSummaryCapacity)).toHaveText(String(capacity));
   await expect(stat(page, fr.logisticsSummaryOverbooked)).toHaveText(String(overbooked));
 };
-const typeRow = (page, label) => summary(page).getByRole('listitem').filter({ hasText: label });
-const count = (key, n) => fr[`${key}${n <= 1 ? 'One' : 'Other'}`].replace('{count}', n);
+const typeRow = (page, label) => summary(page).getByRole('row').filter({ has: page.getByRole('rowheader', { name: label }) });
 
 test('the header totals follow unsaved picks and discarding; per type, requests against the event places', async ({ page }) => {
   await openLogistics(page);
   // Two beds for one each and a sofa for two; Alice and Bob gave no preference, Zoé wants the sofa.
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
-  await expect(typeRow(page, fr.accommodationBed)).toContainText(`${count('logisticsRequested', 0)} · ${count('logisticsPlaces', 2)}`);
-  await expect(typeRow(page, fr.accommodationSofa)).toContainText(`${count('logisticsRequested', 1)} · ${count('logisticsPlaces', 2)}`);
-  await expect(typeRow(page, fr.logisticsSummaryNoPreference)).toContainText(count('logisticsRequested', 2));
+  await expect(typeRow(page, fr.accommodationBed)).toContainText('0/2');
+  await expect(typeRow(page, fr.accommodationSofa)).toContainText('1/2');
+  await expect(typeRow(page, fr.logisticsSummaryNoPreference)).toContainText('2/–');
   await expect(typeRow(page, fr.accommodationCamping)).toHaveCount(0);
   await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toHaveCount(0);
 
@@ -213,7 +212,7 @@ test('the header totals follow unsaved picks and discarding; per type, requests 
   await expectTotals(page, { placed: 2, toPlace: 1, capacity: 4, overbooked: 1 });
   await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toBeVisible();
   // Requests and places don't move with a pick.
-  await expect(typeRow(page, fr.accommodationBed)).toContainText(`${count('logisticsRequested', 0)} · ${count('logisticsPlaces', 2)}`);
+  await expect(typeRow(page, fr.accommodationBed)).toContainText('0/2');
 
   await discardButton(page).click();
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
@@ -224,13 +223,13 @@ test('the header counts the event places: an excluded place leaves, a venue edit
   await excludePlace(seeded.eventId, places['Chambre 1 · Lit B']);
   await openLogistics(page);
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 3, overbooked: 0 });
-  await expect(typeRow(page, fr.accommodationBed)).toContainText(count('logisticsPlaces', 1));
+  await expect(typeRow(page, fr.accommodationBed)).toContainText('0/1');
 
   // The venue's sofa made bigger (Sites), with no event override: the event follows.
   await setPlaceCapacity(places['Salon · Sofa'], 3);
   await page.reload();
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
-  await expect(typeRow(page, fr.accommodationSofa)).toContainText(count('logisticsPlaces', 3));
+  await expect(typeRow(page, fr.accommodationSofa)).toContainText('1/3');
 
   await pickPlace(page, picker(page, ZOE.name), 'Salon · Sofa');
   await saveButton(page).click();

@@ -266,15 +266,15 @@ test.describe('admin tabs', () => {
     await shot(page, 'mobile-tab-logistics-picker');
     // A draft enables the save bar (never clicked here).
     await placeOption(page, 'Chambre 1 · Lit A').click();
-    await expect(panel(page).getByRole('button', { name: fr.logisticsSaveAll })).toBeEnabled();
-    await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.logisticsSaveAll }));
+    await expect(panel(page).getByRole('button', { name: fr.save, exact: true })).toBeEnabled();
+    await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.save, exact: true }));
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-tab-logistics-editing');
   });
 
   test('unsaved logistics edits survive switching tabs', async ({ page }) => {
     await openAdmin(page, '?tab=logistics');
-    const saveButton = panel(page).getByRole('button', { name: fr.logisticsSaveAll });
+    const saveButton = panel(page).getByRole('button', { name: fr.save, exact: true });
     await expect(saveButton).toBeDisabled();
     await expect(bedInputs(page).first()).toHaveValue('');
 
@@ -301,7 +301,7 @@ test.describe('admin tabs', () => {
     await openAdmin(page, '?tab=logistics');
     await pickPlace(page, bedInputs(page).nth(1), 'Salon · Sofa');
     await panel(page).locator('textarea').fill('Arrive tard vendredi');
-    const saveButton = panel(page).getByRole('button', { name: fr.logisticsSaveAll });
+    const saveButton = panel(page).getByRole('button', { name: fr.save, exact: true });
     await saveButton.click();
 
     await expect(page.getByText(fr.logisticsAllSavedToast)).toBeVisible();
