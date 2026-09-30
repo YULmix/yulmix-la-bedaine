@@ -339,6 +339,12 @@ export async function renamePlace(placeId, label) {
   check(await db.from('places').update({ label }).eq('id', placeId), 'rename e2e place');
 }
 
+// A place's own capacity, as editing the venue in Sites would set it (no event override).
+export async function setPlaceCapacity(placeId, capacity) {
+  const db = await adminClient();
+  check(await db.from('places').update({ capacity }).eq('id', placeId), 'resize e2e place');
+}
+
 // Throwaway members, for specs that do something a shared test user can't undo (deleting an
 // account, #36). Created with the auth admin API, which needs the service role key: that works
 // locally even though the service role has no grants on the public tables.

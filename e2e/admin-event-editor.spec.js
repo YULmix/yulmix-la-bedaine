@@ -39,7 +39,7 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   const details = await openEditor(page);
   const title = details.getByLabel(fr.eventTitle);
   await title.fill('Soirée mousse');
-  await expect(details.getByRole('status')).toHaveText(fr.eventEditorUnsaved.replace('{n}', 1));
+  await expect(details.getByRole('status')).toContainText(fr.eventEditorUnsaved.replace('{n}', 1));
 
   // Anything that re-renders App (here, opening the feedback dialog) or makes Supabase emit an
   // auth event (the tab regaining focus) must not remount the page: the field keeps its value

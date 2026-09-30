@@ -1,4 +1,4 @@
-import { PAYMENT_STATUS, dietaryNeedsOf, isActiveRegistration } from './registrationOptions.js';
+import { ACCOMMODATION_OPTIONS, PAYMENT_STATUS, dietaryNeedsOf, isActiveRegistration } from './registrationOptions.js';
 import { placeOccupancy } from './places.js';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
@@ -80,18 +80,23 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
   };
 };
 
+// The people who hold, or are to be given, a sleeping place: cancelled and waitlisted parties
+// hold none (the database releases them).
+const placeableParties = allParties => allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
+
 /**
- * Sleeping-place figures for the overview of an event with locations (#115). Cancelled and
- * waitlisted parties hold no places (the database releases them), and aren't counted as
- * unassigned either.
+ * Sleeping-place figures for an event with locations: the overview (#115), and the Logistique
+ * header (#166), which counts its unsaved changes too. Cancelled and waitlisted parties hold no
+ * places, and aren't counted as unassigned either.
  * @param {Array} allParties user_parties rows (with attendees and their `place`)
  * @param {Array} places the event's places, from flattenPlaces()
+ * @param {object} [changes] unsaved Logistique place changes (logisticsDraft.js), over the saved places
  * @returns {{ locations: Array, unassigned: number, overbooked: Array }} each location with its
  *   capacity and assigned, and its places with their `assigned` count.
  */
-export const computePlaceStats = (allParties, places) => {
-  const parties = allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
-  const occupancy = placeOccupancy(parties);
+export const computePlaceStats = (allParties, places, changes = {}) => {
+  const parties = placeableParties(allParties);
+  const occupancy = placeOccupancy(parties, changes);
   const locations = [];
   places.forEach(place => {
     const assigned = occupancy.get(place.id) || 0;
@@ -105,7 +110,35 @@ export const computePlaceStats = (allParties, places) => {
     location.capacity += place.capacity;
     location.assigned += assigned;
   });
-  const unassigned = parties.reduce((count, party) => count + (party.attendees || []).filter(attendee => !attendee.place).length, 0);
+  const placeOf = (party, attendee) => {
+    const pending = changes[party.id]?.places?.[attendee.id];
+    return pending !== undefined ? pending : attendee.place?.place_id;
+  };
+  const unassigned = parties.reduce((count, party) => count + (party.attendees || []).filter(attendee => !placeOf(party, attendee)).length, 0);
   const overbooked = locations.flatMap(location => location.places).filter(place => place.assigned > place.capacity);
   return { locations, unassigned, overbooked };
+};
+
+/**
+ * What people asked for against what the event's places hold, by place type (#166), in
+ * ACCOMMODATION_OPTIONS order: `{ type, requested, capacity }` for each type with requests or
+ * places. `requested` counts the same people as computePlaceStats' (active, not waitlisted), by
+ * their sleeping_preference, which takes the same values as a place's type. Those with no known
+ * preference are `noPreference`, so the rows add up to everyone to place. Unsaved changes don't
+ * move either side, so this takes none.
+ * @param {Array} allParties user_parties rows (with attendees)
+ * @param {Array} places the event's places, from flattenPlaces() (overrides applied)
+ * @returns {{ types: Array<{type: string, requested: number, capacity: number}>, noPreference: number }}
+ */
+export const placeDemandByType = (allParties, places) => {
+  const attendees = placeableParties(allParties).flatMap(party => party.attendees || []);
+  const types = ACCOMMODATION_OPTIONS
+    .map(({ value: type }) => ({
+      type,
+      requested: attendees.filter(attendee => attendee.sleeping_preference === type).length,
+      capacity: places.filter(place => place.type === type).reduce((sum, place) => sum + place.capacity, 0)
+    }))
+    .filter(row => row.requested > 0 || row.capacity > 0);
+  const known = new Set(ACCOMMODATION_OPTIONS.map(option => option.value));
+  return { types, noPreference: attendees.filter(attendee => !known.has(attendee.sleeping_preference)).length };
 };

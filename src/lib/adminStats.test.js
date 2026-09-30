@@ -1,4 +1,4 @@
-import { computeAdminStats, computePlaceStats, tierOf } from './adminStats';
+import { computeAdminStats, computePlaceStats, placeDemandByType, tierOf } from './adminStats';
 
 const parties = [
   {
@@ -95,5 +95,64 @@ describe('computePlaceStats', () => {
 
   test('an event without places has no locations and nothing overbooked', () => {
     expect(computePlaceStats(placeParties, [])).toMatchObject({ locations: [], overbooked: [] });
+  });
+});
+
+describe('computePlaceStats with unsaved Logistique changes (#166)', () => {
+  const places = [
+    { id: 'bedA', label: 'Lit A', type: 'bed', capacity: 1, locationId: 'l1', locationName: 'Chambre 2' },
+    { id: 'floor', label: 'Matelas', type: 'floor', capacity: 2, locationId: 'l1', locationName: 'Chambre 2' }
+  ];
+  const parties = [
+    { id: 'a', attendees: [{ id: 'a1', place: { place_id: 'bedA' } }, { id: 'a2', place: null }] },
+    { id: 'b', attendees: [{ id: 'b1', place: null }] }
+  ];
+  const totals = stats => ({
+    placed: stats.locations.reduce((sum, l) => sum + l.assigned, 0),
+    unassigned: stats.unassigned,
+    overbooked: stats.overbooked.map(place => place.id)
+  });
+
+  test('a pending move counts where it goes, and a pending unassignment counts as to place', () => {
+    expect(totals(computePlaceStats(parties, places))).toEqual({ placed: 1, unassigned: 2, overbooked: [] });
+    expect(totals(computePlaceStats(parties, places, { b: { places: { b1: 'bedA' } } })))
+      .toEqual({ placed: 2, unassigned: 1, overbooked: ['bedA'] });
+    expect(totals(computePlaceStats(parties, places, { a: { places: { a1: null } } })))
+      .toEqual({ placed: 0, unassigned: 3, overbooked: [] });
+  });
+});
+
+describe('placeDemandByType (#166)', () => {
+  // The event's places after its overrides (flattenPlaces()): an excluded place is simply absent.
+  const places = [
+    { id: 'bedA', type: 'bed', capacity: 1 },
+    { id: 'bedB', type: 'bed', capacity: 2 },
+    { id: 'tent', type: 'camping', capacity: 4 }
+  ];
+  const wants = sleeping_preference => ({ sleeping_preference });
+  const parties = [
+    { id: 'a', attendees: [wants('bed'), wants('bed'), wants('floor')] },
+    { id: 'b', attendees: [wants(''), wants('bed')] },
+    { id: 'w', is_waitlisted: true, attendees: [wants('bed')] },
+    { id: 'c', status: 'cancelled', attendees: [wants('sofa')] }
+  ];
+
+  test('requests of active, non-waitlisted attendees against the capacity of each type, in option order', () => {
+    expect(placeDemandByType(parties, places).types).toEqual([
+      { type: 'camping', requested: 0, capacity: 4 },
+      { type: 'floor', requested: 1, capacity: 0 },
+      { type: 'bed', requested: 3, capacity: 3 }
+    ]);
+  });
+
+  test('a type with neither requests nor places is left out; an excluded place no longer counts', () => {
+    const withoutTent = places.filter(place => place.id !== 'tent');
+    expect(placeDemandByType(parties, withoutTent).types.map(row => row.type)).toEqual(['floor', 'bed']);
+  });
+
+  test('a blank preference counts as « Sans préférence », so the rows add up to the people', () => {
+    const { types, noPreference } = placeDemandByType(parties, places);
+    expect(noPreference).toBe(1);
+    expect(types.reduce((sum, row) => sum + row.requested, 0) + noPreference).toBe(5);
   });
 });
