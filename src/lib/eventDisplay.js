@@ -1,22 +1,25 @@
 import fr from '../locales/fr.json';
-import { parseDate, formatDate, formatShortDate } from './format.js';
-
-const DAY_MS = 86400000;
+import { formatDate, formatShortDate } from './format.js';
+import { eventDay, formatEventTime, hasEventTime } from './eventTime.js';
 
 /**
- * The weekend's dates for display: "14 au 16 août 2026", or a single day, or '' if the event
- * has no event_start_date yet. reg_start_date is deliberately not used: it's when registration
+ * The weekend's dates for display, in the event time zone: "14 au 16 août 2026", or a single
+ * day, followed by the start time when it isn't midnight ("…, dès 18 h 00"); '' if the event has
+ * no event_start_date yet. reg_start_date is deliberately not used: it's when registration
  * opens, not when the party happens.
  */
 export const formatEventDates = (event) => {
-  const start = parseDate(event?.event_start_date);
+  const start = eventDay(event?.event_start_date);
   if (!start) return '';
   const days = Math.max(event.duration_days || 1, 1);
-  if (days === 1) return formatDate(start);
-  const end = new Date(start.getTime() + (days - 1) * DAY_MS);
-  return fr.dateRange
-    .replace('{start}', formatShortDate(start))
-    .replace('{end}', formatDate(end));
+  const dates = days === 1
+    ? formatDate(start)
+    : fr.dateRange
+      .replace('{start}', formatShortDate(start))
+      .replace('{end}', formatDate(new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1)));
+  return hasEventTime(event.event_start_date)
+    ? fr.eventDatesWithTime.replace('{dates}', dates).replace('{time}', formatEventTime(event.event_start_date))
+    : dates;
 };
 
 /** "1 personne" / "3 personnes", from a pair of fr.json keys with a {count} placeholder. */
@@ -62,13 +65,14 @@ export const DEFAULT_DEPARTURE_TIME = '15:00';
 
 /**
  * Bounds and defaults for the registration's arrival and departure inputs (datetime-local,
- * "YYYY-MM-DDTHH:mm"). The event runs from event_start_date for duration_days days; the last
+ * "YYYY-MM-DDTHH:mm"). The event runs from event_start_date's day for duration_days days; the last
  * allowed instant is the end of its final day. Arrival defaults to the first day, departure to
  * the last. Everything is '' when the event has no event_start_date yet.
  */
 export const getTravelRange = (event) => {
-  const start = parseDate(event?.event_start_date);
-  if (!start || Number.isNaN(start.getTime())) return { min: '', max: '', defaultArrival: '', defaultDeparture: '' };
+  // The event's days in its time zone, whatever its start time.
+  const start = eventDay(event?.event_start_date);
+  if (!start) return { min: '', max: '', defaultArrival: '', defaultDeparture: '' };
   const days = Math.max(event.duration_days || 1, 1);
   const last = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1);
   return {

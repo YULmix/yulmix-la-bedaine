@@ -1,6 +1,7 @@
 // Unsaved edits to an event's descriptive fields (the admin event editor). Pure, apart from the
 // sessionStorage helpers at the bottom, so the dirty and validation rules are tested on their own
 // (eventDraft.test.js).
+import { fromEventLocal, toEventLocal, toInstant } from './eventTime.js';
 
 // Integer fields, kept as typed while editing (so "90" can be cleared and retyped) and checked on
 // save. `min` is the smallest value the app makes sense with.
@@ -11,7 +12,19 @@ export const NUMBER_FIELDS = {
   x_reg_close_weeks: { min: 0 }
 };
 
-const DATE_FIELDS = ['event_start_date', 'reg_start_date'];
+// Instants (#149). The draft holds what the datetime-local input shows, 'YYYY-MM-DDTHH:mm' in the
+// event time zone; the event holds the database's ISO timestamp.
+export const DATE_FIELDS = ['event_start_date', 'reg_start_date'];
+
+const LOCAL_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const instantOf = (value) => {
+  if (!value) return null;
+  const date = LOCAL_DATETIME.test(value) ? fromEventLocal(value) : toInstant(value);
+  return date ? date.toISOString() : null;
+};
+
+/** What a date field's datetime-local input shows: the draft's text as typed, or the saved instant in the event zone. */
+export const dateInputValue = value => (LOCAL_DATETIME.test(value ?? '') ? value : toEventLocal(value));
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -23,7 +36,7 @@ const keptLinks = links => (links || [])
 
 const normalise = (field, value) => {
   if (field in NUMBER_FIELDS) return value === '' || value == null ? null : Number(value);
-  if (DATE_FIELDS.includes(field)) return value || null;
+  if (DATE_FIELDS.includes(field)) return instantOf(value);
   if (field === 'external_links') return keptLinks(value);
   return value;
 };
@@ -62,9 +75,9 @@ export const validateDraft = (event, changes = {}) => {
   });
   if ('theme' in changes && isBlank(changes.theme)) errors.theme = 'required';
   if (DATE_FIELDS.some(field => field in changes)) {
-    const regStart = value('reg_start_date');
-    const eventStart = value('event_start_date');
-    // ISO dates (YYYY-MM-DD) compare as strings.
+    const regStart = instantOf(value('reg_start_date'));
+    const eventStart = instantOf(value('event_start_date'));
+    // ISO instants in UTC (toISOString) compare as strings.
     if (regStart && eventStart && regStart >= eventStart) errors.reg_start_date = 'order';
   }
   if ('external_links' in changes) {
@@ -79,7 +92,7 @@ export const validateDraft = (event, changes = {}) => {
   return errors;
 };
 
-/** The `events` update for the draft's dirty fields: numbers and empty dates converted, links trimmed and empty rows dropped. */
+/** The `events` update for the draft's dirty fields: numbers converted, dates as ISO instants (null when empty), links trimmed and empty rows dropped. */
 export const draftUpdate = (event, changes) => Object.fromEntries(dirtyFields(event, changes)
   .map(field => [field, normalise(field, changes[field])]));
 

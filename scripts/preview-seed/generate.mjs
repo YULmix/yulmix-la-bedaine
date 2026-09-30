@@ -128,6 +128,9 @@ export function validateConfig(config) {
 const lit = (value) => (value === null || value === undefined ? 'NULL' : `'${String(value).replace(/'/g, "''")}'`);
 const jsonb = (value) => `${lit(JSON.stringify(value))}::jsonb`;
 const dateExpr = (daysFromToday) => `(current_date + ${daysFromToday})`;
+// An event's start or registration opening (timestamptz since #149): that day, at that time, in
+// Toronto, the zone event dates are read in.
+const eventAtExpr = (daysFromToday, time = '00:00') => `((current_date + ${daysFromToday}) + time '${time}') AT TIME ZONE 'America/Toronto'`;
 
 // ---------------------------------------------------------------------------------------------
 // Generation
@@ -362,7 +365,7 @@ INSERT INTO public.events (
 ) VALUES
 ${events.map((e) => `  (${lit(e.id)}, ${lit(e.theme)}, ${lit(e.description)}, (SELECT id FROM public.venues WHERE address = ${lit(e.venue)}), 3,
    'Inscriptions (Simon), Bénévolat (Dave), Nourriture (Melina), Stationnement (Khaled), Premiers soins (Mach)',
-   2, ${REG_CLOSE_WEEKS}, ${dateExpr(e.regStartDays)}, ${dateExpr(e.startDays)},
+   2, ${REG_CLOSE_WEEKS}, ${eventAtExpr(e.regStartDays, '12:00')}, ${eventAtExpr(e.startDays, '18:00')},
    ${lit(e.active ? 'ACTIVE' : 'ARCHIVED')}, ${e.active}, ${e.active}, ${e.sellingPrice}, ${e.maxAttendees},
    ${jsonb([{ label: 'Liste d\'achats', url: 'https://example.com/bedaine/liste-achats' }])}, ${lit(e.instructions)},
    now() + make_interval(days => ${e.regStartDays - 16}))`).join(',\n')};

@@ -11,7 +11,7 @@ import {
   type Party
 } from './emails.ts';
 
-const event: EventInfo = { theme: 'La Bédaine 2027', venue: { address: '123 ch. du Lac, Val-David' }, event_start_date: '2027-06-12', is_active: true };
+const event: EventInfo = { theme: 'La Bédaine 2027', venue: { address: '123 ch. du Lac, Val-David' }, event_start_date: '2027-06-12T04:00:00+00:00', is_active: true };
 const party = (overrides: Partial<Party> = {}): Party => ({
   id: 'p1',
   status: 'registered',
@@ -69,6 +69,10 @@ Deno.test('amounts and dates use the fr-CA formats', () => {
   assert.equal(formatDate('2027-06-12'), '12 juin 2027');
   assert.equal(formatDate('2027-08-01'), '1 août 2027');
   assert.equal(formatDate(null), null);
+  // An instant is read in Toronto: 23:30 on 12 June there is already the 13th in UTC (#149).
+  assert.equal(formatDate('2027-06-13T03:30:00+00:00'), '12 juin 2027');
+  assert.equal(formatDate('2027-01-15T05:00:00+00:00'), '15 janvier 2027');
+  assert.equal(formatDate('nope'), null);
 });
 
 const context = buildContext(party(), event, { email: 'leonie@example.com', full_name: 'Léonie Carré' }, {

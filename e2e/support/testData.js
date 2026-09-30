@@ -79,13 +79,18 @@ export async function seedActiveEventWithMemberParty(eventOverrides = {}) {
     max_attendees: 90,
     event_start_date: null,
     x_reg_close_weeks: 1,
-    // The column defaults: registration opened long ago, so no intent phase unless a spec asks.
+    // Registration opened long ago, so no intent phase unless a spec asks.
     reg_start_date: '2026-05-01',
     z_intent_months: 2,
     external_links: [],
     venue_id: venueId,
     ...eventOverrides
   };
+  // The dates are timestamptz (#149). A spec's bare 'YYYY-MM-DD' means that day in Toronto, as
+  // the app reads it; sent as is, Postgres would take it as UTC midnight, the evening before.
+  ['event_start_date', 'reg_start_date'].forEach(field => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(eventFields[field] ?? '')) eventFields[field] = `${eventFields[field]} 00:00 America/Toronto`;
+  });
   let eventId;
   if (existing.length > 0) {
     eventId = existing[0].id;

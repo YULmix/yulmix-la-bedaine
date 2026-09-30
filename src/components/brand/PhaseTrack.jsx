@@ -45,6 +45,7 @@ const PhaseTrack = ({ event, className }) => {
               </p>
               <p className="mt-0.5 font-data text-xs text-faint">
                 {step.date ? formatShortDate(step.date) : fr.phaseDateTbd}
+                {step.date && step.time && <span className="block">{step.time}</span>}
               </p>
             </li>
           );

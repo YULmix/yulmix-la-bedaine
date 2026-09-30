@@ -1,4 +1,4 @@
-import { dirtyFields, draftUpdate, validateDraft } from './eventDraft.js';
+import { dateInputValue, dirtyFields, draftUpdate, validateDraft } from './eventDraft.js';
 
 const event = {
   theme: 'Disco',
@@ -82,5 +82,35 @@ describe('draftUpdate', () => {
   test('sends only dirty fields, with numbers and empty dates converted', () => {
     expect(draftUpdate(event, { theme: 'Disco', max_attendees: '85', event_start_date: '' }))
       .toEqual({ max_attendees: 85, event_start_date: null });
+  });
+});
+
+// #149: the inputs hold Toronto wall-clock text; the event holds instants.
+describe('date and time fields', () => {
+  const timed = { ...event, event_start_date: '2026-07-10T22:00:00+00:00', reg_start_date: '2026-05-01T04:00:00+00:00' };
+
+  test('the input shows the saved instant in Toronto, or the draft as typed', () => {
+    expect(dateInputValue(timed.event_start_date)).toBe('2026-07-10T18:00');
+    expect(dateInputValue('2026-07-11T09:30')).toBe('2026-07-11T09:30');
+    expect(dateInputValue(null)).toBe('');
+    // A draft stored before #149 held a bare date.
+    expect(dateInputValue('2026-07-10')).toBe('2026-07-10T00:00');
+  });
+
+  test('the saved time typed back is not a change; another time is', () => {
+    expect(dirtyFields(timed, { event_start_date: '2026-07-10T18:00' })).toEqual([]);
+    expect(dirtyFields(timed, { event_start_date: '2026-07-10T19:00' })).toEqual(['event_start_date']);
+  });
+
+  test('saves the Toronto time as an instant, and a cleared field as null', () => {
+    expect(draftUpdate(timed, { event_start_date: '2026-12-04T19:30', reg_start_date: '' })).toEqual({
+      event_start_date: '2026-12-05T00:30:00.000Z',
+      reg_start_date: null
+    });
+  });
+
+  test('registration must open before the event starts, to the minute', () => {
+    expect(validateDraft(timed, { reg_start_date: '2026-07-10T17:59' })).toEqual({});
+    expect(validateDraft(timed, { reg_start_date: '2026-07-10T18:00' })).toEqual({ reg_start_date: 'order' });
   });
 });

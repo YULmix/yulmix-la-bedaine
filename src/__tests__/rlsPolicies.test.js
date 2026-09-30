@@ -20,6 +20,17 @@
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
 
+// Days counted in Toronto, the zone event dates are read in (#149): 'YYYY-MM-DD', today + n.
+const isoDay = (offsetDays) => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto' }).format(new Date());
+  const day = new Date(`${today}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + offsetDays);
+  return day.toISOString().slice(0, 10);
+};
+// An event_start_date (timestamptz) at midnight, Toronto time, n days from today. A bare date
+// would be read as UTC midnight: the evening before in Toronto.
+const startsIn = (offsetDays) => `${isoDay(offsetDays)} 00:00 America/Toronto`;
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:54321';
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
@@ -613,7 +624,6 @@ describe('🚪 member self-cancellation (#35)', () => {
   const CANCEL_EVENT_ID = 'a0000000-a000-a000-a000-a00000000035';
   const CANCEL_PARTY_ID = 'a0000000-a000-a000-a000-a00000000036';
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
-  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 
   let memberClient;
   let adminAuthClient;
@@ -641,20 +651,20 @@ describe('🚪 member self-cancellation (#35)', () => {
   });
 
   test('a member can no longer hard-delete their registration', async () => {
-    await seed(isoDay(60));
+    await seed(startsIn(60));
     await memberClient.from('user_parties').delete().eq('id', CANCEL_PARTY_ID);
     expect(await statusOf()).toBe('registered');
   });
 
   test('before the close date, a member cancels: the row stays, as cancelled', async () => {
-    await seed(isoDay(60));
+    await seed(startsIn(60));
     const { error } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
     expect(error).toBeNull();
     expect(await statusOf()).toBe('cancelled');
   });
 
   test('a cancelled registration can be taken up again by the member', async () => {
-    await seed(isoDay(60));
+    await seed(startsIn(60));
     await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
     const { error } = await save(memberClient, CANCEL_EVENT_ID, [{ type: 'Adult', participation: 'Whole' }]);
     expect(error).toBeNull();
@@ -662,7 +672,7 @@ describe('🚪 member self-cancellation (#35)', () => {
   });
 
   test('after the close date, a member cannot cancel but an admin can', async () => {
-    await seed(isoDay(3));
+    await seed(startsIn(3));
     const { error: memberError } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', CANCEL_PARTY_ID);
     expect(memberError?.message).toMatch(/verrouillées/);
     expect(await statusOf()).toBe('registered');
@@ -872,7 +882,6 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
 
   const ATTENDEES_EVENT_ID = 'a0000000-a000-a000-a000-a00000000126';
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
-  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
   const person = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', ...fields });
 
   let memberClient;
@@ -892,7 +901,7 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
     await adminAuthClient.from('user_parties').delete().eq('event_id', ATTENDEES_EVENT_ID);
     const { error } = await adminAuthClient.from('events').upsert({
       id: ATTENDEES_EVENT_ID, theme: 'Attendees Test', status: 'ACTIVE', selling_price_whole_event: 100,
-      event_start_date: isoDay(60), x_reg_close_weeks: 1
+      event_start_date: startsIn(60), x_reg_close_weeks: 1
     });
     if (error) throw error;
     memberParty = await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Ann'), person('Bob')]);
@@ -965,7 +974,7 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
   });
 
   test('after the close date a member cannot remove an attendee, but can replace one', async () => {
-    await adminAuthClient.from('events').update({ event_start_date: isoDay(3) }).eq('id', ATTENDEES_EVENT_ID);
+    await adminAuthClient.from('events').update({ event_start_date: startsIn(3) }).eq('id', ATTENDEES_EVENT_ID);
     const [ann] = await attendeesOf(memberParty.id);
 
     const { error: removeError } = await save(memberClient, ATTENDEES_EVENT_ID, [person('Ann', { id: ann.id })]);
@@ -1388,7 +1397,6 @@ describe('🗑️ soft account deletion (#36)', () => {
   const UPCOMING_EVENT_ID = 'a0000000-a000-a000-a000-a00000000361';
   const LOCKED_EVENT_ID = 'a0000000-a000-a000-a000-a00000000362';
   const PAST_EVENT_ID = 'a0000000-a000-a000-a000-a00000000363';
-  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
   const ONE_ATTENDEE = [{ name: 'Del', type: 'Adult', participation: 'Whole', is_new_member: false }];
 
   let adminAuthClient;
@@ -1411,9 +1419,9 @@ describe('🗑️ soft account deletion (#36)', () => {
   beforeAll(async () => {
     adminAuthClient = await signIn('admin@test.local');
     const { error } = await adminAuthClient.from('events').upsert([
-      { id: UPCOMING_EVENT_ID, theme: 'Deletion Upcoming', status: 'ACTIVE', event_start_date: isoDay(60), x_reg_close_weeks: 1 },
-      { id: LOCKED_EVENT_ID, theme: 'Deletion Locked', status: 'ACTIVE', event_start_date: isoDay(3), x_reg_close_weeks: 1 },
-      { id: PAST_EVENT_ID, theme: 'Deletion Past', status: 'ARCHIVED', event_start_date: isoDay(-300), x_reg_close_weeks: 1 }
+      { id: UPCOMING_EVENT_ID, theme: 'Deletion Upcoming', status: 'ACTIVE', event_start_date: startsIn(60), x_reg_close_weeks: 1 },
+      { id: LOCKED_EVENT_ID, theme: 'Deletion Locked', status: 'ACTIVE', event_start_date: startsIn(3), x_reg_close_weeks: 1 },
+      { id: PAST_EVENT_ID, theme: 'Deletion Past', status: 'ARCHIVED', event_start_date: startsIn(-300), x_reg_close_weeks: 1 }
     ]);
     if (error) throw error;
   });
