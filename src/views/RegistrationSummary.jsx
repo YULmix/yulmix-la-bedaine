@@ -3,6 +3,7 @@ import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageS
 import { supabase } from '../lib/supabase';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { locationPhotoUrl } from '../lib/locationPhotos';
+import { sleepingByLocation } from '../lib/places';
 import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
@@ -85,6 +86,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   };
 
   const attendees = registration.attendees || [];
+  const sleeping = sleepingByLocation(attendees);
   const logistics = registration.logistics || {};
   const transport = registration.transport || {};
   const volunteering = logistics.volunteering || [];
@@ -139,14 +141,6 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                       {fr.confirmedAssignmentLabel} <span className="font-data">{attendee.place.bed_label}</span>
                     </p>
                   )}
-                  {attendee.place?.location_photo_path && (
-                    <a href={locationPhotoUrl(attendee.place.location_photo_path)} target="_blank" rel="noreferrer"
-                      className="mt-2 block w-fit rounded-control focus-visible:outline-2 focus-visible:outline-neon">
-                      <img src={locationPhotoUrl(attendee.place.location_photo_path)}
-                        alt={fr.locationPhotoAlt.replace('{name}', attendee.place.location_name)}
-                        className="h-24 w-36 rounded-control border border-line object-cover" />
-                    </a>
-                  )}
                 </div>
               </li>
             ))}
@@ -155,6 +149,29 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
 
         <Card className="space-y-5 p-5 sm:p-6">
           <h3 className="text-lg font-semibold text-ink">{fr.logisticsSummary}</h3>
+          {sleeping.length > 0 && (
+            <InfoBlock icon={BedDouble} title={fr.sleepingSummaryTitle}>
+              <ul className="space-y-3">
+                {sleeping.map(location => (
+                  <li key={location.locationId} className="flex items-start gap-3">
+                    {location.photoPath && (
+                      <a href={locationPhotoUrl(location.photoPath)} target="_blank" rel="noreferrer"
+                        className="shrink-0 rounded-control focus-visible:outline-2 focus-visible:outline-neon">
+                        <img src={locationPhotoUrl(location.photoPath)} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
+                          className="h-16 w-24 rounded-control border border-line object-cover" />
+                      </a>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold">{location.name}</p>
+                      <p className="text-sm text-muted">
+                        {location.sleepers.map(sleeper => `${sleeper.name} · ${sleeper.place}`).join(', ')}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </InfoBlock>
+          )}
           <InfoBlock icon={Car} title={fr.transport}>
             {transport.type ? (
               <>

@@ -208,17 +208,21 @@ test('a location has a photo: the admin adds, replaces and removes it; whoever s
   await expect(grenier.getByRole('link', { name: fr.locationPhotoOpen.replace('{name}', 'Grenier') })).toHaveAttribute('target', '_blank');
   await screenshot(page, 'location-photo-admin');
 
-  // The member who sleeps there sees it under their place.
+  // The member's party sleeps there, both of them: the Logistique card shows the location once,
+  // with its photo and who sleeps in which place.
+  await grenier.getByRole('group', { name: fr.placeAddCountLabel }).getByRole('button', { name: fr.stepperMore }).click();
   await grenier.getByRole('button', { name: fr.placeAddButton }).click();
-  await expect.poll(async () => (await getLocations(seeded.eventId))[0].places.length).toBe(1);
-  const [{ places: [bed] }] = await getLocations(seeded.eventId);
+  await expect.poll(async () => (await getLocations(seeded.eventId))[0].places.length).toBe(2);
+  const [{ places: [bed, otherBed] }] = await getLocations(seeded.eventId);
   await assignPlace(bed.id, seeded.partyId, 1);
+  await assignPlace(otherBed.id, seeded.partyId, 2);
   const member = await browser.newPage();
   await loginAs(member, TEST_USERS.member);
   await member.goto('/');
   const memberPhoto = member.getByRole('img', { name: fr.locationPhotoAlt.replace('{name}', 'Grenier') });
-  await expect(memberPhoto).toBeVisible();
+  await expect(memberPhoto).toHaveCount(1);
   await expect.poll(() => imageLoaded(memberPhoto)).toBe(true);
+  await expect(member.getByText(`Alice E2E · ${bed.label}, Bob E2E · ${otherBed.label}`)).toBeVisible();
   await screenshot(member, 'location-photo-member');
   await member.close();
 
@@ -239,6 +243,7 @@ test('a location has a photo: the admin adds, replaces and removes it; whoever s
 
   // Deleting a location takes its photo with it.
   await unassignPlace(bed.id);
+  await unassignPlace(otherBed.id);
   await grenier.getByLabel(fr.locationPhotoInputLabel).setInputFiles(PHOTO);
   await expect.poll(() => getLocationPhotoPath(seeded.eventId, 'Grenier')).not.toBeNull();
   const third = await getLocationPhotoPath(seeded.eventId, 'Grenier');

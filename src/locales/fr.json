@@ -723,6 +723,7 @@
   "locationDuplicate": "Dupliquer « {name} »",
   "locationCopyName": "{name} (copie)",
   "locationPhotoLabel": "Photo du lieu",
+  "sleepingSummaryTitle": "Couchage",
   "locationPhotoAdd": "Ajouter une photo",
   "locationPhotoReplace": "Remplacer",
   "locationPhotoRemove": "Retirer",

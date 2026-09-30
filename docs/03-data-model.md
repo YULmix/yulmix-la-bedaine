@@ -340,7 +340,8 @@ event's locations to a venue of its own and the address from `events.venue_addre
   (`storage.objects` policy "Location photos: Admin full access"), and members read the path where
   they read the location, and through `attendee_places.location_photo_path`. The Sites editor
   shrinks the image to 1600 px as JPEG before uploading (`src/lib/locationPhotos.js`); the
-  member's summary shows it under their place. A frozen copy keeps the photo its location had
+  member's summary shows each location their party sleeps in once, with its photo and who sleeps
+  where, in its Logistique card (`sleepingByLocation()` in `src/lib/places.js`). A frozen copy keeps the photo its location had
   (it points at the same object). Postgres can't delete a Storage object, so after replacing or
   removing a photo, or deleting a location, the app asks `unused_location_photos(paths)` (admin
   only) which objects no location points at (those named, and any older than an hour) and
