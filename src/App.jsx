@@ -280,7 +280,7 @@ function App() {
 
           <Route path="/inscription" element={
             <ProtectedRoute {...guard}>
-              <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} />
+              <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} userId={user?.id} />
             </ProtectedRoute>
           } />
 

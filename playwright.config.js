@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -216,6 +216,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-dietary\.spec\.js/,
       dependencies: ['admin-logistics-batch-save']
+    },
+    {
+      // Reseeds the same shared active event and saves the member's registration, so it runs
+      // after member-dietary, on its own.
+      name: 'member-registration-draft',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-registration-draft\.spec\.js/,
+      dependencies: ['member-dietary']
     }
   ],
   webServer: {

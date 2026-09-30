@@ -8,10 +8,11 @@ import fr from '../locales/fr.json';
 import { getEventPhase } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
 import { isActiveRegistration } from '../lib/registrationOptions';
+import { draftStorageKey } from '../lib/registrationDraft';
 
 // /inscription: the registration flow on its own route, so the phone's back button leaves the
 // form instead of the app, and the form gets the whole screen.
-const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
+const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
   const navigate = useNavigate();
   const { registration: row, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
   // The party a new registration just saved: the page then confirms it instead of the form (#155).
@@ -56,11 +57,14 @@ const RegistrationPage = ({ activeEvent, isAuthenticated }) => {
         </div>
       ) : (
         <RegistrationForm
+          // Remounts once the member is known, so a draft left in this tab is picked up.
+          key={userId || 'anonymous'}
           event={activeEvent}
           userRegistration={registration}
           isIntent={isIntent}
           onCancel={() => navigate('/')}
           onRegistrationSuccess={handleSaved}
+          draftKey={userId ? draftStorageKey(userId, activeEvent.id) : null}
         />
       )}
     </main>
