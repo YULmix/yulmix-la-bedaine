@@ -13,6 +13,7 @@ import {
   getParty,
   seedActiveEventWithMemberParty,
   seedPlaces,
+  setPlaceCapacity,
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { pickPlace } from './support/placePicker.js';
@@ -181,4 +182,63 @@ test("a member can't save logistics, even calling the database directly", async 
   expect(result).toEqual({ data: null, message: 'admin_only' });
   expect(await bedsOf(seeded.partyId)).toEqual([[ALICE, ''], [BOB, '']]);
   expect((await getParty(seeded.partyId)).admin_notes).toBeNull();
+});
+
+// The header (#166): totals that follow the unsaved picks, and requests against places by type.
+const summary = page => panel(page).getByRole('region', { name: fr.occupancyTitle });
+// A figure's value: the line right after its label.
+const stat = (page, label) => summary(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
+const expectTotals = async (page, { placed, toPlace, capacity, overbooked }) => {
+  await expect(stat(page, fr.logisticsSummaryPlaced)).toHaveText(String(placed));
+  await expect(stat(page, fr.logisticsSummaryToPlace)).toHaveText(String(toPlace));
+  await expect(stat(page, fr.logisticsSummaryCapacity)).toHaveText(String(capacity));
+  await expect(stat(page, fr.logisticsSummaryOverbooked)).toHaveText(String(overbooked));
+};
+const typeRow = (page, label) => summary(page).getByRole('listitem').filter({ hasText: label });
+const count = (key, n) => fr[`${key}${n <= 1 ? 'One' : 'Other'}`].replace('{count}', n);
+
+test('the header totals follow unsaved picks and discarding; per type, requests against the event places', async ({ page }) => {
+  await openLogistics(page);
+  // Two beds for one each and a sofa for two; Alice and Bob gave no preference, Zoé wants the sofa.
+  await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
+  await expect(typeRow(page, fr.accommodationBed)).toContainText(`${count('logisticsRequested', 0)} · ${count('logisticsPlaces', 2)}`);
+  await expect(typeRow(page, fr.accommodationSofa)).toContainText(`${count('logisticsRequested', 1)} · ${count('logisticsPlaces', 2)}`);
+  await expect(typeRow(page, fr.logisticsSummaryNoPreference)).toContainText(count('logisticsRequested', 2));
+  await expect(typeRow(page, fr.accommodationCamping)).toHaveCount(0);
+  await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toHaveCount(0);
+
+  // Not saved yet: the totals count the picks, including a place holding one too many.
+  await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit A');
+  await pickPlace(page, picker(page, BOB), 'Chambre 1 · Lit A');
+  await expectTotals(page, { placed: 2, toPlace: 1, capacity: 4, overbooked: 1 });
+  await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toBeVisible();
+  // Requests and places don't move with a pick.
+  await expect(typeRow(page, fr.accommodationBed)).toContainText(`${count('logisticsRequested', 0)} · ${count('logisticsPlaces', 2)}`);
+
+  await discardButton(page).click();
+  await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
+  await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toHaveCount(0);
+});
+
+test('the header counts the event places: an excluded place leaves, a venue edit counts; saved figures match the overview', async ({ page }) => {
+  await excludePlace(seeded.eventId, places['Chambre 1 · Lit B']);
+  await openLogistics(page);
+  await expectTotals(page, { placed: 0, toPlace: 3, capacity: 3, overbooked: 0 });
+  await expect(typeRow(page, fr.accommodationBed)).toContainText(count('logisticsPlaces', 1));
+
+  // The venue's sofa made bigger (Sites), with no event override: the event follows.
+  await setPlaceCapacity(places['Salon · Sofa'], 3);
+  await page.reload();
+  await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
+  await expect(typeRow(page, fr.accommodationSofa)).toContainText(count('logisticsPlaces', 3));
+
+  await pickPlace(page, picker(page, ZOE.name), 'Salon · Sofa');
+  await saveButton(page).click();
+  await expect(panel(page).getByText(fr.eventEditorAllSaved)).toBeVisible();
+  await expectTotals(page, { placed: 1, toPlace: 2, capacity: 4, overbooked: 0 });
+
+  await page.goto('/admin?tab=overview');
+  const couchage = page.getByRole('tabpanel').getByRole('heading', { name: fr.occupancyTitle }).locator('xpath=../..');
+  await expect(couchage).toContainText(`1/4 ${fr.occupancyTaken}`);
+  await expect(couchage).toContainText(fr.occupancyUnassignedOther.replace('{count}', 2));
 });

@@ -3,9 +3,11 @@ import { BedDouble, CircleAlert, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { placeOccupancy, placeOptions } from '../../lib/places';
+import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
 import { Card, EmptyState, Notice, Tag, Textarea } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
+import LogisticsSummary from './LogisticsSummary';
 import SaveBar from './SaveBar';
 
 const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
@@ -41,6 +43,8 @@ const AdminLogisticsView = ({
   const visible = parties.filter(activeFilter.test);
   const occupancy = useMemo(() => placeOccupancy(parties, logisticsChanges), [parties, logisticsChanges]);
   const placesById = useMemo(() => new Map(places.map(place => [place.id, place])), [places]);
+  const placeStats = useMemo(() => computePlaceStats(parties, places, logisticsChanges), [parties, places, logisticsChanges]);
+  const demand = useMemo(() => placeDemandByType(parties, places), [parties, places]);
 
   return (
     <section className="space-y-4">
@@ -49,7 +53,9 @@ const AdminLogisticsView = ({
         <p className="mt-2 max-w-prose text-muted">{fr.logisticsViewDescription}</p>
       </div>
 
-      {places.length === 0 && <Notice tone="info" title={fr.logisticsNoPlacesTitle}>{fr.logisticsNoPlacesHint}</Notice>}
+      {places.length === 0
+        ? <Notice tone="info" title={fr.logisticsNoPlacesTitle}>{fr.logisticsNoPlacesHint}</Notice>
+        : <LogisticsSummary stats={placeStats} demand={demand} hasUnsaved={Object.values(logisticsChanges).some(party => Object.keys(party.places || {}).length > 0)} />}
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
