@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, MapPin, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, MapPin, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
@@ -17,8 +17,8 @@ const capacityOf = places => places.reduce((sum, place) => sum + place.capacity,
 // one write, not five racing ones.
 const CAPACITY_WRITE_DELAY_MS = 400;
 
-// Deleting a place (or location) someone holds, whom this screen didn't know about: someone of
-// another event at the venue, or assigned since it loaded. The foreign key refuses it.
+// Deleting a place (or location) someone was given between the check and the delete: the foreign
+// key refuses it.
 const FOREIGN_KEY_VIOLATION = '23503';
 
 // A text input that saves when it loses focus (or on Enter), and only if the value changed. A
@@ -46,12 +46,10 @@ const SaveStatus = ({ status }) => (
   </p>
 );
 
-const LocationList = ({ locations, occupantCount, selectedId, onSelect, onAdd, className }) => (
+const LocationList = ({ locations, selectedId, onSelect, onAdd, className }) => (
   <nav aria-label={fr.locationsListLabel} className={className}>
     <ul className="space-y-1">
       {locations.map(location => {
-        const capacity = capacityOf(location.places);
-        const taken = occupantCount(location.places);
         const selected = location.id === selectedId;
         return (
           <li key={location.id}>
@@ -63,12 +61,8 @@ const LocationList = ({ locations, occupantCount, selectedId, onSelect, onAdd, c
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold text-ink">{location.name}</span>
                 <span className="block text-sm text-faint">
-                  {fr.locationTotals.replace('{places}', location.places.length).replace('{capacity}', capacity)}
+                  {fr.locationTotals.replace('{places}', location.places.length).replace('{capacity}', capacityOf(location.places))}
                 </span>
-              </span>
-              <span className={cx('font-data text-sm', taken > capacity ? 'text-warn' : 'text-muted')}
-                aria-label={fr.locationOccupancyLabel.replace('{taken}', taken).replace('{capacity}', capacity)}>
-                {taken}/{capacity}
               </span>
               <ChevronRight aria-hidden="true" className="size-4 text-faint lg:hidden" />
             </button>
@@ -103,31 +97,24 @@ const AddPlaces = ({ onAdd }) => {
   );
 };
 
-const PlaceRow = ({ place, occupants, onUpdate, onCapacity, onDelete }) => {
-  const overbooked = occupants.length > place.capacity;
-  return (
-    <li aria-label={place.label}
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto_auto]">
-      <BlurInput required aria-label={fr.placeLabelLabel} value={place.label} onCommit={label => onUpdate({ label })} />
-      {/* Phone: name + delete, then type + capacity. From sm, one row, delete last, with the
-          occupants line under it (explicit orders, since the delete button comes second in source). */}
-      <Button variant="ghost" size="icon" onClick={onDelete} className="sm:order-3"
-        aria-label={fr.placeDelete.replace('{label}', place.label)}>
-        <Trash2 aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-      </Button>
-      <Select aria-label={fr.placeTypeLabel} value={place.type} onChange={e => onUpdate({ type: e.target.value })} className="sm:order-1">
-        {ACCOMMODATION_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </Select>
-      <div className="justify-self-end sm:order-2 sm:justify-self-auto">
-        <Stepper value={place.capacity} onChange={onCapacity} min={1} max={50} label={fr.placeCapacityLabel} />
-      </div>
-      <p className={cx('col-span-full flex items-center sm:order-4 gap-1.5 text-sm', overbooked ? 'text-warn' : 'text-faint')}>
-        {overbooked && <TriangleAlert aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />}
-        {occupants.length ? fr.placeOccupants.replace('{names}', occupants.join(', ')) : fr.placeFree}
-      </p>
-    </li>
-  );
-};
+const PlaceRow = ({ place, onUpdate, onCapacity, onDelete }) => (
+  <li aria-label={place.label}
+    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto_auto]">
+    <BlurInput required aria-label={fr.placeLabelLabel} value={place.label} onCommit={label => onUpdate({ label })} />
+    {/* Phone: name + delete, then type + capacity. From sm, one row, delete last (explicit
+        orders, since the delete button comes second in source). */}
+    <Button variant="ghost" size="icon" onClick={onDelete} className="sm:order-3"
+      aria-label={fr.placeDelete.replace('{label}', place.label)}>
+      <Trash2 aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+    </Button>
+    <Select aria-label={fr.placeTypeLabel} value={place.type} onChange={e => onUpdate({ type: e.target.value })} className="sm:order-1">
+      {ACCOMMODATION_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </Select>
+    <div className="justify-self-end sm:order-2 sm:justify-self-auto">
+      <Stepper value={place.capacity} onChange={onCapacity} min={1} max={50} label={fr.placeCapacityLabel} />
+    </div>
+  </li>
+);
 
 // The venue's name and address, saved like the rest of the section. Shared by every event held
 // there, which the hint says.
@@ -150,11 +137,6 @@ const VenueCard = ({ venue, onUpdate }) => (
   </Card>
 );
 
-// A venue, its locations and places (#145), on the venue's page of the Sites tab (#146). Occupants
-// are those of `eventIds`, the venue's events still to come. Every change is saved right away: the rows are separate tables, and
-// assignments point at them. Field edits show at once and are written behind; adding, removing
-// and moving rows reload from the database. Deleting a place one of those occupants holds is
-// refused, here with their names; the database refuses it for anyone at the venue (a foreign key).
 // Under the totals (#164): how the places split by type, each with its capacity.
 const PlaceTypeBreakdown = ({ locations }) => {
   const rows = placeTypeBreakdown(locations);
@@ -178,12 +160,16 @@ const PlaceTypeBreakdown = ({ locations }) => {
   );
 };
 
-export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onVenueChange }) => {
-  const eventKey = eventIds.join(',');
+// A venue, its locations and places (#145), on the venue's page of the Sites tab (#146). A venue
+// lives outside any event, so this shows none of their assignments: who sleeps where is the
+// Logistique tab's. Every change is saved right away: the rows are separate tables, and
+// assignments point at them. Field edits show at once and are written behind; adding, removing
+// and moving rows reload from the database. Deleting a place someone holds, in any event, is
+// refused with their names, looked up then; the database refuses it anyway (a foreign key).
+export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange }) => {
   const [venue, setVenue] = useState(null);
   const [locations, setLocations] = useState(null);
   const [error, setError] = useState(null);
-  const [occupants, setOccupants] = useState({});
   const [status, setStatus] = useState('idle');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [blocked, setBlocked] = useState(null);
@@ -192,17 +178,14 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
   const capacityWrites = useRef({});
 
   const load = useCallback(async () => {
-    const [venueResult, locationsResult, assignmentsResult] = await Promise.all([
+    const [venueResult, locationsResult] = await Promise.all([
       supabase.from('venues').select('id, name, address').eq('id', venueId).single(),
       supabase
         .from('locations')
         .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
-        .eq('venue_id', venueId),
-      eventIds.length
-        ? supabase.from('attendee_places').select('place_id, attendee_name').in('event_id', eventIds)
-        : { data: [] }
+        .eq('venue_id', venueId)
     ]);
-    const loadError = venueResult.error || locationsResult.error || assignmentsResult.error;
+    const loadError = venueResult.error || locationsResult.error;
     if (loadError) {
       console.error('Error loading locations:', loadError);
       setError(fr.locationsLoadError);
@@ -213,13 +196,7 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
     setLocations(locationsResult.data
       .map(location => ({ ...location, places: [...location.places].sort(bySortOrder) }))
       .sort(bySortOrder));
-    const names = {};
-    assignmentsResult.data.forEach(({ place_id: placeId, attendee_name: name }) => {
-      (names[placeId] ||= []).push(name);
-    });
-    setOccupants(names);
-    // eventKey stands for eventIds, a new array on every render.
-  }, [eventKey, venueId]);
+  }, [venueId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -339,16 +316,23 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
     await trackAndReload(Promise.all(writes).then(results => results.find(result => result.error) || {}));
   };
 
-  const occupantsOf = places => places.flatMap(place => occupants[place.id] || []);
-  const occupantCount = places => occupantsOf(places).length;
+  // Who holds these places, in any event: asked only when deleting, to say whom to move first. If
+  // the question fails, the delete goes ahead and the foreign key has the last word.
+  const holdersOf = async (places) => {
+    if (!places.length) return [];
+    const { data, error: readError } = await supabase.from('attendee_places').select('attendee_name')
+      .in('place_id', places.map(place => place.id));
+    if (readError) console.error('Error reading who holds the places:', readError);
+    return (data || []).map(row => row.attendee_name);
+  };
 
   const deleteLocation = async (location) => {
     await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
     onLocationChange(null);
   };
 
-  const requestLocationDelete = (location) => {
-    const names = occupantsOf(location.places);
+  const requestLocationDelete = async (location) => {
+    const names = await holdersOf(location.places);
     if (names.length) return setBlocked({ name: location.name, names });
     if (!location.places.length) return deleteLocation(location);
     setPendingDelete(location);
@@ -366,8 +350,8 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
     }))));
   };
 
-  const deletePlace = (place) => {
-    const names = occupants[place.id] || [];
+  const deletePlace = async (place) => {
+    const names = await holdersOf([place]);
     if (names.length) return setBlocked({ name: place.label, names });
     trackAndReload(supabase.from('places').delete().eq('id', place.id));
   };
@@ -405,12 +389,10 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
         </Card>
       ) : (
         <>
-          <Card className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 sm:p-5">
+          <Card className="grid grid-cols-3 gap-4 p-4 sm:p-5">
             <Stat label={fr.sleepingStatLocations} value={locations.length} />
             <Stat label={fr.sleepingStatPlaces} value={allPlaces.length} />
             <Stat label={fr.sleepingStatCapacity} value={capacityOf(allPlaces)} />
-            <Stat label={fr.sleepingStatAssigned} value={occupantCount(allPlaces)}
-              tone={occupantCount(allPlaces) > capacityOf(allPlaces) ? 'warn' : undefined} />
             <PlaceTypeBreakdown locations={locations} />
           </Card>
 
@@ -419,7 +401,6 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
           <div className="lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:items-start lg:gap-6">
             <LocationList
               locations={locations}
-              occupantCount={occupantCount}
               selectedId={selected.id}
               onSelect={onLocationChange}
               onAdd={addLocation}
@@ -479,7 +460,6 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
                         <PlaceRow
                           key={place.id}
                           place={place}
-                          occupants={occupants[place.id] || []}
                           onUpdate={fields => patchPlace(place.id, fields)}
                           onCapacity={capacity => setCapacity(place.id, capacity)}
                           onDelete={() => deletePlace(place)}

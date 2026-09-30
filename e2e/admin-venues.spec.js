@@ -44,7 +44,7 @@ const screenshot = async (page, name) => {
 };
 const venueRow = (page, name) => page.getByRole('listitem').filter({ has: page.getByText(name, { exact: true }) });
 
-test("the list shows each venue's capacity and events; its page shows who of those events sleeps where", async ({ page }) => {
+test("the list shows each venue's capacity and events; its page shows the venue, not who sleeps where", async ({ page }) => {
   const { name } = await getEventVenue(seeded.eventId);
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
@@ -59,7 +59,11 @@ test("the list shows each venue's capacity and events; its page shows who of tho
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
   await expect(page).toHaveURL(/tab=venues&venue=/);
   await page.getByRole('navigation', { name: fr.locationsListLabel }).getByRole('button', { name: /^Chambre 1/ }).click();
-  await expect(page.getByRole('region', { name: 'Chambre 1' }).getByText(fr.placeOccupants.replace('{names}', 'Alice E2E'))).toBeVisible();
+  // A venue lives outside its events: their assignments are the Logistique tab's.
+  const chambre = page.getByRole('region', { name: 'Chambre 1' });
+  await expect(chambre.getByRole('listitem', { name: 'Lit A' })).toBeVisible();
+  await expect(page.getByText('Alice E2E')).toHaveCount(0);
+  await expect(page.getByText(fr.sleepingStatAssigned)).toHaveCount(0);
   await screenshot(page, 'venue-page');
 
   await page.getByRole('button', { name: fr.venuesBack }).click();
