@@ -1510,3 +1510,124 @@ describe('🗑️ soft account deletion (#36)', () => {
     expect(history).toEqual([{ event_id: PAST_EVENT_ID }]);
   });
 });
+
+describe('📷 location photos (#124)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000001241';
+  const BUCKET = 'location-photos';
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+  // A few bytes are enough: the bucket checks the declared type, not the content.
+  const image = () => new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+
+  let memberClient;
+  let adminAuthClient;
+  let venueId; // a fresh venue per test: venues are never deleted
+  let locationId;
+  let uploaded; // every object this block put in the bucket, removed afterwards
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const upload = async (client, name = `${locationId}/${crypto.randomUUID()}.jpg`) => {
+    const { error } = await client.storage.from(BUCKET).upload(name, image(), { contentType: 'image/jpeg' });
+    if (!error) uploaded.push(name);
+    return { name, error };
+  };
+  const exists = async (name) => {
+    const [folder, file] = name.split('/');
+    return (await ok(adminAuthClient.storage.from(BUCKET).list(folder, { search: file }))).length === 1;
+  };
+  const unused = async (client, paths) => client.rpc('unused_location_photos', { p_paths: paths });
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    uploaded = [];
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+    venueId = (await ok(adminAuthClient.from('venues').insert({ name: 'La Grange' }).select('id').single())).id;
+    // Un-archive (allowed by SQL) so the event can be put on today's venue.
+    await ok(adminAuthClient.from('events').upsert({
+      id: EVENT_ID, theme: 'Photos Test', status: 'ACTIVE', selling_price_whole_event: 100, venue_id: venueId
+    }));
+    locationId = (await ok(adminAuthClient.from('locations').insert({ venue_id: venueId, name: 'Grenier' }).select('id').single())).id;
+  });
+
+  afterEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+    if (uploaded.length) await adminAuthClient.storage.from(BUCKET).remove(uploaded);
+  });
+
+  test('an admin uploads, replaces and removes a photo; a member can do none of it', async () => {
+    const { name, error } = await upload(adminAuthClient);
+    expect(error).toBeNull();
+    const { error: replaceError } = await adminAuthClient.storage.from(BUCKET).upload(name, image(), { contentType: 'image/jpeg', upsert: true });
+    expect(replaceError).toBeNull();
+
+    const { error: memberUploadError } = await upload(memberClient);
+    expect(memberUploadError).not.toBeNull();
+    const { error: memberReplaceError } = await memberClient.storage.from(BUCKET).upload(name, image(), { contentType: 'image/jpeg', upsert: true });
+    expect(memberReplaceError).not.toBeNull();
+    // Storage reports a refused removal as nothing removed.
+    await memberClient.storage.from(BUCKET).remove([name]);
+    expect(await exists(name)).toBe(true);
+    const { data: memberList } = await memberClient.storage.from(BUCKET).list(locationId);
+    expect(memberList ?? []).toEqual([]);
+
+    // RLS hides the location from the member's update: nothing changes.
+    await memberClient.from('locations').update({ photo_path: name }).eq('id', locationId);
+    expect(await ok(adminAuthClient.from('locations').select('photo_path').eq('id', locationId).single())).toEqual({ photo_path: null });
+
+    await ok(adminAuthClient.storage.from(BUCKET).remove([name]));
+    expect(await exists(name)).toBe(false);
+  });
+
+  test('the bucket refuses what is not an image', async () => {
+    const { error } = await adminAuthClient.storage.from(BUCKET)
+      .upload(`${locationId}/x.txt`, new Blob(['x'], { type: 'text/plain' }), { contentType: 'text/plain' });
+    expect(error).not.toBeNull();
+  });
+
+  test('a photo is public, and the member who sleeps there reads its path', async () => {
+    const { name } = await upload(adminAuthClient);
+    await ok(adminAuthClient.from('locations').update({ photo_path: name }).eq('id', locationId));
+    const placeId = (await ok(adminAuthClient.from('places').insert({ location_id: locationId, label: 'Matelas', type: 'floor' }).select('id').single())).id;
+    const party = await saveOk(memberClient, EVENT_ID, [person('Ann')]);
+    const ann = (await ok(adminAuthClient.from('attendees').select('id').eq('party_id', party.id).single())).id;
+    await ok(adminAuthClient.from('place_assignments').insert({ place_id: placeId, attendee_id: ann }));
+
+    const rows = await ok(memberClient.from('attendee_places').select('location_name, location_photo_path').eq('party_id', party.id));
+    expect(rows).toEqual([{ location_name: 'Grenier', location_photo_path: name }]);
+
+    const response = await fetch(memberClient.storage.from(BUCKET).getPublicUrl(name).data.publicUrl);
+    expect(response.status).toBe(200);
+  });
+
+  test('unused_location_photos is admin-only', async () => {
+    const { error } = await unused(memberClient, []);
+    expect(error?.message).toBe('admin_only');
+  });
+
+  test('unused_location_photos names an unreferenced photo, never one a location (or a frozen copy) points at', async () => {
+    const { name: kept } = await upload(adminAuthClient);
+    const { name: dropped } = await upload(adminAuthClient);
+    await ok(adminAuthClient.from('locations').update({ photo_path: kept }).eq('id', locationId));
+
+    expect(await ok(unused(adminAuthClient, [kept, dropped]))).toEqual([dropped]);
+
+    // Archived: the frozen copy keeps the photo, so clearing the live location leaves it in use.
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
+    const frozen = await ok(adminAuthClient.from('events').select('venue:venues(snapshot_of, locations(photo_path))').eq('id', EVENT_ID).single());
+    expect(frozen.venue).toEqual({ snapshot_of: venueId, locations: [{ photo_path: kept }] });
+    await ok(adminAuthClient.from('locations').update({ photo_path: null }).eq('id', locationId));
+    expect(await ok(unused(adminAuthClient, [kept]))).toEqual([]);
+  });
+
+  test('a deleted location leaves its photo unused', async () => {
+    const { name } = await upload(adminAuthClient);
+    await ok(adminAuthClient.from('locations').update({ photo_path: name }).eq('id', locationId));
+    await ok(adminAuthClient.from('locations').delete().eq('id', locationId));
+    expect(await ok(unused(adminAuthClient, [name]))).toEqual([name]);
+  });
+});

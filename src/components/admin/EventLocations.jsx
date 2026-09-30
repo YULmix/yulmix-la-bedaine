@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, MapPin, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Camera, Check, ChevronRight, Copy, ImageOff, MapPin, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { plural } from '../../lib/eventDisplay';
 import { placeTypeBreakdown } from '../../lib/places';
+import { locationPhotoUrl, removeUnusedLocationPhotos, uploadLocationPhoto } from '../../lib/locationPhotos';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
@@ -116,6 +117,48 @@ const PlaceRow = ({ place, onUpdate, onCapacity, onDelete }) => (
   </li>
 );
 
+// The location's photo (#124), what the room looks like: shown to the participants who sleep
+// there too. Opens full size in a new tab.
+const LocationPhoto = ({ location, busy, onPick, onRemove }) => {
+  const input = useRef(null);
+  const url = locationPhotoUrl(location.photo_path);
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-muted">{fr.locationPhotoLabel}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" aria-label={fr.locationPhotoOpen.replace('{name}', location.name)}
+            className="block rounded-control focus-visible:outline-2 focus-visible:outline-neon">
+            <img src={url} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
+              className="h-24 w-36 rounded-control border border-line object-cover" />
+          </a>
+        ) : (
+          <div className="grid h-24 w-36 place-items-center rounded-control border border-dashed border-line text-faint">
+            <ImageOff aria-hidden="true" className="size-5" strokeWidth={1.75} />
+            <span className="sr-only">{fr.locationPhotoNone}</span>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1">
+          <Button variant="secondary" size="sm" loading={busy} onClick={() => input.current.click()}>
+            <Camera aria-hidden="true" className="size-4" strokeWidth={1.75} />{url ? fr.locationPhotoReplace : fr.locationPhotoAdd}
+          </Button>
+          {url && (
+            <Button variant="dangerGhost" size="sm" disabled={busy} onClick={onRemove}>
+              <Trash2 aria-hidden="true" className="size-4" strokeWidth={1.75} />{fr.locationPhotoRemove}
+            </Button>
+          )}
+        </div>
+        <input ref={input} type="file" accept="image/*" hidden aria-label={fr.locationPhotoInputLabel}
+          onChange={e => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) onPick(file);
+          }} />
+      </div>
+    </div>
+  );
+};
+
 // The venue's name and address, saved like the rest of the section. Shared by every event held
 // there, which the hint says.
 const VenueCard = ({ venue, onUpdate }) => (
@@ -173,6 +216,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   const [status, setStatus] = useState('idle');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [blocked, setBlocked] = useState(null);
+  const [photoBusy, setPhotoBusy] = useState(null);
   const inFlight = useRef(0);
   const pane = useRef(null);
   const capacityWrites = useRef({});
@@ -182,7 +226,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       supabase.from('venues').select('id, name, address').eq('id', venueId).single(),
       supabase
         .from('locations')
-        .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
+        .select('id, name, note, photo_path, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
         .eq('venue_id', venueId)
     ]);
     const loadError = venueResult.error || locationsResult.error;
@@ -257,6 +301,31 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     if (!result.error) onVenueChange();
   };
 
+  // The photo is uploaded first, then the location points at it. The object no location points at
+  // any more (the replaced photo, or the new one if the save failed) is removed after.
+  const setPhoto = async (location, file) => {
+    setPhotoBusy(location.id);
+    setStatus('saving');
+    let path;
+    try {
+      path = await uploadLocationPhoto(location.id, file);
+    } catch (uploadError) {
+      console.error('Error uploading a location photo:', uploadError);
+      setError(dbErrorMessage(uploadError, fr.locationPhotoUploadError));
+      setStatus('idle');
+      setPhotoBusy(null);
+      return;
+    }
+    const result = await patchLocation(location.id, { photo_path: path });
+    setPhotoBusy(null);
+    removeUnusedLocationPhotos([result.error ? path : location.photo_path]);
+  };
+
+  const removePhoto = async (location) => {
+    const result = await patchLocation(location.id, { photo_path: null });
+    if (!result.error) removeUnusedLocationPhotos([location.photo_path]);
+  };
+
   const patchPlaceLocally = (id, fields) => setLocations(current => current.map(location => ({
     ...location,
     places: location.places.map(place => (place.id === id ? { ...place, ...fields } : place))
@@ -292,6 +361,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       venue_id: venueId,
       name: fr.locationCopyName.replace('{name}', location.name),
       note: location.note,
+      photo_path: location.photo_path,
       sort_order: nextSortOrder(locations)
     }).select('id').single());
     if (insertError) return;
@@ -327,7 +397,8 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   };
 
   const deleteLocation = async (location) => {
-    await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
+    const result = await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
+    if (!result.error) removeUnusedLocationPhotos([location.photo_path]);
     onLocationChange(null);
   };
 
@@ -421,6 +492,9 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
                   {({ id }) => <BlurInput id={id} value={selected.note} onCommit={note => patchLocation(selected.id, { note: note || null })} />}
                 </Field>
               </div>
+
+              <LocationPhoto location={selected} busy={photoBusy === selected.id}
+                onPick={file => setPhoto(selected, file)} onRemove={() => removePhoto(selected)} />
 
               <div className="flex flex-wrap gap-1">
                 <Button variant="ghost" size="sm" disabled={selectedIndex === 0} onClick={() => moveLocation(selectedIndex, -1)}

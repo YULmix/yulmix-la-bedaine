@@ -334,6 +334,17 @@ event's locations to a venue of its own and the address from `events.venue_addre
   free to change or go. The Sites tab lists the copy's event under the venue it copies; the
   copies themselves aren't listed. An archived event's Couchage section is read-only.
   Un-archiving (SQL only) leaves the event on its copy; archiving it again copies nothing.
+- **Location photos** (#124). A location may have one photo (`locations.photo_path`: an object
+  name in the public `location-photos` bucket, `"<location id>/<uuid>.jpg"`), shared by its
+  places. Anyone with the URL can see it; only admins can upload, replace or delete an object
+  (`storage.objects` policy "Location photos: Admin full access"), and members read the path where
+  they read the location, and through `attendee_places.location_photo_path`. The Sites editor
+  shrinks the image to 1600 px as JPEG before uploading (`src/lib/locationPhotos.js`); the
+  member's summary shows it under their place. A frozen copy keeps the photo its location had
+  (it points at the same object). Postgres can't delete a Storage object, so after replacing or
+  removing a photo, or deleting a location, the app asks `unused_location_photos(paths)` (admin
+  only) which objects no location points at (those named, and any older than an hour) and
+  removes them through the Storage API. Migration `20260930202924_location_photos.sql`.
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
   event at the venue, or the location holding it, fails; the Sites editor looks up who holds it
   (in any event) when asked to delete, and names them instead.
@@ -457,7 +468,7 @@ trigger is a no-op, since there is nothing to compute the close date from.
 
 | View | Purpose | Notes |
 |---|---|---|
-| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `user_parties` (the event) × `places` × `locations`, with `bed_label` = `"<location> · <place>"` (#113, #145) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
+| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `user_parties` (the event) × `places` × `locations`, with `bed_label` = `"<location> · <place>"` (#113, #145) and the location's `location_photo_path` (#124) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
 | `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | `WITH (security_invoker = true)`, so the querying user's RLS applies: members see only their own rows. `SELECT` for `authenticated` only |
 
 `registration_summary_view` no longer exists. It was unused and bypassed RLS, and was dropped in

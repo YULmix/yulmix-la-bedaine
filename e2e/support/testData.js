@@ -288,9 +288,34 @@ export async function getPlaceLabels(partyId) {
 // first: an occupied place can't be deleted.
 export async function deleteLocations(eventId) {
   const db = await adminClient();
-  const placeIds = (await getLocations(eventId)).flatMap(location => location.places.map(place => place.id));
+  const locations = await getLocations(eventId);
+  const placeIds = locations.flatMap(location => location.places.map(place => place.id));
   check(await db.from('place_assignments').delete().in('place_id', placeIds), 'unassign e2e places');
   check(await db.from('locations').delete().eq('venue_id', await venueOf(db, eventId)), 'delete e2e locations');
+  // Their photos (#124), and any a spec left behind in their folders.
+  for (const { id } of locations) {
+    const objects = check(await db.storage.from('location-photos').list(id), 'list e2e location photos');
+    if (objects.length) {
+      check(await db.storage.from('location-photos').remove(objects.map(o => `${id}/${o.name}`)), 'remove e2e location photos');
+    }
+  }
+}
+
+// The photo_path of the event's venue location named `name` (#124).
+export async function getLocationPhotoPath(eventId, name) {
+  const db = await adminClient();
+  const row = check(
+    await db.from('locations').select('photo_path').eq('venue_id', await venueOf(db, eventId)).eq('name', name).single(),
+    'read e2e location photo'
+  );
+  return row.photo_path;
+}
+
+// Whether the location-photos bucket holds this object (#124).
+export async function photoObjectExists(path) {
+  const db = await adminClient();
+  const [folder, file] = path.split('/');
+  return check(await db.storage.from('location-photos').list(folder, { search: file }), 'list e2e location photos').length === 1;
 }
 
 // Replaces the event's places with a small house (#114): two single beds in "Chambre 1" and a

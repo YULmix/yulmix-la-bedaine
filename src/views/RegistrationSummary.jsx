@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { locationPhotoUrl } from '../lib/locationPhotos';
 import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
@@ -137,6 +138,14 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                       <BedDouble aria-hidden="true" className="size-4" />
                       {fr.confirmedAssignmentLabel} <span className="font-data">{attendee.place.bed_label}</span>
                     </p>
+                  )}
+                  {attendee.place?.location_photo_path && (
+                    <a href={locationPhotoUrl(attendee.place.location_photo_path)} target="_blank" rel="noreferrer"
+                      className="mt-2 block w-fit rounded-control focus-visible:outline-2 focus-visible:outline-neon">
+                      <img src={locationPhotoUrl(attendee.place.location_photo_path)}
+                        alt={fr.locationPhotoAlt.replace('{name}', attendee.place.location_name)}
+                        className="h-24 w-36 rounded-control border border-line object-cover" />
+                    </a>
                   )}
                 </div>
               </li>

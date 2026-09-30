@@ -7,8 +7,10 @@ import {
   assignPlace,
   deleteLocations,
   getEventVenue,
+  getLocationPhotoPath,
   getLocations,
   getPlaceLabels,
+  photoObjectExists,
   seedActiveEventWithMemberParty,
   setVenueAddress,
   teardownActiveEventWithMemberParty,
@@ -179,4 +181,70 @@ test("the venue's page edits its address, and members see it", async ({ page, br
   await loginAs(member, TEST_USERS.member);
   await expect(member.getByRole('link', { name: '17 rue Stewart, Stanstead' }).first()).toBeVisible();
   await member.close();
+});
+
+// A 4×3 pink PNG: small, but a real image the browser decodes and re-encodes as JPEG.
+const PHOTO = {
+  name: 'chambre.png',
+  mimeType: 'image/png',
+  buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR4nGP4z9AARww4OQBkQBH1e29BNAAAAABJRU5ErkJggg==', 'base64')
+};
+const imageLoaded = image => image.evaluate(img => img.complete && img.naturalWidth > 0);
+
+test('a location has a photo: the admin adds, replaces and removes it; whoever sleeps there sees it (#124)', async ({ page, browser }) => {
+  const section = await openSleeping(page);
+  await section.getByRole('button', { name: fr.locationAdd }).click();
+  await fillAndLeave(page.getByLabel(fr.locationNameLabel), 'Grenier');
+  const grenier = page.getByRole('region', { name: 'Grenier' });
+  await expect(grenier.getByText(fr.locationPhotoNone)).toBeAttached();
+
+  await grenier.getByLabel(fr.locationPhotoInputLabel).setInputFiles(PHOTO);
+  const thumbnail = grenier.getByRole('img', { name: fr.locationPhotoAlt.replace('{name}', 'Grenier') });
+  await expect(thumbnail).toBeVisible();
+  await expect.poll(() => imageLoaded(thumbnail)).toBe(true);
+  const first = await getLocationPhotoPath(seeded.eventId, 'Grenier');
+  expect(first).toMatch(/\.jpg$/);
+  expect(await photoObjectExists(first)).toBe(true);
+  await expect(grenier.getByRole('link', { name: fr.locationPhotoOpen.replace('{name}', 'Grenier') })).toHaveAttribute('target', '_blank');
+  await screenshot(page, 'location-photo-admin');
+
+  // The member who sleeps there sees it under their place.
+  await grenier.getByRole('button', { name: fr.placeAddButton }).click();
+  await expect.poll(async () => (await getLocations(seeded.eventId))[0].places.length).toBe(1);
+  const [{ places: [bed] }] = await getLocations(seeded.eventId);
+  await assignPlace(bed.id, seeded.partyId, 1);
+  const member = await browser.newPage();
+  await loginAs(member, TEST_USERS.member);
+  await member.goto('/');
+  const memberPhoto = member.getByRole('img', { name: fr.locationPhotoAlt.replace('{name}', 'Grenier') });
+  await expect(memberPhoto).toBeVisible();
+  await expect.poll(() => imageLoaded(memberPhoto)).toBe(true);
+  await screenshot(member, 'location-photo-member');
+  await member.close();
+
+  // Replacing it, through the button's file picker, removes the old object.
+  const chooser = page.waitForEvent('filechooser');
+  await grenier.getByRole('button', { name: fr.locationPhotoReplace }).click();
+  await (await chooser).setFiles(PHOTO);
+  await expect.poll(() => getLocationPhotoPath(seeded.eventId, 'Grenier')).not.toBe(first);
+  const second = await getLocationPhotoPath(seeded.eventId, 'Grenier');
+  await expect.poll(() => photoObjectExists(first)).toBe(false);
+  expect(await photoObjectExists(second)).toBe(true);
+
+  // Removing it too.
+  await grenier.getByRole('button', { name: fr.locationPhotoRemove }).click();
+  await expect(grenier.getByText(fr.locationPhotoNone)).toBeAttached();
+  await expect.poll(() => getLocationPhotoPath(seeded.eventId, 'Grenier')).toBeNull();
+  await expect.poll(() => photoObjectExists(second)).toBe(false);
+
+  // Deleting a location takes its photo with it.
+  await unassignPlace(bed.id);
+  await grenier.getByLabel(fr.locationPhotoInputLabel).setInputFiles(PHOTO);
+  await expect.poll(() => getLocationPhotoPath(seeded.eventId, 'Grenier')).not.toBeNull();
+  const third = await getLocationPhotoPath(seeded.eventId, 'Grenier');
+  await page.reload();
+  await page.getByRole('button', { name: fr.locationDelete.replace('{name}', 'Grenier') }).click();
+  await page.getByRole('dialog', { name: fr.locationDeleteConfirmTitle }).getByRole('button', { name: fr.delete }).click();
+  await expect(page.getByText(fr.locationsEmpty)).toBeVisible();
+  await expect.poll(() => photoObjectExists(third)).toBe(false);
 });
