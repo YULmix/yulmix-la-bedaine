@@ -687,6 +687,7 @@
   "sleepingStatPlaces": "Places",
   "sleepingStatCapacity": "Capacité",
   "sleepingStatAssigned": "Personnes placées",
+  "sleepingByTypeLabel": "Places par type",
   "locationsListLabel": "Lieux",
   "locationsBackToList": "Tous les lieux",
   "locationsEmptyHint": "Créez un lieu (une chambre, la cour…), puis ajoutez-y les places où dormir.",

@@ -1,4 +1,4 @@
-import { flattenPlaces, overrideWrite, placeOccupancy, venueTotals, placeOptions, searchPlaceOptions } from './places';
+import { flattenPlaces, overrideWrite, placeOccupancy, placeTypeBreakdown, venueTotals, placeOptions, searchPlaceOptions } from './places';
 
 const locations = [
   {
@@ -32,6 +32,33 @@ test('venueTotals counts locations, places and capacity', () => {
   expect(venueTotals(locations)).toEqual({ locations: 2, places: 3, capacity: 4 });
   expect(venueTotals([])).toEqual({ locations: 0, places: 0, capacity: 0 });
   expect(venueTotals([{ places: [] }])).toEqual({ locations: 1, places: 0, capacity: 0 });
+});
+
+test('placeTypeBreakdown counts places and capacity per type, in option order, leaving out empty types', () => {
+  // 3 beds (1, 1, 2) and a sofa for 2: the example in #164.
+  const house = [...locations, { places: [{ type: 'bed', capacity: 2 }] }];
+  expect(placeTypeBreakdown(house)).toEqual([
+    { type: 'bed', places: 3, capacity: 4 },
+    { type: 'sofa', places: 1, capacity: 2 }
+  ]);
+  const mixed = [
+    { places: [{ type: 'outside_other', capacity: 1 }, { type: 'camping', capacity: 4 }] },
+    { places: [{ type: 'floor', capacity: 3 }, { type: 'camping', capacity: 2 }] }
+  ];
+  expect(placeTypeBreakdown(mixed).map(row => row.type)).toEqual(['camping', 'floor', 'outside_other']);
+  expect(placeTypeBreakdown([])).toEqual([]);
+  expect(placeTypeBreakdown([{ places: [] }])).toEqual([]);
+});
+
+test('placeTypeBreakdown adds up to the venue totals', () => {
+  const mixed = [
+    ...locations,
+    { places: [{ type: 'camping', capacity: 4 }, { type: 'floor', capacity: 3 }, { type: 'outside_other', capacity: 1 }] }
+  ];
+  const rows = placeTypeBreakdown(mixed);
+  const totals = venueTotals(mixed);
+  expect(rows.reduce((sum, row) => sum + row.places, 0)).toBe(totals.places);
+  expect(rows.reduce((sum, row) => sum + row.capacity, 0)).toBe(totals.capacity);
 });
 
 test('placeOccupancy counts saved places, overridden by unsaved changes', () => {

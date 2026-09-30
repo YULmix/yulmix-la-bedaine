@@ -3,7 +3,10 @@ import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, Ma
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
+import { plural } from '../../lib/eventDisplay';
+import { placeTypeBreakdown } from '../../lib/places';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
+import { ACCOMMODATION_ICONS } from '../accommodationIcons';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
 
 const bySortOrder = (a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
@@ -152,6 +155,29 @@ const VenueCard = ({ venue, onUpdate }) => (
 // assignments point at them. Field edits show at once and are written behind; adding, removing
 // and moving rows reload from the database. Deleting a place one of those occupants holds is
 // refused, here with their names; the database refuses it for anyone at the venue (a foreign key).
+// Under the totals (#164): how the places split by type, each with its capacity.
+const PlaceTypeBreakdown = ({ locations }) => {
+  const rows = placeTypeBreakdown(locations);
+  if (!rows.length) return null;
+  return (
+    <ul aria-label={fr.sleepingByTypeLabel} className="col-span-full flex flex-wrap gap-2 border-t border-line pt-4">
+      {rows.map(row => {
+        const Icon = ACCOMMODATION_ICONS[row.type];
+        return (
+          <li key={row.type} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-raised py-1 pr-3 pl-2.5 text-sm text-muted">
+            {Icon && <Icon aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={2} />}
+            <span>
+              {`${getOptionLabel(ACCOMMODATION_OPTIONS, row.type)} : `}
+              <span className="font-data font-medium text-ink">{row.places}</span>
+              <span className="text-faint">{` · ${plural(row.capacity, 'countPersonOne', 'countPersonOther')}`}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
 export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onVenueChange }) => {
   const eventKey = eventIds.join(',');
   const [venue, setVenue] = useState(null);
@@ -385,6 +411,7 @@ export const VenuePlan = ({ eventIds, venueId, locationId, onLocationChange, onV
             <Stat label={fr.sleepingStatCapacity} value={capacityOf(allPlaces)} />
             <Stat label={fr.sleepingStatAssigned} value={occupantCount(allPlaces)}
               tone={occupantCount(allPlaces) > capacityOf(allPlaces) ? 'warn' : undefined} />
+            <PlaceTypeBreakdown locations={locations} />
           </Card>
 
           {/* Master-detail from lg; below it, the list, then one location full-width. Which one
