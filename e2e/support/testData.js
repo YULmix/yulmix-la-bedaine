@@ -200,7 +200,7 @@ export async function deleteBudget(eventId) {
 export async function getEvent(eventId) {
   const db = await adminClient();
   return check(
-    await db.from('events').select('selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links').eq('id', eventId).single(),
+    await db.from('events').select('status, is_active, selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links').eq('id', eventId).single(),
     'read e2e event'
   );
 }
