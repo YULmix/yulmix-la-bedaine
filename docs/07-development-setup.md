@@ -162,6 +162,7 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm run lint:diff -- <baseRef>` | Fails on any `local/no-literal-ui-strings` warning on a line *added* since `baseRef` (default `origin/main`) | what CI's "Lint changed files for new hardcoded UI strings" step runs; needs the commit(s) to already exist (`baseRef...HEAD`) |
 | `npm run lint:diff:staged -- <baseRef>` | Same rule, but against the **staged** snapshot instead of `HEAD` | what the `lint-diff-staged` pre-commit hook runs — see below; this is what lets it catch a violation *before* the commit exists, not one commit later |
 | `npm run db:preview:reset` | Wipes the **Preview** Supabase database, re-applies migrations, loads generated fake data; new sign-ins become admins | Preview only, never production — see [Resetting the Preview database](#resetting-the-preview-database) |
+| `npm run db:preview:push` | Applies this branch's pending migrations to the **Preview** database, keeping its data; resets it instead if Preview holds migrations this branch doesn't | Preview only; CI runs it on `main` after a migration merges |
 | `npm run db:local:demo` | Same generated fake data, into the local Supabase | local only |
 | `npm run db:seed:generate` | Only writes the generated SQL to `supabase/seeds/preview.generated.sql` | touches no database |
 
@@ -345,7 +346,7 @@ a host that only exists in the local stack.
 | `.env` | no (gitignored) | your local Supabase credentials |
 | `.env.test.example` | yes | template for `.env.test` |
 | `.env.test` | no (gitignored) | fallback keys for `npm run test:rls` when `supabase status` can't answer |
-| `.env.preview.local` | no (gitignored) | `PREVIEW_DB_URL`, for `npm run db:preview:reset` |
+| `.env.preview.local` | no (gitignored) | `PREVIEW_DB_URL`, for `npm run db:preview:reset` and `db:preview:push` |
 | `supabase/preview-seed.json` | yes | knobs for the generated fake data |
 
 ## Deploying
@@ -354,9 +355,13 @@ a host that only exists in the local stack.
 rewrite; set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project settings.
 
 **`Preview` points at its own, separate free-tier Supabase project**, not production — see
-[ADR 0015](./adr/0015-dedicated-preview-supabase-project.md). Its schema has to be kept in sync
-with `supabase/migrations/` by hand for now (`supabase db push --project-ref
-uacfrldoiixfstigosqv`); there's no CI automation for it yet.
+[ADR 0015](./adr/0015-dedicated-preview-supabase-project.md). CI keeps its schema in sync with
+`main`: when a push to `main` brings migrations, the deploy workflow's **Apply migrations to
+Preview** job runs `npm run db:preview:push`. That applies the pending migrations and keeps
+Preview's data. If Preview holds a migration `main` doesn't have (after a reset from a branch
+whose migration hasn't merged), the push is refused and the job resets Preview from `main`
+instead; its summary says so. The job never blocks production: nothing waits on it. If it
+fails, the next push to `main` retries it.
 
 ### Resetting the Preview database
 
@@ -450,7 +455,10 @@ back to just the two test users, which is what the e2e tests expect).
 
 Safety: the script only connects through `PREVIEW_DB_URL` and refuses the URL unless it names
 the Preview project (`uacfrldoiixfstigosqv`) and not production. It never uses the CLI's linked
-project, which is production.
+project, which is production. When `PREVIEW_DB_URL` isn't in the environment it reads
+`.env.preview.local`, so on a machine that has that file, `reset` and `push` reach the real
+Preview database: never use them to try something out locally. `--dry-run` checks the URL and
+prints the command without connecting.
 
 `netlify.toml` is leftover config from before the host was settled — it is not in use and should
 be deleted (see [issue #45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)).

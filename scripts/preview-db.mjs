@@ -5,12 +5,17 @@
 // Usage:
 //   npm run db:preview:reset                 wipe Preview, re-apply this branch's migrations,
 //                                            load supabase/seed.sql + generated demo data
+//   npm run db:preview:push                  apply this branch's pending migrations to Preview,
+//                                            keeping its data; if Preview has drifted (it
+//                                            holds migrations this branch doesn't), reset it
+//                                            instead. CI runs it on main after a migration
+//                                            merges (#104).
 //   npm run db:local:demo                    same data into the LOCAL Supabase instead
 //   npm run db:seed:generate                 only write the generated SQL, to inspect it
 // Options (after `--`, e.g. `npm run db:preview:reset -- --seed 7`):
 //   --seed <n>    one-off seed instead of supabase/preview-seed.json's "seed"
-//   --dry-run     (reset) print what would run, generate the SQL, touch no database
-//   --yes         (reset) skip the "type the project ref" confirmation (used by CI)
+//   --dry-run     (reset, push) print what would run, generate the SQL, touch no database
+//   --yes         (reset, push) skip the "type the project ref" confirmation (used by CI)
 //
 // The knobs (how many members, registrations, past events, paid share...) live in
 // supabase/preview-seed.json; see docs/07-development-setup.md. The generated SQL is written to
@@ -27,7 +32,7 @@
 // supabase/.temp/, which is production's, so the CLI rejects it for Preview.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { generatePreviewSeed } from './preview-seed/generate.mjs';
@@ -133,6 +138,30 @@ function runSupabase(cliArgs, dbUrl) {
   if (result.status !== 0) fail(`supabase ${cliArgs[0]} ${cliArgs[1]} failed (exit ${result.status}).`);
 }
 
+// `db push` refuses when the database records migrations the local directory doesn't have: Preview
+// was reset from a branch whose migration never reached main. Matched on the CLI's message and
+// error code (Supabase CLI pinned in CI; see SUPABASE_CLI_VERSION).
+const DRIFT = /Remote migration versions not found|LegacyDbPushMissingLocalError/;
+
+// Like runSupabase, but reports drift instead of failing on it. Output is echoed, then scanned.
+function pushMigrations(dbUrl) {
+  const cliArgs = ['db', 'push', '--db-url', dbUrl, '--yes'];
+  console.log(`\n$ supabase ${cliArgs.map((a) => (a === dbUrl ? redact(dbUrl) : a)).join(' ')}`);
+  if (dryRun) return 'dry-run';
+  const result = spawnSync('supabase', cliArgs, { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' });
+  if (result.error) fail(`could not run the Supabase CLI: ${result.error.message}`);
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  if (result.status === 0) return 'pushed';
+  if (DRIFT.test(result.stdout + result.stderr)) return 'drift';
+  fail(`supabase db push failed (exit ${result.status}).`);
+}
+
+// In CI, what happened goes in the job summary too.
+function summarize(markdown) {
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
+}
+
 async function confirm(what) {
   if (assumeYes || dryRun) return;
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -142,6 +171,15 @@ async function confirm(what) {
 }
 
 const seedArgs = SEED_PATHS.flatMap((path) => ['--sql-paths', path]);
+
+async function reset(dbUrl) {
+  generate();
+  await confirm('This DELETES all data and all users on the Preview database, then re-seeds it.');
+  runSupabase(['db', 'reset', '--db-url', dbUrl, ...seedArgs, '--yes'], dbUrl);
+  console.log(dryRun
+    ? `\nDry run: nothing was changed. Inspect ${GENERATED_FILE}.`
+    : '\n✔ Preview database reset. Anyone who signs in from now on is an admin.');
+}
 
 async function main() {
   switch (command) {
@@ -156,16 +194,29 @@ async function main() {
     case 'reset': {
       const dbUrl = previewDbUrl();
       console.log(`Target: Preview project ${PREVIEW_REF} (${redact(dbUrl)})${dryRun ? ' [dry run]' : ''}`);
-      generate();
-      await confirm('This DELETES all data and all users on the Preview database, then re-seeds it.');
-      runSupabase(['db', 'reset', '--db-url', dbUrl, ...seedArgs, '--yes'], dbUrl);
-      console.log(dryRun
-        ? `\nDry run: nothing was changed. Inspect ${GENERATED_FILE}.`
-        : '\n✔ Preview database reset. Anyone who signs in from now on is an admin.');
+      await reset(dbUrl);
+      break;
+    }
+    case 'push': {
+      const dbUrl = previewDbUrl();
+      console.log(`Target: Preview project ${PREVIEW_REF} (${redact(dbUrl)})${dryRun ? ' [dry run]' : ''}`);
+      await confirm('This applies pending migrations to the Preview database, and resets it if its history has drifted.');
+      const outcome = pushMigrations(dbUrl);
+      if (outcome === 'pushed') {
+        console.log('\n✔ Preview database migrated. Its data is untouched.');
+        summarize('Pending migrations applied to Preview; its data is untouched.');
+      } else if (outcome === 'drift') {
+        console.log('\n! Preview records migrations this branch does not have (reset from another branch?). Resetting it from this branch.');
+        await reset(dbUrl);
+        summarize('**Preview was reset**, not just migrated: it recorded migrations this branch does not have ' +
+          '(it had been reset from a branch whose migration is not here). Its data was replaced with fresh fake data.');
+      } else {
+        console.log('\nDry run: nothing was changed. On drift, a push falls back to a reset.');
+      }
       break;
     }
     default:
-      fail('Usage: node scripts/preview-db.mjs <reset|local|generate> [--seed <n>] [--dry-run] [--yes]');
+      fail('Usage: node scripts/preview-db.mjs <reset|push|local|generate> [--seed <n>] [--dry-run] [--yes]');
   }
 }
 

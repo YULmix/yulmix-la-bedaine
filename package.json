@@ -15,6 +15,7 @@
     "lint:diff": "node scripts/lint-diff.mjs",
     "lint:diff:staged": "node scripts/lint-diff.mjs --staged",
     "db:preview:reset": "node scripts/preview-db.mjs reset",
+    "db:preview:push": "node scripts/preview-db.mjs push",
     "db:local:demo": "node scripts/preview-db.mjs local",
     "db:seed:generate": "node scripts/preview-db.mjs generate"
   },
