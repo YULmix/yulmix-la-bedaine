@@ -34,13 +34,14 @@ within the org's free-tier project-count limit.
 
 ## Consequences
 
-- **Migrations must be pushed to the Preview project by hand, for now.** Unlike production
-  (ADR 0014), there is no CI step that replays new `supabase/migrations/` files against
-  `uacfrldoiixfstigosqv` on merge. A migration that lands in production without also being pushed
-  here leaves Preview's schema stale, and a preview build touching the drifted table/column will
-  fail in ways that don't reproduce in production. Until this is automated, whoever merges a
-  migration PR should also run `supabase db push --project-ref uacfrldoiixfstigosqv` (get the
-  project's DB password from the Supabase dashboard — it isn't stored in this repo).
+- **Migrations reach Preview on merge too** (#104; this used to be by hand, and Preview fell five
+  migrations behind, breaking every preview build). When a push to `main` brings migrations, the
+  deploy workflow's `preview-db` job runs `npm run db:preview:push` with the `PREVIEW_DB_URL`
+  secret: pending migrations only, Preview's data stays. If Preview records a migration `main`
+  doesn't have (it was reset from a PR branch whose migration hasn't merged), `db push` refuses,
+  and the job resets Preview from `main` instead, which replaces its data with fresh fake data;
+  the job summary says so. The job is off production's path: a failure never blocks production's
+  migrate or deploy.
 - Preview only has fake data, so preview builds can't exercise scenarios that need real volume
   or history. That's an acceptable trade for no longer touching production. `npm run
   db:preview:reset` (added later, see [Development setup](../07-development-setup.md#resetting-the-preview-database))

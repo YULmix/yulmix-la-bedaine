@@ -328,6 +328,44 @@ jobs:
 
       - run: supabase migration list --linked
 
+  # Brings the Preview Supabase project (ADR 0015) up to main's migrations, so preview builds
+  # don't break on a column only production has (#104). Pending migrations only: Preview's fake
+  # data and sign-ins stay. If Preview records a migration main doesn't have (it was reset from a
+  # branch whose migration never merged), `db push` refuses, and the script resets Preview from
+  # main instead; the job summary says so. scripts/preview-db.mjs refuses any URL that isn't
+  # Preview. PREVIEW_DB_URL is a repo secret (Preview's session pooler connection string).
+  #
+  # Off production's path: nothing needs this job, so a failure never blocks migrate or deploy.
+  # It does make the run fail, so the next push to main counts migrations as pending again
+  # (see `changes`) and retries it, with a no-op backup and migrate for production.
+  preview-db:
+    name: Apply migrations to Preview
+    needs: [migrations, changes]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    # The Reset Preview DB workflow's group: one Preview write at a time, queued, never cancelled.
+    concurrency:
+      group: preview-db-reset
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      # The drift fallback generates the preview seed.
+      - run: npm ci
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - run: npm run db:preview:push -- --yes
+        env:
+          PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
+
   # Deploys supabase/functions/ to production when they (or config.toml) changed, after any
   # pending migration has applied, then points the email trigger at the deployed function
   # (ADR 0016: the URL is per environment, so it lives in private.settings, not in a migration).
