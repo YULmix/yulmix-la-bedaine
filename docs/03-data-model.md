@@ -46,8 +46,8 @@ erDiagram
     text points_of_contact
     int z_intent_months "intent window, months"
     int x_reg_close_weeks "reg close, weeks"
-    date reg_start_date "no default; CHECK: before event_start_date (#141)"
-    date event_start_date "when the event itself starts; nullable, after reg_start_date"
+    timestamptz reg_start_date "Toronto time (#149); no default; CHECK: before event_start_date (#141)"
+    timestamptz event_start_date "when the event itself starts, Toronto time (#149); nullable, after reg_start_date"
     text status "DRAFT|ACTIVE|ARCHIVED"
     bool is_active "partial unique: only one TRUE"
     bool is_reg_open
@@ -420,7 +420,7 @@ does nothing.
 
 `enforce_registration_lock_after_close_date` (added for
 [#38](https://github.com/YULmix/yulmix-la-bedaine/issues/38)) is the only place the "registration
-close date" — `events.event_start_date - events.x_reg_close_weeks` weeks — is actually enforced,
+close date" — the start day of `events.event_start_date` minus `events.x_reg_close_weeks` weeks — is actually enforced,
 with `save_registration()` for the attendees (both use `private.registration_closed`). Neither
 blocks new registrations, edits, or adding participants; they only block, once the close date has
 passed and the caller isn't an admin:
@@ -434,6 +434,20 @@ passed and the caller isn't an admin:
 
 The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
 `src/lib/eventPhase.js`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
+
+### Event times and the time zone
+
+`event_start_date` and `reg_start_date` are `timestamptz` (#149): an admin enters a date and a
+time. They are entered and shown in one fixed zone, `America/Toronto` (Montréal's), whatever the
+viewer's browser is set to: `EVENT_TIME_ZONE` in `src/lib/eventTime.js`, and
+`private.toronto_day()` in the database. Values from before #149 became 00:00 Toronto on their
+date.
+
+The rules stay day-based, in Toronto days: registration closes at the end of the Toronto day that
+falls `x_reg_close_weeks` weeks before the start's Toronto day, and an event is over after its last
+day (start day + `duration_days`). Only the intent phase is to the minute: it ends when registration
+opens. A client must write full instants (with an offset). A bare `'YYYY-MM-DD'` would be read in
+the session's zone, UTC for PostgREST, which is the evening before in Toronto.
 
 The amount already owed is never reimbursed by this trigger — it just stops the row (or the
 attendee list) from shrinking. If either `event_start_date` or `x_reg_close_weeks` is null, the
@@ -477,7 +491,7 @@ transaction:
    `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
    maps them to `fr.json` through `src/lib/dbErrors.js`.
 2. It cancels the member's active registrations for events still to come, meaning not archived
-   and not over (`event_start_date + duration_days`). This is the same soft status change as a
+   and not over (the start's Toronto day + `duration_days`). This is the same soft status change as a
    member's own cancellation (#35), so the waitlist is promoted. Registrations for past or
    archived events are history: they aren't touched, and they never block a deletion.
 3. It stamps `profiles.deleted_at`.

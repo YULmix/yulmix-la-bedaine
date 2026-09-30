@@ -1,7 +1,7 @@
 import { ArrowLeft, BedDouble, FileText, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
-import { NUMBER_FIELDS } from '../../lib/eventDraft';
+import { NUMBER_FIELDS, dateInputValue } from '../../lib/eventDraft';
 import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
 import { EventVenuePlan } from './EventVenue';
@@ -71,6 +71,8 @@ const LinksEditor = ({ links, errors = {}, onChange }) => {
 
 const DetailsForm = ({ value, onChange, errors }) => {
   const text = field => ({ value: value(field) ?? '', onChange: e => onChange(field, e.target.value) });
+  // Shown and typed in the event time zone (#149); a draft already holds the input's text.
+  const dateTime = field => ({ value: dateInputValue(value(field)), onChange: e => onChange(field, e.target.value) });
   const number = field => ({ type: 'number', inputMode: 'numeric', min: NUMBER_FIELDS[field].min, ...text(field) });
   const numberField = (field, labelKey) => (
     <Field label={fr[labelKey]} error={fieldError(field, errors)}>
@@ -91,9 +93,11 @@ const DetailsForm = ({ value, onChange, errors }) => {
 
       <EditorCard id="event-calendar" title={fr.eventFieldsetCalendar}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={fr.eventStartDateLabel}>{({ id }) => <Input id={id} type="date" {...text('event_start_date')} />}</Field>
-          <Field label={fr.eventRegStartDateLabel} error={fieldError('reg_start_date', errors)}>
-            {({ id, describedBy, invalid }) => <Input id={id} type="date" aria-describedby={describedBy} invalid={invalid} {...text('reg_start_date')} />}
+          <Field label={fr.eventStartDateLabel} hint={fr.eventTimeZoneHint}>
+            {({ id, describedBy }) => <Input id={id} type="datetime-local" aria-describedby={describedBy} {...dateTime('event_start_date')} />}
+          </Field>
+          <Field label={fr.eventRegStartDateLabel} hint={fr.eventTimeZoneHint} error={fieldError('reg_start_date', errors)}>
+            {({ id, describedBy, invalid }) => <Input id={id} type="datetime-local" aria-describedby={describedBy} invalid={invalid} {...dateTime('reg_start_date')} />}
           </Field>
           {numberField('z_intent_months', 'eventIntentMonthsLabel')}
           {numberField('x_reg_close_weeks', 'eventRegCloseWeeksLabel')}

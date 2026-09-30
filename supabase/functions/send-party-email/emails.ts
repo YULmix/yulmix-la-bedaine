@@ -72,11 +72,25 @@ export function formatAmount(value: number | string | null): string {
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${cents}`;
 }
 
-export function formatDate(isoDate: string | null): string | null {
-  const match = isoDate?.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  const [, year, month, day] = match;
-  return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`;
+// Event dates are instants (timestamptz, #149) read in this zone, as in the app
+// (src/lib/eventTime.js) and the database (private.toronto_day()).
+const EVENT_TIME_ZONE = 'America/Toronto';
+const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: EVENT_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** The Toronto calendar day of an instant, or of a bare 'YYYY-MM-DD', as "12 juin 2027". */
+export function formatDate(value: string | null): string | null {
+  if (!value) return null;
+  let year: number, month: number, day: number;
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    [year, month, day] = dateOnly.slice(1).map(Number);
+  } else {
+    const instant = new Date(value);
+    if (Number.isNaN(instant.getTime())) return null;
+    const parts = Object.fromEntries(dayFormat.formatToParts(instant).map(({ type, value: v }) => [type, Number(v)]));
+    [year, month, day] = [parts.year, parts.month, parts.day];
+  }
+  return `${day} ${MONTHS[month - 1]} ${year}`;
 }
 
 export const mapsUrl = (address: string) =>

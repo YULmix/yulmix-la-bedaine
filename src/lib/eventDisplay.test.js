@@ -1,4 +1,4 @@
-import { getTravelRange } from './eventDisplay';
+import { formatEventDates, getTravelRange } from './eventDisplay';
 
 describe('getTravelRange', () => {
   it('arrives midday on the first day, leaves mid-afternoon on the last, and spans the whole event', () => {
@@ -27,5 +27,24 @@ describe('getTravelRange', () => {
     const blank = { min: '', max: '', defaultArrival: '', defaultDeparture: '' };
     expect(getTravelRange({})).toEqual(blank);
     expect(getTravelRange(null)).toEqual(blank);
+  });
+});
+
+// #149: event_start_date is an instant, read in Toronto.
+describe('with a start time', () => {
+  // 14 August 2026 at 23:30 in Toronto: already the 15th in UTC.
+  const lateStart = '2026-08-15T03:30:00+00:00';
+
+  test('the event days are Toronto days', () => {
+    expect(getTravelRange({ event_start_date: lateStart, duration_days: 3 })).toMatchObject({
+      min: '2026-08-14T00:00',
+      max: '2026-08-16T23:59'
+    });
+  });
+
+  test('the dates show the start time, unless it is midnight', () => {
+    expect(formatEventDates({ event_start_date: lateStart, duration_days: 3 })).toMatch(/^14 août au 16 août 2026, dès 23\sh\s30$/);
+    expect(formatEventDates({ event_start_date: '2026-08-14T22:00:00Z', duration_days: 1 })).toMatch(/^14 août 2026, dès 18\sh\s00$/);
+    expect(formatEventDates({ event_start_date: '2026-08-14T04:00:00Z', duration_days: 3 })).toBe('14 août au 16 août 2026');
   });
 });
