@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useBlocker } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, MilkOff, Sprout, Trash2, UserPlus, Utensils, WheatOff
 } from 'lucide-react';
@@ -11,16 +12,26 @@ import { formatCurrency } from '../lib/format';
 import { plural, getTravelRange } from '../lib/eventDisplay';
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from './Toast';
-import { Button, Card, ChipGroup, Field, Input, Notice, Stepper, Textarea, Toggle, cx } from './ui';
+import { Button, Card, ChipGroup, ConfirmDialog, Field, Input, Notice, Stepper, Textarea, Toggle, cx } from './ui';
 import {
   ACCOMMODATION_OPTIONS,
   BED_REASON_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
   DIETARY_OPTIONS,
-  dietaryNeedsOf,
   nextDietaryNeeds
 } from '../lib/registrationOptions';
+import {
+  LOGISTICS_FIELDS,
+  draftFormFor,
+  formStateOf,
+  loadStoredDraft,
+  makeDraft,
+  newAttendee,
+  sameChoice,
+  sameFormState,
+  storeDraft
+} from '../lib/registrationDraft';
 
 const STEPS = [
   { id: 'who', labelKey: 'stepWho' },
@@ -48,26 +59,7 @@ const ACCOMMODATION_CHIPS = withIcons(ACCOMMODATION_OPTIONS, ACCOMMODATION_ICONS
 const DIETARY_CHIPS = withIcons(DIETARY_OPTIONS, DIETARY_ICONS);
 const TRANSPORT_CHIPS = [{ value: '', label: fr.transportTypeNone, icon: Ban }, ...withIcons(TRANSPORT_TYPES, TRANSPORT_ICONS)];
 
-const LOGISTICS_FIELDS = ['sleepingPreference', 'sleepingPreferenceOther', 'dietaryNeeds', 'bedReason', 'bedReasonOther', 'dietaryOther'];
-// dietaryNeeds is an array, so compare by value.
-const sameChoice = (a, b) => (Array.isArray(a) ? JSON.stringify(a) === JSON.stringify(b) : a === b);
 const needsDietaryDetail = attendee => attendee.dietaryNeeds.includes('other') && !attendee.dietaryOther.trim();
-
-const newAttendee = (id) => ({
-  id,
-  name: '',
-  type: 'Adult',
-  participation: 'Whole',
-  isNewMember: false,
-  sleepingPreference: '',
-  sleepingPreferenceOther: '',
-  dietaryNeeds: [],
-  bedReason: '',
-  bedReasonOther: '',
-  dietaryOther: ''
-});
-
-const toLocalDateTime = (value) => (value && value.includes('T') ? value.slice(0, 16) : value || '');
 
 // Per-attendee sleeping + food choices. Rendered once for the whole group ("mêmes choix pour
 // tout le monde") or once per attendee. onChange takes a field and its value, or several fields.
@@ -134,28 +126,54 @@ const StepTitle = ({ title, text }) => (
   </div>
 );
 
-const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false }) => {
-  const [attendees, setAttendees] = useState([newAttendee('attendee-1')]);
+// Leaving the form in the app with unsaved changes asks first (#144). Its own component so the
+// admin's registration dialog, which has no draft, never registers a second router blocker.
+const LeaveGuard = ({ shouldBlock, onLeave }) => {
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => currentLocation.pathname !== nextLocation.pathname && shouldBlock());
+  return (
+    <ConfirmDialog
+      open={blocker.state === 'blocked'}
+      title={fr.registrationLeaveTitle}
+      confirmLabel={fr.registrationLeaveConfirm}
+      onConfirm={() => { onLeave(); blocker.proceed(); }}
+      onCancel={() => blocker.reset()}
+    >
+      {fr.registrationLeaveBody}
+    </ConfirmDialog>
+  );
+};
+
+// `draftKey` (sessionStorage key, see registrationDraft.js) keeps unsaved changes across a reload
+// and guards against leaving them; without it (the admin's dialog) the form has neither.
+const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false, draftKey = null }) => {
+  const travelRange = useMemo(() => getTravelRange(event), [event]);
+  // What the form opens with: a draft this tab left for this registration, else what's saved.
+  const [initial] = useState(() => {
+    const draft = draftKey ? draftFormFor(loadStoredDraft(draftKey), userRegistration) : null;
+    return { form: draft || formStateOf(userRegistration, travelRange), restored: !!draft };
+  });
+  const [attendees, setAttendees] = useState(initial.form.attendees);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [step, setStep] = useState(0);
   const [nameErrors, setNameErrors] = useState({});
   const [dietErrors, setDietErrors] = useState({});
 
-  const [sameForEveryone, setSameForEveryone] = useState(true);
-  const [transportType, setTransportType] = useState('');
-  const [transportSeats, setTransportSeats] = useState(0);
-  const [transportArrival, setTransportArrival] = useState('');
-  const [transportDeparture, setTransportDeparture] = useState('');
-  const [volunteeringSelections, setVolunteeringSelections] = useState([]);
-  const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState('');
-  const [musicRequests, setMusicRequests] = useState('');
-  const [messageToOrganizers, setMessageToOrganizers] = useState('');
+  const [sameForEveryone, setSameForEveryone] = useState(initial.form.sameForEveryone);
+  const [transportType, setTransportType] = useState(initial.form.transportType);
+  const [transportSeats, setTransportSeats] = useState(initial.form.transportSeats);
+  const [transportArrival, setTransportArrival] = useState(initial.form.transportArrival);
+  const [transportDeparture, setTransportDeparture] = useState(initial.form.transportDeparture);
+  const [volunteeringSelections, setVolunteeringSelections] = useState(initial.form.volunteeringSelections);
+  const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState(initial.form.volunteeringOtherDetail);
+  const [musicRequests, setMusicRequests] = useState(initial.form.musicRequests);
+  const [messageToOrganizers, setMessageToOrganizers] = useState(initial.form.messageToOrganizers);
+  const [restored, setRestored] = useState(initial.restored);
+  // The name filled in for a new registration (#133): part of the untouched form, not a change.
+  const [prefilledName, setPrefilledName] = useState('');
   const { toasts, addToast, removeToast } = useToasts();
   const formTopRef = useRef(null);
   const isEditing = !!userRegistration;
-
-  const travelRange = useMemo(() => getTravelRange(event), [event]);
 
   // A new registration starts with arrival on the event's first day and departure on its last
   // (#123): most people stay the whole event. Only while a field is still empty, so it never
@@ -166,39 +184,26 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setTransportDeparture(current => current || travelRange.defaultDeparture);
   }, [isEditing, travelRange.defaultArrival, travelRange.defaultDeparture]);
 
-  // Initialize with existing registration or default attendee
+  // A different registration handed in after the first render replaces the form. The same one
+  // fetched again (a new object, as happens right after mounting) must not: it would wipe what
+  // the member typed, or the draft just restored.
+  const shownRegistration = useRef(formStateOf(userRegistration));
   useEffect(() => {
-    if (!userRegistration?.attendees) return;
-    const formattedAttendees = userRegistration.attendees.map(attendee => ({
-      // The row id: saving with it updates this attendee rather than replacing them.
-      id: attendee.id,
-      name: attendee.name || '',
-      type: attendee.type || 'Adult',
-      participation: attendee.participation || 'Whole',
-      isNewMember: attendee.is_new_member || false,
-      sleepingPreference: attendee.sleeping_preference || '',
-      sleepingPreferenceOther: attendee.sleeping_preference_other || '',
-      dietaryNeeds: dietaryNeedsOf(attendee.dietary_needs),
-      bedReason: attendee.bed_reason || '',
-      bedReasonOther: attendee.bed_reason_other || '',
-      dietaryOther: attendee.dietary_other || '',
-      isSaved: true
-    }));
-    setAttendees(formattedAttendees);
-    // Only start in "same for everyone" mode if the saved choices really are identical; otherwise
-    // the sync below would overwrite everyone's choices with the first attendee's.
-    const [first, ...rest] = formattedAttendees;
-    setSameForEveryone(rest.every(att => LOGISTICS_FIELDS.every(field => sameChoice(att[field], first[field]))));
-    setTransportType(userRegistration.transport?.type || '');
-    setTransportSeats(userRegistration.transport?.seats || 0);
-    // Keep saved times; only fall back to the event's first and last day when none was ever saved.
-    setTransportArrival(toLocalDateTime(userRegistration.transport?.arrival) || travelRange.defaultArrival);
-    setTransportDeparture(toLocalDateTime(userRegistration.transport?.departure) || travelRange.defaultDeparture);
-    setVolunteeringSelections(userRegistration.logistics?.volunteering || []);
-    setVolunteeringOtherDetail(userRegistration.logistics?.volunteering_other || '');
-    setMusicRequests(userRegistration.music_requests || '');
-    setMessageToOrganizers(userRegistration.message_to_organizers || '');
-  }, [userRegistration]);
+    if (!userRegistration?.attendees || sameFormState(shownRegistration.current, formStateOf(userRegistration))) return;
+    shownRegistration.current = formStateOf(userRegistration);
+    const form = formStateOf(userRegistration, travelRange);
+    setAttendees(form.attendees);
+    setSameForEveryone(form.sameForEveryone);
+    setTransportType(form.transportType);
+    setTransportSeats(form.transportSeats);
+    setTransportArrival(form.transportArrival);
+    setTransportDeparture(form.transportDeparture);
+    setVolunteeringSelections(form.volunteeringSelections);
+    setVolunteeringOtherDetail(form.volunteeringOtherDetail);
+    setMusicRequests(form.musicRequests);
+    setMessageToOrganizers(form.messageToOrganizers);
+    setRestored(false);
+  }, [userRegistration, travelRange]);
 
   // A new registration starts with the member as its first attendee (#133): whoever registers
   // almost always comes. Only while that name is still empty, so it never overwrites typing.
@@ -211,6 +216,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       const { data } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
       const name = (data?.full_name || user.user_metadata?.full_name || '').trim();
       if (ignore || !name) return;
+      setPrefilledName(name);
       setAttendees(current => (current[0].name ? current : [{ ...current[0], name }, ...current.slice(1)]));
     };
     prefillName();
@@ -229,6 +235,44 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       })));
     }
   }, [sameForEveryone, attendees]);
+
+  // Unsaved: the form differs from what it shows untouched (the saved registration, or a new one
+  // with its defaults and prefilled name). Changing a field and back again is not a change.
+  const formState = {
+    attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
+    volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
+  };
+  const untouchedForm = useMemo(() => {
+    const form = formStateOf(userRegistration, travelRange);
+    if (userRegistration || !prefilledName) return form;
+    return { ...form, attendees: [{ ...form.attendees[0], name: prefilledName }] };
+  }, [userRegistration, travelRange, prefilledName]);
+  const isDirty = !sameFormState(formState, untouchedForm);
+
+  // Set once the registration is saved or the member chose to leave: the draft is gone for good,
+  // and the navigation that follows must not ask.
+  const draftClosed = useRef(false);
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
+  const closeDraft = () => {
+    draftClosed.current = true;
+    storeDraft(draftKey, null);
+  };
+
+  const formJson = JSON.stringify(formState);
+  useEffect(() => {
+    if (!draftKey || draftClosed.current) return;
+    storeDraft(draftKey, isDirty ? makeDraft(JSON.parse(formJson), userRegistration) : null);
+  }, [draftKey, formJson, isDirty, userRegistration]);
+
+  // Closing or reloading the tab with unsaved changes asks first. A reload would restore them,
+  // but a closed tab wouldn't.
+  useEffect(() => {
+    if (!draftKey || !isDirty) return undefined;
+    const warn = (e) => { if (!draftClosed.current) e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draftKey, isDirty]);
 
   // An existing registration is priced at what it locked when it was made, not today's price (#117).
   const { basePrice, ratios } = useMemo(() => partyPricingOf(userRegistration, event), [userRegistration, event]);
@@ -437,6 +481,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         throw new Error(fr.noRowReturnedError);
       }
 
+      if (draftKey) closeDraft();
       if (adminMode && onAdminSave) {
         onAdminSave();
       } else if (onRegistrationSuccess) {
@@ -485,6 +530,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         </ol>
       </nav>
 
+      {draftKey && <LeaveGuard shouldBlock={() => dirtyRef.current && !draftClosed.current} onLeave={closeDraft} />}
+      {restored && isDirty && <Notice tone="info" className="mb-6">{fr.registrationDraftRestored}</Notice>}
       {error && <Notice tone="bad" className="mb-6">{error}</Notice>}
 
       <div key={step} className="animate-step">
