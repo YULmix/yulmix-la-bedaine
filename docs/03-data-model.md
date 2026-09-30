@@ -335,12 +335,13 @@ event's locations to a venue of its own and the address from `events.venue_addre
   copies themselves aren't listed. An archived event's Couchage section is read-only.
   Un-archiving (SQL only) leaves the event on its copy; archiving it again copies nothing.
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
-  event at the venue, or the location holding it, fails; the editor lists who of this event is in
-  it first.
+  event at the venue, or the location holding it, fails; the Sites editor looks up who holds it
+  (in any event) when asked to delete, and names them instead.
 - A venue, its locations and places are edited on its page of the Sites tab
   (`src/components/admin/AdminVenues.jsx`, `/admin?tab=venues&venue=<id>`, #146), which lists
-  every venue with its capacity and events, and archives or restores one. Occupants shown there
-  are those of its events not archived. Every change is saved immediately.
+  every venue with its capacity and events, and archives or restores one. A venue lives outside
+  any event, so the page shows its capacity (in total and by place type, #164) but no
+  assignments: who sleeps where belongs to the Logistique tab. Every change is saved immediately.
 - The event editor's Couchage section (`src/components/admin/EventVenue.jsx`, #147) picks the
   event's venue (archived ones aren't offered) and sets this edition's exclusions and capacities
   (`overrideWrite()` in `src/lib/places.js`: a row that changes nothing is deleted). Excluding a

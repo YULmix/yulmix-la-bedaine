@@ -44,7 +44,7 @@ const screenshot = async (page, name) => {
 };
 const venueRow = (page, name) => page.getByRole('listitem').filter({ has: page.getByText(name, { exact: true }) });
 
-test("the list shows each venue's capacity and events; its page shows who of those events sleeps where", async ({ page }) => {
+test("the list shows each venue's capacity and events; its page shows the venue, not who sleeps where", async ({ page }) => {
   const { name } = await getEventVenue(seeded.eventId);
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
@@ -59,11 +59,52 @@ test("the list shows each venue's capacity and events; its page shows who of tho
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
   await expect(page).toHaveURL(/tab=venues&venue=/);
   await page.getByRole('navigation', { name: fr.locationsListLabel }).getByRole('button', { name: /^Chambre 1/ }).click();
-  await expect(page.getByRole('region', { name: 'Chambre 1' }).getByText(fr.placeOccupants.replace('{names}', 'Alice E2E'))).toBeVisible();
+  // A venue lives outside its events: their assignments are the Logistique tab's.
+  const chambre = page.getByRole('region', { name: 'Chambre 1' });
+  await expect(chambre.getByRole('listitem', { name: 'Lit A' })).toBeVisible();
+  await expect(page.getByText('Alice E2E')).toHaveCount(0);
+  await expect(page.getByText(fr.sleepingStatAssigned)).toHaveCount(0);
   await screenshot(page, 'venue-page');
 
   await page.getByRole('button', { name: fr.venuesBack }).click();
   await expect(page.getByRole('heading', { name: fr.venuesTitle })).toBeVisible();
+});
+
+test('the venue page splits its places by type, and follows edits without a reload (#164)', async ({ page }) => {
+  const { id, name } = await getEventVenue(seeded.eventId);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`/admin?tab=venues&venue=${id}`);
+  await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
+  const byType = page.getByRole('list', { name: fr.sleepingByTypeLabel });
+  // E2E_PLACES: two single beds and a sofa for two; no other type shows.
+  await expect(byType.getByRole('listitem')).toHaveText([
+    `${fr.accommodationBed} : 2 · 2 personnes`,
+    `${fr.accommodationSofa} : 1 · 2 personnes`
+  ]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await screenshot(page, 'venue-by-type-phone');
+
+  await page.getByRole('navigation', { name: fr.locationsListLabel }).getByRole('button', { name: /^Chambre 1/ }).click();
+  const room = page.getByRole('region', { name: 'Chambre 1' });
+  const bedB = room.getByRole('listitem', { name: 'Lit B' });
+  await bedB.getByLabel(fr.placeTypeLabel, { exact: true }).selectOption('camping');
+  await bedB.getByRole('group', { name: fr.placeCapacityLabel }).getByRole('button', { name: fr.stepperMore }).click();
+  await expect(byType.getByRole('listitem').first()).toHaveText(`${fr.accommodationCamping} : 1 · 2 personnes`);
+  // Adding places reloads them: let the (debounced) capacity write land first.
+  await expect(page.getByText(fr.sleepingSaved, { exact: true })).toBeVisible();
+  await room.getByLabel(fr.placeAddTypeLabel).selectOption('floor');
+  await room.getByRole('button', { name: fr.placeAddButton }).click();
+
+  // Types in option order (Camping, Plancher, Lit, Sofa); they add up to the totals.
+  await expect(byType.getByRole('listitem')).toHaveText([
+    `${fr.accommodationCamping} : 1 · 2 personnes`,
+    `${fr.accommodationFloor} : 1 · 1 personne`,
+    `${fr.accommodationBed} : 1 · 1 personne`,
+    `${fr.accommodationSofa} : 1 · 2 personnes`
+  ]);
+  const summary = byType.locator('..');
+  await expect(summary.getByText(fr.sleepingStatPlaces, { exact: true }).locator('..')).toContainText('4');
+  await expect(summary.getByText(fr.sleepingStatCapacity, { exact: true }).locator('..')).toContainText('6');
 });
 
 test('an admin creates a venue, gives it a location, and archives it', async ({ page }) => {

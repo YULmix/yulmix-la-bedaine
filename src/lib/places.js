@@ -50,6 +50,20 @@ export const venueTotals = (locations) => {
 };
 
 /**
+ * A venue's places by type (#164), in ACCOMMODATION_OPTIONS order: `{ type, places, capacity }`
+ * for each type it has at least one place of. The rows add up to venueTotals' places and capacity.
+ */
+export const placeTypeBreakdown = (locations) => {
+  const places = (locations || []).flatMap(location => location.places || []);
+  return ACCOMMODATION_OPTIONS
+    .map(({ value: type }) => {
+      const ofType = places.filter(place => place.type === type);
+      return { type, places: ofType.length, capacity: ofType.reduce((sum, place) => sum + place.capacity, 0) };
+    })
+    .filter(row => row.places > 0);
+};
+
+/**
  * How many attendees each place holds, counting unsaved Logistique changes
  * (`changes[partyId].places[attendeeId]` = a place id, or null to unassign; see logisticsDraft.js)
  * over the saved places.

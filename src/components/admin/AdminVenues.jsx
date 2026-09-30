@@ -10,7 +10,6 @@ import { VenuePlan } from './EventLocations';
 // The events held at a venue: on it, or on one of its frozen copies (an archived edition, #148).
 // Those still to come (not archived) are whose occupants the venue page shows.
 const eventsAt = (events, venueIds) => events.filter(event => venueIds.includes(event.venue_id));
-const upcoming = events => events.filter(event => event.status !== 'ARCHIVED');
 
 const Totals = ({ totals }) => (
   <p className="font-data text-xs text-faint">
@@ -227,7 +226,6 @@ const VenuePage = ({ venueId, events, locationId, onLocationChange, onOpen, onBa
         {venue.archived_at && <Notice tone="info">{fr.venueArchivedHint}</Notice>}
       </div>
       <VenuePlan
-        eventIds={upcoming(held).map(event => event.id)}
         venueId={venueId}
         locationId={locationId}
         onLocationChange={onLocationChange}

@@ -135,8 +135,9 @@ test("an occupied place or location can't be deleted, and says who is in it", as
 
   await page.reload();
   const occupied = page.getByRole('region', { name: 'Salon' });
-  await expect(occupied.getByText(fr.placeOccupants.replace('{names}', 'Alice E2E'))).toBeVisible();
-  await expect(page.getByRole('navigation', { name: fr.locationsListLabel }).getByText('1/1')).toBeVisible();
+  await expect(occupied.getByRole('listitem', { name: 'Sofa' })).toBeVisible();
+  // Who holds it only comes up when deleting it.
+  await expect(page.getByText('Alice E2E')).toHaveCount(0);
 
   for (const name of [fr.placeDelete.replace('{label}', 'Sofa'), fr.locationDelete.replace('{name}', 'Salon')]) {
     await occupied.getByRole('button', { name }).click();
