@@ -42,7 +42,7 @@ test('confirming archives the event, with no way to reactivate it', async ({ pag
   await expect(page.getByText(fr.eventArchivedToast.replace('{theme}', E2E_EVENT_THEME))).toBeVisible();
 
   await expect.poll(() => getEvent(seeded.eventId)).toMatchObject({ status: 'ARCHIVED', is_active: false });
-  const row = page.getByRole('tabpanel').getByRole('listitem').filter({ hasText: E2E_EVENT_THEME });
+  const row = page.getByRole('tabpanel').getByRole('listitem').filter({ has: page.getByText(E2E_EVENT_THEME, { exact: true }) });
   await expect(row.getByRole('button', { name: fr.activateEventButton })).toHaveCount(0);
   await expect(row.getByRole('button', { name: fr.archiveEventButton })).toHaveCount(0);
 });

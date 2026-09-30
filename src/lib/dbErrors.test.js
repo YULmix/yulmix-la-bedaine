@@ -1,4 +1,4 @@
-import { dbErrorMessage } from './dbErrors';
+import { appError, dbErrorMessage } from './dbErrors';
 import fr from '../locales/fr.json';
 
 const FALLBACK = 'fallback';
@@ -20,6 +20,19 @@ describe('dbErrorMessage', () => {
     expect(message).toContain('« La Bédaine 2026 »');
     expect(message).toContain('1 octobre 2026');
     expect(message).not.toMatch(/\{event\}|\{date\}/);
+  });
+
+  test('the close-date locks show the close date (#102)', () => {
+    const details = JSON.stringify({ close_date: '2026-10-01' });
+    expect(dbErrorMessage({ message: 'registration_cancel_locked', details }, FALLBACK))
+      .toBe(fr.cancelRegistrationLocked.replace('{date}', '1 octobre 2026'));
+    expect(dbErrorMessage({ message: 'registration_attendee_removal_locked', details }, FALLBACK))
+      .toBe(fr.dbErrorAttendeeRemovalLocked.replace('{date}', '1 octobre 2026'));
+  });
+
+  test('an appError keeps its own French message; a plain Error does not', () => {
+    expect(dbErrorMessage(appError(fr.noRowReturnedError), FALLBACK)).toBe(fr.noRowReturnedError);
+    expect(dbErrorMessage(new Error('Failed to fetch'), FALLBACK)).toBe(FALLBACK);
   });
 
   test('never shows a raw database message: unknown codes and errors get the fallback', () => {

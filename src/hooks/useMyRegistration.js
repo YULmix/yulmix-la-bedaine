@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { dbErrorMessage } from '../lib/dbErrors';
+import fr from '../locales/fr.json';
 
 // The signed-in member's registration (user_parties row) for the active event. Shared by the
 // home page and /inscription so both read the same row the same way.
@@ -33,7 +35,7 @@ export const useMyRegistration = (activeEvent, isAuthenticated) => {
       setRegistration(data || null);
     } catch (err) {
       console.error('Erreur lors de la récupération de l\'inscription:', err);
-      setError(err.message);
+      setError(dbErrorMessage(err, fr.loadErrorHint));
     } finally {
       setLoading(false);
     }

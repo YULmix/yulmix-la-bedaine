@@ -6,6 +6,7 @@ import {
 import { ACCOMMODATION_ICONS } from './accommodationIcons';
 import { supabase } from '../lib/supabase';
 import { saveRegistration } from '../lib/parties';
+import { appError, dbErrorMessage } from '../lib/dbErrors';
 import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
@@ -387,7 +388,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       } else {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
-        if (!user) throw new Error(fr.mustBeSignedInError);
+        if (!user) throw appError(fr.mustBeSignedInError);
         userId = user.id;
         authUser = user;
       }
@@ -453,7 +454,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       }
 
       if (!profile) {
-        throw new Error(adminMode ? fr.adminProfileMissingError : fr.profileMissingError);
+        throw appError(adminMode ? fr.adminProfileMissingError : fr.profileMissingError);
       }
 
       // Party and attendees in one transaction. The database computes the amount owed, the price
@@ -478,7 +479,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       }
 
       if (!savedParty) {
-        throw new Error(fr.noRowReturnedError);
+        throw appError(fr.noRowReturnedError);
       }
 
       if (draftKey) closeDraft();
@@ -489,8 +490,9 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       }
     } catch (err) {
       console.error('Erreur lors de l\'inscription:', err);
-      setError(err.message);
-      addToast(err.message, 'error');
+      const message = dbErrorMessage(err, fr.saveError);
+      setError(message);
+      addToast(message, 'error');
     } finally {
       setIsSubmitting(false);
     }

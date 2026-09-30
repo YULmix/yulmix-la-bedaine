@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
 import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
@@ -76,7 +77,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
     } catch (err) {
       console.error('Error cancelling registration:', err);
       setConfirmingCancel(false);
-      onError?.(fr.cancelRegistrationError);
+      onError?.(dbErrorMessage(err, fr.cancelRegistrationError));
     } finally {
       setCancelling(false);
     }

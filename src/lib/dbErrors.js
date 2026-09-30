@@ -22,7 +22,20 @@ const DB_ERRORS = {
   place_venue_fixed: () => fr.dbErrorPlaceVenueFixed,
   venue_layout_frozen: () => fr.dbErrorVenueLayoutFrozen,
   event_layout_frozen: () => fr.dbErrorEventLayoutFrozen,
-  event_reg_start_not_before_event_start: () => fr.dbErrorEventRegStartNotBeforeEventStart
+  event_reg_start_not_before_event_start: () => fr.dbErrorEventRegStartNotBeforeEventStart,
+  event_not_found: () => fr.dbErrorEventNotFound,
+  event_deletion_forbidden: () => fr.dbErrorEventDeletionForbidden,
+  event_budget_lines_invalid: () => fr.dbErrorEventBudgetInvalid,
+  event_budget_line_invalid: () => fr.dbErrorEventBudgetInvalid,
+  own_admin_status_unchangeable: () => fr.selfAdminToggleError,
+  self_admin_promotion_forbidden: () => fr.dbErrorSelfAdminPromotionForbidden,
+  root_admin_cannot_be_demoted: () => fr.dbErrorRootAdminCannotBeDemoted,
+  attendees_required: () => fr.dbErrorAttendeesRequired,
+  attendees_write_through_save_registration: () => fr.dbErrorAttendeesWriteThroughSaveRegistration,
+  registration_cancel_locked: ({ close_date: closeDate }) => fr.cancelRegistrationLocked
+    .replace('{date}', formatDate(closeDate)),
+  registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
+    .replace('{date}', formatDate(closeDate))
 };
 
 const parseDetails = (details) => {
@@ -35,13 +48,22 @@ const parseDetails = (details) => {
 };
 
 /**
- * The French message for a Supabase/PostgREST error raised by our own SQL.
+ * An error the app raises itself, whose message is already French (from fr.json):
+ * dbErrorMessage shows it as is.
+ * @param {string} message
+ * @returns {Error}
+ */
+export const appError = (message) => Object.assign(new Error(message), { isAppMessage: true });
+
+/**
+ * The French message for a Supabase/PostgREST error raised by our own SQL, or for an appError.
  * Never returns the raw database message: an unknown error gets `fallback`.
  * @param {{ message?: string, details?: string } | null | undefined} error
  * @param {string} fallback
  * @returns {string}
  */
 export const dbErrorMessage = (error, fallback) => {
+  if (error?.isAppMessage) return error.message;
   const format = error?.message && Object.hasOwn(DB_ERRORS, error.message) ? DB_ERRORS[error.message] : null;
   return format ? format(parseDetails(error.details)) : fallback;
 };
