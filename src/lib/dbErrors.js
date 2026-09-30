@@ -21,7 +21,8 @@ const DB_ERRORS = {
   place_override_wrong_venue: () => fr.dbErrorPlaceOverrideWrongVenue,
   place_venue_fixed: () => fr.dbErrorPlaceVenueFixed,
   venue_layout_frozen: () => fr.dbErrorVenueLayoutFrozen,
-  event_layout_frozen: () => fr.dbErrorEventLayoutFrozen
+  event_layout_frozen: () => fr.dbErrorEventLayoutFrozen,
+  event_reg_start_not_before_event_start: () => fr.dbErrorEventRegStartNotBeforeEventStart
 };
 
 const parseDetails = (details) => {

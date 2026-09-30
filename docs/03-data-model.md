@@ -46,8 +46,8 @@ erDiagram
     text points_of_contact
     int z_intent_months "intent window, months"
     int x_reg_close_weeks "reg close, weeks"
-    date reg_start_date
-    date event_start_date "when the event itself starts; nullable"
+    date reg_start_date "no default; CHECK: before event_start_date (#141)"
+    date event_start_date "when the event itself starts; nullable, after reg_start_date"
     text status "DRAFT|ACTIVE|ARCHIVED"
     bool is_active "partial unique: only one TRUE"
     bool is_reg_open

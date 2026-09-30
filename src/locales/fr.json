@@ -550,6 +550,7 @@
   "eventVenueFrozen": "Événement archivé : sa disposition est figée telle qu'elle était, avec qui dormait où.",
   "dbErrorVenueLayoutFrozen": "Cette disposition appartient à une édition archivée : elle ne change plus.",
   "dbErrorEventLayoutFrozen": "Un événement archivé garde son site et ses places tels qu'ils étaient.",
+  "dbErrorEventRegStartNotBeforeEventStart": "L'ouverture des inscriptions doit être antérieure au début de l'événement.",
   "venueArchivedToast": "« {name} » est archivé.",
   "venueRestoredToast": "« {name} » est restauré.",
   "adminTabBudget": "Budget",

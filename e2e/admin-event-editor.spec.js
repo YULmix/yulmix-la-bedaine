@@ -144,3 +144,22 @@ test('a title, the date order and well-formed links are required to save', async
   }).toEqual(['E2E Admin Tabs Event 2', '2026-05-01', '2026-07-10', { label: 'Plan', url: 'https://example.org/plan.pdf' }]);
   await expect(details.getByLabel(fr.eventExternalLinksLabelPlaceholder, { exact: true })).toHaveCount(firstNew + 1);
 });
+
+test('the database refuses an out-of-order registration date, and the editor shows it in French (#141)', async ({ page }) => {
+  const details = await openEditor(page);
+  const before = await getEvent(seeded.eventId);
+
+  // Client validation would stop this, so send the out-of-order dates behind its back.
+  await page.route('**/rest/v1/events?*', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    await route.continue({
+      postData: JSON.stringify({ ...route.request().postDataJSON(), event_start_date: '2026-07-10', reg_start_date: '2026-07-10' })
+    });
+  });
+  await details.getByLabel(fr.eventTitle).fill('E2E Refused Event');
+  await details.getByRole('button', { name: fr.save, exact: true }).click();
+
+  await expect(page.getByText(fr.dbErrorEventRegStartNotBeforeEventStart)).toBeVisible();
+  const after = await getEvent(seeded.eventId);
+  expect([after.theme, after.reg_start_date, after.event_start_date]).toEqual([before.theme, before.reg_start_date, before.event_start_date]);
+});

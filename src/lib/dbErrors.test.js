@@ -8,6 +8,10 @@ describe('dbErrorMessage', () => {
     expect(dbErrorMessage({ message: 'root_admin_cannot_be_deleted' }, FALLBACK)).toBe(fr.dbErrorRootAdminCannotBeDeleted);
   });
 
+  test('maps the registration-date order error (#141)', () => {
+    expect(dbErrorMessage({ message: 'event_reg_start_not_before_event_start' }, FALLBACK)).toBe(fr.dbErrorEventRegStartNotBeforeEventStart);
+  });
+
   test('fills in the parameters from details, formatting dates in French', () => {
     const message = dbErrorMessage({
       message: 'account_deletion_locked',
