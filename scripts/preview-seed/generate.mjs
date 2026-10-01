@@ -23,7 +23,17 @@ const THEMES = [
   'La Bédaine Tropicale', 'La Bédaine des Couleurs', 'La Bédaine Disco', 'La Bédaine Western',
   'La Bédaine Cosmique', 'La Bédaine Pyjama', 'La Bédaine Années 80', 'La Bédaine Forestière'
 ];
-const TOWNS = ['Saint-Donat', 'Lac-Supérieur', 'Mont-Tremblant', 'Val-David', 'Sainte-Adèle', 'Saint-Côme', 'Lac-des-Plages'];
+// Each with roughly where it is (its centre): the venue's coordinates, for carpool detours (#180).
+const TOWN_COORDINATES = {
+  'Saint-Donat': [46.3197, -74.2214],
+  'Lac-Supérieur': [46.2010, -74.4690],
+  'Mont-Tremblant': [46.1185, -74.5962],
+  'Val-David': [46.0300, -74.2080],
+  'Sainte-Adèle': [45.9500, -74.1333],
+  'Saint-Côme': [46.2667, -73.7833],
+  'Lac-des-Plages': [46.0000, -74.9333]
+};
+const TOWNS = Object.keys(TOWN_COORDINATES);
 const DESCRIPTIONS = [
   'Trois jours de musique, de baignade et de bouffe partagée au bord du lac. Les enfants sont les bienvenus !',
   'Randonnée dans les couleurs, sauna et soirée électro au coin du feu.',
@@ -227,12 +237,14 @@ function generateParty(faker, { member, partiesConfig, paid }) {
 }
 
 // Where a lift leaves from (#181). Like real data, not everyone gives it: some registered before
-// the field existed, so a fifth have no postal code, and half leave no note.
+// the field existed, so a fifth have no postal code, and half leave no note. Most agree to be on
+// the carpool board (#180); some don't.
 function generateDeparture(faker) {
   const [fsa, note] = faker.helpers.weightedArrayElement(OPTION_VALUES.departures.map(([code, text, weight]) => ({ value: [code, text], weight })));
   return {
     fsa: faker.datatype.boolean({ probability: 0.8 }) ? fsa : '',
-    note: faker.datatype.boolean({ probability: 0.5 }) ? note : ''
+    note: faker.datatype.boolean({ probability: 0.5 }) ? note : '',
+    listed: faker.datatype.boolean({ probability: 0.7 })
   };
 }
 
@@ -360,12 +372,13 @@ WHERE u.id IN (${members.map((m) => `${lit(m.id)}`).join(', ')});
   const venues = [...new Set(events.map((e) => e.venue))].map((address) => ({
     address,
     name: `Chalet ${address.split(', ')[1]}`,
+    coordinates: TOWN_COORDINATES[address.split(', ')[1]],
     archived: address !== activeEvent.venue
   }));
   const venueAddresses = venues.map((v) => lit(v.address)).join(', ');
   out.push(`-- Venues (#145)
-INSERT INTO public.venues (name, address, archived_at) VALUES
-${venues.map((v) => `  (${lit(v.name)}, ${lit(v.address)}, ${v.archived ? 'now()' : 'NULL'})`).join(',\n')};
+INSERT INTO public.venues (name, address, lat, lng, archived_at) VALUES
+${venues.map((v) => `  (${lit(v.name)}, ${lit(v.address)}, ${v.coordinates.join(', ')}, ${v.archived ? 'now()' : 'NULL'})`).join(',\n')};
 `);
   out.push(`-- Events: ${pastEvents.length} archived + 1 active (registration open, event in ${ACTIVE_EVENT_START_DAYS} days)
 INSERT INTO public.events (
@@ -394,11 +407,16 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     for (const r of sorted) {
       const transport = r.transportType === ''
         ? `'{"type": "", "seats": 0, "arrival": "", "departure": ""}'::jsonb`
-        // Seats offered, or needed (#179: the whole party); where from (#181), when given.
+        // Seats offered, or needed (#179: the whole party); where from (#181), when given; listed
+        // on the carpool board (#180), when agreed.
         : `jsonb_build_object('type', ${lit(r.transportType)}, 'seats', ${r.transportType === 'offer' ? r.seats : r.attendees.length},
       'arrival', to_char(${dateExpr(r.event.startDays)} + time '17:30', 'YYYY-MM-DD"T"HH24:MI'),
       'departure', to_char(${dateExpr(r.event.startDays + 2)} + time '14:00', 'YYYY-MM-DD"T"HH24:MI'))
-      || ${jsonb({ ...(r.departure.fsa ? { departure_fsa: r.departure.fsa } : {}), ...(r.departure.note ? { departure_place: r.departure.note } : {}) })}`;
+      || ${jsonb({
+    ...(r.departure.fsa ? { departure_fsa: r.departure.fsa } : {}),
+    ...(r.departure.note ? { departure_place: r.departure.note } : {}),
+    ...(r.departure.listed ? { carpool_listed: true } : {})
+  })}`;
       out.push(`SELECT FROM public.save_registration(${lit(r.event.id)}, ${jsonb(r.attendees)},
   jsonb_build_object('logistics', ${jsonb(r.logistics)}, 'transport', ${transport},
     'music_requests', ${lit(r.music)}, 'message_to_organizers', ${lit(r.message)}),

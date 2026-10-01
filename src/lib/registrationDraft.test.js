@@ -53,6 +53,15 @@ describe('formStateOf', () => {
     expect(formStateOf(null, travelRange)).toMatchObject({ transportDepartureFsa: '', transportDeparturePlace: '' });
   });
 
+  test('the carpool board consent round-trips through the form, and starts unticked (#180)', () => {
+    const saved = { ...registration, transport: { type: 'offer', seats: 2, carpool_listed: true } };
+    const form = formStateOf(saved, travelRange);
+    expect(form.carpoolListed).toBe(true);
+    expect(transportOf(form).carpool_listed).toBe(true);
+    expect(formStateOf(registration, travelRange).carpoolListed).toBe(false);
+    expect(formStateOf(null, travelRange).carpoolListed).toBe(false);
+  });
+
   test('"same for everyone" only when the saved choices are identical', () => {
     const differing = { ...registration, attendees: [registration.attendees[0], { ...registration.attendees[1], dietary_needs: ['none'] }] };
     expect(formStateOf(differing, travelRange).sameForEveryone).toBe(false);
@@ -141,6 +150,13 @@ describe('transportOf', () => {
     expect(departureFsaInvalid({ ...form, transportDepartureFsa: 'h2g1a1' })).toBe(false);
     expect(departureFsaInvalid({ ...form, transportDepartureFsa: ' ' })).toBe(false);
     expect(departureFsaInvalid({ ...form, transportType: '', transportDepartureFsa: 'W1A' })).toBe(false);
+  });
+
+  test('the consent to be on the carpool board goes with an offer or a need only, when given (#180)', () => {
+    expect(transportOf({ ...form, carpoolListed: true }).carpool_listed).toBe(true);
+    expect(transportOf({ ...form, transportType: 'offer', carpoolListed: true }).carpool_listed).toBe(true);
+    expect(transportOf({ ...form, carpoolListed: false })).not.toHaveProperty('carpool_listed');
+    expect(transportOf({ ...form, transportType: '', carpoolListed: true })).not.toHaveProperty('carpool_listed');
   });
 
   test('a blank departure place is left out; a long one is cut', () => {

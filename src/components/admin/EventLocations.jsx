@@ -8,6 +8,7 @@ import { placeTypeBreakdown } from '../../lib/places';
 import { locationPhotoUrl, removeUnusedLocationPhotos, uploadLocationPhoto } from '../../lib/locationPhotos';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
+import { formatCoordinates, parseCoordinates } from '../../lib/venue';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
 
 const bySortOrder = (a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
@@ -24,7 +25,7 @@ const FOREIGN_KEY_VIOLATION = '23503';
 
 // A text input that saves when it loses focus (or on Enter), and only if the value changed. A
 // required value left empty goes back to what it was.
-const BlurInput = ({ value, onCommit, required = false, ...props }) => {
+const BlurInput = ({ value, onCommit, onChange, required = false, ...props }) => {
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
   const commit = () => {
@@ -33,8 +34,8 @@ const BlurInput = ({ value, onCommit, required = false, ...props }) => {
     if (next !== (value ?? '')) onCommit(next);
   };
   return (
-    <Input value={draft} onChange={e => setDraft(e.target.value)} onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} {...props} />
+    <Input value={draft} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} {...props}
+      onChange={e => { setDraft(e.target.value); onChange?.(e); }} />
   );
 };
 
@@ -159,8 +160,29 @@ const LocationPhoto = ({ location, busy, onPick, onRemove }) => {
   );
 };
 
-// The venue's name and address, saved like the rest of the section. Shared by every event held
-// there, which the hint says.
+// Where the venue is on a map (#180), pasted as « latitude, longitude »: what the carpool board
+// measures detours to. Saved on blur like the other fields; something else is refused here.
+const VenueCoordinates = ({ venue, onUpdate }) => {
+  const [error, setError] = useState('');
+  return (
+    <Field label={fr.venueCoordinatesLabel} hint={fr.venueCoordinatesHint} error={error} className="sm:col-span-2">
+      {({ id, describedBy, invalid }) => (
+        <BlurInput id={id} inputMode="decimal" className="font-data" placeholder={fr.venueCoordinatesPlaceholder}
+          aria-describedby={describedBy} invalid={invalid} value={formatCoordinates(venue)}
+          onChange={() => setError('')}
+          onCommit={text => {
+            const coordinates = parseCoordinates(text);
+            if (coordinates === undefined) return setError(fr.venueCoordinatesInvalid);
+            setError('');
+            onUpdate(coordinates || { lat: null, lng: null });
+          }} />
+      )}
+    </Field>
+  );
+};
+
+// The venue's name, address and coordinates, saved like the rest of the section. Shared by every
+// event held there, which the hint says.
 const VenueCard = ({ venue, onUpdate }) => (
   <Card as="section" aria-labelledby="venue-card-title" className="space-y-4 p-4 sm:p-5">
     <div className="space-y-1">
@@ -176,6 +198,7 @@ const VenueCard = ({ venue, onUpdate }) => (
       <Field label={fr.venueAddressLabel}>
         {({ id }) => <BlurInput id={id} value={venue.address} onCommit={address => onUpdate({ address: address || null })} />}
       </Field>
+      <VenueCoordinates venue={venue} onUpdate={onUpdate} />
     </div>
   </Card>
 );
@@ -223,7 +246,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
 
   const load = useCallback(async () => {
     const [venueResult, locationsResult] = await Promise.all([
-      supabase.from('venues').select('id, name, address').eq('id', venueId).single(),
+      supabase.from('venues').select('id, name, address, lat, lng').eq('id', venueId).single(),
       supabase
         .from('locations')
         .select('id, name, note, photo_path, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')

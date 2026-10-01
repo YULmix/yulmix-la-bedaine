@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import RegistrationForm from '../components/RegistrationForm';
 import RegistrationConfirmation from '../components/RegistrationConfirmation';
@@ -14,6 +14,7 @@ import { draftStorageKey } from '../lib/registrationDraft';
 // form instead of the app, and the form gets the whole screen.
 const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { registration: row, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
   // The party a new registration just saved: the page then confirms it instead of the form (#155).
   const [savedParty, setSavedParty] = useState(null);
@@ -22,6 +23,9 @@ const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
 
   if (!activeEvent) return <Navigate to="/" replace />;
 
+  // /inscription#transport (from the carpool board, #180) opens an existing registration on its
+  // transport card.
+  const initialStep = registration && location.hash === '#transport' ? 2 : 0;
   const isIntent = getEventPhase(activeEvent) === 'INTENT_PHASE';
   const title = registration ? fr.editRegistrationTitle : isIntent ? fr.intentFormTitle : fr.registrationFormTitle;
   const showPass = () => navigate('/', { state: { justSaved: 'created' } });
@@ -65,6 +69,7 @@ const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
           onCancel={() => navigate('/')}
           onRegistrationSuccess={handleSaved}
           draftKey={userId ? draftStorageKey(userId, activeEvent.id) : null}
+          initialStep={initialStep}
         />
       )}
     </main>

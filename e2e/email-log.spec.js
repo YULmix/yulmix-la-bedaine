@@ -55,8 +55,10 @@ for (const { label, viewport } of [
     for (const hidden of [fr.emailTemplateWaitlist, fr.emailTemplatePromotion, fr.emailTemplateAccommodation]) {
       await expect(emails.getByText(hidden, { exact: true })).toHaveCount(0);
     }
+    // In the page's content: the preview-only header marker (src/preview/TestAccounts.jsx) shows
+    // the signed-in test account's own address, which is no leak, once its lazy chunk has loaded.
     for (const secret of [RESEND_ERROR, RESEND_ID, RECIPIENT]) {
-      await expect(memberPage.getByText(secret)).toHaveCount(0);
+      await expect(memberPage.locator('#main').getByText(secret)).toHaveCount(0);
     }
     await screenshot(memberPage, `email-log-member-${label}`);
 

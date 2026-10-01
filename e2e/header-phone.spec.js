@@ -50,10 +50,13 @@ for (const width of WIDTHS) {
     await expectHeaderFits(page, width, { hasNav: false });
   });
 
-  test(`${width}px: admin (two nav icons)`, async ({ page }) => {
+  // Infos, Covoiturage (#180: an admin always sees the board, registered or not) and Admin.
+  test(`${width}px: admin (three nav icons)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await loginAs(page, TEST_USERS.admin);
-    await expect(page.getByRole('navigation', { name: fr.mainNavLabel })).toBeVisible();
+    const nav = page.getByRole('navigation', { name: fr.mainNavLabel });
+    await expect(nav.getByRole('link', { name: fr.navCarpool })).toBeVisible();
+    await expect(nav.getByRole('link')).toHaveCount(3);
     await expectHeaderFits(page, width, { hasNav: true });
   });
 

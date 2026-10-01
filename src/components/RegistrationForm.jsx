@@ -150,7 +150,9 @@ const LeaveGuard = ({ shouldBlock, onLeave }) => {
 
 // `draftKey` (sessionStorage key, see registrationDraft.js) keeps unsaved changes across a reload
 // and guards against leaving them; without it (the admin's dialog) the form has neither.
-const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false, draftKey = null }) => {
+// `initialStep` opens the form on a later step: the carpool board links an existing registration
+// straight to its transport card (#180).
+const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false, draftKey = null, initialStep = 0 }) => {
   const travelRange = useMemo(() => getTravelRange(event), [event]);
   // What the form opens with: a draft this tab left for this registration, else what's saved.
   const [initial] = useState(() => {
@@ -160,7 +162,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [attendees, setAttendees] = useState(initial.form.attendees);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [nameErrors, setNameErrors] = useState({});
   const [dietErrors, setDietErrors] = useState({});
 
@@ -171,6 +173,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [transportDeparture, setTransportDeparture] = useState(initial.form.transportDeparture);
   const [transportDepartureFsa, setTransportDepartureFsa] = useState(initial.form.transportDepartureFsa ?? '');
   const [transportDeparturePlace, setTransportDeparturePlace] = useState(initial.form.transportDeparturePlace ?? '');
+  const [carpoolListed, setCarpoolListed] = useState(initial.form.carpoolListed ?? false);
   const [fsaError, setFsaError] = useState('');
   const [volunteeringSelections, setVolunteeringSelections] = useState(initial.form.volunteeringSelections);
   const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState(initial.form.volunteeringOtherDetail);
@@ -208,6 +211,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setTransportDeparture(form.transportDeparture);
     setTransportDepartureFsa(form.transportDepartureFsa);
     setTransportDeparturePlace(form.transportDeparturePlace);
+    setCarpoolListed(form.carpoolListed);
     setVolunteeringSelections(form.volunteeringSelections);
     setVolunteeringOtherDetail(form.volunteeringOtherDetail);
     setMusicRequests(form.musicRequests);
@@ -234,7 +238,8 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   }, [isEditing, adminMode]);
 
   // Offering a lift counts the seats offered; needing one, the seats needed (#179), which starts
-  // at the party's size: most parties travel together. No lift, no departure place (#181).
+  // at the party's size: most parties travel together. No lift, no departure place (#181), and
+  // nothing to show on the carpool board (#180).
   const changeTransportType = (type) => {
     if (type === transportType) return;
     setTransportType(type);
@@ -242,6 +247,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     if (type !== 'offer' && type !== 'need') {
       setTransportDepartureFsa('');
       setTransportDeparturePlace('');
+      setCarpoolListed(false);
       setFsaError('');
     }
   };
@@ -263,7 +269,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // with its defaults and prefilled name). Changing a field and back again is not a change.
   const formState = {
     attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
-    transportDepartureFsa, transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
+    transportDepartureFsa, transportDeparturePlace, carpoolListed, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
   };
   const untouchedForm = useMemo(() => {
     const form = formStateOf(userRegistration, travelRange);
@@ -683,7 +689,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         {step === 2 && (
           <section className="space-y-4">
             <StepTitle title={fr.stepHelpTitle} text={fr.stepHelpText} />
-            <Card className="space-y-5 p-5">
+            <Card id="transport" className="scroll-mt-24 space-y-5 p-5">
               <h3 className="text-lg font-semibold text-ink">{fr.transport}</h3>
               <ChipGroup label={fr.transportType} name="transport-type" options={TRANSPORT_CHIPS} value={transportType} onChange={changeTransportType} />
               {(transportType === 'offer' || transportType === 'need') && (
@@ -716,6 +722,10 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                     {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => setTransportDeparturePlace(e.target.value)} />}
                   </Field>
                 </div>
+              )}
+              {(transportType === 'offer' || transportType === 'need') && (
+                <Toggle checked={carpoolListed} onChange={setCarpoolListed}
+                  label={fr.carpoolListedLabel} description={fr.carpoolListedHint} />
               )}
             </Card>
             <Card className="space-y-4 p-5">
