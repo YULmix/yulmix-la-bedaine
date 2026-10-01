@@ -62,8 +62,9 @@ test('a member renames, removes and adds attendees; each keeps their row and the
   expect(carol.place).toBeNull();
 
   // The summary lists the new group with Alice's place, and its history records the change.
-  await expect(page.getByText('Alice Renamed')).toBeVisible();
-  await expect(page.getByText('Chambre 1 · Lit A')).toBeVisible();
+  // The Logistique card lists each location once, then « <attendee> · <place> » (#124).
+  await expect(page.getByText('Alice Renamed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Alice Renamed · Lit A', { exact: true })).toBeVisible();
   await expect(page.getByText('Carol E2E')).toBeVisible();
   const history = page.locator('details').filter({ hasText: fr.editHistoryTitle });
   await history.getByText(fr.editHistoryTitle, { exact: true }).click();
