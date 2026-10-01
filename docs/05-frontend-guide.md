@@ -44,7 +44,7 @@ flowchart TD
   ADMIN --> PROFILE["UserProfileDialog"]
   ADMIN -->|"?tab=overview"| OVERVIEW["AdminOverview"]
   ADMIN -->|"?tab=users"| USERS["AdminUserManagement"]
-  ADMIN -->|"?tab=logistics"| LOGISTICS["AdminLogisticsView"]
+  ADMIN -->|"?tab=logistics&view="| LOGISTICS["AdminLogisticsView<br/>places, food, volunteering,<br/>transport, comments"]
   ADMIN -->|"?tab=events"| EVENTS["AdminEvents"]
   ADMIN -->|"/admin/events/:id"| EDITOR["EventEditor<br/>details draft, sleeping plan"]
   ADMIN -->|"?tab=budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
@@ -67,6 +67,13 @@ Sizes, as a blunt signal of where the complexity is:
 (`overview` by default), so tabs are deep-linkable; tabs are declared in the `ADMIN_TABS` array.
 Because state lives in `AdminView`, unsaved logistics edits survive a tab switch. On phones the
 tab list is a fixed bottom bar; from `md` up it's a row of pills.
+
+The Logistique tab has views of its own (#179), in `?view=` (`places` by default, declared in
+`LOGISTICS_VIEWS`): place assignment, and read-only views of the form's answers (`food`,
+`volunteering`, `transport`, `comments`, in `LogisticsFormViews.jsx`). Those list confirmed
+parties only (not cancelled, not waitlisted); their aggregations are pure functions in
+`src/lib/adminStats.js`. Pending place changes stay in `AdminView`, so they survive switching
+views too.
 
 ## State and data ownership
 

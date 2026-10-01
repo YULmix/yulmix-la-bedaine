@@ -147,7 +147,9 @@ attendee's `sleeping_preference` is a request, the assignment is the answer. Peo
 What a party tells the organisers in the form beyond who is coming: transport, volunteering,
 music requests, a message. The member's summary shows it in its own card, before
 **Logistics** (fr. *Logistique*), which holds only what the organisers decided (today, the
-assignments).
+assignments). The admin Logistique tab is wider: it's what organisers plan with, so besides the
+assignments it has read-only views of the confirmed parties' input (food, volunteering,
+transport, comments; #179).
 _Avoid_: logistics for the form's answers; *réponses* (the assignment is the answer to a
 request); *participation* (that's the tier).
 

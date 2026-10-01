@@ -157,7 +157,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                 <>
                   <p>
                     {getOptionLabel(TRANSPORT_TYPES, transport.type)}
-                    {transport.type === 'offer' && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
+                    {['offer', 'need'].includes(transport.type) && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
                   </p>
                   {(transport.arrival || transport.departure) && (
                     <p className="mt-1 text-sm text-muted">

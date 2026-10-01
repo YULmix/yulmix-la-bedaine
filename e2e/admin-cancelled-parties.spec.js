@@ -35,7 +35,8 @@ test.afterEach(async () => {
   seeded = null;
 });
 
-const panel = (page) => page.getByRole('tabpanel');
+// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
+const panel = (page) => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
 const pill = (page, label) => panel(page).getByRole('group', { name: fr.filterLabel }).getByRole('button', { name: label });
 // A <Stat>'s value is the paragraph right after its label.
 const kpi = (page, label) => panel(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');

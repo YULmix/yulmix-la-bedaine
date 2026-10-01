@@ -1,4 +1,12 @@
-import { ACCOMMODATION_OPTIONS, PAYMENT_STATUS, dietaryNeedsOf, isActiveRegistration } from './registrationOptions.js';
+import {
+  ACCOMMODATION_OPTIONS,
+  DIETARY_OPTIONS,
+  PAYMENT_STATUS,
+  VOLUNTEERING_OPTIONS,
+  dietaryNeedsOf,
+  isActiveRegistration,
+  transportKindOf
+} from './registrationOptions.js';
 import { placeOccupancy } from './places.js';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
@@ -80,9 +88,10 @@ export const computeAdminStats = (allParties, amountOf = amountOwedOf) => {
   };
 };
 
-// The people who hold, or are to be given, a sleeping place: cancelled and waitlisted parties
-// hold none (the database releases them).
-const placeableParties = allParties => allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
+// The parties confirmed to come: not cancelled, not waitlisted. They're the people who hold, or
+// are to be given, a sleeping place (the database releases a waitlisted party's), and the ones
+// the Logistique views of the form's answers list (#179).
+const confirmedParties = allParties => allParties.filter(party => isActiveRegistration(party) && !party.is_waitlisted);
 
 /**
  * Sleeping-place figures for an event with locations: the overview (#115), and the Logistique
@@ -95,7 +104,7 @@ const placeableParties = allParties => allParties.filter(party => isActiveRegist
  *   capacity and assigned, and its places with their `assigned` count.
  */
 export const computePlaceStats = (allParties, places, changes = {}) => {
-  const parties = placeableParties(allParties);
+  const parties = confirmedParties(allParties);
   const occupancy = placeOccupancy(parties, changes);
   const locations = [];
   places.forEach(place => {
@@ -131,7 +140,7 @@ export const computePlaceStats = (allParties, places, changes = {}) => {
  * @returns {{ types: Array<{type: string, requested: number, capacity: number}>, noPreference: number }}
  */
 export const placeDemandByType = (allParties, places) => {
-  const attendees = placeableParties(allParties).flatMap(party => party.attendees || []);
+  const attendees = confirmedParties(allParties).flatMap(party => party.attendees || []);
   const types = ACCOMMODATION_OPTIONS
     .map(({ value: type }) => ({
       type,
@@ -141,4 +150,85 @@ export const placeDemandByType = (allParties, places) => {
     .filter(row => row.requested > 0 || row.capacity > 0);
   const known = new Set(ACCOMMODATION_OPTIONS.map(option => option.value));
   return { types, noPreference: attendees.filter(attendee => !known.has(attendee.sleeping_preference)).length };
+};
+
+// The Logistique tab's views of what parties answered in the form (#179): food, volunteering,
+// transport, comments. Each takes every party of the event (with attendees and `profiles`) and
+// keeps the confirmed ones, in the order given.
+
+/** Who to talk to about a party: the registering member's name, else their email. */
+export const contactNameOf = (party) => party.profiles?.full_name || party.profiles?.email || '';
+
+/**
+ * Who has which dietary need, in DIETARY_OPTIONS order, for the needs someone has (« Aucune
+ * restriction » isn't one). An attendee with several needs is under each. The kitchen cooks for
+ * people, so there's no party here.
+ * @returns {Array<{need: string, attendees: Array<{id, name: string, other: string}>}>}
+ *   `other` is what they wrote for « Autre », on the 'other' need only.
+ */
+export const dietaryBreakdown = (allParties) => {
+  const attendees = confirmedParties(allParties).flatMap(party => party.attendees || []);
+  return DIETARY_OPTIONS
+    .filter(({ value }) => value !== 'none')
+    .map(({ value: need }) => ({
+      need,
+      attendees: attendees
+        .filter(attendee => dietaryNeedsOf(attendee.dietary_needs).includes(need))
+        .map(attendee => ({
+          id: attendee.id,
+          name: attendee.name || '',
+          other: need === 'other' ? (attendee.dietary_other || '').trim() : ''
+        }))
+    }))
+    .filter(row => row.attendees.length > 0);
+};
+
+/**
+ * Every volunteering choice, in VOLUNTEERING_OPTIONS order, with the parties that picked it (none
+ * for a gap). Volunteering is per party.
+ * @returns {Array<{choice: string, parties: Array<{id, contact: string, other: string}>}>} `other`
+ *   is the party's own text, on the 'other' choice only.
+ */
+export const volunteersByChoice = (allParties) => {
+  const parties = confirmedParties(allParties);
+  return VOLUNTEERING_OPTIONS.map(({ value: choice }) => ({
+    choice,
+    parties: parties
+      .filter(party => (party.logistics?.volunteering || []).includes(choice))
+      .map(party => ({
+        id: party.id,
+        contact: contactNameOf(party),
+        other: choice === 'other' ? (party.logistics?.volunteering_other || '').trim() : ''
+      }))
+  }));
+};
+
+/**
+ * One row per party that offers or needs a lift (the others aren't listed): its kind, the seats
+ * it offers or needs, arrival and departure as saved ('' when unset). Offers first, then needs.
+ * A need saved without a count (before #179 asked for one) needs a seat per attendee.
+ */
+export const transportRows = (allParties) => ['offer', 'need'].flatMap(kind =>
+  confirmedParties(allParties)
+    .filter(party => transportKindOf(party.transport) === kind)
+    .map(party => ({
+      id: party.id,
+      contact: contactNameOf(party),
+      kind,
+      seats: Number(party.transport.seats) || (kind === 'need' ? (party.attendees || []).length : 0),
+      arrival: party.transport?.arrival || '',
+      departure: party.transport?.departure || ''
+    })));
+
+/**
+ * The music requests and messages to the organisers that aren't blank, each with its party's
+ * contact name, the text trimmed but its line breaks kept.
+ * @returns {{ music: Array<{id, contact: string, text: string}>, messages: Array<{id, contact: string, text: string}> }}
+ */
+export const partyComments = (allParties) => {
+  const parties = confirmedParties(allParties);
+  const texts = field => parties
+    .map(party => ({ id: party.id, contact: contactNameOf(party), text: (party[field] || '').trim() }))
+    .filter(item => item.text);
+  return { music: texts('music_requests'), messages: texts('message_to_organizers') };
 };

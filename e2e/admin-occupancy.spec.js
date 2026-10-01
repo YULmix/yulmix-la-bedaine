@@ -30,7 +30,8 @@ test.afterEach(async () => {
 });
 
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
-const panel = page => page.getByRole('tabpanel');
+// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
+const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
 const occupancy = page => panel(page).locator('section').filter({ has: page.getByRole('heading', { name: fr.occupancyTitle }) });
 const unassigned = count => (count === 1 ? fr.occupancyUnassignedOne : fr.occupancyUnassignedOther).replace('{count}', count);
 // A location's row: its name, its assigned/capacity, and a chip per place with its own.

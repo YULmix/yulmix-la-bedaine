@@ -4,11 +4,12 @@ import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { placeOccupancy, placeOptions } from '../../lib/places';
 import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
-import { Card, EmptyState, Notice, Tag, Textarea } from '../ui';
+import { Card, EmptyState, Notice, Tag, Textarea, cx } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
 import LogisticsSummary from './LogisticsSummary';
 import SaveBar from './SaveBar';
+import { CommentsView, FORM_VIEW_ICONS, FoodView, TransportView, VolunteeringView } from './LogisticsFormViews';
 
 const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
 const hasUnassigned = party => !party.is_waitlisted && (party.attendees || []).some(a => !a.place);
@@ -20,11 +21,11 @@ const FILTERS = [
 ];
 
 // Per-attendee sleeping places (#114) and private admin notes. Unsaved edits live in the parent
-// (`logisticsChanges`, see lib/logisticsDraft.js) so they survive switching admin tabs, and are
-// all saved at once from the bar at the bottom (#150); `logisticsErrors` holds why a party's save
-// was refused. `places` are the event's, from flattenPlaces(); with none, there is nothing to
-// assign until they're defined (Événements tab).
-const AdminLogisticsView = ({
+// (`logisticsChanges`, see lib/logisticsDraft.js) so they survive switching admin tabs and
+// Logistique views, and are all saved at once from the bar at the bottom (#150);
+// `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
+// flattenPlaces(); with none, there is nothing to assign until they're defined (Événements tab).
+const PlacesView = ({
   parties,
   places,
   logisticsChanges,
@@ -163,6 +164,83 @@ const AdminLogisticsView = ({
 
       <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} />
     </section>
+  );
+};
+
+// The Logistique tab's views (#179): what organisers plan with. The id is the URL's ?view=, the
+// first one being the default. Only places are edited here; the others read the form's answers.
+export const LOGISTICS_VIEWS = [
+  { id: 'places', labelKey: 'logisticsViewTitle', icon: BedDouble },
+  { id: 'food', labelKey: 'logisticsViewFood', icon: FORM_VIEW_ICONS.food },
+  { id: 'volunteering', labelKey: 'logisticsViewVolunteering', icon: FORM_VIEW_ICONS.volunteering },
+  { id: 'transport', labelKey: 'logisticsViewTransport', icon: FORM_VIEW_ICONS.transport },
+  { id: 'comments', labelKey: 'logisticsViewComments', icon: FORM_VIEW_ICONS.comments }
+];
+
+const FORM_VIEWS = { food: FoodView, volunteering: VolunteeringView, transport: TransportView, comments: CommentsView };
+
+const tabId = id => `logistics-view-${id}`;
+
+const AdminLogisticsView = ({ view, onViewChange, ...props }) => {
+  const index = LOGISTICS_VIEWS.findIndex(v => v.id === view);
+  const select = (id) => {
+    onViewChange(id);
+    requestAnimationFrame(() => {
+      const tab = document.getElementById(tabId(id));
+      tab?.focus();
+      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  };
+  // Arrow keys, Home and End move between views, as in the admin tab bar (automatic activation).
+  const handleKeyDown = (event) => {
+    const keys = { ArrowRight: 1, ArrowLeft: -1 };
+    if (!(event.key in keys) && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    let next = index + (keys[event.key] || 0);
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = LOGISTICS_VIEWS.length - 1;
+    select(LOGISTICS_VIEWS[(next + LOGISTICS_VIEWS.length) % LOGISTICS_VIEWS.length].id);
+  };
+  const FormView = FORM_VIEWS[view];
+
+  return (
+    <div className="space-y-6">
+      {/* Scrolls sideways on its own when the five don't fit (phones), never the page. */}
+      <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+        <div role="tablist" aria-label={fr.logisticsViewsLabel} onKeyDown={handleKeyDown}
+          className="inline-flex gap-1 rounded-full border border-line bg-surface p-1">
+          {LOGISTICS_VIEWS.map(({ id, labelKey, icon: Icon }) => {
+            const selected = id === view;
+            return (
+              <button key={id} type="button" role="tab" id={tabId(id)} aria-selected={selected}
+                aria-controls={`${tabId(id)}-panel`} tabIndex={selected ? 0 : -1} onClick={() => select(id)}
+                className={cx(
+                  'inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-semibold transition duration-150',
+                  selected ? 'tint-neon text-ink' : 'text-faint hover:text-ink'
+                )}>
+                <Icon aria-hidden="true" className={cx('size-4.5', selected && 'text-neon')} strokeWidth={1.75} />
+                {fr[labelKey]}
+                {id === 'places' && props.unsavedCount > 0 && <span className="size-2 rounded-full bg-warn" aria-label={fr.unsavedTag} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div role="tabpanel" id={`${tabId(view)}-panel`} aria-labelledby={tabId(view)} key={view} className="animate-step">
+        {FormView ? (
+          <>
+            <FormView parties={props.parties} />
+            {/* Place changes stay pending on the other views; their bar stays in reach. */}
+            {props.unsavedCount > 0 && (
+              <div className="mt-6">
+                <SaveBar dirtyCount={props.unsavedCount} saving={props.saving} onSave={props.onSave} onDiscard={props.onDiscard} />
+              </div>
+            )}
+          </>
+        ) : <PlacesView {...props} />}
+      </div>
+    </div>
   );
 };
 

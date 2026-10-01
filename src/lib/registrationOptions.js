@@ -108,6 +108,20 @@ export const TRANSPORT_TYPES = [
   { value: 'need', label: fr.transportTypeNeed }
 ];
 
+// What a party said about transport, for admins (#179): 'offer', 'need' or 'none'. A party with no
+// transport is saved as type '' by the form, but the column default is 'None': both are 'none'.
+export const transportKindOf = (transport) =>
+  (TRANSPORT_TYPES.some(option => option.value === transport?.type) ? transport.type : 'none');
+
+const TRANSPORT_KIND_LABELS = {
+  offer: fr.transportKindOffer,
+  need: fr.transportKindNeed,
+  none: fr.transportKindNone
+};
+
+/** The short admin label of a transport kind (transportKindOf): « Offre », « Besoin », « Aucun ». */
+export const getTransportKindLabel = (kind) => TRANSPORT_KIND_LABELS[kind];
+
 export const DIETARY_OPTIONS = [
   { value: 'none', label: fr.noDietaryNeeds },
   { value: 'vegetarian', label: fr.vegetarian },
