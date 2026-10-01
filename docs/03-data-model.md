@@ -390,14 +390,15 @@ setting that changes nothing deletes the row.
   assignments: who sleeps where belongs to the Logistique tab. Every change is saved immediately.
 - The event editor's Couchage section (`src/components/admin/EventVenue.jsx`, #147) picks the
   event's venue (archived ones aren't offered) and sets this edition's exclusions and capacities
-  (`overrideWrite()` in `src/lib/places.js`: a row that changes nothing is deleted). Excluding a
+  (`set_place_override()`: a setting that changes nothing deletes the row). Excluding a
   place someone of the event holds is refused with their names. Changing the venue while
   attendees hold places names them and asks first; the database then clears their places in the
   same update. An event without a venue can get one named after it
   (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
   transaction, returning the existing venue if there is one). No location or place is edited there.
   The Logistique tab lists the venue's places less the event's exclusions, at the event's
-  capacities (`flattenPlaces()` in `src/lib/places.js`). They are
+  capacities (the event places, `src/lib/eventPlaces.js`, #193: one cache shared with Aperçu and
+  Couchage, so a change there shows here without a reload). They are
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in
   `src/lib/places.js`): open places of the attendee's preferred type first, then other open ones,
   then full ones, still pickable with a warning. Saving upserts or deletes the attendee's row.

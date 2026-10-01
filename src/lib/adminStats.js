@@ -98,7 +98,7 @@ const confirmedParties = allParties => allParties.filter(party => isActiveRegist
  * header (#166), which counts its unsaved changes too. Cancelled and waitlisted parties hold no
  * places, and aren't counted as unassigned either.
  * @param {Array} allParties user_parties rows (with attendees and their `place`)
- * @param {Array} places the event's places, from flattenPlaces()
+ * @param {Array} places the event's places it uses, from the event places module (`available`)
  * @param {object} [changes] unsaved Logistique place changes (logisticsDraft.js), over the saved places
  * @returns {{ locations: Array, unassigned: number, overbooked: Array }} each location with its
  *   capacity and assigned, and its places with their `assigned` count.
@@ -109,7 +109,7 @@ export const computePlaceStats = (allParties, places, changes = {}) => {
   const locations = [];
   places.forEach(place => {
     const assigned = occupancy.get(place.id) || 0;
-    // flattenPlaces() keeps a location's places together.
+    // Event places come in display order, a location's places together.
     let location = locations.at(-1);
     if (location?.id !== place.locationId) {
       location = { id: place.locationId, name: place.locationName, capacity: 0, assigned: 0, places: [] };
@@ -136,7 +136,7 @@ export const computePlaceStats = (allParties, places, changes = {}) => {
  * preference are `noPreference`, so the rows add up to everyone to place. Unsaved changes don't
  * move either side, so this takes none.
  * @param {Array} allParties user_parties rows (with attendees)
- * @param {Array} places the event's places, from flattenPlaces() (overrides applied)
+ * @param {Array} places the event's places it uses, from the event places module (`available`: overrides applied)
  * @returns {{ types: Array<{type: string, requested: number, capacity: number}>, noPreference: number }}
  */
 export const placeDemandByType = (allParties, places) => {

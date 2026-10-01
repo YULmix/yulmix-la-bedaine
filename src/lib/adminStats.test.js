@@ -133,7 +133,7 @@ describe('computePlaceStats with unsaved Logistique changes (#166)', () => {
 });
 
 describe('placeDemandByType (#166)', () => {
-  // The event's places after its overrides (flattenPlaces()): an excluded place is simply absent.
+  // The event's places after its overrides (the event places module's `available`): an excluded place is simply absent.
   const places = [
     { id: 'bedA', type: 'bed', capacity: 1 },
     { id: 'bedB', type: 'bed', capacity: 2 },

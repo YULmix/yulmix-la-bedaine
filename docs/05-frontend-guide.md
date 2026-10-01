@@ -98,7 +98,13 @@ line, for the same `toCsv` / `toTsv`.
 
 ## State and data ownership
 
-There is no store. Ownership is:
+There is one store, for one thing: the **event places** (`src/lib/eventPlaces.js`, #193), a cache
+per event that Aperçu, Logistique and the event editor's Couchage section all read through
+`useEventPlaces(eventId)`, so a change made in one shows in the others without a refetch. Its own
+writes (`editPlace`, then `savePlace`) update it; anything else that changes an event's places
+calls `invalidateEventPlaces()` (AdminView after archiving, Couchage on arriving and after a venue
+change, the Sites editor after any write). Assignments aren't followed: Aperçu and Logistique take
+who sleeps where from the parties, and only Couchage shows it from the event places. Otherwise ownership is:
 
 - **`App.jsx`** — `session`, `user`, `isAuthenticated`, `isAdmin`, `activeEvent`, `otherEvents`.
   Passed down as props.

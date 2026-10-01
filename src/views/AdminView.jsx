@@ -23,7 +23,7 @@ import {
 } from '../lib/registrationOptions';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
-import { flattenPlaces } from '../lib/places';
+import { invalidateEventPlaces, useEventPlaces } from '../lib/eventPlaces';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
 import { EVENT_WITH_VENUE } from '../lib/venue';
 import { dbErrorMessage } from '../lib/dbErrors';
@@ -98,9 +98,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [logisticsChanges, setLogisticsChanges] = useState({});
   const [logisticsErrors, setLogisticsErrors] = useState({});
   const [savingLogistics, setSavingLogistics] = useState(false);
-  // The active event's sleeping places (#113), flattened for the Logistique tab's picker and the
-  // overview's occupancy (#115).
-  const [places, setPlaces] = useState([]);
   // The active event's admin-only budget (event_budgets row, null if never saved) and its unsaved
   // edits, kept here so they survive switching tabs.
   const [budget, setBudget] = useState(null);
@@ -149,32 +146,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     };
   }, [activeEventState?.id, isAdmin]);
 
-  // Places are edited in the event editor, so reload them on reaching a tab that shows them.
-  useEffect(() => {
-    if (['overview', 'logistics'].includes(activeTab) && activeEventState?.id) fetchPlaces(activeEventState);
-  }, [activeTab, activeEventState?.id, activeEventState?.venue_id]);
-
-  // The places of the event's venue (#145), less the ones this event excludes, at this event's
-  // capacity.
-  const fetchPlaces = async (event) => {
-    if (!event.venue_id) return setPlaces([]);
-    const [locationsResult, overridesResult] = await Promise.all([
-      supabase
-        .from('locations')
-        .select('id, name, sort_order, places(id, label, type, capacity, sort_order)')
-        .eq('venue_id', event.venue_id),
-      supabase
-        .from('event_place_overrides')
-        .select('place_id, is_excluded, capacity')
-        .eq('event_id', event.id)
-    ]);
-    const placesError = locationsResult.error || overridesResult.error;
-    if (placesError) {
-      console.error('Error fetching places:', placesError);
-      return;
-    }
-    setPlaces(flattenPlaces(locationsResult.data, overridesResult.data));
-  };
+  // The active event's sleeping places as it uses them (#113, #193), for Aperçu's occupancy (#115)
+  // and the Logistique tab's picker: shared with the event editor, so its changes show here.
+  const { available: places } = useEventPlaces(activeEventState?.id);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -359,6 +333,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .eq('id', event.id);
       if (error) throw error;
       addToast(fr.eventArchivedToast.replace('{theme}', event.theme), 'success');
+      // Archiving moved the event onto a frozen copy of its venue (#148): other places, same layout.
+      invalidateEventPlaces(event.id);
       fetchAllData();
     } catch (err) {
       console.error('Error archiving event:', err);

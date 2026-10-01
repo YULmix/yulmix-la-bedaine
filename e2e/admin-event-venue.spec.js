@@ -2,7 +2,9 @@
 // edition uses (a place excluded, or another capacity). The venue itself is edited in Sites.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
+import { placeOption } from './support/placePicker.js';
 import {
+  E2E_ATTENDEES,
   E2E_EVENT_THEME,
   assignPlace,
   deleteLocations,
@@ -101,6 +103,25 @@ test('an edition excludes a place and resizes another; the venue stays as it is'
   await expect(section.getByRole('button', { name: fr.locationAdd })).toHaveCount(0);
   await section.getByRole('button', { name: fr.eventVenueEdit }).click();
   await expect(page).toHaveURL(/tab=venues&venue=/);
+});
+
+// The event places are one cache shared by the editor, Aperçu and Logistique (#193).
+test('an exclusion made here shows in Logistique at once, without reading the places again', async ({ page }) => {
+  const placeReads = [];
+  page.on('request', request => { if (request.url().includes('/rpc/event_places')) placeReads.push(request.url()); });
+  const section = await openCouchage(page);
+  await section.getByRole('switch', { name: available('Chambre 1 · Lit B') }).click();
+  await expect(section.getByText(fr.sleepingSaved)).toBeVisible();
+  const readsBefore = placeReads.length;
+
+  await page.getByRole('button', { name: fr.eventEditorBack }).click();
+  await page.getByRole('tab', { name: fr.adminTabLogistics, exact: true }).click();
+  const [alice] = E2E_ATTENDEES.map(attendee => attendee.name);
+  const panel = page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+  await panel.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${alice}` }).click();
+  await expect(placeOption(page, 'Chambre 1 · Lit A')).toBeVisible();
+  await expect(placeOption(page, 'Chambre 1 · Lit B')).toHaveCount(0);
+  expect(placeReads.length).toBe(readsBefore);
 });
 
 test("a place someone of the event holds can't be excluded, and says who", async ({ page }) => {
