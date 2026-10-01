@@ -139,7 +139,7 @@ test('an admin creates a venue, gives it a location, and archives it', async ({ 
   await expect(page.getByText(fr.venueArchivedHint)).toBeVisible();
 });
 
-test('on a phone the tab bar fits seven tabs, Logistique reads « Dodo » and Sites is there', async ({ page }) => {
+test('on a phone the tab bar fits seven tabs, Logistique reads « Gestion » and Sites is there', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto('/admin?tab=venues');
   await expect(page.getByRole('heading', { name: fr.venuesTitle })).toBeVisible();

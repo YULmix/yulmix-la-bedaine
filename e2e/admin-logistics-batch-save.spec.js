@@ -47,7 +47,8 @@ test.afterEach(async () => {
   extraPartyId = null;
 });
 
-const panel = page => page.getByRole('tabpanel');
+// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
+const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
 const pickerIn = (scope, name) => scope.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 const picker = (page, name) => pickerIn(panel(page), name);
 // The party card holding the attendee called `name` (the one with the notes, not the row).
@@ -237,7 +238,7 @@ test('the header counts the event places: an excluded place leaves, a venue edit
   await expectTotals(page, { placed: 1, toPlace: 2, capacity: 4, overbooked: 0 });
 
   await page.goto('/admin?tab=overview');
-  const couchage = page.getByRole('tabpanel').getByRole('heading', { name: fr.occupancyTitle }).locator('xpath=../..');
+  const couchage = panel(page).getByRole('heading', { name: fr.occupancyTitle }).locator('xpath=../..');
   await expect(couchage).toContainText(`1/4 ${fr.occupancyTaken}`);
   await expect(couchage).toContainText(fr.occupancyUnassignedOther.replace('{count}', 2));
 });

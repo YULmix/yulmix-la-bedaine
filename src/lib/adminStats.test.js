@@ -1,4 +1,14 @@
-import { computeAdminStats, computePlaceStats, placeDemandByType, tierOf } from './adminStats';
+import {
+  computeAdminStats,
+  computePlaceStats,
+  contactNameOf,
+  dietaryBreakdown,
+  partyComments,
+  placeDemandByType,
+  tierOf,
+  transportRows,
+  volunteersByChoice
+} from './adminStats';
 
 const parties = [
   {
@@ -154,5 +164,113 @@ describe('placeDemandByType (#166)', () => {
     const { types, noPreference } = placeDemandByType(parties, places);
     expect(noPreference).toBe(1);
     expect(types.reduce((sum, row) => sum + row.requested, 0) + noPreference).toBe(5);
+  });
+});
+
+describe('the Logistique views of the form\'s answers (#179)', () => {
+  const profile = (full_name, email) => ({ profiles: { full_name, email } });
+  const formParties = [
+    {
+      id: 'a',
+      ...profile('Alice Martin', 'alice@test.local'),
+      attendees: [
+        { id: 'a1', name: 'Alice', dietary_needs: ['vegan', 'gluten_free'] },
+        { id: 'a2', name: 'Léo', dietary_needs: ['other'], dietary_other: '  Arachides  ' },
+        { id: 'a3', name: 'Tom', dietary_needs: ['none'] }
+      ],
+      logistics: { volunteering: ['cook_meal', 'other'], volunteering_other: 'Jongler' },
+      transport: { type: 'need', seats: 0, arrival: '2026-07-10T18:00', departure: '' },
+      music_requests: 'Daft Punk\nJustice',
+      message_to_organizers: '   '
+    },
+    {
+      id: 'b',
+      ...profile('', 'bob@test.local'),
+      attendees: [{ id: 'b1', name: 'Bob', dietary_needs: 'vegan' }, { id: 'b2', name: 'Bébé', dietary_needs: [] }],
+      logistics: { volunteering: ['cook_meal'] },
+      transport: { type: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00' },
+      music_requests: '',
+      message_to_organizers: 'Merci!'
+    },
+    { id: 'c', ...profile('Carla', 'c@test.local'), attendees: [{ id: 'c1', name: 'Carla' }], transport: { type: 'None' } },
+    { id: 'd', ...profile('Dan', 'd@test.local'), attendees: [], transport: { type: '' }, logistics: null },
+    {
+      id: 'w',
+      is_waitlisted: true,
+      ...profile('Wanda', 'w@test.local'),
+      attendees: [{ id: 'w1', name: 'Wanda', dietary_needs: ['vegan'] }],
+      logistics: { volunteering: ['parking'] },
+      transport: { type: 'offer', seats: 2 },
+      music_requests: 'Waitlisted song'
+    },
+    {
+      id: 'x',
+      status: 'cancelled',
+      ...profile('Xavier', 'x@test.local'),
+      attendees: [{ id: 'x1', name: 'Xavier', dietary_needs: ['dairy_free'] }],
+      logistics: { volunteering: ['pharmacy'] },
+      transport: { type: 'need' },
+      message_to_organizers: 'Cancelled message'
+    }
+  ];
+
+  test('the contact is the member\'s name, else their email', () => {
+    expect(contactNameOf(formParties[0])).toBe('Alice Martin');
+    expect(contactNameOf(formParties[1])).toBe('bob@test.local');
+    expect(contactNameOf({})).toBe('');
+  });
+
+  test('dietaryBreakdown: real needs only, in option order, a multi-need attendee under each, « Autre » with its text', () => {
+    expect(dietaryBreakdown(formParties)).toEqual([
+      {
+        need: 'vegan',
+        attendees: [
+          { id: 'a1', name: 'Alice', contact: 'Alice Martin', other: '' },
+          { id: 'b1', name: 'Bob', contact: 'bob@test.local', other: '' }
+        ]
+      },
+      { need: 'gluten_free', attendees: [{ id: 'a1', name: 'Alice', contact: 'Alice Martin', other: '' }] },
+      { need: 'other', attendees: [{ id: 'a2', name: 'Léo', contact: 'Alice Martin', other: 'Arachides' }] }
+    ]);
+  });
+
+  test('dietaryBreakdown is empty when nobody has a need', () => {
+    expect(dietaryBreakdown([formParties[2], formParties[3]])).toEqual([]);
+    expect(dietaryBreakdown([])).toEqual([]);
+  });
+
+  test('volunteersByChoice lists every choice in order, gaps included, and the party\'s « Autre » text', () => {
+    const rows = volunteersByChoice(formParties);
+    expect(rows.map(row => row.choice)).toEqual([
+      'food_purchase', 'cook_meal', 'dj_afternoon', 'dj_evening', 'setup_friday', 'cleanup_sunday',
+      'neighbor_management', 'parking', 'art_initiative', 'pharmacy', 'other'
+    ]);
+    const byChoice = Object.fromEntries(rows.map(row => [row.choice, row.parties]));
+    expect(byChoice.cook_meal).toEqual([
+      { id: 'a', contact: 'Alice Martin', other: '' },
+      { id: 'b', contact: 'bob@test.local', other: '' }
+    ]);
+    expect(byChoice.other).toEqual([{ id: 'a', contact: 'Alice Martin', other: 'Jongler' }]);
+    // Waitlisted (parking) and cancelled (pharmacy) parties aren't counted.
+    expect(byChoice.parking).toEqual([]);
+    expect(byChoice.pharmacy).toEqual([]);
+    expect(byChoice.food_purchase).toEqual([]);
+  });
+
+  test('transportRows: offers, then needs, then none (\'None\' and \'\' alike); seats on offers only', () => {
+    expect(transportRows(formParties)).toEqual([
+      { id: 'b', contact: 'bob@test.local', kind: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00' },
+      { id: 'a', contact: 'Alice Martin', kind: 'need', seats: null, arrival: '2026-07-10T18:00', departure: '' },
+      { id: 'c', contact: 'Carla', kind: 'none', seats: null, arrival: '', departure: '' },
+      { id: 'd', contact: 'Dan', kind: 'none', seats: null, arrival: '', departure: '' }
+    ]);
+  });
+
+  test('partyComments keeps non-blank texts, line breaks included, of confirmed parties', () => {
+    expect(partyComments(formParties)).toEqual({
+      music: [{ id: 'a', contact: 'Alice Martin', text: 'Daft Punk\nJustice' }],
+      messages: [{ id: 'b', contact: 'bob@test.local', text: 'Merci!' }]
+    });
+    expect(partyComments([formParties[2]])).toEqual({ music: [], messages: [] });
   });
 });

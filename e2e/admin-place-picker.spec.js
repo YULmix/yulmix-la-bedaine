@@ -45,7 +45,8 @@ test.afterEach(async () => {
   extraPartyId = null;
 });
 
-const panel = page => page.getByRole('tabpanel');
+// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
+const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
 const pickerIn = (scope, name) => scope.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 const picker = (page, name) => pickerIn(panel(page), name);
 // The party card holding the attendee called `name` (the one with the notes, not the row).

@@ -42,7 +42,9 @@ test.afterAll(async () => {
 });
 
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
-const panel = (page) => page.getByRole('tabpanel');
+// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
+const panel = (page) => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+const tabBar = (page) => page.getByRole('tablist', { name: fr.adminTabsAriaLabel });
 const bedInputs = (page) => placePickers(panel(page));
 // Modals are native <dialog>s, labelled by their title.
 const modal = (page, title) => page.getByRole('dialog', { name: title });
@@ -50,13 +52,13 @@ const closeModal = (dialog) => dialog.getByRole('button', { name: fr.close, exac
 
 async function openAdmin(page, query = '') {
   await page.goto('/admin' + query);
-  await expect(page.getByRole('tablist')).toBeVisible();
+  await expect(tabBar(page)).toBeVisible();
 }
 
 async function expectOverviewTabActive(page) {
   await expect(tab(page, OVERVIEW_TAB)).toHaveAttribute('aria-selected', 'true');
   await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'false');
-  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(panel(page)).toHaveCount(1);
   await expect(panel(page).getByText(fr.kpiPeople, { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: USERS_HEADING })).toHaveCount(0);
 }
@@ -64,7 +66,7 @@ async function expectOverviewTabActive(page) {
 async function expectUsersTabActive(page) {
   await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'true');
   await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'false');
-  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(panel(page)).toHaveCount(1);
   await expect(panel(page).getByRole('heading', { name: USERS_HEADING })).toBeVisible();
   // Only the active panel is rendered: nothing from logistics is in the DOM.
   await expect(page.getByRole('heading', { name: LOGISTICS_HEADING })).toHaveCount(0);
@@ -74,7 +76,7 @@ async function expectUsersTabActive(page) {
 async function expectLogisticsTabActive(page) {
   await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'true');
   await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'false');
-  await expect(page.getByRole('tabpanel')).toHaveCount(1);
+  await expect(panel(page)).toHaveCount(1);
   await expect(panel(page).getByRole('heading', { name: LOGISTICS_HEADING })).toBeVisible();
   await expect(page.getByRole('heading', { name: USERS_HEADING })).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
@@ -110,14 +112,14 @@ async function expectWithinViewportWidth(page, locator) {
 }
 
 async function expectMobileTabBarUsable(page) {
-  const tablist = page.getByRole('tablist');
+  const tablist = tabBar(page);
   // All tabs fit without scrolling the tab bar itself (it's the fixed bottom bar on phones).
   const { scrollWidth, clientWidth } = await tablist.evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth
   }));
   expect(scrollWidth, 'tab bar needs horizontal scrolling').toBeLessThanOrEqual(clientWidth);
-  const tabs = page.getByRole('tab');
+  const tabs = tablist.getByRole('tab');
   await expect(tabs).toHaveCount(TAB_COUNT);
   for (let i = 0; i < TAB_COUNT; i++) {
     await expectWithinViewportWidth(page, tabs.nth(i));
@@ -140,7 +142,7 @@ test.describe('admin tabs', () => {
 
   test('no tab param or an unknown one shows the overview tab', async ({ page }) => {
     await openAdmin(page);
-    await expect(page.getByRole('tab')).toHaveCount(TAB_COUNT);
+    await expect(tabBar(page).getByRole('tab')).toHaveCount(TAB_COUNT);
     await expectOverviewTabActive(page);
 
     await openAdmin(page, '?tab=bogus');

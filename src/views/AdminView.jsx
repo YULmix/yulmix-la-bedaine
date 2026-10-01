@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
 import AdminOverview from '../components/admin/AdminOverview';
-import AdminLogisticsView from '../components/admin/AdminLogisticsView';
+import AdminLogisticsView, { LOGISTICS_VIEWS } from '../components/admin/AdminLogisticsView';
 import AdminUserManagement from '../components/admin/AdminUserManagement';
 import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
@@ -67,6 +67,9 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   };
   const selectTab = (tabId) => navigate(`/admin?tab=${tabId}`);
   const editSection = searchParams.get('section') === 'sleeping' ? 'sleeping' : 'details';
+  // The Logistique tab's view (#179), ?view=; missing or unknown is the first, places.
+  const requestedView = searchParams.get('view');
+  const logisticsView = LOGISTICS_VIEWS.some(view => view.id === requestedView) ? requestedView : LOGISTICS_VIEWS[0].id;
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -847,6 +850,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     if (activeTab === 'logistics') {
       return (
         <AdminLogisticsView
+          view={logisticsView}
+          onViewChange={view => updateParams({ view: view === LOGISTICS_VIEWS[0].id ? null : view })}
           parties={activeParties}
           places={places}
           logisticsChanges={logisticsChanges}

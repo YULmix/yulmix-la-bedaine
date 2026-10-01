@@ -241,6 +241,19 @@ export async function setPartyTransport(partyId, transport) {
   check(await db.from('user_parties').update({ transport }).eq('id', partyId), 'set e2e party transport');
 }
 
+// Sets party-wide form answers (logistics, transport, music_requests, message_to_organizers) of a
+// registration, as if its member had saved them.
+export async function setPartyAnswers(partyId, answers) {
+  const db = await adminClient();
+  check(await db.from('user_parties').update(answers).eq('id', partyId), 'set e2e party answers');
+}
+
+// Whether the database put a registration on the waiting list.
+export async function isWaitlisted(partyId) {
+  const db = await adminClient();
+  return check(await db.from('user_parties').select('is_waitlisted').eq('id', partyId).single(), 'read e2e waitlist').is_waitlisted;
+}
+
 export async function deleteParty(partyId) {
   const db = await adminClient();
   check(await db.from('user_parties').delete().eq('id', partyId), 'delete extra party');

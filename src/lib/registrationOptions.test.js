@@ -1,4 +1,5 @@
-import { dietaryLabelsOf, dietaryNeedsOf, nextDietaryNeeds } from './registrationOptions';
+import fr from '../locales/fr.json';
+import { dietaryLabelsOf, dietaryNeedsOf, getTransportKindLabel, nextDietaryNeeds, transportKindOf } from './registrationOptions';
 
 test('dietaryNeedsOf reads arrays, and single values from older data', () => {
   expect(dietaryNeedsOf(['vegan', 'other'])).toEqual(['vegan', 'other']);
@@ -23,4 +24,13 @@ test('dietaryLabelsOf: French labels, « Autre » as written, nothing for « Auc
     .toEqual(['Sans gluten', 'Sans produits laitiers', 'Noix']);
   expect(dietaryLabelsOf({ dietary_needs: ['none'] })).toEqual([]);
   expect(dietaryLabelsOf({ dietary_needs: 'vegan' })).toEqual(['Végétalien']);
+});
+
+test('transportKindOf: offer and need as is; \'None\' (the column default), \'\' (the form) and no transport are none', () => {
+  expect(transportKindOf({ type: 'offer', seats: 2 })).toBe('offer');
+  expect(transportKindOf({ type: 'need' })).toBe('need');
+  expect(transportKindOf({ type: 'None' })).toBe('none');
+  expect(transportKindOf({ type: '' })).toBe('none');
+  expect(transportKindOf(null)).toBe('none');
+  expect(['offer', 'need', 'none'].map(getTransportKindLabel)).toEqual([fr.transportKindOffer, fr.transportKindNeed, fr.transportKindNone]);
 });
