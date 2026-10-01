@@ -323,6 +323,15 @@ below; no copy of the label is stored. Migrations: `20260929024111_event_locatio
 free-text `attendees.assigned_bed`, and `20260929162040_shared_venues.sql` (#145), which moved each
 event's locations to a venue of its own and the address from `events.venue_address` to it.
 
+The app reads both assembled by the database, in one display order (location, then place:
+`sort_order`, then `created_at`) (#193, `20261001225145_event_places.sql`):
+`venue_layout(p_venue_id)` gives a venue's locations and places (a location without places is
+one row with no place), and `event_places(p_event_id)` gives every place of the event's venue as
+the event sees it: its capacity for the event, whether it is excluded, and who of the event sleeps
+there (admins only). `set_place_override(p_event_id, p_place_id, p_is_excluded, p_capacity)` sets
+one place's whole setting for an event: a capacity equal to the place's own is no override, and a
+setting that changes nothing deletes the row.
+
 - **Capacity is advisory.** Nothing stops more people than `capacity` in a place: organisers may
   overbook on purpose, and the UI warns.
 - **Freeing places.** Removing an attendee from the party deletes their assignment (the cascade).

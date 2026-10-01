@@ -122,6 +122,11 @@ Notes on specific choices:
   every pending `place_assignments` row and `admin_notes` through it, under the caller's RLS and
   the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
   own subtransaction, all or nothing, and returns the parties it refused with their error code.
+- **`event_places()`, `set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193):
+  the tables' RLS and triggers decide, as for direct writes. The first two refuse non-admins up
+  front (`admin_only`): overrides are admin-only, so a member would otherwise read a merge that
+  silently lacks them. `set_place_override()` also refuses an archived event up front
+  (`event_layout_frozen`), even for a write that would change nothing. `anon` can run none of them.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

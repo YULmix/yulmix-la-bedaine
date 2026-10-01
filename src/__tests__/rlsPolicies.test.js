@@ -1996,3 +1996,160 @@ describe('📜 registration history logs creations (#173)', () => {
     expect(await entriesAs(memberClient)).toEqual([]);
   });
 });
+
+describe('🛏️ event_places, venue_layout and set_place_override (#193)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000001931';
+  // Another edition at the same venue: its people sleep in the same places.
+  const SAME_VENUE_EVENT_ID = 'a0000000-a000-a000-a000-a00000001932';
+  const EVENT_IDS = [EVENT_ID, SAME_VENUE_EVENT_ID];
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+
+  let memberClient;
+  let adminAuthClient;
+  let venueId; // a fresh venue per test: venues are never deleted
+  let otherVenueId;
+  let ids; // location and place ids by name
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const attendeeOf = async (partyId) => (await adminAuthClient.from('attendees').select('id').eq('party_id', partyId).single()).data.id;
+  const eventPlaces = (client, eventId = EVENT_ID) => client.rpc('event_places', { p_event_id: eventId });
+  const setOverride = (client, placeId, isExcluded, capacity, eventId = EVENT_ID) => client.rpc('set_place_override', {
+    p_event_id: eventId, p_place_id: placeId, p_is_excluded: isExcluded, p_capacity: capacity
+  });
+  const overrideRows = async () => ok(adminAuthClient.from('event_place_overrides')
+    .select('place_id, is_excluded, capacity').eq('event_id', EVENT_ID));
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  // Two locations with equal sort_order, the second one created first, so only created_at
+  // decides; same for two of the places. "Grenier" has no places.
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().in('event_id', EVENT_IDS);
+    await ok(adminAuthClient.from('events').upsert([
+      { id: EVENT_ID, theme: 'Event Places', status: 'ACTIVE', selling_price_whole_event: 100 },
+      { id: SAME_VENUE_EVENT_ID, theme: 'Event Places Twin', status: 'ACTIVE', selling_price_whole_event: 100 }
+    ]));
+    venueId = (await ok(adminAuthClient.from('venues').insert({ name: 'La Grange' }).select('id').single())).id;
+    otherVenueId = (await ok(adminAuthClient.from('venues').insert({ name: 'Ailleurs' }).select('id').single())).id;
+    await ok(adminAuthClient.from('events').update({ venue_id: venueId }).in('id', EVENT_IDS));
+    const locations = await ok(adminAuthClient.from('locations').insert([
+      { venue_id: venueId, name: 'Chambre B', sort_order: 0, created_at: '2026-01-02T00:00:00Z' },
+      { venue_id: venueId, name: 'Chambre A', sort_order: 0, created_at: '2026-01-01T00:00:00Z' },
+      { venue_id: venueId, name: 'Grenier', sort_order: 1, created_at: '2026-01-01T00:00:00Z' },
+      { venue_id: otherVenueId, name: 'Ailleurs 1', sort_order: 0, created_at: '2026-01-01T00:00:00Z' }
+    ]).select('id, name'));
+    ids = Object.fromEntries(locations.map(row => [row.name, row.id]));
+    const places = await ok(adminAuthClient.from('places').insert([
+      { location_id: ids['Chambre A'], label: 'Lit 2', type: 'bed', capacity: 2, sort_order: 0, created_at: '2026-01-02T00:00:00Z' },
+      { location_id: ids['Chambre A'], label: 'Lit 1', type: 'bed', capacity: 2, sort_order: 0, created_at: '2026-01-01T00:00:00Z' },
+      { location_id: ids['Chambre A'], label: 'Sofa', type: 'sofa', capacity: 1, sort_order: 1, created_at: '2026-01-01T00:00:00Z' },
+      { location_id: ids['Chambre B'], label: 'Matelas', type: 'floor', capacity: 3, sort_order: 0, created_at: '2026-01-01T00:00:00Z' },
+      { location_id: ids['Ailleurs 1'], label: 'Loin', type: 'bed', capacity: 1, sort_order: 0, created_at: '2026-01-01T00:00:00Z' }
+    ]).select('id, label'));
+    places.forEach(row => { ids[row.label] = row.id; });
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().in('event_id', EVENT_IDS);
+    await adminAuthClient.from('events').update({ venue_id: null, status: 'DRAFT' }).in('id', EVENT_IDS);
+  });
+
+  test('venue_layout and event_places list in one order, ties broken on created_at', async () => {
+    const layout = await ok(adminAuthClient.rpc('venue_layout', { p_venue_id: venueId }));
+    expect(layout.map(row => [row.location_name, row.label])).toEqual([
+      ['Chambre A', 'Lit 1'],
+      ['Chambre A', 'Lit 2'],
+      ['Chambre A', 'Sofa'],
+      ['Chambre B', 'Matelas'],
+      ['Grenier', null]
+    ]);
+    expect(layout.map(row => row.position)).toEqual([1, 2, 3, 4, 5]);
+
+    const places = await ok(eventPlaces(adminAuthClient));
+    expect(places.map(row => row.label)).toEqual(['Lit 1', 'Lit 2', 'Sofa', 'Matelas']);
+    expect(places.map(row => row.position)).toEqual([1, 2, 3, 4]);
+  });
+
+  test("event_places merges this event's overrides and lists only its own occupants", async () => {
+    const party = await saveOk(adminAuthClient, EVENT_ID, [person('Ann')]);
+    const twin = await saveOk(adminAuthClient, SAME_VENUE_EVENT_ID, [person('Zoe')]);
+    await ok(adminAuthClient.from('place_assignments').insert([
+      { place_id: ids['Lit 1'], attendee_id: await attendeeOf(party.id) },
+      { place_id: ids['Lit 1'], attendee_id: await attendeeOf(twin.id) }
+    ]));
+    await ok(adminAuthClient.from('event_place_overrides').insert([
+      { event_id: EVENT_ID, place_id: ids['Lit 2'], is_excluded: false, capacity: 4 },
+      { event_id: EVENT_ID, place_id: ids.Sofa, is_excluded: true, capacity: null },
+      { event_id: SAME_VENUE_EVENT_ID, place_id: ids.Matelas, is_excluded: true, capacity: null }
+    ]));
+
+    const byLabel = Object.fromEntries((await ok(eventPlaces(adminAuthClient))).map(row => [row.label, row]));
+    expect(byLabel['Lit 1']).toMatchObject({ venue_capacity: 2, capacity: 2, is_excluded: false, occupants: ['Ann'], location_name: 'Chambre A' });
+    expect(byLabel['Lit 2']).toMatchObject({ venue_capacity: 2, capacity: 4, is_excluded: false, occupants: [] });
+    expect(byLabel.Sofa).toMatchObject({ is_excluded: true });
+    expect(byLabel.Matelas).toMatchObject({ is_excluded: false, capacity: 3 });
+  });
+
+  test('only admins read event places or set overrides; anon runs none of the three', async () => {
+    const memberRead = await eventPlaces(memberClient);
+    expect(memberRead.error?.message).toBe('admin_only');
+    const memberWrite = await setOverride(memberClient, ids['Lit 1'], true, null);
+    expect(memberWrite.error?.message).toBe('admin_only');
+    expect(await overrideRows()).toEqual([]);
+
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY);
+    for (const [fn, args] of [
+      ['venue_layout', { p_venue_id: venueId }],
+      ['event_places', { p_event_id: EVENT_ID }],
+      ['set_place_override', { p_event_id: EVENT_ID, p_place_id: ids['Lit 1'], p_is_excluded: true, p_capacity: null }]
+    ]) {
+      expect((await anonClient.rpc(fn, args)).error).not.toBeNull();
+    }
+  });
+
+  test("set_place_override writes the whole state, keeps no row that changes nothing, returns the place", async () => {
+    // The place's own capacity is no override.
+    expect(await ok(setOverride(adminAuthClient, ids['Lit 1'], false, 2))).toHaveLength(1);
+    expect(await overrideRows()).toEqual([]);
+
+    const [resized] = await ok(setOverride(adminAuthClient, ids['Lit 1'], false, 3));
+    expect(await overrideRows()).toEqual([{ place_id: ids['Lit 1'], is_excluded: false, capacity: 3 }]);
+    const [listed] = (await ok(eventPlaces(adminAuthClient))).filter(row => row.place_id === ids['Lit 1']);
+    expect(resized).toEqual(listed);
+
+    // Same state twice: same row.
+    await ok(setOverride(adminAuthClient, ids['Lit 1'], true, 3));
+    await ok(setOverride(adminAuthClient, ids['Lit 1'], true, 3));
+    expect(await overrideRows()).toEqual([{ place_id: ids['Lit 1'], is_excluded: true, capacity: 3 }]);
+
+    const [back] = await ok(setOverride(adminAuthClient, ids['Lit 1'], false, null));
+    expect(await overrideRows()).toEqual([]);
+    expect(back).toMatchObject({ capacity: 2, is_excluded: false });
+  });
+
+  test("set_place_override refuses an occupied place's exclusion and another venue's place", async () => {
+    const party = await saveOk(adminAuthClient, EVENT_ID, [person('Ann')]);
+    await ok(adminAuthClient.from('place_assignments').insert({ place_id: ids['Lit 1'], attendee_id: await attendeeOf(party.id) }));
+
+    expect((await setOverride(adminAuthClient, ids['Lit 1'], true, null)).error?.message).toBe('place_exclusion_occupied');
+    expect((await setOverride(adminAuthClient, ids.Loin, true, null)).error?.message).toBe('place_override_wrong_venue');
+    expect(await overrideRows()).toEqual([]);
+  });
+
+  test("an archived event's settings can't change, even by a write that would change nothing", async () => {
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
+    // Archiving moved the event onto a frozen copy of the venue; it reads the same.
+    const places = await ok(eventPlaces(adminAuthClient));
+    expect(places.map(row => row.label)).toEqual(['Lit 1', 'Lit 2', 'Sofa', 'Matelas']);
+
+    for (const [isExcluded, capacity] of [[true, null], [false, null]]) {
+      const { error } = await setOverride(adminAuthClient, places[0].place_id, isExcluded, capacity);
+      expect(error?.message).toBe('event_layout_frozen');
+    }
+  });
+});
