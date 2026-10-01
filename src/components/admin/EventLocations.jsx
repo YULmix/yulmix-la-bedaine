@@ -4,7 +4,8 @@ import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { plural } from '../../lib/eventDisplay';
-import { placeTypeBreakdown } from '../../lib/places';
+import { placeTypeBreakdown, venueLayoutOf } from '../../lib/places';
+import { useAutosave } from '../../hooks/useAutosave';
 import { invalidateEventPlaces } from '../../lib/eventPlaces';
 import { VENUE_GALLERY_KINDS, copyGalleryImages, fetchLocationGalleries, removeUnusedGalleryImages } from '../../lib/galleries';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
@@ -13,13 +14,8 @@ import GalleryEditor from './GalleryEditor';
 import { formatCoordinates, parseCoordinates } from '../../lib/venue';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
 
-const bySortOrder = (a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 const nextSortOrder = rows => (rows.length ? Math.max(...rows.map(row => row.sort_order)) + 1 : 0);
 const capacityOf = places => places.reduce((sum, place) => sum + place.capacity, 0);
-
-// A capacity change is written this long after the last Stepper click, so tapping + five times is
-// one write, not five racing ones.
-const CAPACITY_WRITE_DELAY_MS = 400;
 
 // Deleting a place (or location) someone was given between the check and the delete: the foreign
 // key refuses it.
@@ -42,8 +38,8 @@ const BlurInput = ({ value, onCommit, onChange, required = false, ...props }) =>
 };
 
 // "Enregistré automatiquement" / "Enregistrement…" / "Enregistré": the sleeping plan has no Save
-// button, so it says what happened to each change.
-const SaveStatus = ({ status }) => (
+// button, so it says what happened to each change (useAutosave's status). Couchage shows it too.
+export const SaveStatus = ({ status }) => (
   <p role="status" className="flex items-center gap-1.5 text-sm text-faint">
     {status === 'saved' && <Check aria-hidden="true" className="size-4 text-ok" strokeWidth={2} />}
     {status === 'saving' ? fr.sleepingSaving : status === 'saved' ? fr.sleepingSaved : fr.sleepingAutosave}
@@ -210,23 +206,28 @@ const PlaceTypeBreakdown = ({ locations }) => {
 export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange }) => {
   const [venue, setVenue] = useState(null);
   const [locations, setLocations] = useState(null);
-  const [error, setError] = useState(null);
-  const [status, setStatus] = useState('idle');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [blocked, setBlocked] = useState(null);
-  const inFlight = useRef(0);
   const pane = useRef(null);
-  const capacityWrites = useRef({});
+  const loadRef = useRef(null);
+  // A failed write reloads, so the screen goes back to what the database holds; a successful one
+  // reaches every event at this venue (#193).
+  const save = useAutosave({
+    errorMessage: writeError => (writeError.code === FOREIGN_KEY_VIOLATION
+      ? fr.placeOccupiedUnseen
+      : dbErrorMessage(writeError, fr.locationsSaveError)),
+    onSuccess: () => invalidateEventPlaces(),
+    onFailure: () => loadRef.current()
+  });
+  const setError = save.setError;
 
+  // The layout comes ordered from the database (venue_layout, #193).
   const load = useCallback(async () => {
-    const [venueResult, locationsResult] = await Promise.all([
+    const [venueResult, layoutResult] = await Promise.all([
       supabase.from('venues').select('id, name, address, lat, lng').eq('id', venueId).single(),
-      supabase
-        .from('locations')
-        .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
-        .eq('venue_id', venueId)
+      supabase.rpc('venue_layout', { p_venue_id: venueId })
     ]);
-    const loadError = venueResult.error || locationsResult.error;
+    const loadError = venueResult.error || layoutResult.error;
     if (loadError) {
       console.error('Error loading locations:', loadError);
       setError(fr.locationsLoadError);
@@ -234,10 +235,9 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       return;
     }
     setVenue(venueResult.data);
-    setLocations(locationsResult.data
-      .map(location => ({ ...location, places: [...location.places].sort(bySortOrder) }))
-      .sort(bySortOrder));
-  }, [venueId]);
+    setLocations(venueLayoutOf(layoutResult.data));
+  }, [venueId, setError]);
+  loadRef.current = load;
 
   useEffect(() => { load(); }, [load]);
 
@@ -248,56 +248,22 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     if (openedId && window.matchMedia('(max-width: 1023.98px)').matches) pane.current?.scrollIntoView({ block: 'start' });
   }, [openedId]);
 
-  // Runs a write and reports it in the status line. A failed write reloads, so the screen goes
-  // back to what the database holds.
-  const track = async (write) => {
-    inFlight.current += 1;
-    setStatus('saving');
-    const result = await write;
-    inFlight.current -= 1;
-    if (result.error) {
-      console.error('Error saving locations:', result.error);
-      setError(result.error.code === FOREIGN_KEY_VIOLATION
-        ? fr.placeOccupiedUnseen
-        : dbErrorMessage(result.error, fr.locationsSaveError));
-      setStatus('idle');
-      await load();
-    } else {
-      setError(null);
-      if (!inFlight.current) setStatus('saved');
-      // Every event at this venue sees its places through it (#193).
-      invalidateEventPlaces();
-    }
-    return result;
-  };
-  const trackAndReload = async (write) => {
-    const result = await track(write);
+  // A structural write (add, move, delete) then reloads, for the rows the database made.
+  const runAndReload = async (key, build) => {
+    const result = await save.run(key, build);
     if (!result.error) await load();
     return result;
   };
 
-  // Pending capacity writes go out when the admin leaves the section, not never.
-  const flushCapacity = useCallback(() => {
-    Object.entries(capacityWrites.current).forEach(([placeId, { timer, capacity }]) => {
-      clearTimeout(timer);
-      supabase.from('places').update({ capacity }).eq('id', placeId).then(({ error: writeError }) => {
-        if (writeError) console.error('Error saving capacity:', writeError);
-        else invalidateEventPlaces();
-      });
-    });
-    capacityWrites.current = {};
-  }, []);
-  useEffect(() => flushCapacity, [flushCapacity]);
-
   const patchLocation = (id, fields) => {
     setLocations(current => current.map(location => (location.id === id ? { ...location, ...fields } : location)));
-    return track(supabase.from('locations').update(fields).eq('id', id));
+    return save.run(`location:${id}`, () => supabase.from('locations').update(fields).eq('id', id));
   };
 
   // The event's page shows the venue's address, so the editor's events reload after a change.
   const patchVenue = async (fields) => {
     setVenue(current => ({ ...current, ...fields }));
-    const result = await track(supabase.from('venues').update(fields).eq('id', venueId));
+    const result = await save.run('venue', () => supabase.from('venues').update(fields).eq('id', venueId));
     if (!result.error) onVenueChange();
   };
 
@@ -308,22 +274,16 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
 
   const patchPlace = (id, fields) => {
     patchPlaceLocally(id, fields);
-    return track(supabase.from('places').update(fields).eq('id', id));
+    return save.run(`place:${id}`, () => supabase.from('places').update(fields).eq('id', id));
   };
 
   const setCapacity = (id, capacity) => {
     patchPlaceLocally(id, { capacity });
-    clearTimeout(capacityWrites.current[id]?.timer);
-    setStatus('saving');
-    const timer = setTimeout(() => {
-      delete capacityWrites.current[id];
-      track(supabase.from('places').update({ capacity }).eq('id', id));
-    }, CAPACITY_WRITE_DELAY_MS);
-    capacityWrites.current[id] = { timer, capacity };
+    save.debounce(`place:${id}`, () => supabase.from('places').update({ capacity }).eq('id', id));
   };
 
   const addLocation = async () => {
-    const { data } = await trackAndReload(supabase.from('locations').insert({
+    const { data } = await runAndReload('layout', () => supabase.from('locations').insert({
       venue_id: venueId,
       name: fr.locationDefaultName.replace('{n}', locations.length + 1),
       sort_order: nextSortOrder(locations)
@@ -332,7 +292,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   };
 
   const duplicateLocation = async (location) => {
-    const { data, error: insertError } = await track(supabase.from('locations').insert({
+    const { data, error: insertError } = await save.run('layout', () => supabase.from('locations').insert({
       venue_id: venueId,
       name: fr.locationCopyName.replace('{name}', location.name),
       note: location.note,
@@ -348,7 +308,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       setError(dbErrorMessage(copyError, fr.gallerySaveError));
     }
     if (location.places.length) {
-      await track(supabase.from('places').insert(location.places.map(({ label, type, capacity, sort_order: sortOrder }) => ({
+      await save.run('layout', () => supabase.from('places').insert(location.places.map(({ label, type, capacity, sort_order: sortOrder }) => ({
         location_id: data.id, label, type, capacity, sort_order: sortOrder
       }))));
     }
@@ -364,8 +324,9 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     const writes = reordered
       .map((location, order) => ({ location, order }))
       .filter(({ location, order }) => location.sort_order !== order)
-      .map(({ location, order }) => supabase.from('locations').update({ sort_order: order }).eq('id', location.id));
-    await trackAndReload(Promise.all(writes).then(results => results.find(result => result.error) || {}));
+      .map(({ location, order }) => () => supabase.from('locations').update({ sort_order: order }).eq('id', location.id));
+    await runAndReload('layout', () => Promise.all(writes.map(write => write()))
+      .then(results => results.find(result => result.error) || {}));
   };
 
   // Who holds these places, in any event: asked only when deleting, to say whom to move first. If
@@ -383,7 +344,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   const deleteLocation = async (location) => {
     const images = await fetchLocationGalleries([location.id])
       .then(galleries => galleries.get(location.id) || [], () => []);
-    const result = await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
+    const result = await runAndReload('layout', () => supabase.from('locations').delete().eq('id', location.id));
     if (!result.error) removeUnusedGalleryImages(images.map(image => image.path));
     onLocationChange(null);
   };
@@ -399,7 +360,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     const typeLabel = getOptionLabel(ACCOMMODATION_OPTIONS, type);
     const first = location.places.filter(place => place.type === type).length + 1;
     const sortOrder = nextSortOrder(location.places);
-    return trackAndReload(supabase.from('places').insert(Array.from({ length: count }, (_, i) => ({
+    return runAndReload('layout', () => supabase.from('places').insert(Array.from({ length: count }, (_, i) => ({
       location_id: location.id,
       label: fr.placeDefaultLabel.replace('{type}', typeLabel).replace('{n}', first + i),
       type,
@@ -410,7 +371,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   const deletePlace = async (place) => {
     const names = await holdersOf([place]);
     if (names.length) return setBlocked({ name: place.label, names });
-    trackAndReload(supabase.from('places').delete().eq('id', place.id));
+    runAndReload('layout', () => supabase.from('places').delete().eq('id', place.id));
   };
 
   if (!locations) {
@@ -431,9 +392,9 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="max-w-prose text-muted">{fr.locationsHint}</p>
-        <SaveStatus status={status} />
+        <SaveStatus status={save.status} />
       </div>
-      {error && <Notice tone="bad" role="alert">{error}</Notice>}
+      {save.error && <Notice tone="bad" role="alert">{save.error}</Notice>}
 
       {venue && <VenueCard venue={venue} onUpdate={patchVenue} />}
       {venue && <VenueGalleries venueId={venue.id} />}

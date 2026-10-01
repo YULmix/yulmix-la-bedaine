@@ -4,6 +4,32 @@ import { ACCOMMODATION_OPTIONS, getOptionLabel } from './registrationOptions.js'
 // so the counting and picking rules are tested on their own (places.test.js). An event's places
 // themselves, as it sees them, come from the event places module (eventPlaces.js, #193).
 
+/**
+ * A venue's layout (#193) from venue_layout() rows, which come in display order: its locations,
+ * each with its places, in that order. A location without places is a row without a place.
+ * @returns {Array<{ id, name, note, sort_order, places: Array<{ id, label, type, capacity, sort_order }> }>}
+ */
+export const venueLayoutOf = (rows) => {
+  const locations = new Map();
+  (rows || []).forEach(row => {
+    if (!locations.has(row.location_id)) {
+      locations.set(row.location_id, {
+        id: row.location_id,
+        name: row.location_name,
+        note: row.location_note,
+        sort_order: row.location_sort_order,
+        places: []
+      });
+    }
+    if (row.place_id) {
+      locations.get(row.location_id).places.push({
+        id: row.place_id, label: row.label, type: row.type, capacity: row.capacity, sort_order: row.place_sort_order
+      });
+    }
+  });
+  return [...locations.values()];
+};
+
 /** A venue's size: its locations, places and total sleeping capacity (`locations` embed `places`). */
 export const venueTotals = (locations) => {
   const places = (locations || []).flatMap(location => location.places || []);
