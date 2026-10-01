@@ -13,6 +13,7 @@ no component library.
 | `/` | `HomeView` (poster, phase track, the registration pass or an invite, past editions) | Content differs for signed-out visitors; no redirect |
 | `/inscription` | `RegistrationPage`: the 4-step registration form, create or edit | Authenticated |
 | `/event-details` | `EventDetailsView` | Authenticated |
+| `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
 | `/admin` | `AdminView`, tabs `?tab=overview\|users\|logistics\|events\|tools` | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=details\|sleeping&location=<id>`), same admin shell | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
@@ -35,6 +36,7 @@ flowchart TD
   APP -->|route /| HOME["HomeView"]
   APP -->|route /inscription| REGPAGE["RegistrationPage"]
   APP -->|route /event-details| DETAILS["EventDetailsView"]
+  APP -->|route /carpool| CARPOOL["CarpoolView"]
   APP -->|route /admin| ADMIN["AdminView"]
 
   HOME --> SUMMARY["RegistrationSummary<br/>Pass + group, logistics, edit history"]

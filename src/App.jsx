@@ -10,6 +10,7 @@ import AdminView from './views/AdminView';
 import EventDetailsView from './views/EventDetailsView';
 import AboutView from './views/AboutView';
 import RegistrationPage from './views/RegistrationPage';
+import CarpoolView from './views/CarpoolView';
 import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
@@ -288,6 +289,15 @@ function App() {
             <ProtectedRoute {...guard}>
               <PageMain>
                 <EventDetailsView activeEvent={activeEvent} />
+              </PageMain>
+            </ProtectedRoute>
+          } />
+
+          {/* The board says itself when it isn't for this member (#180). */}
+          <Route path="/carpool" element={
+            <ProtectedRoute {...guard}>
+              <PageMain>
+                <CarpoolView />
               </PageMain>
             </ProtectedRoute>
           } />

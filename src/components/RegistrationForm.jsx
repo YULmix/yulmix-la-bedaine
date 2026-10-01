@@ -150,7 +150,9 @@ const LeaveGuard = ({ shouldBlock, onLeave }) => {
 
 // `draftKey` (sessionStorage key, see registrationDraft.js) keeps unsaved changes across a reload
 // and guards against leaving them; without it (the admin's dialog) the form has neither.
-const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false, draftKey = null }) => {
+// `initialStep` opens the form on a later step: the carpool board links an existing registration
+// straight to its transport card (#180).
+const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCancel, adminMode = false, onAdminSave, isIntent = false, draftKey = null, initialStep = 0 }) => {
   const travelRange = useMemo(() => getTravelRange(event), [event]);
   // What the form opens with: a draft this tab left for this registration, else what's saved.
   const [initial] = useState(() => {
@@ -160,7 +162,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [attendees, setAttendees] = useState(initial.form.attendees);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [nameErrors, setNameErrors] = useState({});
   const [dietErrors, setDietErrors] = useState({});
 
@@ -683,7 +685,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         {step === 2 && (
           <section className="space-y-4">
             <StepTitle title={fr.stepHelpTitle} text={fr.stepHelpText} />
-            <Card className="space-y-5 p-5">
+            <Card id="transport" className="scroll-mt-24 space-y-5 p-5">
               <h3 className="text-lg font-semibold text-ink">{fr.transport}</h3>
               <ChipGroup label={fr.transportType} name="transport-type" options={TRANSPORT_CHIPS} value={transportType} onChange={changeTransportType} />
               {(transportType === 'offer' || transportType === 'need') && (

@@ -1631,3 +1631,172 @@ describe('📷 location photos (#124)', () => {
     expect(await ok(unused(adminAuthClient, [name]))).toEqual([name]);
   });
 });
+
+// #180: the carpool board. Members can't read each other's parties; carpool_board() (SECURITY
+// DEFINER) is how a registered member sees the confirmed parties' lifts, with only the board's
+// fields. The board is the active event's (events.is_active), so this block
+// makes its event the active one for its duration and gives the flag back after.
+describe('🚗 carpool board (#180)', () => {
+  jest.setTimeout(30000);
+
+  const BOARD_EVENT_ID = 'a0000000-a000-a000-a000-a00000000180';
+  const BOARD_VENUE_ID = 'a0000000-a000-a000-a000-a00000001801';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const BOARD_FIELDS = ['entry', 'kind', 'is_mine', 'contact_name', 'contact_email', 'departure_fsa',
+    'departure_place', 'arrival', 'departure', 'seats', 'matches'].sort();
+  const lift = (type, fields = {}) => ({
+    transport: { type, seats: 2, arrival: '2026-07-10T18:00', departure: '2026-07-12T14:00', ...fields }
+  });
+
+  let adminAuthClient;
+  let memberClient;
+  let previouslyActive = [];
+  const createdUserIds = [];
+  const people = {};
+
+  const newMember = async (label, fullName) => {
+    const email = `carpool180-${label}-${Date.now()}@test.local`;
+    const { data, error } = await adminClient.auth.admin.createUser({
+      email, password: 'password123', email_confirm: true, user_metadata: { full_name: fullName }
+    });
+    if (error) throw error;
+    createdUserIds.push(data.user.id);
+    return { id: data.user.id, email, client: await signIn(email) };
+  };
+  const register = async (person, party) => (await saveOk(person.client, BOARD_EVENT_ID, ONE_ADULT_WHOLE, { party })).id;
+  const board = client => client.rpc('carpool_board');
+
+  beforeAll(async () => {
+    adminAuthClient = await signIn('admin@test.local');
+    memberClient = await signIn('member@test.local');
+
+    previouslyActive = (await adminAuthClient.from('events').select('id').eq('is_active', true)).data.map(event => event.id);
+    if (previouslyActive.length) {
+      const { error } = await adminAuthClient.from('events').update({ is_active: false }).in('id', previouslyActive);
+      if (error) throw error;
+    }
+    const { error: venueError } = await adminAuthClient.from('venues')
+      .upsert({ id: BOARD_VENUE_ID, name: 'Carpool Test Venue', lat: 45.005, lng: -72.1 });
+    if (venueError) throw venueError;
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: BOARD_EVENT_ID, theme: 'Carpool Test', status: 'ACTIVE', is_active: true, is_reg_open: true,
+      venue_id: BOARD_VENUE_ID, event_start_date: startsIn(60), x_reg_close_weeks: 1, max_attendees: 90
+    });
+    if (error) throw error;
+    await adminAuthClient.from('user_parties').delete().eq('event_id', BOARD_EVENT_ID);
+
+    people.driver = await newMember('driver', 'Diane Driver');
+    people.rider = await newMember('rider', 'Rémi Rider');
+    people.walker = await newMember('walker', 'Wes Walker');
+    people.waitlisted = await newMember('waitlisted', 'Wanda Waitlisted');
+    people.cancelled = await newMember('cancelled', 'Carl Cancelled');
+    people.stranger = await newMember('stranger', 'Sam Stranger');
+
+    // The seeded member is registered without a lift: they may look, and aren't listed.
+    await adminAuthClient.from('user_parties').delete().eq('event_id', BOARD_EVENT_ID).eq('user_id', MEMBER_ID);
+    await saveOk(memberClient, BOARD_EVENT_ID, ONE_ADULT_WHOLE);
+
+    await register(people.driver, lift('offer', { seats: 3, departure_fsa: 'H2G', departure_place: 'métro Jean-Talon' }));
+    await register(people.rider, lift('need', { departure_fsa: 'H4C' }));
+    await register(people.walker, lift('', { seats: 0 }));
+    const waitlistedParty = await register(people.waitlisted, lift('offer', { departure_fsa: 'H1A' }));
+    const cancelledParty = await register(people.cancelled, lift('need', { departure_fsa: 'H3B' }));
+
+    // Cancelling first: a cancellation promotes whoever is waitlisted.
+    const { error: cancelError } = await people.cancelled.client.from('user_parties').update({ status: 'cancelled' }).eq('id', cancelledParty);
+    if (cancelError) throw cancelError;
+    const { error: waitlistError } = await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).eq('id', waitlistedParty);
+    if (waitlistError) throw waitlistError;
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', BOARD_EVENT_ID);
+    for (const id of createdUserIds) {
+      const { error } = await adminClient.auth.admin.deleteUser(id);
+      if (error) throw error;
+    }
+    await adminAuthClient.from('events').update({ is_active: false, status: 'ARCHIVED' }).eq('id', BOARD_EVENT_ID);
+    if (previouslyActive.length) {
+      await adminAuthClient.from('events').update({ is_active: true }).in('id', previouslyActive);
+    }
+  });
+
+  test('a member with no registration for the active event, or a cancelled one, is refused', async () => {
+    for (const person of [people.stranger, people.cancelled]) {
+      const { data, error } = await board(person.client);
+      expect(data).toBeNull();
+      expect(error?.message).toBe('carpool_board_forbidden');
+      expect((await person.client.rpc('can_view_carpool_board')).data).toBe(false);
+    }
+  });
+
+  test('a registered member sees only the confirmed offers and needs, with the board fields only', async () => {
+    const { data, error } = await board(memberClient);
+    expect(error).toBeNull();
+    expect(data.map(row => [row.kind, row.contact_name])).toEqual([['offer', 'Diane Driver'], ['need', 'Rémi Rider']]);
+    data.forEach(row => expect(Object.keys(row).sort()).toEqual(BOARD_FIELDS));
+
+    const [offer, need] = data;
+    expect(offer).toMatchObject({
+      is_mine: false, contact_email: people.driver.email, departure_fsa: 'H2G', departure_place: 'métro Jean-Talon',
+      arrival: '2026-07-10T18:00', departure: '2026-07-12T14:00', seats: 3
+    });
+    // The offer's closest need is the rider, by detour to the venue; and the reverse.
+    expect(offer.matches).toHaveLength(1);
+    expect(offer.matches[0].entry).toBe(need.entry);
+    expect(offer.matches[0].detour_km).toBeGreaterThan(0);
+    expect(offer.matches[0].distance_km).toBeGreaterThan(0);
+    expect(need.matches.map(match => match.entry)).toEqual([offer.entry]);
+  });
+
+  test("the caller's own listed party is marked as theirs", async () => {
+    const { data } = await board(people.driver.client);
+    expect(data.find(row => row.kind === 'offer')).toMatchObject({ contact_name: 'Diane Driver', is_mine: true });
+    expect(data.find(row => row.kind === 'need').is_mine).toBe(false);
+  });
+
+  test('a waitlisted party is never listed, and its member is refused like anyone unconfirmed', async () => {
+    expect((await board(memberClient)).data.map(row => row.contact_name)).not.toContain('Wanda Waitlisted');
+    const { data, error } = await board(people.waitlisted.client);
+    expect(data).toBeNull();
+    expect(error?.message).toBe('carpool_board_forbidden');
+    expect((await people.waitlisted.client.rpc('can_view_carpool_board')).data).toBe(false);
+  });
+
+  test('an admin sees the same board without being registered', async () => {
+    const { data, error } = await board(adminAuthClient);
+    expect(error).toBeNull();
+    expect(data.map(row => row.contact_name)).toEqual(['Diane Driver', 'Rémi Rider']);
+  });
+
+  test("anon can't run it", async () => {
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    const { data, error } = await anon.rpc('carpool_board');
+    expect(data).toBeNull();
+    expect(error).not.toBeNull();
+    expect(error.message).not.toBe('carpool_board_forbidden');
+    expect((await anon.rpc('can_view_carpool_board')).error).not.toBeNull();
+  });
+
+  test("a member still can't read other parties directly", async () => {
+    const { data, error } = await people.rider.client.from('user_parties').select('id, user_id, transport').eq('event_id', BOARD_EVENT_ID);
+    expect(error).toBeNull();
+    expect(data.map(row => row.user_id)).toEqual([people.rider.id]);
+  });
+
+  test('without venue coordinates, matches carry the distance only', async () => {
+    await adminAuthClient.from('venues').update({ lat: null, lng: null }).eq('id', BOARD_VENUE_ID);
+    try {
+      const { data } = await board(memberClient);
+      expect(data[0].matches[0].detour_km).toBeNull();
+      expect(data[0].matches[0].distance_km).toBeGreaterThan(0);
+    } finally {
+      await adminAuthClient.from('venues').update({ lat: 45.005, lng: -72.1 }).eq('id', BOARD_VENUE_ID);
+    }
+  });
+
+  test('venue coordinates go together', async () => {
+    const { error } = await adminAuthClient.from('venues').update({ lat: 45, lng: null }).eq('id', BOARD_VENUE_ID);
+    expect(error?.message).toMatch(/venues_lat_lng_together/);
+  });
+});

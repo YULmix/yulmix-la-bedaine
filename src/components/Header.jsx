@@ -1,10 +1,11 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
+import { Car, ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import { initials } from '../lib/eventDisplay';
 import { dbErrorMessage } from '../lib/dbErrors';
+import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
 
@@ -47,6 +48,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
+  const canViewCarpool = useCarpoolAccess(isAuthenticated && !isDeleted);
 
   const userDisplayName = user
     ? (user.user_metadata?.full_name || user.email || fr.profile)
@@ -121,6 +123,12 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
               <Info aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
               <span className="sr-only sm:not-sr-only">{fr.navInfo}</span>
             </NavLink>
+            {canViewCarpool && (
+              <NavLink to="/carpool" className={navLinkClass}>
+                <Car aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
+                <span className="sr-only sm:not-sr-only">{fr.navCarpool}</span>
+              </NavLink>
+            )}
             {isAdmin && (
               <NavLink to="/admin" className={navLinkClass}>
                 <ShieldCheck aria-hidden="true" className="size-4.5" strokeWidth={1.75} />

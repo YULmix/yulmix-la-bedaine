@@ -34,6 +34,7 @@ const DB_ERRORS = {
   attendees_write_through_save_registration: () => fr.dbErrorAttendeesWriteThroughSaveRegistration,
   registration_cancel_locked: ({ close_date: closeDate }) => fr.cancelRegistrationLocked
     .replace('{date}', formatDate(closeDate)),
+  carpool_board_forbidden: () => fr.dbErrorCarpoolBoardForbidden,
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
     .replace('{date}', formatDate(closeDate))
 };

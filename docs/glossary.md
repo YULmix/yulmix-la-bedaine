@@ -153,6 +153,15 @@ transport, comments; #179).
 _Avoid_: logistics for the form's answers; *réponses* (the assignment is the answer to a
 request); *participation* (that's the tier).
 
+**Lift** (fr. *lift*, *covoiturage*)
+A seat in someone's car to or from the event. A party **offers** a lift (`transport.type = 'offer'`,
+seats offered) or **needs** one (`'need'`, seats needed), with where it leaves from: the
+**FSA** (the first three characters of a postal code, e.g. `H2G`) and a note. The **carpool
+board** (*Covoiturage*, `/carpool`, #180) lists them,
+each with its closest matches by **detour**: the extra kilometres the driver drives to pick the
+rider up on the way to the venue.
+_Avoid_: *ride*, *trip* in code; "distance" for the detour.
+
 **Volunteering** (fr. *bénévolat*)
 A multi-select of jobs a party offers to take on (food purchase, cooking, DJ, setup, cleanup,
 neighbours, parking, art initiative, pharmacy…). Stored party-wide, not per attendee.

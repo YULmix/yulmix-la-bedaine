@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -255,6 +255,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-departure-place\.spec\.js/,
       dependencies: ['admin-data-export']
+    },
+    {
+      // The carpool board (#180) reseeds the shared active event and sets its venue's coordinates.
+      name: 'member-carpool-board',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-carpool-board\.spec\.js/,
+      dependencies: ['member-departure-place']
     }
   ],
   webServer: {
