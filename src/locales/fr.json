@@ -804,7 +804,7 @@
   "venueCoordinatesHint": "Latitude, longitude : clic droit sur le lieu dans Google Maps, puis copier. Sert à calculer les détours du covoiturage.",
   "venueCoordinatesPlaceholder": "45.0050, -72.1000",
   "venueCoordinatesInvalid": "Entrez une latitude et une longitude, par exemple 45.0050, -72.1000.",
-  "dbErrorCarpoolBoardForbidden": "Le tableau de covoiturage est réservé aux personnes inscrites à l'événement.",
+  "dbErrorCarpoolBoardForbidden": "Le tableau de covoiturage est réservé aux personnes dont l'inscription est confirmée (pas sur la liste d'attente).",
   "navCarpool": "Covoiturage",
   "carpoolTitle": "Covoiturage",
   "carpoolIntro": "Les groupes qui offrent ou cherchent un lift, et d'où ils partent. Écrivez-vous pour vous organiser : l'adresse exacte, c'est entre vous.",

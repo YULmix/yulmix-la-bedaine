@@ -44,9 +44,10 @@ $$;
 REVOKE ALL ON FUNCTION private.haversine_km(double precision, double precision, double precision, double precision) FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------------------------
--- Who may see the board: an admin, or a member with a registration for the active event that
--- isn't cancelled (waitlisted included). The app asks it to show the nav item; the board checks
--- it again.
+-- Who may see the board: an admin, or a member with a confirmed registration for the active
+-- event (not cancelled, not waitlisted): the same parties the board lists. A waitlisted party has
+-- no seat yet and can't be on it, so the board isn't theirs either until promoted. The app asks
+-- this to show the nav item; the board checks it again.
 
 CREATE FUNCTION public.can_view_carpool_board()
 RETURNS boolean
@@ -63,6 +64,7 @@ AS $$
             JOIN public.events e ON e.id = p.event_id AND e.is_active
             WHERE p.user_id = auth.uid()
               AND p.status <> 'cancelled'
+              AND NOT COALESCE(p.is_waitlisted, false)
         )
     );
 $$;
@@ -70,7 +72,7 @@ $$;
 ALTER FUNCTION public.can_view_carpool_board() OWNER TO "postgres";
 
 COMMENT ON FUNCTION public.can_view_carpool_board() IS
-    'True for an admin, or a member registered (not cancelled, waitlisted included) for the active event (#180): who may see the carpool board.';
+    'True for an admin, or a member with a confirmed registration (not cancelled, not waitlisted) for the active event (#180): who may see the carpool board.';
 
 REVOKE ALL ON FUNCTION public.can_view_carpool_board() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_view_carpool_board() TO authenticated;

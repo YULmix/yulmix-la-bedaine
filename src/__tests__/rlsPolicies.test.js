@@ -1755,11 +1755,12 @@ describe('🚗 carpool board (#180)', () => {
     expect(data.find(row => row.kind === 'need').is_mine).toBe(false);
   });
 
-  test('a waitlisted party is never listed, but its member can look', async () => {
+  test('a waitlisted party is never listed, and its member is refused like anyone unconfirmed', async () => {
+    expect((await board(memberClient)).data.map(row => row.contact_name)).not.toContain('Wanda Waitlisted');
     const { data, error } = await board(people.waitlisted.client);
-    expect(error).toBeNull();
-    expect(data.map(row => row.contact_name)).not.toContain('Wanda Waitlisted');
-    expect((await people.waitlisted.client.rpc('can_view_carpool_board')).data).toBe(true);
+    expect(data).toBeNull();
+    expect(error?.message).toBe('carpool_board_forbidden');
+    expect((await people.waitlisted.client.rpc('can_view_carpool_board')).data).toBe(false);
   });
 
   test('an admin sees the same board without being registered', async () => {

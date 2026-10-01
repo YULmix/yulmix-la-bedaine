@@ -11,6 +11,7 @@ import {
   getParty,
   getVenueCoordinates,
   seedActiveEventWithMemberParty,
+  setPartyAnswers,
   setPartyTransport,
   setVenueCoordinates,
   teardownActiveEventWithMemberParty
@@ -111,15 +112,22 @@ test('a member offers a lift; another registered member sees it, with its closes
   await riderPage.close();
 });
 
-test('a member without a registration has no nav item and cannot open the board', async ({ page }) => {
-  const stranger = await throwaway('stranger');
-  await loginAs(page, stranger);
-  await expect(nav(page).getByRole('link', { name: fr.navInfo })).toBeVisible();
-  await expect(nav(page).getByRole('link', { name: fr.navCarpool })).toHaveCount(0);
-  await page.goto('/carpool');
-  await expect(page.getByRole('heading', { name: fr.dbErrorCarpoolBoardForbidden })).toBeVisible();
-  await expect(page.getByRole('region', { name: fr.carpoolOffersTitle })).toHaveCount(0);
-});
+// Not registered, or waitlisted: neither is on the board, so it isn't theirs to see.
+for (const { label, waitlisted } of [{ label: 'without a registration', waitlisted: false }, { label: 'on the waitlist', waitlisted: true }]) {
+  test(`a member ${label} has no nav item and cannot open the board`, async ({ page }) => {
+    const member = await throwaway(waitlisted ? 'waitlisted' : 'stranger');
+    if (waitlisted) {
+      const partyId = await addParty(member.id, seeded.eventId);
+      await setPartyAnswers(partyId, { is_waitlisted: true, transport: { type: 'need', seats: 1, departure_fsa: 'H2G' } });
+    }
+    await loginAs(page, member);
+    await expect(nav(page).getByRole('link', { name: fr.navInfo })).toBeVisible();
+    await expect(nav(page).getByRole('link', { name: fr.navCarpool })).toHaveCount(0);
+    await page.goto('/carpool');
+    await expect(page.getByRole('heading', { name: fr.dbErrorCarpoolBoardForbidden })).toBeVisible();
+    await expect(page.getByRole('region', { name: fr.carpoolOffersTitle })).toHaveCount(0);
+  });
+}
 
 test('an admin sees the board; a member on it without a postal code is told to add one', async ({ page, browser }) => {
   await setPartyTransport(seeded.partyId, { type: 'need', seats: 2, ...LIFT_TIMES });

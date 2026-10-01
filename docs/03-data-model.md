@@ -450,8 +450,8 @@ opt-in: where a lift leaves from is only the start of a postal code (#181), a ne
 reads `carpool_board()`, a `SECURITY DEFINER` function that returns only the listed fields: kind,
 whether it's the caller's, contact name (full name, else email) and email, departure FSA and note,
 arrival, departure, seats, and `matches`. It raises `carpool_board_forbidden` unless
-`can_view_carpool_board()`: an admin, or a member with a registration for the active event that
-isn't cancelled (waitlisted included). The header asks that function to show the nav item.
+`can_view_carpool_board()`: an admin, or a member with a confirmed registration for the active
+event (not cancelled, not waitlisted: the parties the board lists). The header asks that function to show the nav item.
 
 Each offer's `matches` are the needs, closest first, and the reverse, by **detour**:
 `d(driver, rider) + d(rider, venue) − d(driver, venue)`, great-circle distances
