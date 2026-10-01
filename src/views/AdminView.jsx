@@ -11,7 +11,7 @@ import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
 import { AdminVenues } from '../components/admin/AdminVenues';
 import EventEditor from '../components/admin/EventEditor';
-import { DataExport, FeedbackInbox } from '../components/admin/AdminTools';
+import { ChangeHistory, DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
 import PartyEmailLog from '../components/admin/PartyEmailLog';
 import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
@@ -696,6 +696,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="grid gap-6 xl:grid-cols-2">
           <div className="space-y-6">
             {activeEventState && <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
+            {events.length > 0 && <ChangeHistory events={events} notify={addToast} />}
           </div>
           <FeedbackInbox
             items={feedbackItems}

@@ -962,13 +962,14 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
   });
 
   test("the edit history records attendee changes; creating the registration isn't an edit", async () => {
+    // Creating is logged as one « created » entry (#173), but doesn't count as an edit.
     const edits = async () => (await memberClient.from('registration_edits')
-      .select('changes').eq('registration_id', memberParty.id)).data;
-    expect(await edits()).toEqual([]);
+      .select('changes').eq('registration_id', memberParty.id).order('edited_at')).data;
+    expect((await edits()).map(entry => Object.keys(entry.changes))).toEqual([['created']]);
     expect(memberParty.edit_count).toBe(0);
 
     await saveOk(memberClient, ATTENDEES_EVENT_ID, [person('Ann')]);
-    const [edit] = await edits();
+    const [, edit] = await edits();
     expect(edit.changes.attendees.old.map(a => a.name)).toEqual(['Ann', 'Bob']);
     expect(edit.changes.attendees.new.map(a => a.name)).toEqual(['Ann']);
     expect(edit.changes.calculated_amount_owed).toEqual({ old: 200, new: 100 });
@@ -1911,5 +1912,87 @@ describe('🚗 carpool board (#180)', () => {
   test('venue coordinates go together', async () => {
     const { error } = await adminAuthClient.from('venues').update({ lat: 45, lng: null }).eq('id', BOARD_VENUE_ID);
     expect(error?.message).toMatch(/venues_lat_lng_together/);
+  });
+});
+
+// #173: creating a registration writes a « created » entry to registration_edits, authored by
+// whoever created it, with the attendees as saved. The read rule is unchanged: a member reads the
+// entries they authored, an admin reads them all.
+describe('📜 registration history logs creations (#173)', () => {
+  jest.setTimeout(30000);
+
+  const HISTORY_EVENT_ID = 'a0000000-a000-a000-a000-a00000000173';
+  const HISTORY_PARTY_ID = 'a0000000-a000-a000-a000-a00000000174';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+
+  let memberClient;
+  let adminAuthClient;
+
+  const entriesAs = async (client) => {
+    const { data, error } = await client
+      .from('registration_edits')
+      .select('edited_by, changes')
+      .eq('registration_id', HISTORY_PARTY_ID)
+      .order('edited_at');
+    if (error) throw error;
+    return data;
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: HISTORY_EVENT_ID, theme: 'History Test', status: 'ACTIVE', event_start_date: startsIn(60), selling_price_whole_event: 100
+    });
+    if (error) throw error;
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', HISTORY_PARTY_ID);
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', HISTORY_PARTY_ID);
+  });
+
+  test('a member registering writes one creation entry, with what was saved', async () => {
+    await saveOk(memberClient, HISTORY_EVENT_ID, TWO_ADULTS_WHOLE, { id: HISTORY_PARTY_ID });
+
+    const [entry, ...rest] = await entriesAs(memberClient);
+    expect(rest).toEqual([]);
+    expect(entry.edited_by).toBe(MEMBER_ID);
+    expect(entry.changes.created.old).toBeNull();
+    const created = entry.changes.created.new;
+    expect(created.attendees).toHaveLength(2);
+    expect(created.status).toBe('registered');
+    expect(created.is_waitlisted).toBe(false);
+    expect(Number(created.calculated_amount_owed)).toBe(200);
+  });
+
+  test('edits are logged as before; the member reads only what they authored, the admin reads all', async () => {
+    await saveOk(memberClient, HISTORY_EVENT_ID, ONE_ADULT_WHOLE, { id: HISTORY_PARTY_ID });
+    await saveOk(memberClient, HISTORY_EVENT_ID, TWO_ADULTS_WHOLE);
+    const { error } = await adminAuthClient.from('user_parties').update({ admin_notes: 'Note' }).eq('id', HISTORY_PARTY_ID);
+    expect(error).toBeNull();
+
+    const all = await entriesAs(adminAuthClient);
+    expect(all.map(entry => Object.keys(entry.changes).sort())).toEqual([
+      ['created'],
+      ['attendees', 'calculated_amount_owed'],
+      ['admin_notes']
+    ]);
+    expect(all.map(entry => entry.edited_by)).toEqual([MEMBER_ID, MEMBER_ID, ADMIN_ID]);
+    expect((await entriesAs(memberClient)).map(entry => Object.keys(entry.changes)[0])).toEqual(['created', 'attendees']);
+  });
+
+  test("an admin registering someone is the creation entry's author", async () => {
+    await saveOk(adminAuthClient, HISTORY_EVENT_ID, ONE_ADULT_WHOLE, { id: HISTORY_PARTY_ID, userId: MEMBER_ID });
+
+    const all = await entriesAs(adminAuthClient);
+    expect(all).toHaveLength(1);
+    expect(all[0].edited_by).toBe(ADMIN_ID);
+    expect(all[0].changes.created.new.attendees).toHaveLength(1);
+    expect(await entriesAs(memberClient)).toEqual([]);
   });
 });

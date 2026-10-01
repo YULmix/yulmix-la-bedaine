@@ -251,8 +251,12 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                       {lines.map((line, index) => (
                         <li key={index} className="text-muted">
                           <span className="font-semibold text-ink">{line.label}</span>{' '}
-                          <span className="break-words">{line.from}</span>
-                          <ArrowRight aria-label={fr.historyChangedTo} className="mx-1 inline size-3.5 text-faint" />
+                          {line.from && (
+                            <>
+                              <span className="break-words">{line.from}</span>
+                              <ArrowRight aria-label={fr.historyChangedTo} className="mx-1 inline size-3.5 text-faint" />
+                            </>
+                          )}
                           <span className="break-words text-ink">{line.to}</span>
                         </li>
                       ))}

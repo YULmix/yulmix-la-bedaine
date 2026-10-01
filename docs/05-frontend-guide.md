@@ -82,6 +82,12 @@ The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
+Its « Historique des changements » (#173) lists one event's `registration_edits`, newest first,
+picked with its own event selector (the active event by default). `describeChanges()`
+(`src/lib/editHistory.js`) turns each entry into French lines, the same ones the member's
+« Historique » shows; `historyExportRows()` (`src/lib/changeHistory.js`) makes one export row per
+line, for the same `toCsv` / `toTsv`.
+
 ## State and data ownership
 
 There is no store. Ownership is:
