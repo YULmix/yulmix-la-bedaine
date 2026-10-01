@@ -4,7 +4,7 @@ import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../../lib/dataExport';
 import { defaultHistoryEvent, historyEntries, historyExportRows } from '../../lib/changeHistory';
-import { Button, Card, ChipGroup, EmptyState, Field, Notice, Select, Skeleton, Tag, Toggle } from '../ui';
+import { Button, Card, ChipGroup, EmptyState, Field, Notice, Select, Skeleton, Tag, Toggle, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
 
 // The admin data export (#178): pick « Par groupe » or « Par participant », then a CSV download
@@ -75,7 +75,6 @@ export const FeedbackInbox = ({ items, showResolved, onToggleResolved, onResolve
   );
 };
 
-const HISTORY_PAGE = 50;
 // PostgREST returns at most this many rows per request; longer histories are read in slices.
 const FETCH_SLICE = 1000;
 
@@ -126,7 +125,6 @@ export const ChangeHistory = ({ events, notify }) => {
   const [eventId, setEventId] = useState(() => defaultHistoryEvent(events)?.id ?? '');
   const [entries, setEntries] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [shown, setShown] = useState(HISTORY_PAGE);
   const [reloads, setReloads] = useState(0);
   const event = events.find(item => item.id === eventId);
 
@@ -139,7 +137,6 @@ export const ChangeHistory = ({ events, notify }) => {
     let current = true;
     setEntries(null);
     setLoadError(null);
-    setShown(HISTORY_PAGE);
     (async () => {
       try {
         const edits = await fetchEventEdits(eventId);
@@ -175,22 +172,43 @@ export const ChangeHistory = ({ events, notify }) => {
     .replace('{theme}', item.theme || fr.historyEmptyValue)
     .replace('{status}', fr[(item.is_active ? EVENT_STATUS.ACTIVE : EVENT_STATUS[item.status] || EVENT_STATUS.DRAFT).key]);
 
+  const changeLine = (line, index) => (
+    <li key={index} className="break-words text-muted">
+      <span className="font-semibold text-ink">{line.label}</span>{' '}
+      {line.from && (
+        <>
+          <span>{line.from}</span>
+          <ArrowRight aria-label={fr.historyChangedTo} className="mx-1 inline size-3.5 text-faint" />
+        </>
+      )}
+      <span className="text-ink">{line.to}</span>
+    </li>
+  );
+
+  // Wide screens: one row per entry under a sticky header (when, registration, author, changes).
+  // Phones: the same entry stacked. Either way the list scrolls inside the card, which is about a
+  // screen tall, so a long history never pushes the rest of Outils out of reach.
+  const ROW = 'md:grid md:grid-cols-[9rem_minmax(0,12rem)_minmax(0,12rem)_minmax(0,1fr)] md:gap-4';
   return (
-    <Card className="p-5 sm:p-6" aria-labelledby="change-history-title">
-      <h3 id="change-history-title" className="text-lg font-semibold text-ink">{fr.changeHistoryTitle}</h3>
-      <p className="mt-1 text-sm text-muted">{fr.changeHistoryDescription}</p>
-      <Field label={fr.changeHistoryEventLabel} htmlFor="change-history-event" className="mt-5">
-        <Select id="change-history-event" value={eventId} onChange={e => setEventId(e.target.value)}>
-          {events.map(item => <option key={item.id} value={item.id}>{eventOption(item)}</option>)}
-        </Select>
-      </Field>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <Button variant="secondary" onClick={exportCsv} disabled={!hasRows}>
-          <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
-        </Button>
-        <Button variant="secondary" onClick={copyTsv} disabled={!hasRows}>
-          <ClipboardCopy aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCopyTSVButton}
-        </Button>
+    <Card className="flex flex-col p-5 sm:p-6" aria-labelledby="change-history-title">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h3 id="change-history-title" className="text-lg font-semibold text-ink">{fr.changeHistoryTitle}</h3>
+          <p className="mt-1 text-sm text-muted">{fr.changeHistoryDescription}</p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Field label={fr.changeHistoryEventLabel} htmlFor="change-history-event" className="sm:min-w-64">
+            <Select id="change-history-event" value={eventId} onChange={e => setEventId(e.target.value)}>
+              {events.map(item => <option key={item.id} value={item.id}>{eventOption(item)}</option>)}
+            </Select>
+          </Field>
+          <Button variant="secondary" onClick={exportCsv} disabled={!hasRows}>
+            <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
+          </Button>
+          <Button variant="secondary" onClick={copyTsv} disabled={!hasRows}>
+            <ClipboardCopy aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCopyTSVButton}
+          </Button>
+        </div>
       </div>
 
       {loadError ? (
@@ -208,41 +226,39 @@ export const ChangeHistory = ({ events, notify }) => {
         <EmptyState icon={History} title={fr.changeHistoryEmpty} className="mt-5" />
       ) : (
         <>
-          <ol className="mt-5 divide-y divide-line" aria-label={fr.changeHistoryTitle}>
-            {entries.slice(0, shown).map(entry => (
-              <li key={entry.id} className="py-3 first:pt-0" data-testid="change-history-entry">
-                <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className="font-semibold text-ink break-words">{entry.registrant}</span>
-                  <span className="text-faint break-words">{fr.changeHistoryBy.replace('{author}', entry.author)}</span>
-                </p>
-                <p className="font-data text-xs text-faint">{entry.at}</p>
-                {entry.lines.length > 0 ? (
-                  <ul className="mt-1 space-y-1 text-sm">
-                    {entry.lines.map((line, index) => (
-                      <li key={index} className="break-words text-muted">
-                        <span className="font-semibold text-ink">{line.label}</span>{' '}
-                        {line.from && (
-                          <>
-                            <span>{line.from}</span>
-                            <ArrowRight aria-label={fr.historyChangedTo} className="mx-1 inline size-3.5 text-faint" />
-                          </>
-                        )}
-                        <span className="text-ink">{line.to}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="mt-1 text-sm text-muted">{fr.historyNoDetail}</p>}
-              </li>
-            ))}
-          </ol>
-          {entries.length > shown && (
-            <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-xs text-faint">
-                {fr.changeHistoryShown.replace('{shown}', shown).replace('{total}', entries.length)}
-              </p>
-              <Button variant="secondary" size="sm" onClick={() => setShown(n => n + HISTORY_PAGE)}>{fr.changeHistoryShowMore}</Button>
+          <p className="mt-5 text-xs text-faint" aria-live="polite">
+            {(entries.length === 1 ? fr.changeHistoryCountOne : fr.changeHistoryCountOther).replace('{count}', entries.length)}
+          </p>
+          {/* Phones keep room for the header and the bottom tab bar; md+ for the header only. */}
+          <div
+            className="mt-2 max-h-[calc(100dvh-10rem)] min-h-64 overflow-y-auto overscroll-contain rounded-control border border-line md:max-h-[calc(100dvh-7rem)]"
+            tabIndex={0}
+            role="region"
+            aria-label={fr.changeHistoryTitle}
+            data-testid="change-history-scroll"
+          >
+            <div className={cx('sticky top-0 z-10 hidden border-b border-line bg-raised px-4 py-2 text-xs font-semibold uppercase tracking-wide text-faint', ROW)} aria-hidden="true">
+              <span>{fr.historyExportTimestamp}</span>
+              <span>{fr.historyExportRegistration}</span>
+              <span>{fr.historyExportAuthor}</span>
+              <span>{fr.changeHistoryChanges}</span>
             </div>
-          )}
+            <ol className="divide-y divide-line">
+              {entries.map(entry => (
+                <li key={entry.id} className={cx('px-4 py-3 text-sm', ROW)} data-testid="change-history-entry">
+                  <p className="font-data text-xs text-faint md:pt-0.5">{entry.at}</p>
+                  <p className="font-semibold text-ink break-words">{entry.registrant}</p>
+                  <p className="text-faint break-words">
+                    <span className="md:hidden">{fr.changeHistoryBy.replace('{author}', entry.author)}</span>
+                    <span className="hidden md:inline">{entry.author}</span>
+                  </p>
+                  {entry.lines.length > 0
+                    ? <ul className="mt-1 space-y-1 md:mt-0">{entry.lines.map(changeLine)}</ul>
+                    : <p className="mt-1 text-muted md:mt-0">{fr.historyNoDetail}</p>}
+                </li>
+              ))}
+            </ol>
+          </div>
         </>
       )}
     </Card>

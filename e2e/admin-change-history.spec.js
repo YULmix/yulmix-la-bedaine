@@ -121,6 +121,29 @@ test('at phone width the history doesn\'t scroll the page sideways', async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
+test('a long history scrolls inside its card, which fits the screen', async ({ page }) => {
+  // 20 more edits: well past a screen of entries.
+  for (let i = 0; i < 10; i += 1) {
+    await saveRegistrationAs(registrant, seeded.eventId, [person('Hélène')]);
+    await saveRegistrationAs(registrant, seeded.eventId, [person('Hélène'), person('Hugo')]);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin?tab=tools');
+  await expect(entries(page)).toHaveCount(23);
+
+  const scroller = card(page).getByTestId('change-history-scroll');
+  const { clientHeight, scrollHeight } = await scroller.evaluate(el => ({ clientHeight: el.clientHeight, scrollHeight: el.scrollHeight }));
+  expect(scrollHeight).toBeGreaterThan(clientHeight);
+  expect(clientHeight).toBeLessThanOrEqual(800);
+  // Scrolled into view, the list fills most of the screen.
+  expect(clientHeight).toBeGreaterThan(800 * 0.75);
+  await scroller.scrollIntoViewIfNeeded();
+  await scroller.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(entries(page).last()).toBeInViewport();
+  await expect(entries(page).first()).not.toBeInViewport();
+});
+
 test('a member can\'t open the history; their own history reads in French', async ({ page }) => {
   // The seeded member's registration, made by themselves this time, then edited.
   await deleteParty(seeded.partyId);

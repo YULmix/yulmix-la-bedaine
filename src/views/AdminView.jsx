@@ -696,7 +696,6 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         <div className="grid gap-6 xl:grid-cols-2">
           <div className="space-y-6">
             {activeEventState && <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
-            {events.length > 0 && <ChangeHistory events={events} notify={addToast} />}
           </div>
           <FeedbackInbox
             items={feedbackItems}
@@ -704,6 +703,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
             onToggleResolved={setShowResolvedFeedback}
             onResolve={handleResolveFeedback}
           />
+          {/* The history gets the full width: it's the one card here that grows without bound. */}
+          {events.length > 0 && <div className="xl:col-span-2"><ChangeHistory events={events} notify={addToast} /></div>}
         </div>
       );
     }
