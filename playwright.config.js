@@ -53,7 +53,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -262,6 +262,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-carpool-board\.spec\.js/,
       dependencies: ['member-departure-place']
+    },
+    {
+      // Reseeds the same shared active event and its venue's galleries (#177), so it runs after
+      // member-carpool-board, on its own. Sets its own phone viewport.
+      name: 'galleries',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /galleries\.spec\.js/,
+      dependencies: ['member-carpool-board']
     }
   ],
   webServer: {

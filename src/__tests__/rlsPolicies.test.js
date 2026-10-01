@@ -1511,7 +1511,10 @@ describe('🗑️ soft account deletion (#36)', () => {
   });
 });
 
-describe('📷 location photos (#124)', () => {
+// #177: galleries, which replaced the single location photo (#124). Images live in the public
+// location-photos bucket, which only admins write; a gallery belongs to a location or to a venue
+// (kind general or assignments), and its readers follow the owner.
+describe('🖼️ galleries (#177)', () => {
   jest.setTimeout(30000);
 
   const EVENT_ID = 'a0000000-a000-a000-a000-a00000001241';
@@ -1536,7 +1539,24 @@ describe('📷 location photos (#124)', () => {
     const [folder, file] = name.split('/');
     return (await ok(adminAuthClient.storage.from(BUCKET).list(folder, { search: file }))).length === 1;
   };
-  const unused = async (client, paths) => client.rpc('unused_location_photos', { p_paths: paths });
+  const unused = async (client, paths) => client.rpc('unused_gallery_images', { p_paths: paths });
+  const add = (client, path, owner) => client.rpc('add_gallery_image', {
+    p_path: path, p_location_id: owner.locationId ?? null, p_venue_id: owner.venueId ?? null, p_kind: owner.kind ?? null
+  });
+  // A gallery's image paths in order, as `client` sees them.
+  const pathsOf = async (client, filter) => {
+    let query = client.from('galleries').select('images:gallery_images(path, position)');
+    Object.entries(filter).forEach(([column, value]) => { query = query.eq(column, value); });
+    const rows = await ok(query);
+    return rows.flatMap(row => row.images.sort((x, y) => x.position - y.position).map(i => i.path));
+  };
+  // Seats a member's party in a new place of `location`.
+  const sleepIn = async (location) => {
+    const placeId = (await ok(adminAuthClient.from('places').insert({ location_id: location, label: 'Matelas', type: 'floor' }).select('id').single())).id;
+    const party = await saveOk(memberClient, EVENT_ID, [person('Ann')]);
+    const ann = (await ok(adminAuthClient.from('attendees').select('id').eq('party_id', party.id).single())).id;
+    await ok(adminAuthClient.from('place_assignments').insert({ place_id: placeId, attendee_id: ann }));
+  };
 
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
@@ -1549,7 +1569,7 @@ describe('📷 location photos (#124)', () => {
     venueId = (await ok(adminAuthClient.from('venues').insert({ name: 'La Grange' }).select('id').single())).id;
     // Un-archive (allowed by SQL) so the event can be put on today's venue.
     await ok(adminAuthClient.from('events').upsert({
-      id: EVENT_ID, theme: 'Photos Test', status: 'ACTIVE', selling_price_whole_event: 100, venue_id: venueId
+      id: EVENT_ID, theme: 'Galleries Test', status: 'ACTIVE', selling_price_whole_event: 100, venue_id: venueId
     }));
     locationId = (await ok(adminAuthClient.from('locations').insert({ venue_id: venueId, name: 'Grenier' }).select('id').single())).id;
   });
@@ -1559,7 +1579,7 @@ describe('📷 location photos (#124)', () => {
     if (uploaded.length) await adminAuthClient.storage.from(BUCKET).remove(uploaded);
   });
 
-  test('an admin uploads, replaces and removes a photo; a member can do none of it', async () => {
+  test('an admin uploads, replaces and removes an object; a member can do none of it', async () => {
     const { name, error } = await upload(adminAuthClient);
     expect(error).toBeNull();
     const { error: replaceError } = await adminAuthClient.storage.from(BUCKET).upload(name, image(), { contentType: 'image/jpeg', upsert: true });
@@ -1575,10 +1595,6 @@ describe('📷 location photos (#124)', () => {
     const { data: memberList } = await memberClient.storage.from(BUCKET).list(locationId);
     expect(memberList ?? []).toEqual([]);
 
-    // RLS hides the location from the member's update: nothing changes.
-    await memberClient.from('locations').update({ photo_path: name }).eq('id', locationId);
-    expect(await ok(adminAuthClient.from('locations').select('photo_path').eq('id', locationId).single())).toEqual({ photo_path: null });
-
     await ok(adminAuthClient.storage.from(BUCKET).remove([name]));
     expect(await exists(name)).toBe(false);
   });
@@ -1589,45 +1605,142 @@ describe('📷 location photos (#124)', () => {
     expect(error).not.toBeNull();
   });
 
-  test('a photo is public, and the member who sleeps there reads its path', async () => {
+  test('a member writes no gallery and no image', async () => {
     const { name } = await upload(adminAuthClient);
-    await ok(adminAuthClient.from('locations').update({ photo_path: name }).eq('id', locationId));
-    const placeId = (await ok(adminAuthClient.from('places').insert({ location_id: locationId, label: 'Matelas', type: 'floor' }).select('id').single())).id;
-    const party = await saveOk(memberClient, EVENT_ID, [person('Ann')]);
-    const ann = (await ok(adminAuthClient.from('attendees').select('id').eq('party_id', party.id).single())).id;
-    await ok(adminAuthClient.from('place_assignments').insert({ place_id: placeId, attendee_id: ann }));
+    const image1 = await ok(add(adminAuthClient, name, { locationId }));
 
-    const rows = await ok(memberClient.from('attendee_places').select('location_name, location_photo_path').eq('party_id', party.id));
-    expect(rows).toEqual([{ location_name: 'Grenier', location_photo_path: name }]);
+    expect((await add(memberClient, name, { locationId })).error?.message).toBe('admin_only');
+    expect((await add(memberClient, name, { venueId, kind: 'general' })).error?.message).toBe('admin_only');
+    expect((await memberClient.rpc('move_gallery_image', { p_image_id: image1.id, p_offset: 1 })).error?.message).toBe('admin_only');
+    expect((await memberClient.from('galleries').insert({ venue_id: venueId, kind: 'general' })).error).not.toBeNull();
+    expect((await memberClient.from('gallery_images').insert({ gallery_id: image1.gallery_id, path: name, position: 5 })).error).not.toBeNull();
+    // RLS hides the rows from the member's update and delete: nothing changes.
+    await memberClient.from('gallery_images').update({ position: 9 }).eq('id', image1.id);
+    await memberClient.from('gallery_images').delete().eq('id', image1.id);
+    await memberClient.from('galleries').delete().eq('id', image1.gallery_id);
+    expect(await pathsOf(adminAuthClient, { location_id: locationId })).toEqual([name]);
+    expect((await ok(adminAuthClient.from('gallery_images').select('position').eq('id', image1.id).single())).position).toBe(0);
+  });
+
+  test('a gallery belongs to one owner, once per location and once per venue kind', async () => {
+    expect((await adminAuthClient.from('galleries').insert({ venue_id: venueId, location_id: locationId })).error).not.toBeNull();
+    expect((await adminAuthClient.from('galleries').insert({ venue_id: venueId, kind: 'menu' })).error).not.toBeNull();
+    expect((await adminAuthClient.from('galleries').insert({ location_id: locationId, kind: 'general' })).error).not.toBeNull();
+    await ok(adminAuthClient.from('galleries').insert({ venue_id: venueId, kind: 'general' }));
+    expect((await adminAuthClient.from('galleries').insert({ venue_id: venueId, kind: 'general' })).error).not.toBeNull();
+    await ok(adminAuthClient.from('galleries').insert({ location_id: locationId }));
+    expect((await adminAuthClient.from('galleries').insert({ location_id: locationId })).error).not.toBeNull();
+  });
+
+  test('images go last and move one step at a time; the first is the cover', async () => {
+    const owner = { venueId, kind: 'general' };
+    const [a, b, c] = ['a', 'b', 'c'].map(n => `${venueId}/${n}.jpg`);
+    for (const path of [a, b, c]) await ok(add(adminAuthClient, path, owner));
+    expect(await pathsOf(adminAuthClient, { venue_id: venueId, kind: 'general' })).toEqual([a, b, c]);
+
+    const imageC = await ok(adminAuthClient.from('gallery_images').select('id').eq('path', c).single());
+    await ok(adminAuthClient.rpc('move_gallery_image', { p_image_id: imageC.id, p_offset: -1 }));
+    await ok(adminAuthClient.rpc('move_gallery_image', { p_image_id: imageC.id, p_offset: -1 }));
+    expect(await pathsOf(adminAuthClient, { venue_id: venueId, kind: 'general' })).toEqual([c, a, b]);
+    // Already first: nothing moves.
+    await ok(adminAuthClient.rpc('move_gallery_image', { p_image_id: imageC.id, p_offset: -1 }));
+    expect(await pathsOf(adminAuthClient, { venue_id: venueId, kind: 'general' })).toEqual([c, a, b]);
+  });
+
+  test('a 31st image is refused with gallery_full', async () => {
+    for (let i = 0; i < 30; i += 1) await ok(add(adminAuthClient, `${locationId}/${i}.jpg`, { locationId }));
+    const { error } = await add(adminAuthClient, `${locationId}/30.jpg`, { locationId });
+    expect(error?.message).toBe('gallery_full');
+    expect(JSON.parse(error.details)).toEqual({ max: 30 });
+    expect(await pathsOf(adminAuthClient, { location_id: locationId })).toHaveLength(30);
+  });
+
+  test('a member reads the venue\'s general gallery and their location\'s, but no other location\'s nor any assignments gallery', async () => {
+    const { name } = await upload(adminAuthClient);
+    const otherLocation = (await ok(adminAuthClient.from('locations').insert({ venue_id: venueId, name: 'Cave' }).select('id').single())).id;
+    await ok(add(adminAuthClient, name, { venueId, kind: 'general' }));
+    await ok(add(adminAuthClient, name, { venueId, kind: 'assignments' }));
+    await ok(add(adminAuthClient, name, { locationId }));
+    await ok(add(adminAuthClient, name, { locationId: otherLocation }));
+
+    // Before the member sleeps anywhere: only the venue's general gallery.
+    const before = await ok(memberClient.from('galleries').select('venue_id, location_id, kind').or(`venue_id.eq.${venueId},location_id.in.(${locationId},${otherLocation})`));
+    expect(before).toEqual([{ venue_id: venueId, location_id: null, kind: 'general' }]);
+
+    await sleepIn(locationId);
+    const after = await ok(memberClient.from('galleries').select('location_id, kind, images:gallery_images(path)').or(`venue_id.eq.${venueId},location_id.in.(${locationId},${otherLocation})`));
+    expect(after).toHaveLength(2);
+    expect(after).toEqual(expect.arrayContaining([
+      { location_id: null, kind: 'general', images: [{ path: name }] },
+      { location_id: locationId, kind: null, images: [{ path: name }] }
+    ]));
+    // Images too follow their gallery.
+    const images = await ok(memberClient.from('gallery_images').select('gallery_id').eq('path', name));
+    expect(images).toHaveLength(2);
+
+    // Anonymous visitors read none (the info page is sign-in only).
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY);
+    const { data: anonRows } = await anonClient.from('galleries').select('id').eq('venue_id', venueId);
+    expect(anonRows ?? []).toEqual([]);
 
     const response = await fetch(memberClient.storage.from(BUCKET).getPublicUrl(name).data.publicUrl);
     expect(response.status).toBe(200);
   });
 
-  test('unused_location_photos is admin-only', async () => {
+  test('freezing copies the galleries; the frozen copies cannot change', async () => {
+    const { name } = await upload(adminAuthClient);
+    await ok(add(adminAuthClient, name, { venueId, kind: 'general' }));
+    await ok(add(adminAuthClient, name, { venueId, kind: 'assignments' }));
+    await ok(add(adminAuthClient, name, { locationId }));
+
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
+    const frozen = await ok(adminAuthClient.from('events')
+      .select('venue:venues(id, snapshot_of, galleries(kind, images:gallery_images(path)), locations(galleries(images:gallery_images(path))))')
+      .eq('id', EVENT_ID).single());
+    expect(frozen.venue.snapshot_of).toBe(venueId);
+    expect(frozen.venue.galleries).toEqual(expect.arrayContaining([
+      { kind: 'general', images: [{ path: name }] },
+      { kind: 'assignments', images: [{ path: name }] }
+    ]));
+    // One gallery per location: PostgREST embeds it as an object.
+    expect(frozen.venue.locations).toEqual([{ galleries: { images: [{ path: name }] } }]);
+
+    const copyId = frozen.venue.id;
+    const copyImage = await ok(adminAuthClient.from('gallery_images')
+      .select('id, gallery_id, galleries!inner(venue_id)').eq('galleries.venue_id', copyId).eq('galleries.kind', 'general').single());
+    expect((await add(adminAuthClient, `${copyId}/new.jpg`, { venueId: copyId, kind: 'general' })).error?.message).toBe('venue_layout_frozen');
+    expect((await adminAuthClient.from('gallery_images').delete().eq('id', copyImage.id)).error?.message).toBe('venue_layout_frozen');
+    expect((await adminAuthClient.from('gallery_images').update({ position: 3 }).eq('id', copyImage.id)).error?.message).toBe('venue_layout_frozen');
+    expect((await adminAuthClient.from('galleries').delete().eq('id', copyImage.gallery_id)).error?.message).toBe('venue_layout_frozen');
+
+    // The live venue's galleries still change.
+    await ok(add(adminAuthClient, `${venueId}/later.jpg`, { venueId, kind: 'general' }));
+  });
+
+  test('unused_gallery_images is admin-only', async () => {
     const { error } = await unused(memberClient, []);
     expect(error?.message).toBe('admin_only');
   });
 
-  test('unused_location_photos names an unreferenced photo, never one a location (or a frozen copy) points at', async () => {
+  test('unused_gallery_images names an unreferenced object, never one a gallery (or a frozen copy) points at', async () => {
     const { name: kept } = await upload(adminAuthClient);
     const { name: dropped } = await upload(adminAuthClient);
-    await ok(adminAuthClient.from('locations').update({ photo_path: kept }).eq('id', locationId));
+    const image1 = await ok(add(adminAuthClient, kept, { locationId }));
 
     expect(await ok(unused(adminAuthClient, [kept, dropped]))).toEqual([dropped]);
 
-    // Archived: the frozen copy keeps the photo, so clearing the live location leaves it in use.
+    // Archived: the frozen copy keeps the image, so removing it from the live gallery leaves it in use.
     await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
-    const frozen = await ok(adminAuthClient.from('events').select('venue:venues(snapshot_of, locations(photo_path))').eq('id', EVENT_ID).single());
-    expect(frozen.venue).toEqual({ snapshot_of: venueId, locations: [{ photo_path: kept }] });
-    await ok(adminAuthClient.from('locations').update({ photo_path: null }).eq('id', locationId));
+    await ok(adminAuthClient.from('gallery_images').delete().eq('id', image1.id));
+    expect(await pathsOf(adminAuthClient, { location_id: locationId })).toEqual([]);
     expect(await ok(unused(adminAuthClient, [kept]))).toEqual([]);
   });
 
-  test('a deleted location leaves its photo unused', async () => {
+  test('a deleted location takes its gallery, leaving its images unused', async () => {
     const { name } = await upload(adminAuthClient);
-    await ok(adminAuthClient.from('locations').update({ photo_path: name }).eq('id', locationId));
+    const image1 = await ok(add(adminAuthClient, name, { locationId }));
     await ok(adminAuthClient.from('locations').delete().eq('id', locationId));
+    expect(await ok(adminAuthClient.from('galleries').select('id').eq('id', image1.gallery_id))).toEqual([]);
     expect(await ok(unused(adminAuthClient, [name]))).toEqual([name]);
   });
 });

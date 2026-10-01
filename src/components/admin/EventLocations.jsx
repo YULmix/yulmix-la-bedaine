@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Camera, Check, ChevronRight, Copy, ImageOff, MapPin, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, Images, MapPin, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { plural } from '../../lib/eventDisplay';
 import { placeTypeBreakdown } from '../../lib/places';
-import { locationPhotoUrl, removeUnusedLocationPhotos, uploadLocationPhoto } from '../../lib/locationPhotos';
+import { VENUE_GALLERY_KINDS, copyGalleryImages, fetchLocationGalleries, removeUnusedGalleryImages } from '../../lib/galleries';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
+import GalleryEditor from './GalleryEditor';
 import { formatCoordinates, parseCoordinates } from '../../lib/venue';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
 
@@ -118,47 +119,20 @@ const PlaceRow = ({ place, onUpdate, onCapacity, onDelete }) => (
   </li>
 );
 
-// The location's photo (#124), what the room looks like: shown to the participants who sleep
-// there too. Opens full size in a new tab.
-const LocationPhoto = ({ location, busy, onPick, onRemove }) => {
-  const input = useRef(null);
-  const url = locationPhotoUrl(location.photo_path);
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-semibold text-muted">{fr.locationPhotoLabel}</p>
-      <div className="flex flex-wrap items-center gap-3">
-        {url ? (
-          <a href={url} target="_blank" rel="noreferrer" aria-label={fr.locationPhotoOpen.replace('{name}', location.name)}
-            className="block rounded-control focus-visible:outline-2 focus-visible:outline-neon">
-            <img src={url} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
-              className="h-24 w-36 rounded-control border border-line object-cover" />
-          </a>
-        ) : (
-          <div className="grid h-24 w-36 place-items-center rounded-control border border-dashed border-line text-faint">
-            <ImageOff aria-hidden="true" className="size-5" strokeWidth={1.75} />
-            <span className="sr-only">{fr.locationPhotoNone}</span>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-1">
-          <Button variant="secondary" size="sm" loading={busy} onClick={() => input.current.click()}>
-            <Camera aria-hidden="true" className="size-4" strokeWidth={1.75} />{url ? fr.locationPhotoReplace : fr.locationPhotoAdd}
-          </Button>
-          {url && (
-            <Button variant="dangerGhost" size="sm" disabled={busy} onClick={onRemove}>
-              <Trash2 aria-hidden="true" className="size-4" strokeWidth={1.75} />{fr.locationPhotoRemove}
-            </Button>
-          )}
-        </div>
-        <input ref={input} type="file" accept="image/*" hidden aria-label={fr.locationPhotoInputLabel}
-          onChange={e => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) onPick(file);
-          }} />
-      </div>
+// The venue's galleries (#177), each headed by where it shows.
+const VenueGalleries = ({ venueId }) => (
+  <Card as="section" aria-labelledby="venue-galleries-title" className="space-y-6 p-4 sm:p-5">
+    <h3 id="venue-galleries-title" className="flex items-center gap-2 text-lg font-semibold text-ink">
+      <Images aria-hidden="true" className="size-4.5 text-neon" strokeWidth={1.75} />{fr.galleryVenueTitle}
+    </h3>
+    <GalleryEditor owner={{ venueId, kind: VENUE_GALLERY_KINDS.general }} headingLevel="h4"
+      title={fr.galleryVenueGeneralTitle} hint={fr.galleryVenueGeneralHint} />
+    <div className="border-t border-line pt-6">
+      <GalleryEditor owner={{ venueId, kind: VENUE_GALLERY_KINDS.assignments }} headingLevel="h4"
+        title={fr.galleryVenueAssignmentsTitle} hint={fr.galleryVenueAssignmentsHint} />
     </div>
-  );
-};
+  </Card>
+);
 
 // Where the venue is on a map (#180), pasted as « latitude, longitude »: what the carpool board
 // measures detours to. Saved on blur like the other fields; something else is refused here.
@@ -239,7 +213,6 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   const [status, setStatus] = useState('idle');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [blocked, setBlocked] = useState(null);
-  const [photoBusy, setPhotoBusy] = useState(null);
   const inFlight = useRef(0);
   const pane = useRef(null);
   const capacityWrites = useRef({});
@@ -249,7 +222,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       supabase.from('venues').select('id, name, address, lat, lng').eq('id', venueId).single(),
       supabase
         .from('locations')
-        .select('id, name, note, photo_path, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
+        .select('id, name, note, sort_order, created_at, places(id, label, type, capacity, sort_order, created_at)')
         .eq('venue_id', venueId)
     ]);
     const loadError = venueResult.error || locationsResult.error;
@@ -324,31 +297,6 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     if (!result.error) onVenueChange();
   };
 
-  // The photo is uploaded first, then the location points at it. The object no location points at
-  // any more (the replaced photo, or the new one if the save failed) is removed after.
-  const setPhoto = async (location, file) => {
-    setPhotoBusy(location.id);
-    setStatus('saving');
-    let path;
-    try {
-      path = await uploadLocationPhoto(location.id, file);
-    } catch (uploadError) {
-      console.error('Error uploading a location photo:', uploadError);
-      setError(dbErrorMessage(uploadError, fr.locationPhotoUploadError));
-      setStatus('idle');
-      setPhotoBusy(null);
-      return;
-    }
-    const result = await patchLocation(location.id, { photo_path: path });
-    setPhotoBusy(null);
-    removeUnusedLocationPhotos([result.error ? path : location.photo_path]);
-  };
-
-  const removePhoto = async (location) => {
-    const result = await patchLocation(location.id, { photo_path: null });
-    if (!result.error) removeUnusedLocationPhotos([location.photo_path]);
-  };
-
   const patchPlaceLocally = (id, fields) => setLocations(current => current.map(location => ({
     ...location,
     places: location.places.map(place => (place.id === id ? { ...place, ...fields } : place))
@@ -384,10 +332,17 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       venue_id: venueId,
       name: fr.locationCopyName.replace('{name}', location.name),
       note: location.note,
-      photo_path: location.photo_path,
       sort_order: nextSortOrder(locations)
     }).select('id').single());
     if (insertError) return;
+    // The copy's gallery points at the same images; a copy without them is still a copy.
+    try {
+      const images = (await fetchLocationGalleries([location.id])).get(location.id) || [];
+      await copyGalleryImages(images, data.id);
+    } catch (copyError) {
+      console.error('Error copying a location gallery:', copyError);
+      setError(dbErrorMessage(copyError, fr.gallerySaveError));
+    }
     if (location.places.length) {
       await track(supabase.from('places').insert(location.places.map(({ label, type, capacity, sort_order: sortOrder }) => ({
         location_id: data.id, label, type, capacity, sort_order: sortOrder
@@ -419,9 +374,13 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     return (data || []).map(row => row.attendee_name);
   };
 
+  // The gallery goes with the location (a cascade); its images' objects are removed after, unless
+  // a frozen copy still shows them.
   const deleteLocation = async (location) => {
+    const images = await fetchLocationGalleries([location.id])
+      .then(galleries => galleries.get(location.id) || [], () => []);
     const result = await trackAndReload(supabase.from('locations').delete().eq('id', location.id));
-    if (!result.error) removeUnusedLocationPhotos([location.photo_path]);
+    if (!result.error) removeUnusedGalleryImages(images.map(image => image.path));
     onLocationChange(null);
   };
 
@@ -473,6 +432,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       {error && <Notice tone="bad" role="alert">{error}</Notice>}
 
       {venue && <VenueCard venue={venue} onUpdate={patchVenue} />}
+      {venue && <VenueGalleries venueId={venue.id} />}
 
       {locations.length === 0 ? (
         <Card>
@@ -516,8 +476,8 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
                 </Field>
               </div>
 
-              <LocationPhoto location={selected} busy={photoBusy === selected.id}
-                onPick={file => setPhoto(selected, file)} onRemove={() => removePhoto(selected)} />
+              <GalleryEditor key={selected.id} owner={{ locationId: selected.id }}
+                title={fr.galleryLocationTitle} hint={fr.galleryLocationHint} />
 
               <div className="flex flex-wrap gap-1">
                 <Button variant="ghost" size="sm" disabled={selectedIndex === 0} onClick={() => moveLocation(selectedIndex, -1)}

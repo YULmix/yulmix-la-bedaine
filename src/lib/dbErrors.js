@@ -35,6 +35,7 @@ const DB_ERRORS = {
   registration_cancel_locked: ({ close_date: closeDate }) => fr.cancelRegistrationLocked
     .replace('{date}', formatDate(closeDate)),
   carpool_board_forbidden: () => fr.dbErrorCarpoolBoardForbidden,
+  gallery_full: ({ max }) => fr.dbErrorGalleryFull.replace('{max}', max ?? 30),
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
     .replace('{date}', formatDate(closeDate))
 };

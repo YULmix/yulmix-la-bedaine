@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
-import { locationPhotoUrl } from '../lib/locationPhotos';
+import { fetchLocationGalleries } from '../lib/galleries';
 import { sleepingByLocation } from '../lib/places';
 import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
@@ -12,6 +12,7 @@ import { describeChanges } from '../lib/editHistory';
 import { initials } from '../lib/eventDisplay';
 import Pass from '../components/brand/Pass';
 import MyPartyEmails from '../components/MyPartyEmails';
+import GalleryButton from '../components/Gallery';
 import { Button, Card, ConfirmDialog, Tag } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
@@ -44,6 +45,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [editHistory, setEditHistory] = useState([]);
+  const [locationGalleries, setLocationGalleries] = useState(new Map());
 
   useEffect(() => {
     const loadEditHistory = async () => {
@@ -88,6 +90,16 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
 
   const attendees = registration.attendees || [];
   const sleeping = sleepingByLocation(attendees);
+  const sleepingKey = sleeping.map(location => location.locationId).join(',');
+
+  // The galleries of the locations the party sleeps in (#177); none is just no photos.
+  useEffect(() => {
+    let current = true;
+    fetchLocationGalleries(sleepingKey ? sleepingKey.split(',') : [])
+      .then(galleries => { if (current) setLocationGalleries(galleries); })
+      .catch(loadError => console.error('Error loading location galleries:', loadError));
+    return () => { current = false; };
+  }, [sleepingKey]);
   const logistics = registration.logistics || {};
   const transport = registration.transport || {};
   const volunteering = logistics.volunteering || [];
@@ -197,13 +209,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                 <ul className="space-y-3">
                   {sleeping.map(location => (
                     <li key={location.locationId} className="flex items-start gap-3">
-                      {location.photoPath && (
-                        <a href={locationPhotoUrl(location.photoPath)} target="_blank" rel="noreferrer"
-                          className="shrink-0 rounded-control focus-visible:outline-2 focus-visible:outline-neon">
-                          <img src={locationPhotoUrl(location.photoPath)} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
-                            className="h-16 w-24 rounded-control border border-line object-cover" />
-                        </a>
-                      )}
+                      <GalleryButton images={locationGalleries.get(location.locationId)} name={location.name} size="sm" />
                       <div className="min-w-0">
                         <p className="font-semibold">{location.name}</p>
                         <p className="text-sm text-muted">

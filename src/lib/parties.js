@@ -4,10 +4,10 @@
 
 /**
  * Columns for a party with its attendees embedded; add more embeds after it if needed. Each
- * attendee has `place`: `{ place_id, bed_label, place_label, location_id, location_name,
- * location_photo_path }` from the attendee_places view, or null (#114, #124).
+ * attendee has `place`: `{ place_id, bed_label, place_label, location_id, location_name }` from
+ * the attendee_places view, or null (#114).
  */
-export const PARTY_WITH_ATTENDEES = '*, attendees(*, place:attendee_places(place_id, bed_label, place_label, location_id, location_name, location_photo_path))';
+export const PARTY_WITH_ATTENDEES = '*, attendees(*, place:attendee_places(place_id, bed_label, place_label, location_id, location_name))';
 
 /** Orders the embedded attendees by position. Apply to any query selecting PARTY_WITH_ATTENDEES. */
 export const orderAttendees = (query) => query.order('position', { referencedTable: 'attendees' });

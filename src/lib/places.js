@@ -109,9 +109,9 @@ export const searchPlaceOptions = (options, query) => {
 
 /**
  * Where a party sleeps (#124), one entry per location in the order its attendees come: the
- * location's name and photo, and who sleeps there in which place. Attendees without a place are
+ * location's name, and who sleeps there in which place (its gallery is read apart, #177). Attendees without a place are
  * left out; a party with none gives []. Each attendee's `place` is the attendee_places embed.
- * @returns {Array<{ locationId: string, name: string, photoPath: string | null, sleepers: Array<{ name: string, place: string }> }>}
+ * @returns {Array<{ locationId: string, name: string, sleepers: Array<{ name: string, place: string }> }>}
  */
 export const sleepingByLocation = (attendees) => {
   const byLocation = new Map();
@@ -121,7 +121,6 @@ export const sleepingByLocation = (attendees) => {
       byLocation.set(place.location_id, {
         locationId: place.location_id,
         name: place.location_name,
-        photoPath: place.location_photo_path ?? null,
         sleepers: []
       });
     }
