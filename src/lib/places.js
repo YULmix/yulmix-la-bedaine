@@ -106,3 +106,26 @@ export const searchPlaceOptions = (options, query) => {
     return wanted.every(word => haystack.some(candidate => candidate.startsWith(word)));
   });
 };
+
+/**
+ * Where a party sleeps (#124), one entry per location in the order its attendees come: the
+ * location's name and photo, and who sleeps there in which place. Attendees without a place are
+ * left out; a party with none gives []. Each attendee's `place` is the attendee_places embed.
+ * @returns {Array<{ locationId: string, name: string, photoPath: string | null, sleepers: Array<{ name: string, place: string }> }>}
+ */
+export const sleepingByLocation = (attendees) => {
+  const byLocation = new Map();
+  (attendees || []).forEach(({ name, place }) => {
+    if (!place) return;
+    if (!byLocation.has(place.location_id)) {
+      byLocation.set(place.location_id, {
+        locationId: place.location_id,
+        name: place.location_name,
+        photoPath: place.location_photo_path ?? null,
+        sleepers: []
+      });
+    }
+    byLocation.get(place.location_id).sleepers.push({ name, place: place.place_label });
+  });
+  return [...byLocation.values()];
+};

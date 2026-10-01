@@ -79,6 +79,7 @@ Derived from production's schema as captured in the baseline migration
 | `user_parties` | own or admin | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
 | `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126) | same as the party, but only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | same, through `save_registration()` (or the cascade when an admin deletes the party) |
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
+| `storage.objects` in `location-photos` | anyone, by public URL (a public bucket; a location's photo isn't private, #124) | admin only | admin only | admin only |
 | `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
 Notes on specific choices:
