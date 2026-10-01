@@ -95,8 +95,10 @@ payments due at the latest **1 week** before.
 
 ## Relationship to the spreadsheet
 
-The app is intended to *replace* the workbook, with a CSV / TSV-to-clipboard export
-(`src/views/AdminView.jsx:471`, `:555`) as the bridge while organisers still trust the sheet.
+The app is intended to *replace* the workbook, with the Outils tab's export as the bridge while
+organisers still trust the sheet: « Par groupe » (one row per party: counts, money, status,
+transport, volunteering, comments) and « Par participant » (one row per attendee: type, dietary
+needs, sleeping), each as a CSV download or a copy for Google Sheets (`src/lib/dataExport.js`).
 
 **Not yet confirmed:** this documentation was written without access to
 `https://docs.google.com/spreadsheets/d/1czE52meVxILFLLdtxN86KaUS6gCVvLJKnuuYsLrZzPk` —

@@ -1,22 +1,37 @@
 import { CheckCircle2, ClipboardCopy, Download, Inbox } from 'lucide-react';
+import { useState } from 'react';
 import fr from '../../locales/fr.json';
-import { Button, Card, EmptyState, Tag, Toggle } from '../ui';
+import { EXPORTS } from '../../lib/dataExport';
+import { Button, Card, ChipGroup, EmptyState, Tag, Toggle } from '../ui';
 
-export const DataExport = ({ hasData, onExportCSV, onCopyTSV }) => (
-  <Card className="p-5 sm:p-6">
-    <h3 className="text-lg font-semibold text-ink">{fr.dataExportTitle}</h3>
-    <p className="mt-1 text-sm text-muted">{fr.dataExportDescription}</p>
-    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-      <Button variant="secondary" onClick={onExportCSV} disabled={!hasData}>
-        <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
-      </Button>
-      <Button variant="secondary" onClick={onCopyTSV} disabled={!hasData}>
-        <ClipboardCopy aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCopyTSVButton}
-      </Button>
-    </div>
-    <p className="mt-3 text-sm text-faint">{fr.exportCopyTSVSubtext}</p>
-  </Card>
-);
+// The admin data export (#178): pick « Par groupe » or « Par participant », then a CSV download
+// or a copy for Google Sheets.
+export const DataExport = ({ hasData, onExportCSV, onCopyTSV }) => {
+  const [exportId, setExportId] = useState(EXPORTS[0].id);
+  return (
+    <Card className="p-5 sm:p-6">
+      <h3 className="text-lg font-semibold text-ink">{fr.dataExportTitle}</h3>
+      <p className="mt-1 text-sm text-muted">{fr.dataExportDescription}</p>
+      <ChipGroup
+        className="mt-5"
+        label={fr.exportChoiceLabel}
+        options={EXPORTS.map(item => ({ value: item.id, label: fr[item.labelKey] }))}
+        value={exportId}
+        onChange={setExportId}
+        size="sm"
+      />
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <Button variant="secondary" onClick={() => onExportCSV(exportId)} disabled={!hasData}>
+          <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
+        </Button>
+        <Button variant="secondary" onClick={() => onCopyTSV(exportId)} disabled={!hasData}>
+          <ClipboardCopy aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCopyTSVButton}
+        </Button>
+      </div>
+      <p className="mt-3 text-sm text-faint">{fr.exportCopyTSVSubtext}</p>
+    </Card>
+  );
+};
 
 export const FeedbackInbox = ({ items, showResolved, onToggleResolved, onResolve }) => {
   const visible = items.filter(item => showResolved || !item.is_resolved);
