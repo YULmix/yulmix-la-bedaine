@@ -147,67 +147,74 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
           </ul>
         </Card>
 
-        <Card className="space-y-5 p-5 sm:p-6">
-          <h3 className="text-lg font-semibold text-ink">{fr.logisticsSummary}</h3>
-          {sleeping.length > 0 && (
-            <InfoBlock icon={BedDouble} title={fr.sleepingSummaryTitle}>
-              <ul className="space-y-3">
-                {sleeping.map(location => (
-                  <li key={location.locationId} className="flex items-start gap-3">
-                    {location.photoPath && (
-                      <a href={locationPhotoUrl(location.photoPath)} target="_blank" rel="noreferrer"
-                        className="shrink-0 rounded-control focus-visible:outline-2 focus-visible:outline-neon">
-                        <img src={locationPhotoUrl(location.photoPath)} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
-                          className="h-16 w-24 rounded-control border border-line object-cover" />
-                      </a>
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-semibold">{location.name}</p>
-                      <p className="text-sm text-muted">
-                        {location.sleepers.map(sleeper => `${sleeper.name} · ${sleeper.place}`).join(', ')}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </InfoBlock>
-          )}
-          <InfoBlock icon={Car} title={fr.transport}>
-            {transport.type ? (
-              <>
-                <p>
-                  {getOptionLabel(TRANSPORT_TYPES, transport.type)}
-                  {transport.type === 'offer' && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
-                </p>
-                {(transport.arrival || transport.departure) && (
-                  <p className="mt-1 text-sm text-muted">
-                    {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
-                    {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
+        <div className="space-y-6">
+          {/* What the party told us in the form; Logistique is what the organisers decided, so it
+              only shows once there is something (a place). */}
+          <Card className="space-y-5 p-5 sm:p-6">
+            <h3 className="text-lg font-semibold text-ink">{fr.inputSummary}</h3>
+            <InfoBlock icon={Car} title={fr.transport}>
+              {transport.type ? (
+                <>
+                  <p>
+                    {getOptionLabel(TRANSPORT_TYPES, transport.type)}
+                    {transport.type === 'offer' && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
                   </p>
-                )}
-              </>
-            ) : <p className="text-muted">{fr.notSpecified}</p>}
-          </InfoBlock>
-          <InfoBlock icon={HandHeart} title={fr.volunteering}>
-            {volunteering.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {volunteering.map(item => (
-                  <Tag key={item}>{item === 'other' && logistics.volunteering_other ? logistics.volunteering_other : getOptionLabel(VOLUNTEERING_OPTIONS, item, item)}</Tag>
-                ))}
-              </div>
-            ) : <p className="text-muted">{fr.noVolunteeringSelectedMessage}</p>}
-          </InfoBlock>
-          {registration.music_requests && (
-            <InfoBlock icon={Music} title={fr.musicRequests}>
-              <p className="whitespace-pre-line">{registration.music_requests}</p>
+                  {(transport.arrival || transport.departure) && (
+                    <p className="mt-1 text-sm text-muted">
+                      {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
+                      {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
+                    </p>
+                  )}
+                </>
+              ) : <p className="text-muted">{fr.notSpecified}</p>}
             </InfoBlock>
-          )}
-          {registration.message_to_organizers && (
-            <InfoBlock icon={MessageSquareText} title={fr.messageToOrganizers}>
-              <p className="whitespace-pre-line">{registration.message_to_organizers}</p>
+            <InfoBlock icon={HandHeart} title={fr.volunteering}>
+              {volunteering.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {volunteering.map(item => (
+                    <Tag key={item}>{item === 'other' && logistics.volunteering_other ? logistics.volunteering_other : getOptionLabel(VOLUNTEERING_OPTIONS, item, item)}</Tag>
+                  ))}
+                </div>
+              ) : <p className="text-muted">{fr.noVolunteeringSelectedMessage}</p>}
             </InfoBlock>
+            {registration.music_requests && (
+              <InfoBlock icon={Music} title={fr.musicRequests}>
+                <p className="whitespace-pre-line">{registration.music_requests}</p>
+              </InfoBlock>
+            )}
+            {registration.message_to_organizers && (
+              <InfoBlock icon={MessageSquareText} title={fr.messageToOrganizers}>
+                <p className="whitespace-pre-line">{registration.message_to_organizers}</p>
+              </InfoBlock>
+            )}
+          </Card>
+          {sleeping.length > 0 && (
+            <Card className="space-y-5 p-5 sm:p-6">
+              <h3 className="text-lg font-semibold text-ink">{fr.logisticsSummary}</h3>
+              <InfoBlock icon={BedDouble} title={fr.sleepingSummaryTitle}>
+                <ul className="space-y-3">
+                  {sleeping.map(location => (
+                    <li key={location.locationId} className="flex items-start gap-3">
+                      {location.photoPath && (
+                        <a href={locationPhotoUrl(location.photoPath)} target="_blank" rel="noreferrer"
+                          className="shrink-0 rounded-control focus-visible:outline-2 focus-visible:outline-neon">
+                          <img src={locationPhotoUrl(location.photoPath)} alt={fr.locationPhotoAlt.replace('{name}', location.name)}
+                            className="h-16 w-24 rounded-control border border-line object-cover" />
+                        </a>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold">{location.name}</p>
+                        <p className="text-sm text-muted">
+                          {location.sleepers.map(sleeper => `${sleeper.name} · ${sleeper.place}`).join(', ')}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </InfoBlock>
+            </Card>
           )}
-        </Card>
+        </div>
       </div>
 
       <Card as="details" className="group p-5 sm:p-6">

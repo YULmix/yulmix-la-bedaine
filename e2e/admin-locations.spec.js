@@ -180,6 +180,9 @@ test("the venue's page edits its address, and members see it", async ({ page, br
   const member = await browser.newPage();
   await loginAs(member, TEST_USERS.member);
   await expect(member.getByRole('link', { name: '17 rue Stewart, Stanstead' }).first()).toBeVisible();
+  // Nobody of the party has a place: the form's answers show, the Logistique card doesn't.
+  await expect(member.getByRole('heading', { name: fr.inputSummary })).toBeVisible();
+  await expect(member.getByRole('heading', { name: fr.logisticsSummary })).toHaveCount(0);
   await member.close();
 });
 
@@ -222,7 +225,9 @@ test('a location has a photo: the admin adds, replaces and removes it; whoever s
   const memberPhoto = member.getByRole('img', { name: fr.locationPhotoAlt.replace('{name}', 'Grenier') });
   await expect(memberPhoto).toHaveCount(1);
   await expect.poll(() => imageLoaded(memberPhoto)).toBe(true);
-  await expect(member.getByText(`Alice E2E · ${bed.label}, Bob E2E · ${otherBed.label}`)).toBeVisible();
+  const logistics = member.getByRole('heading', { name: fr.logisticsSummary }).locator('..');
+  await expect(logistics.getByText(`Alice E2E · ${bed.label}, Bob E2E · ${otherBed.label}`)).toBeVisible();
+  await expect(member.getByRole('heading', { name: fr.inputSummary })).toBeVisible();
   await screenshot(member, 'location-photo-member');
   await member.close();
 

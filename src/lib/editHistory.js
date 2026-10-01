@@ -15,7 +15,7 @@ import {
 const FIELD_LABEL_KEYS = {
   attendees: 'historyFieldAttendees',
   counts: 'historyFieldCounts',
-  logistics: 'logisticsSummary',
+  logistics: 'inputSummary',
   transport: 'transport',
   music_requests: 'musicRequests',
   message_to_organizers: 'messageToOrganizers',

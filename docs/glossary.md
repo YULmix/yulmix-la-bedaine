@@ -143,6 +143,14 @@ Which place an attendee holds, for the whole event (no per-night occupancy). Adm
 attendee's `sleeping_preference` is a request, the assignment is the answer. People see it as
 `"<location> · <place>"` (`attendee_places.bed_label`).
 
+**Input** (fr. *Vos précisions*)
+What a party tells the organisers in the form beyond who is coming: transport, volunteering,
+music requests, a message. The member's summary shows it in its own card, before
+**Logistics** (fr. *Logistique*), which holds only what the organisers decided (today, the
+assignments).
+_Avoid_: logistics for the form's answers; *réponses* (the assignment is the answer to a
+request); *participation* (that's the tier).
+
 **Volunteering** (fr. *bénévolat*)
 A multi-select of jobs a party offers to take on (food purchase, cooking, DJ, setup, cleanup,
 neighbours, parking, art initiative, pharmacy…). Stored party-wide, not per attendee.
