@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { plural } from '../../lib/eventDisplay';
 import { placeTypeBreakdown } from '../../lib/places';
+import { invalidateEventPlaces } from '../../lib/eventPlaces';
 import { VENUE_GALLERY_KINDS, copyGalleryImages, fetchLocationGalleries, removeUnusedGalleryImages } from '../../lib/galleries';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
@@ -264,6 +265,8 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
     } else {
       setError(null);
       if (!inFlight.current) setStatus('saved');
+      // Every event at this venue sees its places through it (#193).
+      invalidateEventPlaces();
     }
     return result;
   };
@@ -279,6 +282,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
       clearTimeout(timer);
       supabase.from('places').update({ capacity }).eq('id', placeId).then(({ error: writeError }) => {
         if (writeError) console.error('Error saving capacity:', writeError);
+        else invalidateEventPlaces();
       });
     });
     capacityWrites.current = {};

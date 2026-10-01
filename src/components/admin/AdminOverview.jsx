@@ -37,7 +37,7 @@ const TIER_LABEL_KEYS = {
 };
 
 // `budget` is the event's admin-only event_budgets row, or null when none was saved yet. `places`
-// are the event's sleeping places (flattenPlaces()); without any, the bed counts stand in.
+// are the event's sleeping places (the event places module's `available`, #193); without any, the bed counts stand in.
 const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);

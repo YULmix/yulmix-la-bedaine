@@ -26,7 +26,7 @@ const FILTERS = [
 // (`logisticsChanges`, see lib/logisticsDraft.js) so they survive switching admin tabs and
 // Logistique views, and are all saved at once from the bar at the bottom (#150);
 // `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
-// flattenPlaces(); with none, there is nothing to assign until they're defined (Événements tab).
+// the event places module (`available`, #193); with none, there is nothing to assign until they're defined (Événements tab).
 // The venue's assignments gallery (#177) sits by the title.
 const PlacesView = ({
   venue,

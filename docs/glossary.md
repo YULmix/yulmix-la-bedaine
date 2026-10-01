@@ -138,6 +138,18 @@ A bed, a sofa, floor space… inside a location. Has a type from the sleeping-pr
 edition or give it another capacity (`event_place_overrides`); the venue's place is unchanged.
 _Avoid_: bed (only one type of place), spot.
 
+**Venue layout**
+A venue's locations and their places, in display order (`sort_order`, then `created_at`),
+independent of any event. Edited in the Sites tab; read through `venue_layout(p_venue_id)` (#193).
+_Avoid_: floor plan, map.
+
+**Event places**
+How one event sees its venue's places: each place with this event's setting merged in (excluded
+or not, its capacity for the event) and who of the event sleeps there. Read by Aperçu, Logistique
+and the event editor's Couchage section through `event_places(p_event_id)`, from one cache they
+share (`useEventPlaces`, `src/lib/eventPlaces.js`); set place by place with `set_place_override`.
+_Avoid_: event layout, the event's venue (the venue is shared; its places as one event uses them are not).
+
 **Assignment** (fr. *attribution*, `place_assignments`)
 Which place an attendee holds, for the whole event (no per-night occupancy). Admin-write only; the
 attendee's `sleeping_preference` is a request, the assignment is the answer. People see it as

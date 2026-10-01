@@ -658,6 +658,7 @@
   "venueTitle": "Site",
   "eventVenueHint": "Le site de l'événement, et ce qui en sert cette édition : une place peut être indisponible, ou avoir une autre capacité. Les lieux et les places se modifient dans l'onglet Sites.",
   "eventVenueLoadError": "Impossible de charger le site de l'événement.",
+  "eventPlacesLoadError": "Impossible de charger les places de l'événement.",
   "eventVenueSaveError": "La modification n'a pas été enregistrée.",
   "eventVenuePickerLabel": "Site de l'événement",
   "eventVenuePickerPlaceholder": "Choisir un site…",
