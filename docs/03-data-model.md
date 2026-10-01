@@ -212,8 +212,11 @@ still contain them.
 { "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00" }
 ```
 
-`type` is `offer` (has room in a car) or `need` (looking for a lift). The schema default is the
-string `"None"`, which is not one of the two option values — harmless today, confusing later.
+`type` is `offer` (has room in a car) or `need` (looking for a lift). `seats` is the seats offered,
+or the seats needed (#179): the form starts a need at the party's size, and a need saved before
+it had a count reads as a seat per attendee. With no lift, the form saves `type: ""` and
+`seats: 0`. The schema default is the string `"None"`, which is not one of the two option values;
+readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.js`).
 
 ### `event_budgets.lines` and `events.external_links`
 

@@ -35,6 +35,14 @@ describe('formStateOf', () => {
     });
   });
 
+  test('a need keeps its seat count; one saved without a count needs a seat per attendee (#179)', () => {
+    const need = seats => formStateOf({ ...registration, transport: { type: 'need', seats } }, travelRange).transportSeats;
+    expect(need(1)).toBe(1);
+    expect(need(0)).toBe(2);
+    expect(need(undefined)).toBe(2);
+    expect(formStateOf({ ...registration, transport: { type: '', seats: 0 } }, travelRange).transportSeats).toBe(0);
+  });
+
   test('"same for everyone" only when the saved choices are identical', () => {
     const differing = { ...registration, attendees: [registration.attendees[0], { ...registration.attendees[1], dietary_needs: ['none'] }] };
     expect(formStateOf(differing, travelRange).sameForEveryone).toBe(false);

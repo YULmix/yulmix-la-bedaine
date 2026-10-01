@@ -49,10 +49,7 @@ export const FoodView = ({ parties }) => {
                   <ul className="space-y-2">
                     {attendees.map((attendee, index) => (
                       <li key={attendee.id || index} className="min-w-0">
-                        <p className="text-ink [overflow-wrap:anywhere]">
-                          {attendee.name || fr.participantFallback}
-                          <span className="text-sm text-faint">{` · ${fr.logisticsOfParty.replace('{contact}', attendee.contact)}`}</span>
-                        </p>
+                        <p className="text-ink [overflow-wrap:anywhere]">{attendee.name || fr.participantFallback}</p>
                         {attendee.other && <p className="whitespace-pre-line text-sm text-muted [overflow-wrap:anywhere]">{attendee.other}</p>}
                       </li>
                     ))}
@@ -101,7 +98,7 @@ export const VolunteeringView = ({ parties }) => {
   );
 };
 
-const KIND_TONES = { offer: 'ok', need: 'warn', none: 'neutral' };
+const KIND_TONES = { offer: 'ok', need: 'warn' };
 
 export const TransportView = ({ parties }) => {
   const rows = useMemo(() => transportRows(parties), [parties]);
@@ -118,8 +115,8 @@ export const TransportView = ({ parties }) => {
                 <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-sm">
                   <dt className="text-faint">{fr.transportType}</dt>
                   <dd><Tag tone={KIND_TONES[row.kind]} className="px-2 py-0.5">{getTransportKindLabel(row.kind)}</Tag></dd>
-                  <dt className="text-faint">{fr.transportSeatsOffered}</dt>
-                  <dd className="text-ink">{row.seats === null ? fr.emptyValue : row.seats}</dd>
+                  <dt className="text-faint">{row.kind === 'offer' ? fr.transportSeatsOffered : fr.transportSeatsNeeded}</dt>
+                  <dd className="text-ink">{row.seats}</dd>
                   <dt className="text-faint">{fr.transportArrival}</dt>
                   <dd className="text-ink">{orDash(formatDateTime(row.arrival))}</dd>
                   <dt className="text-faint">{fr.transportDeparture}</dt>

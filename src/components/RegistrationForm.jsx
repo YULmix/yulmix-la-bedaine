@@ -224,6 +224,14 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     return () => { ignore = true; };
   }, [isEditing, adminMode]);
 
+  // Offering a lift counts the seats offered; needing one, the seats needed (#179), which starts
+  // at the party's size: most parties travel together.
+  const changeTransportType = (type) => {
+    if (type === transportType) return;
+    setTransportType(type);
+    setTransportSeats(type === 'need' ? attendees.length : 0);
+  };
+
   // Sync logistics across attendees when "same for everyone" is enabled
   useEffect(() => {
     if (!sameForEveryone || attendees.length < 2) return;
@@ -416,7 +424,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
 
       const transport = {
         type: transportType,
-        seats: transportType === 'offer' ? transportSeats : 0,
+        seats: transportType === 'offer' || transportType === 'need' ? transportSeats : 0,
         arrival: transportArrival,
         departure: transportDeparture
       };
@@ -655,11 +663,12 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
             <StepTitle title={fr.stepHelpTitle} text={fr.stepHelpText} />
             <Card className="space-y-5 p-5">
               <h3 className="text-lg font-semibold text-ink">{fr.transport}</h3>
-              <ChipGroup label={fr.transportType} name="transport-type" options={TRANSPORT_CHIPS} value={transportType} onChange={setTransportType} />
-              {transportType === 'offer' && (
+              <ChipGroup label={fr.transportType} name="transport-type" options={TRANSPORT_CHIPS} value={transportType} onChange={changeTransportType} />
+              {(transportType === 'offer' || transportType === 'need') && (
                 <div className="flex items-center justify-between gap-4">
-                  <label htmlFor="transport-seats" className="text-base text-ink">{fr.transportSeats}</label>
-                  <Stepper id="transport-seats" label={fr.transportSeats} value={transportSeats} onChange={setTransportSeats} max={20} />
+                  <label htmlFor="transport-seats" className="text-base text-ink">{transportType === 'need' ? fr.transportSeatsNeededLabel : fr.transportSeats}</label>
+                  <Stepper id="transport-seats" label={transportType === 'need' ? fr.transportSeatsNeededLabel : fr.transportSeats}
+                    value={transportSeats} onChange={setTransportSeats} min={transportType === 'need' ? 1 : 0} max={20} />
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">

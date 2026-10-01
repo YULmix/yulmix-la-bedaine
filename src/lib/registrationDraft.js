@@ -65,7 +65,8 @@ export const formStateOf = (registration, travelRange = {}) => {
     // the form's sync would overwrite everyone's choices with the first attendee's.
     sameForEveryone: rest.every(att => LOGISTICS_FIELDS.every(field => sameChoice(att[field], first[field]))),
     transportType: registration.transport?.type || '',
-    transportSeats: registration.transport?.seats || 0,
+    // Seats offered, or needed (#179). A need saved before needs had a count is the whole party.
+    transportSeats: registration.transport?.seats || (registration.transport?.type === 'need' ? attendees.length : 0),
     transportArrival: toLocalDateTime(registration.transport?.arrival) || travelRange.defaultArrival || '',
     transportDeparture: toLocalDateTime(registration.transport?.departure) || travelRange.defaultDeparture || '',
     volunteeringSelections: registration.logistics?.volunteering || [],

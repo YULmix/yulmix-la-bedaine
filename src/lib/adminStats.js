@@ -161,23 +161,22 @@ export const contactNameOf = (party) => party.profiles?.full_name || party.profi
 
 /**
  * Who has which dietary need, in DIETARY_OPTIONS order, for the needs someone has (« Aucune
- * restriction » isn't one). An attendee with several needs is under each.
- * @returns {Array<{need: string, attendees: Array<{id, name: string, contact: string, other: string}>}>}
+ * restriction » isn't one). An attendee with several needs is under each. The kitchen cooks for
+ * people, so there's no party here.
+ * @returns {Array<{need: string, attendees: Array<{id, name: string, other: string}>}>}
  *   `other` is what they wrote for « Autre », on the 'other' need only.
  */
 export const dietaryBreakdown = (allParties) => {
-  const attendees = confirmedParties(allParties).flatMap(party =>
-    (party.attendees || []).map(attendee => ({ attendee, contact: contactNameOf(party) })));
+  const attendees = confirmedParties(allParties).flatMap(party => party.attendees || []);
   return DIETARY_OPTIONS
     .filter(({ value }) => value !== 'none')
     .map(({ value: need }) => ({
       need,
       attendees: attendees
-        .filter(({ attendee }) => dietaryNeedsOf(attendee.dietary_needs).includes(need))
-        .map(({ attendee, contact }) => ({
+        .filter(attendee => dietaryNeedsOf(attendee.dietary_needs).includes(need))
+        .map(attendee => ({
           id: attendee.id,
           name: attendee.name || '',
-          contact,
           other: need === 'other' ? (attendee.dietary_other || '').trim() : ''
         }))
     }))
@@ -204,20 +203,19 @@ export const volunteersByChoice = (allParties) => {
   }));
 };
 
-const TRANSPORT_ORDER = ['offer', 'need', 'none'];
-
 /**
- * One row per party: its transport kind (transportKindOf), seats (offers only, else null),
- * arrival and departure as saved ('' when unset). Offers first, then needs, then the others.
+ * One row per party that offers or needs a lift (the others aren't listed): its kind, the seats
+ * it offers or needs, arrival and departure as saved ('' when unset). Offers first, then needs.
+ * A need saved without a count (before #179 asked for one) needs a seat per attendee.
  */
-export const transportRows = (allParties) => TRANSPORT_ORDER.flatMap(kind =>
+export const transportRows = (allParties) => ['offer', 'need'].flatMap(kind =>
   confirmedParties(allParties)
     .filter(party => transportKindOf(party.transport) === kind)
     .map(party => ({
       id: party.id,
       contact: contactNameOf(party),
       kind,
-      seats: kind === 'offer' ? Number(party.transport.seats) || 0 : null,
+      seats: Number(party.transport.seats) || (kind === 'need' ? (party.attendees || []).length : 0),
       arrival: party.transport?.arrival || '',
       departure: party.transport?.departure || ''
     })));

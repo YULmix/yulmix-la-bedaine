@@ -759,11 +759,10 @@
   "foodSummaryLabel": "Résumé des restrictions",
   "logisticsPeopleCount": "{n} pers.",
   "logisticsPartiesCount": "{n} groupe(s)",
-  "logisticsOfParty": "groupe de {contact}",
   "volunteeringViewDescription": "Qui donne un coup de main, et pour quoi. Une tâche à 0 est encore à combler.",
   "volunteeringNobody": "Personne pour l'instant.",
-  "transportViewDescription": "Le transport de chaque groupe : les offres de lift d'abord, puis les besoins.",
-  "transportViewEmpty": "Aucun groupe confirmé pour l'instant.",
+  "transportViewDescription": "Les groupes qui offrent un lift, puis ceux qui en cherchent un. Les autres n'y sont pas.",
+  "transportViewEmpty": "Aucune offre ni demande de lift pour l'instant.",
   "transportSeatsOffered": "Places offertes",
   "transportKindOffer": "Offre",
   "transportKindNeed": "Besoin",
@@ -771,5 +770,7 @@
   "emptyValue": "—",
   "commentsViewDescription": "Les demandes musicales et les messages laissés dans le formulaire d'inscription.",
   "commentsMusicEmpty": "Aucune demande musicale.",
-  "commentsMessagesEmpty": "Aucun message."
+  "commentsMessagesEmpty": "Aucun message.",
+  "transportSeatsNeeded": "Places demandées",
+  "transportSeatsNeededLabel": "Nombre de places nécessaires"
 }

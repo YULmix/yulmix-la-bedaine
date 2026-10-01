@@ -10,6 +10,7 @@ import {
   deleteLocations,
   deleteParty,
   deleteThrowawayMember,
+  getParty,
   isWaitlisted,
   seedActiveEventWithMemberParty,
   seedPlaces,
@@ -157,6 +158,7 @@ test('the views show the confirmed parties\' answers, and none of the waitlisted
   await viewTab(page, fr.logisticsViewTransport).click();
   const transport = view(page, fr.logisticsViewTransport);
   const rows = transport.getByRole('listitem');
+  // The parties with neither an offer nor a need aren't listed.
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText(MEMBER);
   await expect(rows.nth(0)).toContainText(fr.transportKindOffer);
@@ -165,6 +167,8 @@ test('the views show the confirmed parties\' answers, and none of the waitlisted
   await expect(rows.nth(0)).toContainText('12 juillet 2026');
   await expect(rows.nth(1)).toContainText(ADMIN);
   await expect(rows.nth(1)).toContainText(fr.transportKindNeed);
+  // Saved without a count: a seat for each of the party's attendees.
+  await expect(rows.nth(1)).toContainText(`${fr.transportSeatsNeeded}1`);
   await expect(rows.nth(1)).toContainText(`${fr.transportArrival}${fr.emptyValue}`);
   await expect(transport.getByText(waitlisted.fullName)).toHaveCount(0);
   await screenshot(page, 'logistics-transport');
@@ -207,4 +211,32 @@ test('a member opening a Logistique view is blocked', async ({ page }) => {
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByText('Pas de coriandre')).toHaveCount(0);
+});
+
+test('needing a lift counts the seats, starting at the party\'s size; the admin sees them', async ({ page, browser }) => {
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+  await page.getByRole('article', { name: fr.passLabel }).getByRole('button', { name: fr.editRegistration }).click();
+  await expect(page.getByLabel(fr.fullNameLabel).first()).not.toHaveValue('');
+  await page.getByRole('navigation', { name: fr.registrationStepsLabel }).getByRole('button', { name: new RegExp(fr.stepHelp) }).click();
+
+  await page.locator('label').filter({ hasText: fr.transportTypeNeed }).click();
+  await expect(page.getByRole('radio', { name: fr.transportTypeNeed })).toBeChecked();
+  const seats = page.getByRole('group', { name: fr.transportSeatsNeededLabel });
+  // Two attendees: two seats to begin with.
+  await expect(seats.locator('output')).toHaveText('2');
+  await seats.getByRole('button', { name: fr.stepperMore }).click();
+  await expect(seats.locator('output')).toHaveText('3');
+  await page.getByRole('button', { name: fr.saveChangesButton }).click();
+
+  await expect.poll(async () => (await getParty(seeded.partyId)).transport).toMatchObject({ type: 'need', seats: 3 });
+  await expect(page.getByText(`${fr.transportTypeNeed}, ${fr.transportSeatsShort.replace('{count}', 3)}`)).toBeVisible();
+
+  const admin = await browser.newPage();
+  await loginAs(admin, TEST_USERS.admin);
+  await admin.goto('/admin?tab=logistics&view=transport');
+  const row = view(admin, fr.logisticsViewTransport).getByRole('listitem').filter({ hasText: MEMBER });
+  await expect(row).toContainText(fr.transportKindNeed);
+  await expect(row).toContainText(`${fr.transportSeatsNeeded}3`);
+  await admin.close();
 });

@@ -179,7 +179,7 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
         { id: 'a3', name: 'Tom', dietary_needs: ['none'] }
       ],
       logistics: { volunteering: ['cook_meal', 'other'], volunteering_other: 'Jongler' },
-      transport: { type: 'need', seats: 0, arrival: '2026-07-10T18:00', departure: '' },
+      transport: { type: 'need', seats: 2, arrival: '2026-07-10T18:00', departure: '' },
       music_requests: 'Daft Punk\nJustice',
       message_to_organizers: '   '
     },
@@ -194,6 +194,8 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
     },
     { id: 'c', ...profile('Carla', 'c@test.local'), attendees: [{ id: 'c1', name: 'Carla' }], transport: { type: 'None' } },
     { id: 'd', ...profile('Dan', 'd@test.local'), attendees: [], transport: { type: '' }, logistics: null },
+    // A need saved before needs had a count: a seat per attendee.
+    { id: 'e', ...profile('Eve', 'e@test.local'), attendees: [{ id: 'e1', name: 'Eve' }, { id: 'e2', name: 'Ève fils' }], transport: { type: 'need', seats: 0 } },
     {
       id: 'w',
       is_waitlisted: true,
@@ -222,15 +224,9 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
 
   test('dietaryBreakdown: real needs only, in option order, a multi-need attendee under each, « Autre » with its text', () => {
     expect(dietaryBreakdown(formParties)).toEqual([
-      {
-        need: 'vegan',
-        attendees: [
-          { id: 'a1', name: 'Alice', contact: 'Alice Martin', other: '' },
-          { id: 'b1', name: 'Bob', contact: 'bob@test.local', other: '' }
-        ]
-      },
-      { need: 'gluten_free', attendees: [{ id: 'a1', name: 'Alice', contact: 'Alice Martin', other: '' }] },
-      { need: 'other', attendees: [{ id: 'a2', name: 'Léo', contact: 'Alice Martin', other: 'Arachides' }] }
+      { need: 'vegan', attendees: [{ id: 'a1', name: 'Alice', other: '' }, { id: 'b1', name: 'Bob', other: '' }] },
+      { need: 'gluten_free', attendees: [{ id: 'a1', name: 'Alice', other: '' }] },
+      { need: 'other', attendees: [{ id: 'a2', name: 'Léo', other: 'Arachides' }] }
     ]);
   });
 
@@ -257,13 +253,13 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
     expect(byChoice.food_purchase).toEqual([]);
   });
 
-  test('transportRows: offers, then needs, then none (\'None\' and \'\' alike); seats on offers only', () => {
+  test('transportRows: offers, then needs, with the seats offered or needed; no lift (\'None\', \'\') isn\'t listed', () => {
     expect(transportRows(formParties)).toEqual([
       { id: 'b', contact: 'bob@test.local', kind: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00' },
-      { id: 'a', contact: 'Alice Martin', kind: 'need', seats: null, arrival: '2026-07-10T18:00', departure: '' },
-      { id: 'c', contact: 'Carla', kind: 'none', seats: null, arrival: '', departure: '' },
-      { id: 'd', contact: 'Dan', kind: 'none', seats: null, arrival: '', departure: '' }
+      { id: 'a', contact: 'Alice Martin', kind: 'need', seats: 2, arrival: '2026-07-10T18:00', departure: '' },
+      { id: 'e', contact: 'Eve', kind: 'need', seats: 2, arrival: '', departure: '' }
     ]);
+    expect(transportRows([formParties[2], formParties[3]])).toEqual([]);
   });
 
   test('partyComments keeps non-blank texts, line breaks included, of confirmed parties', () => {
