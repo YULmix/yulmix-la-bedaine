@@ -1,4 +1,4 @@
-import { draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft } from './registrationDraft.js';
+import { DEPARTURE_PLACE_MAX_LENGTH, draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft, transportOf } from './registrationDraft.js';
 
 const travelRange = { defaultArrival: '2026-07-10T12:00', defaultDeparture: '2026-07-12T12:00' };
 
@@ -41,6 +41,15 @@ describe('formStateOf', () => {
     expect(need(0)).toBe(2);
     expect(need(undefined)).toBe(2);
     expect(formStateOf({ ...registration, transport: { type: '', seats: 0 } }, travelRange).transportSeats).toBe(0);
+  });
+
+  test('the departure place round-trips through the form (#181)', () => {
+    const saved = { ...registration, transport: { ...registration.transport, departure_place: 'Montréal (Rosemont)' } };
+    const form = formStateOf(saved, travelRange);
+    expect(form.transportDeparturePlace).toBe('Montréal (Rosemont)');
+    expect(transportOf(form).departure_place).toBe('Montréal (Rosemont)');
+    expect(formStateOf(registration, travelRange).transportDeparturePlace).toBe('');
+    expect(formStateOf(null, travelRange).transportDeparturePlace).toBe('');
   });
 
   test('"same for everyone" only when the saved choices are identical', () => {
@@ -104,5 +113,23 @@ describe('storage', () => {
     Object.defineProperty(window, 'sessionStorage', { configurable: true, get: () => { throw new Error('SecurityError'); } });
     expect(() => storeDraft(key, makeDraft(formStateOf(null, travelRange), null))).not.toThrow();
     expect(loadStoredDraft(key)).toBeNull();
+  });
+});
+
+describe('transportOf', () => {
+  const form = { transportType: 'need', transportSeats: 3, transportArrival: '2026-07-10T12:00', transportDeparture: '', transportDeparturePlace: '  Québec  ' };
+
+  test('an offer or a need keeps its seats and its trimmed departure place (#181)', () => {
+    expect(transportOf(form)).toEqual({ type: 'need', seats: 3, arrival: '2026-07-10T12:00', departure: '', departure_place: 'Québec' });
+    expect(transportOf({ ...form, transportType: 'offer' }).departure_place).toBe('Québec');
+  });
+
+  test('no lift: no seats, no departure place', () => {
+    expect(transportOf({ ...form, transportType: '' })).toEqual({ type: '', seats: 0, arrival: '2026-07-10T12:00', departure: '' });
+  });
+
+  test('a blank departure place is left out; a long one is cut', () => {
+    expect(transportOf({ ...form, transportDeparturePlace: '   ' })).not.toHaveProperty('departure_place');
+    expect(transportOf({ ...form, transportDeparturePlace: 'x'.repeat(150) }).departure_place).toHaveLength(DEPARTURE_PLACE_MAX_LENGTH);
   });
 });

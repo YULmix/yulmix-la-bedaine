@@ -209,7 +209,7 @@ still contain them.
 ### `user_parties.transport`
 
 ```json
-{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00" }
+{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00", "departure_place": "Montréal (Rosemont)" }
 ```
 
 `type` is `offer` (has room in a car) or `need` (looking for a lift). `seats` is the seats offered,
@@ -217,6 +217,9 @@ or the seats needed (#179): the form starts a need at the party's size, and a ne
 it had a count reads as a seat per attendee. With no lift, the form saves `type: ""` and
 `seats: 0`. The schema default is the string `"None"`, which is not one of the two option values;
 readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.js`).
+`departure_place` (#181) is where an offer or a need leaves from, free text, trimmed, at most 100
+characters. It's absent with no lift or when left blank (`transportOf()` in
+`src/lib/registrationDraft.js`).
 
 ### `event_budgets.lines` and `events.external_links`
 

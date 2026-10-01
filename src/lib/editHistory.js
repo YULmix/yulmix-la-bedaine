@@ -57,7 +57,8 @@ const formatValue = (field, value) => {
       return JSON.stringify(value);
     case 'transport':
       if (typeof value === 'object') {
-        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}`;
+        const place = value.departure_place ? `, ${fr.transportDeparturePlace}: ${value.departure_place}` : '';
+        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}${place}`;
       }
       return JSON.stringify(value);
     case 'status':

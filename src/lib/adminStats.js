@@ -205,7 +205,8 @@ export const volunteersByChoice = (allParties) => {
 
 /**
  * One row per party that offers or needs a lift (the others aren't listed): its kind, the seats
- * it offers or needs, arrival and departure as saved ('' when unset). Offers first, then needs.
+ * it offers or needs, arrival, departure and departure place (#181) as saved ('' when unset).
+ * Offers first, then needs.
  * A need saved without a count (before #179 asked for one) needs a seat per attendee.
  */
 export const transportRows = (allParties) => ['offer', 'need'].flatMap(kind =>
@@ -217,7 +218,8 @@ export const transportRows = (allParties) => ['offer', 'need'].flatMap(kind =>
       kind,
       seats: Number(party.transport.seats) || (kind === 'need' ? (party.attendees || []).length : 0),
       arrival: party.transport?.arrival || '',
-      departure: party.transport?.departure || ''
+      departure: party.transport?.departure || '',
+      departurePlace: (party.transport?.departure_place || '').trim()
     })));
 
 /**

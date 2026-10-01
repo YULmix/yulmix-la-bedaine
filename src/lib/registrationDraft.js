@@ -37,6 +37,7 @@ export const formStateOf = (registration, travelRange = {}) => {
       transportSeats: 0,
       transportArrival: travelRange.defaultArrival || '',
       transportDeparture: travelRange.defaultDeparture || '',
+      transportDeparturePlace: '',
       volunteeringSelections: [],
       volunteeringOtherDetail: '',
       musicRequests: '',
@@ -69,12 +70,31 @@ export const formStateOf = (registration, travelRange = {}) => {
     transportSeats: registration.transport?.seats || (registration.transport?.type === 'need' ? attendees.length : 0),
     transportArrival: toLocalDateTime(registration.transport?.arrival) || travelRange.defaultArrival || '',
     transportDeparture: toLocalDateTime(registration.transport?.departure) || travelRange.defaultDeparture || '',
+    transportDeparturePlace: registration.transport?.departure_place || '',
     volunteeringSelections: registration.logistics?.volunteering || [],
     volunteeringOtherDetail: registration.logistics?.volunteering_other || '',
     musicRequests: registration.music_requests || '',
     messageToOrganizers: registration.message_to_organizers || ''
   };
 };
+
+export const DEPARTURE_PLACE_MAX_LENGTH = 100;
+
+const offersOrNeedsLift = type => type === 'offer' || type === 'need';
+
+/**
+ * The `transport` to save from the form. Seats and the departure place (#181) only go with an
+ * offer or a need: with no lift there are no seats and no departure place.
+ */
+export const transportOf = (form) => ({
+  type: form.transportType,
+  seats: offersOrNeedsLift(form.transportType) ? form.transportSeats : 0,
+  arrival: form.transportArrival,
+  departure: form.transportDeparture,
+  ...(offersOrNeedsLift(form.transportType) && form.transportDeparturePlace.trim()
+    ? { departure_place: form.transportDeparturePlace.trim().slice(0, DEPARTURE_PLACE_MAX_LENGTH) }
+    : {})
+});
 
 export const sameFormState = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 

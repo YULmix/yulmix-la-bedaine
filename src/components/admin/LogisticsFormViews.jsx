@@ -121,6 +121,8 @@ export const TransportView = ({ parties }) => {
                   <dd className="text-ink">{orDash(formatDateTime(row.arrival))}</dd>
                   <dt className="text-faint">{fr.transportDeparture}</dt>
                   <dd className="text-ink">{orDash(formatDateTime(row.departure))}</dd>
+                  <dt className="text-faint">{fr.transportDeparturePlace}</dt>
+                  <dd className="text-ink [overflow-wrap:anywhere]">{orDash(row.departurePlace)}</dd>
                 </dl>
               </Card>
             </li>

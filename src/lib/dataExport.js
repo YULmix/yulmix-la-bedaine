@@ -72,6 +72,7 @@ export const partyExportRows = (allParties) => {
     fr.exportTransportSeats,
     fr.exportArrival,
     fr.exportDeparture,
+    fr.exportDeparturePlace,
     fr.exportVolunteering,
     fr.exportMusicRequests,
     fr.exportMessageToOrganizers
@@ -97,6 +98,7 @@ export const partyExportRows = (allParties) => {
       seatsOf(party),
       formatDateTime(party.transport?.arrival),
       formatDateTime(party.transport?.departure),
+      transportKindOf(party.transport) === 'none' ? '' : (party.transport.departure_place || '').trim(),
       volunteeringOf(party),
       party.music_requests || '',
       party.message_to_organizers || ''
@@ -113,7 +115,7 @@ export const partyExportRows = (allParties) => {
     fr.exportTotals, '', '',
     totals.adult_whole || 0, totals.adult_main || 0, totals.teen_whole || 0, totals.teen_main || 0, totals.kids || 0,
     '', '', '', owed,
-    '', '', '', '', '', '', ''
+    '', '', '', '', '', '', '', ''
   ]);
 
   return { headers, rows };

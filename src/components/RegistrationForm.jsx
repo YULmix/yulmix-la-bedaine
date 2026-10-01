@@ -23,6 +23,7 @@ import {
   nextDietaryNeeds
 } from '../lib/registrationOptions';
 import {
+  DEPARTURE_PLACE_MAX_LENGTH,
   LOGISTICS_FIELDS,
   draftFormFor,
   formStateOf,
@@ -31,7 +32,8 @@ import {
   newAttendee,
   sameChoice,
   sameFormState,
-  storeDraft
+  storeDraft,
+  transportOf
 } from '../lib/registrationDraft';
 
 const STEPS = [
@@ -165,6 +167,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [transportSeats, setTransportSeats] = useState(initial.form.transportSeats);
   const [transportArrival, setTransportArrival] = useState(initial.form.transportArrival);
   const [transportDeparture, setTransportDeparture] = useState(initial.form.transportDeparture);
+  const [transportDeparturePlace, setTransportDeparturePlace] = useState(initial.form.transportDeparturePlace ?? '');
   const [volunteeringSelections, setVolunteeringSelections] = useState(initial.form.volunteeringSelections);
   const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState(initial.form.volunteeringOtherDetail);
   const [musicRequests, setMusicRequests] = useState(initial.form.musicRequests);
@@ -199,6 +202,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setTransportSeats(form.transportSeats);
     setTransportArrival(form.transportArrival);
     setTransportDeparture(form.transportDeparture);
+    setTransportDeparturePlace(form.transportDeparturePlace);
     setVolunteeringSelections(form.volunteeringSelections);
     setVolunteeringOtherDetail(form.volunteeringOtherDetail);
     setMusicRequests(form.musicRequests);
@@ -225,11 +229,12 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   }, [isEditing, adminMode]);
 
   // Offering a lift counts the seats offered; needing one, the seats needed (#179), which starts
-  // at the party's size: most parties travel together.
+  // at the party's size: most parties travel together. No lift, no departure place (#181).
   const changeTransportType = (type) => {
     if (type === transportType) return;
     setTransportType(type);
     setTransportSeats(type === 'need' ? attendees.length : 0);
+    if (type !== 'offer' && type !== 'need') setTransportDeparturePlace('');
   };
 
   // Sync logistics across attendees when "same for everyone" is enabled
@@ -249,7 +254,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // with its defaults and prefilled name). Changing a field and back again is not a change.
   const formState = {
     attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
-    volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
+    transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
   };
   const untouchedForm = useMemo(() => {
     const form = formStateOf(userRegistration, travelRange);
@@ -422,12 +427,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         volunteering_other: volunteeringOtherDetail
       };
 
-      const transport = {
-        type: transportType,
-        seats: transportType === 'offer' || transportType === 'need' ? transportSeats : 0,
-        arrival: transportArrival,
-        departure: transportDeparture
-      };
+      const transport = transportOf(formState);
 
       // Get or create user profile (self-healing if missing)
       const { data: fetchedProfile, error: fetchError } = await supabase
@@ -679,6 +679,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                   {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
                 </Field>
               </div>
+              {(transportType === 'offer' || transportType === 'need') && (
+                <Field label={fr.transportDeparturePlace}>
+                  {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => setTransportDeparturePlace(e.target.value)} />}
+                </Field>
+              )}
             </Card>
             <Card className="space-y-4 p-5">
               <ChipGroup
