@@ -59,8 +59,7 @@ const formatValue = (field, value) => {
     case 'transport':
       if (typeof value === 'object') {
         const place = departureOf(value) ? `, ${fr.transportDeparturePlaceShort}: ${departureOf(value)}` : '';
-        const listed = value.carpool_listed ? `, ${fr.historyCarpoolListed}` : '';
-        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}${place}${listed}`;
+        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}${place}`;
       }
       return JSON.stringify(value);
     case 'status':

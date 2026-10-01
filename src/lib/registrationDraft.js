@@ -40,7 +40,6 @@ export const formStateOf = (registration, travelRange = {}) => {
       transportDeparture: travelRange.defaultDeparture || '',
       transportDepartureFsa: '',
       transportDeparturePlace: '',
-      carpoolListed: false,
       volunteeringSelections: [],
       volunteeringOtherDetail: '',
       musicRequests: '',
@@ -75,7 +74,6 @@ export const formStateOf = (registration, travelRange = {}) => {
     transportDeparture: toLocalDateTime(registration.transport?.departure) || travelRange.defaultDeparture || '',
     transportDepartureFsa: registration.transport?.departure_fsa || '',
     transportDeparturePlace: registration.transport?.departure_place || '',
-    carpoolListed: registration.transport?.carpool_listed === true,
     volunteeringSelections: registration.logistics?.volunteering || [],
     volunteeringOtherDetail: registration.logistics?.volunteering_other || '',
     musicRequests: registration.music_requests || '',
@@ -96,9 +94,8 @@ export const departureFsaInvalid = (form) => offersOrNeedsLift(form.transportTyp
   && !isValidFsa(normalizeFsa(form.transportDepartureFsa));
 
 /**
- * The `transport` to save from the form. Seats, where the lift leaves from (#181: the postal
- * code's start, for matching, and a note for people) and the consent to be on the carpool board
- * (#180) only go with an offer or a need.
+ * The `transport` to save from the form. Seats and where the lift leaves from (#181: the postal
+ * code's start, for matching, and a note for people) only go with an offer or a need.
  */
 export const transportOf = (form) => {
   const lift = offersOrNeedsLift(form.transportType);
@@ -110,8 +107,7 @@ export const transportOf = (form) => {
     arrival: form.transportArrival,
     departure: form.transportDeparture,
     ...(lift && isValidFsa(fsa) ? { departure_fsa: fsa } : {}),
-    ...(lift && place ? { departure_place: place } : {}),
-    ...(lift && form.carpoolListed ? { carpool_listed: true } : {})
+    ...(lift && place ? { departure_place: place } : {})
   };
 };
 

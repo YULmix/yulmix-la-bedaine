@@ -237,14 +237,12 @@ function generateParty(faker, { member, partiesConfig, paid }) {
 }
 
 // Where a lift leaves from (#181). Like real data, not everyone gives it: some registered before
-// the field existed, so a fifth have no postal code, and half leave no note. Most agree to be on
-// the carpool board (#180); some don't.
+// the field existed, so a fifth have no postal code, and half leave no note.
 function generateDeparture(faker) {
   const [fsa, note] = faker.helpers.weightedArrayElement(OPTION_VALUES.departures.map(([code, text, weight]) => ({ value: [code, text], weight })));
   return {
     fsa: faker.datatype.boolean({ probability: 0.8 }) ? fsa : '',
-    note: faker.datatype.boolean({ probability: 0.5 }) ? note : '',
-    listed: faker.datatype.boolean({ probability: 0.7 })
+    note: faker.datatype.boolean({ probability: 0.5 }) ? note : ''
   };
 }
 
@@ -407,15 +405,13 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     for (const r of sorted) {
       const transport = r.transportType === ''
         ? `'{"type": "", "seats": 0, "arrival": "", "departure": ""}'::jsonb`
-        // Seats offered, or needed (#179: the whole party); where from (#181), when given; listed
-        // on the carpool board (#180), when agreed.
+        // Seats offered, or needed (#179: the whole party); where from (#181), when given.
         : `jsonb_build_object('type', ${lit(r.transportType)}, 'seats', ${r.transportType === 'offer' ? r.seats : r.attendees.length},
       'arrival', to_char(${dateExpr(r.event.startDays)} + time '17:30', 'YYYY-MM-DD"T"HH24:MI'),
       'departure', to_char(${dateExpr(r.event.startDays + 2)} + time '14:00', 'YYYY-MM-DD"T"HH24:MI'))
       || ${jsonb({
     ...(r.departure.fsa ? { departure_fsa: r.departure.fsa } : {}),
-    ...(r.departure.note ? { departure_place: r.departure.note } : {}),
-    ...(r.departure.listed ? { carpool_listed: true } : {})
+    ...(r.departure.note ? { departure_place: r.departure.note } : {})
   })}`;
       out.push(`SELECT FROM public.save_registration(${lit(r.event.id)}, ${jsonb(r.attendees)},
   jsonb_build_object('logistics', ${jsonb(r.logistics)}, 'transport', ${transport},

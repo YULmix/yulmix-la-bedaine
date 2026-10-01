@@ -209,7 +209,7 @@ still contain them.
 ### `user_parties.transport`
 
 ```json
-{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00", "departure_fsa": "H2G", "departure_place": "métro Jean-Talon", "carpool_listed": true }
+{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00", "departure_fsa": "H2G", "departure_place": "métro Jean-Talon" }
 ```
 
 `type` is `offer` (has room in a car) or `need` (looking for a lift). `seats` is the seats offered,
@@ -227,10 +227,6 @@ Where an offer or a need leaves from (#181), both optional and absent with no li
   before it existed; the board matches the ones that have it.
 - `departure_place`: a free-text note for people (« métro Jean-Talon »), trimmed, at most 100
   characters. Never used for matching.
-
-`carpool_listed` (#180): `true` when the party agreed to be on the [carpool
-board](#carpool-board), an unticked box on the form; absent otherwise, and always absent with no
-lift. The `user_parties_transport_carpool_listed` CHECK keeps it a boolean.
 
 ### `event_budgets.lines` and `events.external_links`
 
@@ -448,9 +444,9 @@ does nothing.
 
 ### Carpool board
 
-`/carpool` (#180) lists the lifts of the active event's parties that agreed to it
-(`transport.carpool_listed`), are confirmed (not waitlisted, not cancelled) and offer or need a
-lift, with the registering member's name and email. Members can't read other parties, so the page
+`/carpool` (#180) lists the lifts of the active event's confirmed parties (not waitlisted, not
+cancelled) that offer or need one, with the registering member's name and email. There is no
+opt-in: where a lift leaves from is only the start of a postal code (#181), a neighbourhood. Members can't read other parties, so the page
 reads `carpool_board()`, a `SECURITY DEFINER` function that returns only the listed fields: kind,
 whether it's the caller's, contact name (full name, else email) and email, departure FSA and note,
 arrival, departure, seats, and `matches`. It raises `carpool_board_forbidden` unless

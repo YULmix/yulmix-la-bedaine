@@ -1633,8 +1633,8 @@ describe('📷 location photos (#124)', () => {
 });
 
 // #180: the carpool board. Members can't read each other's parties; carpool_board() (SECURITY
-// DEFINER) is how a registered member sees the lifts of the parties that agreed to be listed,
-// with only the listed fields. The board is the active event's (events.is_active), so this block
+// DEFINER) is how a registered member sees the confirmed parties' lifts, with only the board's
+// fields. The board is the active event's (events.is_active), so this block
 // makes its event the active one for its duration and gives the flag back after.
 describe('🚗 carpool board (#180)', () => {
   jest.setTimeout(30000);
@@ -1687,7 +1687,7 @@ describe('🚗 carpool board (#180)', () => {
 
     people.driver = await newMember('driver', 'Diane Driver');
     people.rider = await newMember('rider', 'Rémi Rider');
-    people.private = await newMember('private', 'Pat Private');
+    people.walker = await newMember('walker', 'Wes Walker');
     people.waitlisted = await newMember('waitlisted', 'Wanda Waitlisted');
     people.cancelled = await newMember('cancelled', 'Carl Cancelled');
     people.stranger = await newMember('stranger', 'Sam Stranger');
@@ -1696,11 +1696,11 @@ describe('🚗 carpool board (#180)', () => {
     await adminAuthClient.from('user_parties').delete().eq('event_id', BOARD_EVENT_ID).eq('user_id', MEMBER_ID);
     await saveOk(memberClient, BOARD_EVENT_ID, ONE_ADULT_WHOLE);
 
-    await register(people.driver, lift('offer', { seats: 3, departure_fsa: 'H2G', departure_place: 'métro Jean-Talon', carpool_listed: true }));
-    await register(people.rider, lift('need', { departure_fsa: 'H4C', carpool_listed: true }));
-    await register(people.private, lift('need', { departure_fsa: 'H2S' }));
-    const waitlistedParty = await register(people.waitlisted, lift('offer', { departure_fsa: 'H1A', carpool_listed: true }));
-    const cancelledParty = await register(people.cancelled, lift('need', { departure_fsa: 'H3B', carpool_listed: true }));
+    await register(people.driver, lift('offer', { seats: 3, departure_fsa: 'H2G', departure_place: 'métro Jean-Talon' }));
+    await register(people.rider, lift('need', { departure_fsa: 'H4C' }));
+    await register(people.walker, lift('', { seats: 0 }));
+    const waitlistedParty = await register(people.waitlisted, lift('offer', { departure_fsa: 'H1A' }));
+    const cancelledParty = await register(people.cancelled, lift('need', { departure_fsa: 'H3B' }));
 
     // Cancelling first: a cancellation promotes whoever is waitlisted.
     const { error: cancelError } = await people.cancelled.client.from('user_parties').update({ status: 'cancelled' }).eq('id', cancelledParty);
@@ -1721,11 +1721,6 @@ describe('🚗 carpool board (#180)', () => {
     }
   });
 
-  test('the consent is a boolean, or absent', async () => {
-    const { error } = await save(people.stranger.client, BOARD_EVENT_ID, ONE_ADULT_WHOLE, { party: lift('offer', { carpool_listed: 'yes' }) });
-    expect(error?.message).toMatch(/user_parties_transport_carpool_listed/);
-  });
-
   test('a member with no registration for the active event, or a cancelled one, is refused', async () => {
     for (const person of [people.stranger, people.cancelled]) {
       const { data, error } = await board(person.client);
@@ -1735,7 +1730,7 @@ describe('🚗 carpool board (#180)', () => {
     }
   });
 
-  test('a registered member sees only the opted-in, confirmed offers and needs, with the listed fields only', async () => {
+  test('a registered member sees only the confirmed offers and needs, with the board fields only', async () => {
     const { data, error } = await board(memberClient);
     expect(error).toBeNull();
     expect(data.map(row => [row.kind, row.contact_name])).toEqual([['offer', 'Diane Driver'], ['need', 'Rémi Rider']]);

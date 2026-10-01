@@ -157,7 +157,7 @@ request); *participation* (that's the tier).
 A seat in someone's car to or from the event. A party **offers** a lift (`transport.type = 'offer'`,
 seats offered) or **needs** one (`'need'`, seats needed), with where it leaves from: the
 **FSA** (the first three characters of a postal code, e.g. `H2G`) and a note. The **carpool
-board** (*Covoiturage*, `/carpool`, #180) lists the parties that agreed to it (`carpool_listed`),
+board** (*Covoiturage*, `/carpool`, #180) lists them,
 each with its closest matches by **detour**: the extra kilometres the driver drives to pick the
 rider up on the way to the venue.
 _Avoid_: *ride*, *trip* in code; "distance" for the detour.

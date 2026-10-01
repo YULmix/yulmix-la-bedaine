@@ -1,25 +1,15 @@
 -- The carpool board (#180): members registered for the active event see the lifts offered and
--- needed by the parties that agreed to be listed, with each offer's closest needs (and each
--- need's closest offers) by detour.
+-- needed by its confirmed parties, with each offer's closest needs (and each need's closest
+-- offers) by detour.
 --
---   * Consent: transport.carpool_listed, an unchecked-by-default box on the registration form.
---     The board shows the registering member's name and email, so nobody is listed without it.
+--   * Where a lift leaves from is only the start of a postal code (#181), a neighbourhood, so
+--     every party offering or needing a lift is on the board: there's no opt-in.
 --   * Members can't read other parties (RLS: own or admin). carpool_board() is their only view of
 --     them: SECURITY DEFINER, and it returns the listed fields and nothing else (no notes, no
 --     attendees, no amounts).
 --   * Detours come from the FSA centres (private.postal_fsa) and the venue's coordinates (below):
 --     detour = d(driver, rider) + d(rider, venue) - d(driver, venue), great-circle distances.
 --     The board returns FSAs and kilometres, never coordinates.
-
--- ---------------------------------------------------------------------------------------------
--- Consent to be listed.
-
-ALTER TABLE public.user_parties
-    ADD CONSTRAINT user_parties_transport_carpool_listed
-        CHECK (NOT (transport ? 'carpool_listed') OR jsonb_typeof(transport->'carpool_listed') = 'boolean');
-
-COMMENT ON CONSTRAINT user_parties_transport_carpool_listed ON public.user_parties IS
-    'transport.carpool_listed, when present, is a boolean (#180): the party agreed to be on the carpool board.';
 
 -- ---------------------------------------------------------------------------------------------
 -- Where the venue is, for detours: entered by an admin (from a map). Both or neither.
@@ -86,8 +76,8 @@ REVOKE ALL ON FUNCTION public.can_view_carpool_board() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_view_carpool_board() TO authenticated;
 
 -- ---------------------------------------------------------------------------------------------
--- The board: one row per listed party of the active event (opted in, confirmed: not waitlisted,
--- not cancelled; offering or needing a lift), and its matches on the other side.
+-- The board: one row per party of the active event that offers or needs a lift and is confirmed
+-- (not waitlisted, not cancelled), and its matches on the other side.
 --
 --   entry          a number for the row, in this result only (matches refer to it); not an id
 --   kind           'offer' or 'need'
@@ -157,7 +147,6 @@ BEGIN
         WHERE p.status <> 'cancelled'
           AND NOT COALESCE(p.is_waitlisted, false)
           AND p.transport->>'type' IN ('offer', 'need')
-          AND p.transport->'carpool_listed' = 'true'::jsonb
     ),
     venue AS (
         SELECT v.lat, v.lng
@@ -197,7 +186,7 @@ $$;
 ALTER FUNCTION public.carpool_board() OWNER TO "postgres";
 
 COMMENT ON FUNCTION public.carpool_board() IS
-    'The carpool board (#180): the active event''s opted-in, confirmed offer/need parties, with contact name and email, departure, times, seats, and matches by detour. Raises carpool_board_forbidden unless can_view_carpool_board().';
+    'The carpool board (#180): the active event''s confirmed offer/need parties, with contact name and email, departure, times, seats, and matches by detour. Raises carpool_board_forbidden unless can_view_carpool_board().';
 
 REVOKE ALL ON FUNCTION public.carpool_board() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.carpool_board() TO authenticated;

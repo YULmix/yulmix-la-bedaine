@@ -88,8 +88,8 @@ const Section = ({ title, entries, empty, icon }) => (
   </section>
 );
 
-// /carpool (#180): the lifts offered and needed by the parties of the active event that agreed to
-// be listed, each with its closest matches. Who may see it, who is on it and the detours are the
+// /carpool (#180): the lifts offered and needed by the confirmed parties of the active event, each
+// with its closest matches. Who may see it, who is on it and the detours are the
 // database's (carpool_board()); anyone else gets its error, shown as « not available ».
 const CarpoolView = () => {
   const [rows, setRows] = useState(null);
