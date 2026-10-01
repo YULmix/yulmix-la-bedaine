@@ -116,24 +116,24 @@ describe('overrideWrite', () => {
 });
 
 describe('sleepingByLocation', () => {
-  const at = (locationId, locationName, placeLabel, photo = null) => ({
-    location_id: locationId, location_name: locationName, place_label: placeLabel, location_photo_path: photo
+  const at = (locationId, locationName, placeLabel) => ({
+    location_id: locationId, location_name: locationName, place_label: placeLabel
   });
 
   test('one entry per location, with who sleeps where, in the attendees\' order', () => {
     expect(sleepingByLocation([
-      { name: 'Alice', place: at('l1', 'Grenier', 'Lit 1', 'l1/a.jpg') },
+      { name: 'Alice', place: at('l1', 'Grenier', 'Lit 1') },
       { name: 'Chloé', place: at('l2', 'Salon', 'Sofa') },
-      { name: 'Bob', place: at('l1', 'Grenier', 'Lit 2', 'l1/a.jpg') }
+      { name: 'Bob', place: at('l1', 'Grenier', 'Lit 2') }
     ])).toEqual([
-      { locationId: 'l1', name: 'Grenier', photoPath: 'l1/a.jpg', sleepers: [{ name: 'Alice', place: 'Lit 1' }, { name: 'Bob', place: 'Lit 2' }] },
-      { locationId: 'l2', name: 'Salon', photoPath: null, sleepers: [{ name: 'Chloé', place: 'Sofa' }] }
+      { locationId: 'l1', name: 'Grenier', sleepers: [{ name: 'Alice', place: 'Lit 1' }, { name: 'Bob', place: 'Lit 2' }] },
+      { locationId: 'l2', name: 'Salon', sleepers: [{ name: 'Chloé', place: 'Sofa' }] }
     ]);
   });
 
   test('attendees without a place are left out; a party with none gives nothing', () => {
     expect(sleepingByLocation([{ name: 'Alice', place: null }, { name: 'Bob', place: at('l1', 'Grenier', 'Lit 1') }]))
-      .toEqual([{ locationId: 'l1', name: 'Grenier', photoPath: null, sleepers: [{ name: 'Bob', place: 'Lit 1' }] }]);
+      .toEqual([{ locationId: 'l1', name: 'Grenier', sleepers: [{ name: 'Bob', place: 'Lit 1' }] }]);
     expect(sleepingByLocation([{ name: 'Alice', place: null }])).toEqual([]);
     expect(sleepingByLocation(undefined)).toEqual([]);
   });

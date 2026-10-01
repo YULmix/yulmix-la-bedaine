@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BedDouble, CircleAlert, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { placeOccupancy, placeOptions } from '../../lib/places';
 import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
+import { VENUE_GALLERY_KINDS, fetchVenueGallery } from '../../lib/galleries';
+import GalleryButton from '../Gallery';
 import { Card, EmptyState, Notice, Tag, Textarea, cx } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
@@ -25,7 +27,9 @@ const FILTERS = [
 // Logistique views, and are all saved at once from the bar at the bottom (#150);
 // `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
 // flattenPlaces(); with none, there is nothing to assign until they're defined (Événements tab).
+// The venue's assignments gallery (#177) sits by the title.
 const PlacesView = ({
+  venue,
   parties,
   places,
   logisticsChanges,
@@ -46,12 +50,27 @@ const PlacesView = ({
   const placesById = useMemo(() => new Map(places.map(place => [place.id, place])), [places]);
   const placeStats = useMemo(() => computePlaceStats(parties, places, logisticsChanges), [parties, places, logisticsChanges]);
   const demand = useMemo(() => placeDemandByType(parties, places), [parties, places]);
+  const venueId = venue?.id;
+  const [gallery, setGallery] = useState({ venueId: null, images: [] });
+
+  useEffect(() => {
+    if (!venueId) return undefined;
+    let current = true;
+    fetchVenueGallery(venueId, VENUE_GALLERY_KINDS.assignments)
+      .then(images => { if (current) setGallery({ venueId, images }); })
+      .catch(loadError => console.error('Error loading the assignments gallery:', loadError));
+    return () => { current = false; };
+  }, [venueId]);
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-ink">{fr.logisticsViewTitle}</h2>
-        <p className="mt-2 max-w-prose text-muted">{fr.logisticsViewDescription}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-ink">{fr.logisticsViewTitle}</h2>
+          <p className="mt-2 max-w-prose text-muted">{fr.logisticsViewDescription}</p>
+        </div>
+        <GalleryButton images={gallery.venueId === venueId ? gallery.images : []}
+          name={venue?.name ? `${venue.name} · ${fr.galleryVenueAssignmentsTitle}` : fr.galleryVenueAssignmentsTitle} size="sm" />
       </div>
 
       {places.length === 0

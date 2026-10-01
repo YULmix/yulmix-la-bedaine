@@ -143,6 +143,13 @@ Which place an attendee holds, for the whole event (no per-night occupancy). Adm
 attendee's `sleeping_preference` is a request, the assignment is the answer. People see it as
 `"<location> · <place>"` (`attendee_places.bed_label`).
 
+**Gallery** (fr. *photos*, `galleries`)
+An ordered collection of up to 30 images; the first is the **cover**. A location has one; a venue
+has one per **kind** (`general`: shown to participants on the info page; `assignments`: for
+admins assigning places). Kinds are code names, never shown: the UI names a gallery by where it
+shows (« Photos du site », « Photos pour l'attribution », « Photos du lieu »).
+_Avoid_: album, photo (a gallery holds several).
+
 **Input** (fr. *Vos précisions*)
 What a party tells the organisers in the form beyond who is coming: transport, volunteering,
 music requests, a message. The member's summary shows it in its own card, before

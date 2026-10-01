@@ -348,18 +348,29 @@ event's locations to a venue of its own and the address from `events.venue_addre
   free to change or go. The Sites tab lists the copy's event under the venue it copies; the
   copies themselves aren't listed. An archived event's Couchage section is read-only.
   Un-archiving (SQL only) leaves the event on its copy; archiving it again copies nothing.
-- **Location photos** (#124). A location may have one photo (`locations.photo_path`: an object
-  name in the public `location-photos` bucket, `"<location id>/<uuid>.jpg"`), shared by its
-  places. Anyone with the URL can see it; only admins can upload, replace or delete an object
-  (`storage.objects` policy "Location photos: Admin full access"), and members read the path where
-  they read the location, and through `attendee_places.location_photo_path`. The Sites editor
-  shrinks the image to 1600 px as JPEG before uploading (`src/lib/locationPhotos.js`); the
-  member's summary shows each location their party sleeps in once, with its photo and who sleeps
-  where, in its Logistique card (`sleepingByLocation()` in `src/lib/places.js`). A frozen copy keeps the photo its location had
-  (it points at the same object). Postgres can't delete a Storage object, so after replacing or
-  removing a photo, or deleting a location, the app asks `unused_location_photos(paths)` (admin
-  only) which objects no location points at (those named, and any older than an hour) and
-  removes them through the Storage API. Migration `20260930202924_location_photos.sql`.
+- **Galleries** (#177, replacing #124's single location photo). A gallery (`galleries`) is an
+  ordered collection of at most 30 images (`gallery_images`, by `position`; the first is the
+  cover, no captions). It belongs to exactly one owner (CHECK `galleries_one_owner`): a location
+  (one gallery each), or a venue with a `kind`, an English name never shown: `general` (the info
+  page, for whoever can read an event held there, signed in) or `assignments` (the Logistique
+  assignment view, admins only). A location's gallery is read by whoever reads the location
+  (members, where their attendees sleep). An owner with no gallery row has an empty gallery; the
+  row is created with its first image by `add_gallery_image(path, location_id | venue_id + kind)`,
+  which puts the image last. `move_gallery_image(id, -1 | 1)` swaps it with its neighbour
+  (`(gallery_id, position)` is unique, deferred). A 31st image is refused (`gallery_full`, by a
+  trigger). Images are objects in the public `location-photos` bucket (named for #124; it holds
+  every gallery's images), `"<location or venue id>/<uuid>.jpg"`; anyone with the URL can see
+  one, only admins can write the bucket (`storage.objects` policy "Location photos: Admin full
+  access") or the gallery tables. The editor shrinks each image to 1600 px as JPEG before
+  uploading (`src/lib/galleries.js`); every viewer uses one component (`src/components/Gallery.jsx`,
+  carousel logic in `src/lib/carousel.js`). Freezing copies the venue's and its locations'
+  galleries, whose images point at the same objects, and the guard keeps them as they were
+  (`venue_layout_frozen`). Postgres can't delete a Storage object, so after removing an image, or
+  deleting a location (its gallery goes by cascade), the app asks `unused_gallery_images(paths)`
+  (admin only) which objects no image points at, frozen copies' included (those named, and any
+  older than an hour), and removes them through the Storage API. Migration
+  `20261001043009_galleries.sql` turned each `locations.photo_path` into image 1 of its location's
+  gallery and dropped the column.
 - **Deleting.** The `place_id` foreign key is `NO ACTION`, so deleting a place anyone holds, in any
   event at the venue, or the location holding it, fails; the Sites editor looks up who holds it
   (in any event) when asked to delete, and names them instead.
@@ -505,7 +516,7 @@ trigger is a no-op, since there is nothing to compute the close date from.
 
 | View | Purpose | Notes |
 |---|---|---|
-| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `user_parties` (the event) × `places` × `locations`, with `bed_label` = `"<location> · <place>"` (#113, #145) and the location's `location_photo_path` (#124) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
+| `attendee_places` | Where each assigned attendee sleeps: `place_assignments` × `attendees` × `user_parties` (the event) × `places` × `locations`, with `bed_label` = `"<location> · <place>"` (#113, #145) | `security_invoker`. An admin sees every row; a member sees their own attendees', since the place tables let a member read only the places and locations their attendees hold. `SELECT` for `authenticated` and `service_role` |
 | `user_event_history` | Joins `profiles` × `user_parties` × `events` so admins can drill into a member's history across editions | `WITH (security_invoker = true)`, so the querying user's RLS applies: members see only their own rows. `SELECT` for `authenticated` only |
 
 `registration_summary_view` no longer exists. It was unused and bypassed RLS, and was dropped in

@@ -210,7 +210,7 @@ The client throws at import time if the two `VITE_` variables are missing
   payment and bed-assignment emails exist ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md));
   there are no reminders, scheduled sends or marketing emails.
 - **Little file storage.** Two public buckets: `feedback` (pasted screenshots) and
-  `location-photos` (a location's photo, admin-written, #124). Objects are removed through the
+  `location-photos` (gallery images of venues and locations, admin-written, #124, #177). Objects are removed through the
   Storage API, never by SQL (see [data model](./03-data-model.md#sleeping-locations-and-places)).
 - **No state management library.** Component-local `useState` plus prop drilling from `App.jsx`.
 - **No TypeScript, no linter, no CI.** See [contributing](./08-contributing.md) for the

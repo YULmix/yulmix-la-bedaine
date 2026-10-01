@@ -713,6 +713,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       return (
         <AdminLogisticsView
           view={logisticsView}
+          venue={activeEventState?.venue}
           onViewChange={view => updateParams({ view: view === LOGISTICS_VIEWS[0].id ? null : view })}
           parties={activeParties}
           places={places}

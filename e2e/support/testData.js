@@ -7,6 +7,8 @@
 // Events can't be deleted (prevent_event_delete trigger), so the event is find-or-create by
 // theme and archived again on teardown; the registration is deleted on teardown and
 // recreated on setup, so re-runs start from the same state.
+import { randomUUID } from 'node:crypto';
+import { crc32, deflateSync } from 'node:zlib';
 import { createClient } from '@supabase/supabase-js';
 import { TEST_USERS } from './auth.js';
 
@@ -317,7 +319,7 @@ export async function deleteLocations(eventId) {
   const placeIds = locations.flatMap(location => location.places.map(place => place.id));
   check(await db.from('place_assignments').delete().in('place_id', placeIds), 'unassign e2e places');
   check(await db.from('locations').delete().eq('venue_id', await venueOf(db, eventId)), 'delete e2e locations');
-  // Their photos (#124), and any a spec left behind in their folders.
+  // Their galleries' images (#177), and any a spec left behind in their folders.
   for (const { id } of locations) {
     const objects = check(await db.storage.from('location-photos').list(id), 'list e2e location photos');
     if (objects.length) {
@@ -326,21 +328,96 @@ export async function deleteLocations(eventId) {
   }
 }
 
-// The photo_path of the event's venue location named `name` (#124).
-export async function getLocationPhotoPath(eventId, name) {
+// The image paths, cover first, of a gallery of the event's venue (#177): the location named
+// `location`'s, or the venue's of `kind`. [] when it has none.
+export async function getGalleryPaths(eventId, { location, kind }) {
   const db = await adminClient();
-  const row = check(
-    await db.from('locations').select('photo_path').eq('venue_id', await venueOf(db, eventId)).eq('name', name).single(),
-    'read e2e location photo'
-  );
-  return row.photo_path;
+  const venueId = await venueOf(db, eventId);
+  let query = db.from('galleries').select('images:gallery_images(path, position)');
+  if (location) {
+    const row = check(
+      await db.from('locations').select('id').eq('venue_id', venueId).eq('name', location).single(),
+      'read e2e location'
+    );
+    query = query.eq('location_id', row.id);
+  } else {
+    query = query.eq('venue_id', venueId).eq('kind', kind);
+  }
+  const rows = check(await query, 'read e2e gallery');
+  return rows.flatMap(row => row.images.sort((a, b) => a.position - b.position).map(image => image.path));
 }
 
-// Whether the location-photos bucket holds this object (#124).
-export async function photoObjectExists(path) {
+// Whether the location-photos bucket, which holds every gallery's images, holds this object.
+export async function galleryObjectExists(path) {
   const db = await adminClient();
   const [folder, file] = path.split('/');
-  return check(await db.storage.from('location-photos').list(folder, { search: file }), 'list e2e location photos').length === 1;
+  return check(await db.storage.from('location-photos').list(folder, { search: file }), 'list e2e gallery images').length === 1;
+}
+
+// A photo-sized PNG (1200×800), a diagonal gradient in a hue of `index`'s, so the images of a
+// gallery look apart in screenshots.
+const e2eImage = (index) => {
+  const width = 1200;
+  const height = 800;
+  const hues = [[255, 64, 160], [64, 200, 255], [255, 200, 64], [120, 255, 140]];
+  const [r, g, b] = hues[index % hues.length];
+  const rows = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (width * 3 + 1);
+    for (let x = 0; x < width; x += 1) {
+      const shade = 0.35 + 0.65 * ((x + y) / (width + height));
+      rows[row + 1 + x * 3] = r * shade;
+      rows[row + 2 + x * 3] = g * shade;
+      rows[row + 3 + x * 3] = b * shade;
+    }
+  }
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length);
+    head.write(type, 4);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])));
+    return Buffer.concat([head, data, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))
+  ]);
+};
+
+// Fills a gallery of the event's venue with `count` images, as the editor would (#177): the
+// location named `location`'s, or the venue's of `kind`. Returns their paths in order.
+export async function seedGallery(eventId, { location, kind }, count) {
+  const db = await adminClient();
+  const venueId = await venueOf(db, eventId);
+  const locationId = location
+    ? check(await db.from('locations').select('id').eq('venue_id', venueId).eq('name', location).single(), 'read e2e location').id
+    : null;
+  const paths = [];
+  for (let i = 0; i < count; i += 1) {
+    const path = `${locationId || venueId}/${randomUUID()}.png`;
+    check(await db.storage.from('location-photos').upload(path, e2eImage(i), { contentType: 'image/png' }), 'upload e2e gallery image');
+    check(await db.rpc('add_gallery_image', {
+      p_path: path, p_location_id: locationId, p_venue_id: locationId ? null : venueId, p_kind: locationId ? null : kind
+    }), 'add e2e gallery image');
+    paths.push(path);
+  }
+  return paths;
+}
+
+// Empties the e2e venue's own galleries (#177), and removes their images' objects.
+export async function deleteVenueGalleries(eventId) {
+  const db = await adminClient();
+  const venueId = await venueOf(db, eventId);
+  check(await db.from('galleries').delete().eq('venue_id', venueId), 'delete e2e venue galleries');
+  const objects = check(await db.storage.from('location-photos').list(venueId), 'list e2e venue images');
+  if (objects.length) {
+    check(await db.storage.from('location-photos').remove(objects.map(o => `${venueId}/${o.name}`)), 'remove e2e venue images');
+  }
 }
 
 // Replaces the event's places with a small house (#114): two single beds in "Chambre 1" and a

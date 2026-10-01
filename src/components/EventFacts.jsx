@@ -2,6 +2,7 @@ import { CalendarDays, Clock, ExternalLink, MapPin, Phone, ScrollText, Users } f
 import fr from '../locales/fr.json';
 import { eventAddress, getGoogleMapsUrl } from '../lib/venue';
 import { formatEventDates } from '../lib/eventDisplay';
+import GalleryButton from './Gallery';
 
 const Fact = ({ icon: Icon, label, children }) => (
   <div className="flex gap-3">
@@ -14,8 +15,9 @@ const Fact = ({ icon: Icon, label, children }) => (
 );
 
 // What a member needs to know about an edition: when, where, how long, who to call, what to
-// bring, and links. Internal numbers (costs, tunables) are never shown here.
-const EventFacts = ({ event }) => {
+// bring, and links. Internal numbers (costs, tunables) are never shown here. `venueGallery`, the
+// venue's general gallery (#177), shows under the address where the page has read it.
+const EventFacts = ({ event, venueGallery }) => {
   const dates = formatEventDates(event);
   const links = event.external_links || [];
   const address = eventAddress(event);
@@ -23,11 +25,14 @@ const EventFacts = ({ event }) => {
     <div className="space-y-8">
       <dl className="grid gap-5 sm:grid-cols-2">
         {dates && <Fact icon={CalendarDays} label={fr.dates}>{dates}</Fact>}
-        {address && (
+        {(address || venueGallery?.length > 0) && (
           <Fact icon={MapPin} label={fr.venue}>
-            <a href={getGoogleMapsUrl(address)} target="_blank" rel="noopener noreferrer" className="underline decoration-edge underline-offset-4 hover:decoration-neon">
-              {address}
-            </a>
+            {address && (
+              <a href={getGoogleMapsUrl(address)} target="_blank" rel="noopener noreferrer" className="underline decoration-edge underline-offset-4 hover:decoration-neon">
+                {address}
+              </a>
+            )}
+            <GalleryButton images={venueGallery} name={event.venue?.name || fr.venue} className="mt-3" />
           </Fact>
         )}
         {event.duration_days > 0 && <Fact icon={Clock} label={fr.eventDurationTitle}>{event.duration_days} {fr.daysSuffix}</Fact>}
