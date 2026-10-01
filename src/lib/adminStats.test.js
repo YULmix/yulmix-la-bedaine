@@ -188,7 +188,7 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
       ...profile('', 'bob@test.local'),
       attendees: [{ id: 'b1', name: 'Bob', dietary_needs: 'vegan' }, { id: 'b2', name: 'Bébé', dietary_needs: [] }],
       logistics: { volunteering: ['cook_meal'] },
-      transport: { type: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00' },
+      transport: { type: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00', departure_fsa: 'H2G', departure_place: ' Montréal (Rosemont) ' },
       music_requests: '',
       message_to_organizers: 'Merci!'
     },
@@ -255,9 +255,9 @@ describe('the Logistique views of the form\'s answers (#179)', () => {
 
   test('transportRows: offers, then needs, with the seats offered or needed; no lift (\'None\', \'\') isn\'t listed', () => {
     expect(transportRows(formParties)).toEqual([
-      { id: 'b', contact: 'bob@test.local', kind: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00' },
-      { id: 'a', contact: 'Alice Martin', kind: 'need', seats: 2, arrival: '2026-07-10T18:00', departure: '' },
-      { id: 'e', contact: 'Eve', kind: 'need', seats: 2, arrival: '', departure: '' }
+      { id: 'b', contact: 'bob@test.local', kind: 'offer', seats: 3, arrival: '2026-07-10T17:00', departure: '2026-07-12T15:00', departureFsa: 'H2G', departurePlace: 'Montréal (Rosemont)' },
+      { id: 'a', contact: 'Alice Martin', kind: 'need', seats: 2, arrival: '2026-07-10T18:00', departure: '', departureFsa: '', departurePlace: '' },
+      { id: 'e', contact: 'Eve', kind: 'need', seats: 2, arrival: '', departure: '', departureFsa: '', departurePlace: '' }
     ]);
     expect(transportRows([formParties[2], formParties[3]])).toEqual([]);
   });

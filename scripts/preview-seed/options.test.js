@@ -7,6 +7,7 @@ import {
   TRANSPORT_TYPES,
   PAYMENT_STATUS
 } from '../../src/lib/registrationOptions';
+import { isValidFsa } from '../../src/lib/postalCode';
 
 // The demo data generator can't import registrationOptions.js directly (it imports JSON), so it
 // keeps its own copy of the values. If this fails, update scripts/preview-seed/options.js.
@@ -21,6 +22,10 @@ describe('preview seed option values match the app', () => {
     ['transport', TRANSPORT_TYPES]
   ])('%s', (key, appOptions) => {
     expect([...OPTION_VALUES[key]].sort()).toEqual(values(appOptions));
+  });
+
+  test('departures are valid postal code starts (#181)', () => {
+    expect(OPTION_VALUES.departures.filter(([fsa]) => !isValidFsa(fsa))).toEqual([]);
   });
 
   test('paymentStatus', () => {

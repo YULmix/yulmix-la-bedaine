@@ -2,6 +2,7 @@
 // reload of the tab doesn't lose what was typed. Pure, apart from the sessionStorage helpers at
 // the bottom (registrationDraft.test.js).
 import { dietaryNeedsOf } from './registrationOptions.js';
+import { isValidFsa, normalizeFsa } from './postalCode.js';
 
 // Per-attendee choices that "mêmes choix pour tout le monde" copies to everyone.
 export const LOGISTICS_FIELDS = ['sleepingPreference', 'sleepingPreferenceOther', 'dietaryNeeds', 'bedReason', 'bedReasonOther', 'dietaryOther'];
@@ -37,6 +38,8 @@ export const formStateOf = (registration, travelRange = {}) => {
       transportSeats: 0,
       transportArrival: travelRange.defaultArrival || '',
       transportDeparture: travelRange.defaultDeparture || '',
+      transportDepartureFsa: '',
+      transportDeparturePlace: '',
       volunteeringSelections: [],
       volunteeringOtherDetail: '',
       musicRequests: '',
@@ -69,10 +72,42 @@ export const formStateOf = (registration, travelRange = {}) => {
     transportSeats: registration.transport?.seats || (registration.transport?.type === 'need' ? attendees.length : 0),
     transportArrival: toLocalDateTime(registration.transport?.arrival) || travelRange.defaultArrival || '',
     transportDeparture: toLocalDateTime(registration.transport?.departure) || travelRange.defaultDeparture || '',
+    transportDepartureFsa: registration.transport?.departure_fsa || '',
+    transportDeparturePlace: registration.transport?.departure_place || '',
     volunteeringSelections: registration.logistics?.volunteering || [],
     volunteeringOtherDetail: registration.logistics?.volunteering_other || '',
     musicRequests: registration.music_requests || '',
     messageToOrganizers: registration.message_to_organizers || ''
+  };
+};
+
+export const DEPARTURE_PLACE_MAX_LENGTH = 100;
+
+const offersOrNeedsLift = type => type === 'offer' || type === 'need';
+
+/**
+ * The form's departure postal code (#181) needs fixing before saving: given, with a lift, but not
+ * the start of a Canadian postal code once normalised. Blank is fine (it's optional).
+ */
+export const departureFsaInvalid = (form) => offersOrNeedsLift(form.transportType)
+  && !!normalizeFsa(form.transportDepartureFsa)
+  && !isValidFsa(normalizeFsa(form.transportDepartureFsa));
+
+/**
+ * The `transport` to save from the form. Seats and where the lift leaves from (#181: the postal
+ * code's start, for matching, and a note for people) only go with an offer or a need.
+ */
+export const transportOf = (form) => {
+  const lift = offersOrNeedsLift(form.transportType);
+  const fsa = normalizeFsa(form.transportDepartureFsa);
+  const place = (form.transportDeparturePlace || '').trim().slice(0, DEPARTURE_PLACE_MAX_LENGTH);
+  return {
+    type: form.transportType,
+    seats: lift ? form.transportSeats : 0,
+    arrival: form.transportArrival,
+    departure: form.transportDeparture,
+    ...(lift && isValidFsa(fsa) ? { departure_fsa: fsa } : {}),
+    ...(lift && place ? { departure_place: place } : {})
   };
 };
 

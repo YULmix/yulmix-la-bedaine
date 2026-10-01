@@ -16,6 +16,7 @@ import { Button, Card, ConfirmDialog, Tag } from '../components/ui';
 import {
   ACCOMMODATION_OPTIONS,
   dietaryLabelsOf,
+  departureOf,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
   getOptionLabel,
@@ -159,10 +160,11 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
                     {getOptionLabel(TRANSPORT_TYPES, transport.type)}
                     {['offer', 'need'].includes(transport.type) && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
                   </p>
-                  {(transport.arrival || transport.departure) && (
+                  {(transport.arrival || transport.departure || departureOf(transport)) && (
                     <p className="mt-1 text-sm text-muted">
                       {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
                       {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
+                      {departureOf(transport) && <span className="block [overflow-wrap:anywhere]">{fr.transportDeparturePlaceLabel} {departureOf(transport)}</span>}
                     </p>
                   )}
                 </>

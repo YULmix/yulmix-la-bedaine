@@ -15,7 +15,7 @@ const parties = [
     payment_status: 'paid',
     calculated_amount_owed: 360,
     profiles: { full_name: 'Alice Tremblay', email: 'alice@example.com' },
-    transport: { type: 'offer', seats: 3, arrival: '2026-07-10T18:00', departure: '' },
+    transport: { type: 'offer', seats: 3, arrival: '2026-07-10T18:00', departure: '', departure_fsa: 'H2G', departure_place: 'Montréal' },
     logistics: { volunteering: ['other', 'cook_meal'], volunteering_other: 'Bricolage' },
     music_requests: 'Daft Punk',
     message_to_organizers: 'Ligne 1\nLigne "2", avec virgule',
@@ -45,7 +45,7 @@ const parties = [
     payment_status: 'unpaid',
     calculated_amount_owed: 0,
     profiles: { full_name: 'Carla', email: 'carla@example.com' },
-    transport: { type: 'None' },
+    transport: { type: 'None', departure_fsa: 'G1R', departure_place: 'Ignoré' },
     attendees: [{ name: 'Carla', type: 'Adult', participation: 'Main' }]
   },
   { id: 'x', status: 'cancelled', profiles: { full_name: 'Gone' }, attendees: [{ name: 'Gone' }] }
@@ -71,6 +71,9 @@ describe('partyExportRows', () => {
     expect(column(table, fr.exportTransportSeats).slice(0, 3)).toEqual([3, 1, '']);
     expect(column(table, fr.exportArrival)[0]).toMatch(/2026/);
     expect(column(table, fr.exportDeparture)[0]).toBe('');
+    // The departure place (#181) goes with a lift only; blank is an empty cell.
+    expect(column(table, fr.exportDepartureFsa).slice(0, 3)).toEqual(['H2G', '', '']);
+    expect(column(table, fr.exportDeparturePlace).slice(0, 3)).toEqual(['Montréal', '', '']);
   });
 
   test('volunteering in option order, with the party text in place of « Autre »', () => {

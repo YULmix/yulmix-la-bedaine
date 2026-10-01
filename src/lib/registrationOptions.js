@@ -119,6 +119,11 @@ const TRANSPORT_KIND_LABELS = {
   none: fr.transportKindNone
 };
 
+/** Where a lift leaves from (#181), for people: « H2G · métro Jean-Talon », either part alone, or ''. */
+export const departureOf = (transport) => [transport?.departure_fsa, (transport?.departure_place || '').trim()]
+  .filter(Boolean)
+  .join(' · ');
+
 /** The short admin label of a transport kind (transportKindOf): « Offre », « Besoin », « Aucun ». */
 export const getTransportKindLabel = (kind) => TRANSPORT_KIND_LABELS[kind];
 

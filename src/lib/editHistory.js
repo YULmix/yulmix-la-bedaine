@@ -3,6 +3,7 @@ import { formatCurrency } from './format.js';
 import {
   ACCOMMODATION_OPTIONS,
   TRANSPORT_TYPES,
+  departureOf,
   getOptionLabel,
   getDietaryRequestsLabel,
   getRegistrationStatusLabel,
@@ -57,7 +58,8 @@ const formatValue = (field, value) => {
       return JSON.stringify(value);
     case 'transport':
       if (typeof value === 'object') {
-        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}`;
+        const place = departureOf(value) ? `, ${fr.transportDeparturePlaceShort}: ${departureOf(value)}` : '';
+        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}${place}`;
       }
       return JSON.stringify(value);
     case 'status':

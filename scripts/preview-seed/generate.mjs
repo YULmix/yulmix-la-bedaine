@@ -221,7 +221,18 @@ function generateParty(faker, { member, partiesConfig, paid }) {
     music: faker.datatype.boolean({ probability: 0.5 }) ? faker.helpers.arrayElements(MUSIC, { min: 1, max: 2 }).join(', ') : '',
     message: faker.datatype.boolean({ probability: 0.3 }) ? faker.helpers.arrayElement(MESSAGES) : '',
     adminNotes: faker.datatype.boolean({ probability: 0.2 }) ? faker.helpers.arrayElement(ADMIN_NOTES) : null,
-    paymentStatus: paid ? 'paid' : 'unpaid'
+    paymentStatus: paid ? 'paid' : 'unpaid',
+    departure: generateDeparture(faker)
+  };
+}
+
+// Where a lift leaves from (#181). Like real data, not everyone gives it: some registered before
+// the field existed, so a fifth have no postal code, and half leave no note.
+function generateDeparture(faker) {
+  const [fsa, note] = faker.helpers.weightedArrayElement(OPTION_VALUES.departures.map(([code, text, weight]) => ({ value: [code, text], weight })));
+  return {
+    fsa: faker.datatype.boolean({ probability: 0.8 }) ? fsa : '',
+    note: faker.datatype.boolean({ probability: 0.5 }) ? note : ''
   };
 }
 
@@ -383,9 +394,11 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     for (const r of sorted) {
       const transport = r.transportType === ''
         ? `'{"type": "", "seats": 0, "arrival": "", "departure": ""}'::jsonb`
-        : `jsonb_build_object('type', ${lit(r.transportType)}, 'seats', ${r.transportType === 'offer' ? r.seats : 0},
+        // Seats offered, or needed (#179: the whole party); where from (#181), when given.
+        : `jsonb_build_object('type', ${lit(r.transportType)}, 'seats', ${r.transportType === 'offer' ? r.seats : r.attendees.length},
       'arrival', to_char(${dateExpr(r.event.startDays)} + time '17:30', 'YYYY-MM-DD"T"HH24:MI'),
-      'departure', to_char(${dateExpr(r.event.startDays + 2)} + time '14:00', 'YYYY-MM-DD"T"HH24:MI'))`;
+      'departure', to_char(${dateExpr(r.event.startDays + 2)} + time '14:00', 'YYYY-MM-DD"T"HH24:MI'))
+      || ${jsonb({ ...(r.departure.fsa ? { departure_fsa: r.departure.fsa } : {}), ...(r.departure.note ? { departure_place: r.departure.note } : {}) })}`;
       out.push(`SELECT FROM public.save_registration(${lit(r.event.id)}, ${jsonb(r.attendees)},
   jsonb_build_object('logistics', ${jsonb(r.logistics)}, 'transport', ${transport},
     'music_requests', ${lit(r.music)}, 'message_to_organizers', ${lit(r.message)}),
