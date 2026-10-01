@@ -318,3 +318,59 @@ export const ConfirmDialog = ({ open, title, children, confirmLabel, onConfirm, 
     <div className="px-5 py-5 text-muted sm:px-6">{children}</div>
   </Dialog>
 );
+
+// Switches between the views of one admin tab (Logistique, Outils): pills in a tablist, the
+// view's id in the URL (?view=). `views` is [{ id, label, icon, badge? }]; `idPrefix` makes the
+// tab and panel ids (`${idPrefix}-${id}`, `${idPrefix}-${id}-panel`). Arrow keys, Home and End
+// move between views (automatic activation), as in the admin tab bar. Scrolls sideways on its own
+// when the pills don't fit (phones), never the page.
+export const ViewTabs = ({ views, value, onChange, label, idPrefix }) => {
+  const tabId = id => `${idPrefix}-${id}`;
+  const index = views.findIndex(view => view.id === value);
+  const select = (id) => {
+    onChange(id);
+    requestAnimationFrame(() => {
+      const tab = document.getElementById(tabId(id));
+      tab?.focus();
+      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  };
+  const handleKeyDown = (event) => {
+    const keys = { ArrowRight: 1, ArrowLeft: -1 };
+    if (!(event.key in keys) && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    let next = index + (keys[event.key] || 0);
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = views.length - 1;
+    select(views[(next + views.length) % views.length].id);
+  };
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+      <div role="tablist" aria-label={label} onKeyDown={handleKeyDown}
+        className="inline-flex gap-1 rounded-full border border-line bg-surface p-1">
+        {views.map(({ id, label: viewLabel, icon: Icon, badge }) => {
+          const selected = id === value;
+          return (
+            <button key={id} type="button" role="tab" id={tabId(id)} aria-selected={selected}
+              aria-controls={`${tabId(id)}-panel`} tabIndex={selected ? 0 : -1} onClick={() => select(id)}
+              className={cx(
+                'inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-semibold transition duration-150',
+                selected ? 'tint-neon text-ink' : 'text-faint hover:text-ink'
+              )}>
+              <Icon aria-hidden="true" className={cx('size-4.5', selected && 'text-neon')} strokeWidth={1.75} />
+              {viewLabel}
+              {badge}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/** The panel that goes with ViewTabs: same idPrefix and value. */
+export const ViewPanel = ({ idPrefix, value, children, className }) => (
+  <div role="tabpanel" id={`${idPrefix}-${value}-panel`} aria-labelledby={`${idPrefix}-${value}`} key={value} className={cx('animate-step', className)}>
+    {children}
+  </div>
+);

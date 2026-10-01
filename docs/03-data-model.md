@@ -260,7 +260,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 |---|---|---|
 | `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE OF status), advisory-locked per event | Yes |
 | `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE); the update that completes a new registration isn't counted | Yes |
-| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays | Yes, attributed to `auth.uid()` |
+| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none | Yes, attributed to `auth.uid()` |
 | `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's `attendees` rows and its locked price; frozen once paid (#31) | Yes |
 | Headcount per tier | Not stored: counted from `attendees` where needed (`tierCountsOf()` in `src/lib/adminStats.js`) | — |
 | `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |
@@ -286,7 +286,7 @@ flowchart TD
   subgraph user_parties
     U2["BEFORE INSERT/UPDATE OF status → enforce_capacity_and_waitlist()"]
     U3["BEFORE UPDATE → increment_edit_count()"]
-    U4["AFTER UPDATE → log_registration_edit()"]
+    U4["AFTER UPDATE → log_registration_edit()<br/>a created entry on a new registration (#173)"]
     U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
     U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
   end

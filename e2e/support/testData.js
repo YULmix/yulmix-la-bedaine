@@ -537,3 +537,28 @@ export async function seedEmailLog(partyId, rows) {
     'seed email_log'
   );
 }
+
+// A registration saved as `user` themselves ({ email, password }), the way the app saves one, so
+// the history (#173) records them as its author. Creates it on the first call, edits it after.
+export async function saveRegistrationAs(user, eventId, attendees) {
+  const url = process.env.VITE_SUPABASE_URL;
+  const db = createClient(url, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await db.auth.signInWithPassword({ email: user.email, password: user.password });
+  if (error) throw new Error(`sign-in as ${user.email} failed: ${error.message}`);
+  return check(await db.rpc('save_registration', { p_event_id: eventId, p_attendees: attendees }), 'save registration as user').id;
+}
+
+// A second, inactive event (find-or-create by theme; events can't be deleted), for specs that
+// switch between events. Returns its id.
+const E2E_OTHER_EVENT_THEME = 'E2E Other Event';
+export async function ensureOtherEvent() {
+  const db = await adminClient();
+  const existing = check(await db.from('events').select('id').eq('theme', E2E_OTHER_EVENT_THEME).limit(1), 'find other e2e event');
+  if (existing.length) return existing[0].id;
+  return check(
+    await db.from('events').insert({
+      theme: E2E_OTHER_EVENT_THEME, status: 'DRAFT', is_active: false, selling_price_whole_event: 100, reg_start_date: '2025-05-01 00:00 America/Toronto'
+    }).select('id').single(),
+    'create other e2e event'
+  ).id;
+}

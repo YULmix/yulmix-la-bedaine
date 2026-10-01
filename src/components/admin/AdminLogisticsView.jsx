@@ -6,7 +6,7 @@ import { placeOccupancy, placeOptions } from '../../lib/places';
 import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
 import { VENUE_GALLERY_KINDS, fetchVenueGallery } from '../../lib/galleries';
 import GalleryButton from '../Gallery';
-import { Card, EmptyState, Notice, Tag, Textarea, cx } from '../ui';
+import { Card, EmptyState, Notice, Tag, Textarea, ViewPanel, ViewTabs, cx } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
 import LogisticsSummary from './LogisticsSummary';
@@ -198,55 +198,20 @@ export const LOGISTICS_VIEWS = [
 
 const FORM_VIEWS = { food: FoodView, volunteering: VolunteeringView, transport: TransportView, comments: CommentsView };
 
-const tabId = id => `logistics-view-${id}`;
-
 const AdminLogisticsView = ({ view, onViewChange, ...props }) => {
-  const index = LOGISTICS_VIEWS.findIndex(v => v.id === view);
-  const select = (id) => {
-    onViewChange(id);
-    requestAnimationFrame(() => {
-      const tab = document.getElementById(tabId(id));
-      tab?.focus();
-      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
-  };
-  // Arrow keys, Home and End move between views, as in the admin tab bar (automatic activation).
-  const handleKeyDown = (event) => {
-    const keys = { ArrowRight: 1, ArrowLeft: -1 };
-    if (!(event.key in keys) && event.key !== 'Home' && event.key !== 'End') return;
-    event.preventDefault();
-    let next = index + (keys[event.key] || 0);
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = LOGISTICS_VIEWS.length - 1;
-    select(LOGISTICS_VIEWS[(next + LOGISTICS_VIEWS.length) % LOGISTICS_VIEWS.length].id);
-  };
   const FormView = FORM_VIEWS[view];
+  const views = LOGISTICS_VIEWS.map(({ id, labelKey, icon }) => ({
+    id,
+    label: fr[labelKey],
+    icon,
+    badge: id === 'places' && props.unsavedCount > 0 && <span className="size-2 rounded-full bg-warn" aria-label={fr.unsavedTag} />
+  }));
 
   return (
     <div className="space-y-6">
-      {/* Scrolls sideways on its own when the five don't fit (phones), never the page. */}
-      <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-        <div role="tablist" aria-label={fr.logisticsViewsLabel} onKeyDown={handleKeyDown}
-          className="inline-flex gap-1 rounded-full border border-line bg-surface p-1">
-          {LOGISTICS_VIEWS.map(({ id, labelKey, icon: Icon }) => {
-            const selected = id === view;
-            return (
-              <button key={id} type="button" role="tab" id={tabId(id)} aria-selected={selected}
-                aria-controls={`${tabId(id)}-panel`} tabIndex={selected ? 0 : -1} onClick={() => select(id)}
-                className={cx(
-                  'inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-semibold transition duration-150',
-                  selected ? 'tint-neon text-ink' : 'text-faint hover:text-ink'
-                )}>
-                <Icon aria-hidden="true" className={cx('size-4.5', selected && 'text-neon')} strokeWidth={1.75} />
-                {fr[labelKey]}
-                {id === 'places' && props.unsavedCount > 0 && <span className="size-2 rounded-full bg-warn" aria-label={fr.unsavedTag} />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <ViewTabs views={views} value={view} onChange={onViewChange} label={fr.logisticsViewsLabel} idPrefix="logistics-view" />
 
-      <div role="tabpanel" id={`${tabId(view)}-panel`} aria-labelledby={tabId(view)} key={view} className="animate-step">
+      <ViewPanel idPrefix="logistics-view" value={view}>
         {FormView ? (
           <>
             <FormView parties={props.parties} />
@@ -258,7 +223,7 @@ const AdminLogisticsView = ({ view, onViewChange, ...props }) => {
             )}
           </>
         ) : <PlacesView {...props} />}
-      </div>
+      </ViewPanel>
     </div>
   );
 };

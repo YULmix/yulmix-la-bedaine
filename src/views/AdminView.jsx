@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useBlocker, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
-import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
+import { Banknote, CalendarRange, ClipboardList, BedDouble, Download, History, Inbox, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
@@ -11,10 +11,10 @@ import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
 import { AdminVenues } from '../components/admin/AdminVenues';
 import EventEditor from '../components/admin/EventEditor';
-import { DataExport, FeedbackInbox } from '../components/admin/AdminTools';
+import { ChangeHistory, DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
 import PartyEmailLog from '../components/admin/PartyEmailLog';
-import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
+import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
 import {
   PAYMENT_STATUS,
   REGISTRATION_STATUS,
@@ -44,6 +44,14 @@ const ADMIN_TABS = [
 ];
 const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
 
+// The Outils tab's views (?view=), one job each, so the change history (#173) can have the
+// screen to itself; the first is the default.
+const TOOLS_VIEWS = [
+  { id: 'exports', labelKey: 'toolsViewExports', icon: Download },
+  { id: 'history', labelKey: 'toolsViewHistory', icon: History },
+  { id: 'feedback', labelKey: 'toolsViewFeedback', icon: Inbox }
+];
+
 const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -68,6 +76,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
   // The Logistique tab's view (#179), ?view=; missing or unknown is the first, places.
   const requestedView = searchParams.get('view');
   const logisticsView = LOGISTICS_VIEWS.some(view => view.id === requestedView) ? requestedView : LOGISTICS_VIEWS[0].id;
+  const toolsView = TOOLS_VIEWS.some(view => view.id === requestedView) ? requestedView : TOOLS_VIEWS[0].id;
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -692,17 +701,36 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       );
     }
     if (activeTab === 'tools') {
+      const renderToolsView = () => {
+        if (toolsView === 'history') {
+          return events.length > 0
+            ? <ChangeHistory events={events} notify={addToast} />
+            : <EmptyState icon={History} title={fr.changeHistoryEmpty} />;
+        }
+        if (toolsView === 'feedback') {
+          return (
+            <FeedbackInbox
+              items={feedbackItems}
+              showResolved={showResolvedFeedback}
+              onToggleResolved={setShowResolvedFeedback}
+              onResolve={handleResolveFeedback}
+            />
+          );
+        }
+        return activeEventState
+          ? <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />
+          : <EmptyState icon={CalendarRange} title={fr.noActiveEventTitle}>{fr.adminNoActiveEventHint}</EmptyState>;
+      };
       return (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <div className="space-y-6">
-            {activeEventState && <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />}
-          </div>
-          <FeedbackInbox
-            items={feedbackItems}
-            showResolved={showResolvedFeedback}
-            onToggleResolved={setShowResolvedFeedback}
-            onResolve={handleResolveFeedback}
+        <div className="space-y-6">
+          <ViewTabs
+            views={TOOLS_VIEWS.map(({ id, labelKey, icon }) => ({ id, label: fr[labelKey], icon }))}
+            value={toolsView}
+            onChange={view => updateParams({ view: view === TOOLS_VIEWS[0].id ? null : view })}
+            label={fr.toolsViewsLabel}
+            idPrefix="tools-view"
           />
+          <ViewPanel idPrefix="tools-view" value={toolsView}>{renderToolsView()}</ViewPanel>
         </div>
       );
     }
@@ -772,6 +800,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         role="tablist"
         aria-label={fr.adminTabsAriaLabel}
         onKeyDown={handleTabKeyDown}
+        data-bottom-bar
         className={cx(
           'fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md',
           'md:static md:mb-8 md:flex md:gap-1 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none'

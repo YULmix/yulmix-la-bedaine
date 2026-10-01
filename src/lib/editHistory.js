@@ -11,9 +11,12 @@ import {
 } from './registrationOptions.js';
 
 // Turns one registration_edits.changes JSON ({ field: { old, new } }) into readable French
-// lines for the member's "Historique des modifications".
+// lines, for the member's "Historique des modifications" and the admin « Historique des
+// changements » (#173). A creation entry is { created: { old: null, new: { attendees, status,
+// is_waitlisted, calculated_amount_owed } } }: one line with no old value.
 
 const FIELD_LABEL_KEYS = {
+  created: 'historyFieldCreated',
   attendees: 'historyFieldAttendees',
   counts: 'historyFieldCounts',
   logistics: 'inputSummary',
@@ -28,15 +31,24 @@ const FIELD_LABEL_KEYS = {
   admin_notes: 'historyFieldAdminNotes'
 };
 
+const headCount = (attendees) =>
+  (attendees.length === 1 ? fr.countPersonOne : fr.countPersonOther).replace('{count}', attendees.length);
+
+/** « 2 personnes · Inscrit · 520,00 $ »: what the registration started as. */
+const describeCreation = (created) => [
+  Array.isArray(created.attendees) && headCount(created.attendees),
+  created.is_waitlisted ? fr.filterWaitlist : created.status && getRegistrationStatusLabel(created.status),
+  created.calculated_amount_owed != null && formatCurrency(Number(created.calculated_amount_owed) || 0)
+].filter(Boolean).join(' · ');
+
 const formatValue = (field, value) => {
+  if (field === 'created') return value && typeof value === 'object' ? describeCreation(value) : '';
   if (value === null || value === undefined || value === '') return fr.historyEmptyValue;
   switch (field) {
     case 'calculated_amount_owed':
       return formatCurrency(Number(value) || 0);
     case 'attendees':
-      return Array.isArray(value)
-        ? (value.length === 1 ? fr.countPersonOne : fr.countPersonOther).replace('{count}', value.length)
-        : JSON.stringify(value);
+      return Array.isArray(value) ? headCount(value) : JSON.stringify(value);
     case 'counts':
       if (typeof value === 'object') {
         return fr.historyCountsValue
@@ -73,7 +85,10 @@ const formatValue = (field, value) => {
   }
 };
 
-/** @returns {Array<{label: string, from: string, to: string}>} */
+/**
+ * One line per changed field. `from` is '' on a creation line, which has no old value.
+ * @returns {Array<{label: string, from: string, to: string}>}
+ */
 export const describeChanges = (changes) => {
   if (!changes || typeof changes !== 'object') return [];
   return Object.entries(changes)
