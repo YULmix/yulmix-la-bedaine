@@ -209,7 +209,7 @@ still contain them.
 ### `user_parties.transport`
 
 ```json
-{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00", "departure_place": "Montréal (Rosemont)" }
+{ "type": "offer", "seats": 3, "arrival": "2026-05-01T17:00", "departure": "2026-05-03T14:00", "departure_fsa": "H2G", "departure_place": "métro Jean-Talon" }
 ```
 
 `type` is `offer` (has room in a car) or `need` (looking for a lift). `seats` is the seats offered,
@@ -217,9 +217,16 @@ or the seats needed (#179): the form starts a need at the party's size, and a ne
 it had a count reads as a seat per attendee. With no lift, the form saves `type: ""` and
 `seats: 0`. The schema default is the string `"None"`, which is not one of the two option values;
 readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.js`).
-`departure_place` (#181) is where an offer or a need leaves from, free text, trimmed, at most 100
-characters. It's absent with no lift or when left blank (`transportOf()` in
-`src/lib/registrationDraft.js`).
+Where an offer or a need leaves from (#181), both optional and absent with no lift
+(`transportOf()` in `src/lib/registrationDraft.js`):
+
+- `departure_fsa`: the start of a Canadian postal code (the forward sortation area, e.g. `H2G`),
+  what the carpool board (#180) matches on. The `user_parties_transport_departure_fsa` CHECK
+  refuses anything else (`src/lib/postalCode.js` has the same pattern). It's about a
+  neighbourhood: we deliberately store no address. Optional because parties had registered
+  before it existed; the board matches the ones that have it.
+- `departure_place`: a free-text note for people (« métro Jean-Talon »), trimmed, at most 100
+  characters. Never used for matching.
 
 ### `event_budgets.lines` and `events.external_links`
 

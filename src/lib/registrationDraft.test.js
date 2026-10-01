@@ -1,4 +1,4 @@
-import { DEPARTURE_PLACE_MAX_LENGTH, draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft, transportOf } from './registrationDraft.js';
+import { DEPARTURE_PLACE_MAX_LENGTH, departureFsaInvalid, draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft, transportOf } from './registrationDraft.js';
 
 const travelRange = { defaultArrival: '2026-07-10T12:00', defaultDeparture: '2026-07-12T12:00' };
 
@@ -44,12 +44,13 @@ describe('formStateOf', () => {
   });
 
   test('the departure place round-trips through the form (#181)', () => {
-    const saved = { ...registration, transport: { ...registration.transport, departure_place: 'Montréal (Rosemont)' } };
+    const saved = { ...registration, transport: { ...registration.transport, departure_fsa: 'H2G', departure_place: 'Montréal (Rosemont)' } };
     const form = formStateOf(saved, travelRange);
-    expect(form.transportDeparturePlace).toBe('Montréal (Rosemont)');
-    expect(transportOf(form).departure_place).toBe('Montréal (Rosemont)');
-    expect(formStateOf(registration, travelRange).transportDeparturePlace).toBe('');
-    expect(formStateOf(null, travelRange).transportDeparturePlace).toBe('');
+    expect(form).toMatchObject({ transportDepartureFsa: 'H2G', transportDeparturePlace: 'Montréal (Rosemont)' });
+    expect(transportOf(form)).toMatchObject({ departure_fsa: 'H2G', departure_place: 'Montréal (Rosemont)' });
+    // Saved before #181: neither.
+    expect(formStateOf(registration, travelRange)).toMatchObject({ transportDepartureFsa: '', transportDeparturePlace: '' });
+    expect(formStateOf(null, travelRange)).toMatchObject({ transportDepartureFsa: '', transportDeparturePlace: '' });
   });
 
   test('"same for everyone" only when the saved choices are identical', () => {
@@ -117,7 +118,7 @@ describe('storage', () => {
 });
 
 describe('transportOf', () => {
-  const form = { transportType: 'need', transportSeats: 3, transportArrival: '2026-07-10T12:00', transportDeparture: '', transportDeparturePlace: '  Québec  ' };
+  const form = { transportType: 'need', transportSeats: 3, transportArrival: '2026-07-10T12:00', transportDeparture: '', transportDepartureFsa: '', transportDeparturePlace: '  Québec  ' };
 
   test('an offer or a need keeps its seats and its trimmed departure place (#181)', () => {
     expect(transportOf(form)).toEqual({ type: 'need', seats: 3, arrival: '2026-07-10T12:00', departure: '', departure_place: 'Québec' });
@@ -126,6 +127,20 @@ describe('transportOf', () => {
 
   test('no lift: no seats, no departure place', () => {
     expect(transportOf({ ...form, transportType: '' })).toEqual({ type: '', seats: 0, arrival: '2026-07-10T12:00', departure: '' });
+  });
+
+  test('the postal code start is normalised from what was typed; blank or malformed is left out (#181)', () => {
+    expect(transportOf({ ...form, transportDepartureFsa: 'g1r 2b5' }).departure_fsa).toBe('G1R');
+    expect(transportOf({ ...form, transportDepartureFsa: '' })).not.toHaveProperty('departure_fsa');
+    expect(transportOf({ ...form, transportDepartureFsa: 'W1A' })).not.toHaveProperty('departure_fsa');
+    expect(transportOf({ ...form, transportType: '', transportDepartureFsa: 'H2G' })).not.toHaveProperty('departure_fsa');
+  });
+
+  test('departureFsaInvalid: only a malformed code with a lift; blank is fine', () => {
+    expect(departureFsaInvalid({ ...form, transportDepartureFsa: 'W1A' })).toBe(true);
+    expect(departureFsaInvalid({ ...form, transportDepartureFsa: 'h2g1a1' })).toBe(false);
+    expect(departureFsaInvalid({ ...form, transportDepartureFsa: ' ' })).toBe(false);
+    expect(departureFsaInvalid({ ...form, transportType: '', transportDepartureFsa: 'W1A' })).toBe(false);
   });
 
   test('a blank departure place is left out; a long one is cut', () => {

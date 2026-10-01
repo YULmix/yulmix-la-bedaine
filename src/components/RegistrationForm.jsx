@@ -25,6 +25,7 @@ import {
 import {
   DEPARTURE_PLACE_MAX_LENGTH,
   LOGISTICS_FIELDS,
+  departureFsaInvalid,
   draftFormFor,
   formStateOf,
   loadStoredDraft,
@@ -35,6 +36,7 @@ import {
   storeDraft,
   transportOf
 } from '../lib/registrationDraft';
+import { normalizeFsa } from '../lib/postalCode';
 
 const STEPS = [
   { id: 'who', labelKey: 'stepWho' },
@@ -167,7 +169,9 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [transportSeats, setTransportSeats] = useState(initial.form.transportSeats);
   const [transportArrival, setTransportArrival] = useState(initial.form.transportArrival);
   const [transportDeparture, setTransportDeparture] = useState(initial.form.transportDeparture);
+  const [transportDepartureFsa, setTransportDepartureFsa] = useState(initial.form.transportDepartureFsa ?? '');
   const [transportDeparturePlace, setTransportDeparturePlace] = useState(initial.form.transportDeparturePlace ?? '');
+  const [fsaError, setFsaError] = useState('');
   const [volunteeringSelections, setVolunteeringSelections] = useState(initial.form.volunteeringSelections);
   const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState(initial.form.volunteeringOtherDetail);
   const [musicRequests, setMusicRequests] = useState(initial.form.musicRequests);
@@ -202,6 +206,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setTransportSeats(form.transportSeats);
     setTransportArrival(form.transportArrival);
     setTransportDeparture(form.transportDeparture);
+    setTransportDepartureFsa(form.transportDepartureFsa);
     setTransportDeparturePlace(form.transportDeparturePlace);
     setVolunteeringSelections(form.volunteeringSelections);
     setVolunteeringOtherDetail(form.volunteeringOtherDetail);
@@ -234,7 +239,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     if (type === transportType) return;
     setTransportType(type);
     setTransportSeats(type === 'need' ? attendees.length : 0);
-    if (type !== 'offer' && type !== 'need') setTransportDeparturePlace('');
+    if (type !== 'offer' && type !== 'need') {
+      setTransportDepartureFsa('');
+      setTransportDeparturePlace('');
+      setFsaError('');
+    }
   };
 
   // Sync logistics across attendees when "same for everyone" is enabled
@@ -254,7 +263,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // with its defaults and prefilled name). Changing a field and back again is not a change.
   const formState = {
     attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
-    transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
+    transportDepartureFsa, transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
   };
   const untouchedForm = useMemo(() => {
     const form = formStateOf(userRegistration, travelRange);
@@ -368,9 +377,22 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     return true;
   };
 
+  // The departure postal code is optional, but not malformed (the database refuses it).
+  const validateDepartureFsa = () => {
+    if (!departureFsaInvalid(formState)) {
+      setFsaError('');
+      return true;
+    }
+    setFsaError(fr.transportDepartureFsaInvalid);
+    setStep(2);
+    requestAnimationFrame(() => document.getElementById('transport-departure-fsa')?.focus());
+    return false;
+  };
+
   const goToStep = (index) => {
     if (index > step && step === 0 && !validateNames()) return;
     if (index > step && step === 1 && !validateDietary()) return;
+    if (index > step && step === 2 && !validateDepartureFsa()) return;
     setStep(index);
     requestAnimationFrame(() => formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -381,7 +403,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       goToStep(step + 1);
       return;
     }
-    if (!validateNames() || !validateDietary()) return;
+    if (!validateNames() || !validateDietary() || !validateDepartureFsa()) return;
     if (!event || !event.id) {
       setError(fr.eventNotSpecifiedError);
       addToast(fr.eventNotSpecifiedError, 'error');
@@ -519,7 +541,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((s, index) => {
             const isCurrent = index === step;
-            const hasError = (index === 0 && Object.values(nameErrors).some(Boolean)) || (index === 1 && Object.values(dietErrors).some(Boolean));
+            const hasError = (index === 0 && Object.values(nameErrors).some(Boolean)) || (index === 1 && Object.values(dietErrors).some(Boolean)) || (index === 2 && !!fsaError);
             return (
               <li key={s.id}>
                 <button
@@ -680,9 +702,20 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                 </Field>
               </div>
               {(transportType === 'offer' || transportType === 'need') && (
-                <Field label={fr.transportDeparturePlace}>
-                  {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => setTransportDeparturePlace(e.target.value)} />}
-                </Field>
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_1fr]">
+                  <Field label={fr.transportDepartureFsa} hint={fr.transportDepartureFsaHint} error={fsaError} htmlFor="transport-departure-fsa" className="min-w-0">
+                    {({ id, describedBy, invalid }) => (
+                      <Input id={id} type="text" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={7}
+                        placeholder={fr.transportDepartureFsaPlaceholder} aria-describedby={describedBy} invalid={invalid}
+                        className="font-data" value={transportDepartureFsa}
+                        onChange={(e) => { setTransportDepartureFsa(e.target.value.toUpperCase()); setFsaError(''); }}
+                        onBlur={() => setTransportDepartureFsa(current => normalizeFsa(current))} />
+                    )}
+                  </Field>
+                  <Field label={fr.transportDeparturePlace} className="min-w-0">
+                    {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => setTransportDeparturePlace(e.target.value)} />}
+                  </Field>
+                </div>
               )}
             </Card>
             <Card className="space-y-4 p-5">
