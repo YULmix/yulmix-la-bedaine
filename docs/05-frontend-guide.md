@@ -75,6 +75,11 @@ parties only (not cancelled, not waitlisted); their aggregations are pure functi
 `src/lib/adminStats.js`. Pending place changes stay in `AdminView`, so they survive switching
 views too.
 
+The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
+(`partyExportRows`, `attendeeExportRows` in `src/lib/dataExport.js`), and serialises it with
+`toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
+the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
+
 ## State and data ownership
 
 There is no store. Ownership is:

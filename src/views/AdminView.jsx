@@ -16,14 +16,12 @@ import UserProfileDialog from '../components/admin/UserProfileDialog';
 import PartyEmailLog from '../components/admin/PartyEmailLog';
 import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, cx } from '../components/ui';
 import {
-  ACCOMMODATION_OPTIONS,
-  getOptionLabel,
   PAYMENT_STATUS,
   REGISTRATION_STATUS,
   getPaymentStatusShortLabel,
   isActiveRegistration
 } from '../lib/registrationOptions';
-import { tierCountsOf } from '../lib/adminStats';
+import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
 import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { flattenPlaces } from '../lib/places';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
@@ -565,169 +563,33 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     }
   };
 
-  // Summarize per-attendee accommodation info for the party-level export rows
-  const summarizeAccommodationPrefs = (party) => (party.attendees || [])
-    .map(a => getOptionLabel(ACCOMMODATION_OPTIONS, a.sleeping_preference, ''))
-    .filter(Boolean)
-    .join('; ');
+  // Data export (#178): both formats are built from the same rows (src/lib/dataExport.js).
+  const exportOf = (exportId) => EXPORTS.find(item => item.id === exportId);
 
-  const summarizeAssignedBeds = (party) => (party.attendees || [])
-    .filter(a => a.place)
-    .map(a => `${a.name || '?'}: ${a.place.bed_label}`)
-    .join('; ');
-
-  // Data export functions
-  const exportToCSV = () => {
+  const exportToCSV = (exportId) => {
     if (!activeParties.length) {
       addToast(fr.noDataToExport, 'warning');
       return;
     }
-    
-    const headers = [
-      fr.exportPartyName,
-      fr.exportEmail,
-      fr.exportAdultWhole,
-      fr.exportAdultMain,
-      fr.exportTeenWhole,
-      fr.exportTeenMain,
-      fr.exportKids,
-      fr.exportSleepingPref,
-      fr.exportSleepingAssigned,
-      fr.exportPaymentStatus,
-      fr.exportAmountOwed
-    ];
-    
-    const rows = activeParties.map(party => {
-      const profile = party.profiles || {};
-      const counts = tierCountsOf(party.attendees);
-
-      return [
-        `"${profile.full_name || ''}"`,
-        `"${profile.email || ''}"`,
-        counts.adult_whole || 0,
-        counts.adult_main || 0,
-        counts.teen_whole || 0,
-        counts.teen_main || 0,
-        counts.kids || 0,
-        `"${summarizeAccommodationPrefs(party)}"`,
-        `"${summarizeAssignedBeds(party)}"`,
-        getPaymentStatusShortLabel(party.payment_status),
-        party.calculated_amount_owed || 0
-      ];
-    });
-    
-    // Add totals row
-    const totals = activeParties.reduce((acc, party) => {
-      const counts = tierCountsOf(party.attendees);
-      return {
-        adultWhole: acc.adultWhole + (counts.adult_whole || 0),
-        adultMain: acc.adultMain + (counts.adult_main || 0),
-        teenWhole: acc.teenWhole + (counts.teen_whole || 0),
-        teenMain: acc.teenMain + (counts.teen_main || 0),
-        kids: acc.kids + (counts.kids || 0),
-        amountOwed: acc.amountOwed + (party.calculated_amount_owed || 0)
-      };
-    }, { adultWhole: 0, adultMain: 0, teenWhole: 0, teenMain: 0, kids: 0, amountOwed: 0 });
-    
-    rows.push([
-      fr.exportTotals,
-      '',
-      totals.adultWhole,
-      totals.adultMain,
-      totals.teenWhole,
-      totals.teenMain,
-      totals.kids,
-      '',
-      '',
-      '',
-      totals.amountOwed
-    ]);
-    
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-    
-    // Download CSV
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const { build, filePrefix } = exportOf(exportId);
+    const blob = new Blob([toCsv(build(activeParties))], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `inscriptions_${activeEventState?.theme || 'event'}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = exportFileName(filePrefix, activeEventState?.theme);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
     addToast(fr.exportCSVToast, 'success');
   };
 
-  const copyToClipboardForSheets = () => {
+  const copyToClipboardForSheets = (exportId) => {
     if (!activeParties.length) {
       addToast(fr.noDataToCopy, 'warning');
       return;
     }
-    
-    const headers = [
-      fr.exportPartyName,
-      fr.exportEmail,
-      fr.exportAdultWhole,
-      fr.exportAdultMain,
-      fr.exportTeenWhole,
-      fr.exportTeenMain,
-      fr.exportKids,
-      fr.exportSleepingPref,
-      fr.exportSleepingAssigned,
-      fr.exportPaymentStatus,
-      fr.exportAmountOwed
-    ];
-    
-    const rows = activeParties.map(party => {
-      const profile = party.profiles || {};
-      const counts = tierCountsOf(party.attendees);
-
-      return [
-        profile.full_name || '',
-        profile.email || '',
-        counts.adult_whole || 0,
-        counts.adult_main || 0,
-        counts.teen_whole || 0,
-        counts.teen_main || 0,
-        counts.kids || 0,
-        summarizeAccommodationPrefs(party),
-        summarizeAssignedBeds(party),
-        getPaymentStatusShortLabel(party.payment_status),
-        party.calculated_amount_owed || 0
-      ];
-    });
-    
-    // Add totals row
-    const totals = activeParties.reduce((acc, party) => {
-      const counts = tierCountsOf(party.attendees);
-      return {
-        adultWhole: acc.adultWhole + (counts.adult_whole || 0),
-        adultMain: acc.adultMain + (counts.adult_main || 0),
-        teenWhole: acc.teenWhole + (counts.teen_whole || 0),
-        teenMain: acc.teenMain + (counts.teen_main || 0),
-        kids: acc.kids + (counts.kids || 0),
-        amountOwed: acc.amountOwed + (party.calculated_amount_owed || 0)
-      };
-    }, { adultWhole: 0, adultMain: 0, teenWhole: 0, teenMain: 0, kids: 0, amountOwed: 0 });
-    
-    rows.push([
-      fr.exportTotals,
-      '',
-      totals.adultWhole,
-      totals.adultMain,
-      totals.teenWhole,
-      totals.teenMain,
-      totals.kids,
-      '',
-      '',
-      '',
-      totals.amountOwed
-    ]);
-    
-    const tsvContent = [headers.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
-    
-    navigator.clipboard.writeText(tsvContent).then(() => {
+    navigator.clipboard.writeText(toTsv(exportOf(exportId).build(activeParties))).then(() => {
       addToast(fr.exportCopyToast, 'success');
     }).catch(err => {
       console.error('Failed to copy:', err);
