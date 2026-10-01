@@ -82,8 +82,16 @@ The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Its « Historique des changements » (#173) lists one event's `registration_edits`, newest first,
-picked with its own event selector (the active event by default). `describeChanges()`
+Outils has views too, in `?view=` (`exports` by default, `history`, `feedback`), switched with the
+same `ViewTabs` / `ViewPanel` (`src/components/ui`) as Logistique. Its « Historique des
+changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
+event selector (the active event by default).
+
+**One scrollbar at a time.** A long list that scrolls inside its own box must end on screen with
+the page at the top, or the box and the page fight over the wheel. `useFitToViewport`
+(`src/hooks/`) caps the box at the height left above the bottom of the screen (and the phone's
+fixed tab bar, `[data-bottom-bar]`). Where that would be under 256 px (a phone, under the
+controls above the list), the box isn't capped and the page scrolls instead. `describeChanges()`
 (`src/lib/editHistory.js`) turns each entry into French lines, the same ones the member's
 « Historique » shows; `historyExportRows()` (`src/lib/changeHistory.js`) makes one export row per
 line, for the same `toCsv` / `toTsv`.

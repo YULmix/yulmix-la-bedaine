@@ -52,7 +52,7 @@ const entries = page => card(page).getByTestId('change-history-entry');
 
 test('the active event\'s history, newest first, with authors, head counts and amounts', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(card(page).getByLabel(fr.changeHistoryEventLabel)).toHaveValue(seeded.eventId);
 
   // The member's edit, their registration, then the seeded member's registration made by the admin.
@@ -71,7 +71,7 @@ test('the active event\'s history, newest first, with authors, head counts and a
 
 test('switching events shows only that event\'s entries', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(entries(page)).toHaveCount(3);
 
   await card(page).getByLabel(fr.changeHistoryEventLabel).selectOption(await ensureOtherEvent());
@@ -82,7 +82,7 @@ test('switching events shows only that event\'s entries', async ({ page }) => {
 
 test('the CSV holds only the selected event\'s rows, one per changed field', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(entries(page)).toHaveCount(3);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -104,7 +104,7 @@ test('the CSV holds only the selected event\'s rows, one per changed field', asy
 test('the Google Sheets copy says so', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(entries(page)).toHaveCount(3);
   await card(page).getByRole('button', { name: fr.exportCopyTSVButton }).click();
   await expect(page.getByText(fr.changeHistoryCopyToast)).toBeVisible();
@@ -116,32 +116,56 @@ test('the Google Sheets copy says so', async ({ page, context }) => {
 test('at phone width the history doesn\'t scroll the page sideways', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(entries(page)).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test('a long history scrolls inside its card, which fits the screen', async ({ page }) => {
+const addEdits = async () => {
   // 20 more edits: well past a screen of entries.
   for (let i = 0; i < 10; i += 1) {
     await saveRegistrationAs(registrant, seeded.eventId, [person('Hélène')]);
     await saveRegistrationAs(registrant, seeded.eventId, [person('Hélène'), person('Hugo')]);
   }
-  await page.setViewportSize({ width: 1280, height: 800 });
+};
+const scrollBox = page => card(page).getByTestId('change-history-scroll');
+const measure = page => scrollBox(page).evaluate(el => {
+  const bar = document.querySelector('[data-bottom-bar]');
+  const barTop = bar && getComputedStyle(bar).position === 'fixed' ? bar.getBoundingClientRect().top : window.innerHeight;
+  return { bottom: el.getBoundingClientRect().bottom, barTop, clientHeight: el.clientHeight, scrollHeight: el.scrollHeight };
+});
+
+// One scrollbar at a time. On a laptop the list scrolls inside a box that ends on screen with the
+// page at the top, and uses the height there is. (At 800 px tall, the dev banners leave too little
+// room for a useful box and the page scrolls instead, like on a phone.)
+test('on a laptop, a long history scrolls inside a box that ends on screen', async ({ page }) => {
+  await addEdits();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(entries(page)).toHaveCount(23);
 
-  const scroller = card(page).getByTestId('change-history-scroll');
-  const { clientHeight, scrollHeight } = await scroller.evaluate(el => ({ clientHeight: el.clientHeight, scrollHeight: el.scrollHeight }));
-  expect(scrollHeight).toBeGreaterThan(clientHeight);
-  expect(clientHeight).toBeLessThanOrEqual(800);
-  // Scrolled into view, the list fills most of the screen.
-  expect(clientHeight).toBeGreaterThan(800 * 0.75);
-  await scroller.scrollIntoViewIfNeeded();
-  await scroller.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const box = await measure(page);
+  expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
+  expect(box.bottom).toBeLessThanOrEqual(box.barTop);
+  expect(box.bottom).toBeGreaterThan(box.barTop - 80);
+  await scrollBox(page).evaluate(el => { el.scrollTop = el.scrollHeight; });
   await expect(entries(page).last()).toBeInViewport();
-  await expect(entries(page).first()).not.toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+// On a phone there's no room for a useful box under the controls: no inner scroll, the page scrolls.
+test('on a phone, a long history scrolls with the page, not inside a box', async ({ page }) => {
+  await addEdits();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin?tab=tools&view=history');
+  await expect(entries(page)).toHaveCount(23);
+
+  const box = await measure(page);
+  expect(box.scrollHeight).toBe(box.clientHeight);
+  await entries(page).last().scrollIntoViewIfNeeded();
+  await expect(entries(page).last()).toBeInViewport();
 });
 
 test('a member can\'t open the history; their own history reads in French', async ({ page }) => {
@@ -151,7 +175,7 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await saveRegistrationAs(TEST_USERS.member, seeded.eventId, [person('Alice E2E'), person('Bob E2E')]);
 
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin?tab=tools&view=history');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(0);
 

@@ -1,11 +1,12 @@
 import { ArrowRight, CheckCircle2, ClipboardCopy, Download, History, Inbox, RotateCw } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../../lib/dataExport';
 import { defaultHistoryEvent, historyEntries, historyExportRows } from '../../lib/changeHistory';
 import { Button, Card, ChipGroup, EmptyState, Field, Notice, Select, Skeleton, Tag, Toggle, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
+import { useFitToViewport } from '../../hooks/useFitToViewport';
 
 // The admin data export (#178): pick « Par groupe » or « Par participant », then a CSV download
 // or a copy for Google Sheets.
@@ -150,6 +151,10 @@ export const ChangeHistory = ({ events, notify }) => {
     return () => { current = false; };
   }, [eventId, reloads]);
 
+  // The list scrolls inside the card, and the card ends on screen: one scrollbar, not two.
+  const scrollRef = useRef(null);
+  useFitToViewport(scrollRef, { reserve: 40, deps: [entries] });
+
   const exportRows = useMemo(() => (entries ? historyExportRows(entries) : null), [entries]);
   const hasRows = !!exportRows?.rows.length;
 
@@ -186,22 +191,20 @@ export const ChangeHistory = ({ events, notify }) => {
   );
 
   // Wide screens: one row per entry under a sticky header (when, registration, author, changes).
-  // Phones: the same entry stacked. Either way the list scrolls inside the card, which is about a
-  // screen tall, so a long history never pushes the rest of Outils out of reach.
+  // Phones: the same entry stacked.
   const ROW = 'md:grid md:grid-cols-[9rem_minmax(0,12rem)_minmax(0,12rem)_minmax(0,1fr)] md:gap-4';
   return (
-    <Card className="flex flex-col p-5 sm:p-6" aria-labelledby="change-history-title">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <h3 id="change-history-title" className="text-lg font-semibold text-ink">{fr.changeHistoryTitle}</h3>
-          <p className="mt-1 text-sm text-muted">{fr.changeHistoryDescription}</p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <Field label={fr.changeHistoryEventLabel} htmlFor="change-history-event" className="sm:min-w-64">
-            <Select id="change-history-event" value={eventId} onChange={e => setEventId(e.target.value)}>
-              {events.map(item => <option key={item.id} value={item.id}>{eventOption(item)}</option>)}
-            </Select>
-          </Field>
+    <Card className="flex flex-col p-4 sm:p-5" aria-labelledby="change-history-title">
+      {/* The Outils view tab already names this screen; the heading is for screen readers. Every
+          vertical pixel above the list is one the list can't use. */}
+      <h3 id="change-history-title" className="sr-only">{fr.changeHistoryTitle}</h3>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <Field label={fr.changeHistoryEventLabel} htmlFor="change-history-event" className="lg:min-w-80">
+          <Select id="change-history-event" value={eventId} onChange={e => setEventId(e.target.value)}>
+            {events.map(item => <option key={item.id} value={item.id}>{eventOption(item)}</option>)}
+          </Select>
+        </Field>
+        <div className="flex flex-col gap-3 sm:flex-row">
           <Button variant="secondary" onClick={exportCsv} disabled={!hasRows}>
             <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
           </Button>
@@ -226,12 +229,12 @@ export const ChangeHistory = ({ events, notify }) => {
         <EmptyState icon={History} title={fr.changeHistoryEmpty} className="mt-5" />
       ) : (
         <>
-          <p className="mt-5 text-xs text-faint" aria-live="polite">
+          <p className="mt-4 text-xs text-faint" aria-live="polite">
             {(entries.length === 1 ? fr.changeHistoryCountOne : fr.changeHistoryCountOther).replace('{count}', entries.length)}
           </p>
-          {/* Phones keep room for the header and the bottom tab bar; md+ for the header only. */}
           <div
-            className="mt-2 max-h-[calc(100dvh-10rem)] min-h-64 overflow-y-auto overscroll-contain rounded-control border border-line md:max-h-[calc(100dvh-7rem)]"
+            ref={scrollRef}
+            className="mt-2 overflow-y-auto overscroll-contain rounded-control border border-line"
             tabIndex={0}
             role="region"
             aria-label={fr.changeHistoryTitle}
