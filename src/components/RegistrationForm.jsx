@@ -12,7 +12,6 @@ import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { plural, getTravelRange } from '../lib/eventDisplay';
 import { useToasts } from '../hooks/useToasts';
-import ToastContainer from './Toast';
 import { Button, Card, ChipGroup, ConfirmDialog, Field, Input, Notice, Stepper, Textarea, Toggle, cx } from './ui';
 import {
   ACCOMMODATION_OPTIONS,
@@ -181,7 +180,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const [restored, setRestored] = useState(initial.restored);
   // The name filled in for a new registration (#133): part of the untouched form, not a change.
   const [prefilledName, setPrefilledName] = useState('');
-  const { toasts, addToast, removeToast } = useToasts();
+  const { addToast } = useToasts();
   const formTopRef = useRef(null);
   const isEditing = !!userRegistration;
 
@@ -529,7 +528,6 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
 
   return (
     <form onSubmit={handleSubmit} noValidate className="relative">
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <div ref={formTopRef} className="scroll-mt-24" />
 
       {/* Step header: every step is reachable; moving forward from step 1 validates names. */}

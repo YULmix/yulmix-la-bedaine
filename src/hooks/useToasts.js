@@ -1,19 +1,9 @@
-import { useState } from 'react';
+import { useCallback } from 'react';
+import { DEFAULT_TOAST_DURATION_MS, notify } from '../lib/toasts';
 
-const DEFAULT_DURATION_MS = 5000;
-
-export const useToasts = (durationMs = DEFAULT_DURATION_MS) => {
-  const [toasts, setToasts] = useState([]);
-
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  const addToast = (message, type = 'info') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), durationMs);
-  };
-
-  return { toasts, addToast, removeToast };
+// A screen's way to show a toast in the app-wide stack (src/lib/toasts.ts), with its own default
+// duration. The app shell renders the one ToastContainer.
+export const useToasts = (durationMs = DEFAULT_TOAST_DURATION_MS) => {
+  const addToast = useCallback((message, type = 'info') => notify(message, type, durationMs), [durationMs]);
+  return { addToast };
 };

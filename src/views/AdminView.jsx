@@ -23,14 +23,12 @@ import {
 } from '../lib/registrationOptions';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
 import { listEventParties, setPaymentStatus } from '../lib/parties';
-import { invalidateEventPlaces, useEventPlaces } from '../lib/eventPlaces';
+import { useEventPlaces } from '../lib/eventPlaces';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
-import { EVENT_WITH_VENUE } from '../lib/venue';
-import { splitEvents } from '../lib/activeEvent';
-import { dbErrorMessage } from '../lib/dbErrors';
-import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
+import { activateEvent, applyPricing, archiveEvent, refreshEvents, saveEventChanges, useEvents } from '../lib/events';
+import { appError, dbErrorMessage } from '../lib/dbErrors';
+import { dirtyFields, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
 import { useToasts } from '../hooks/useToasts';
-import ToastContainer from '../components/Toast';
 
 // Admin sub-navigation tabs, in the order and with the ids of the admin routes module (ADR 0022);
 // the id is the URL's first segment, /admin/<id>.
@@ -54,9 +52,7 @@ const TOOLS_VIEW_DISPLAY = {
 };
 const TOOLS_VIEWS = TOOLS_VIEW_IDS.map(id => ({ id, ...TOOLS_VIEW_DISPLAY[id] }));
 
-// `onEventsChange` tells the app shell that events changed here (activated, archived, edited,
-// repriced, moved to another venue), so the member pages it feeds show them without a reload (#192).
-const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
+const AdminView = ({ isAdmin }) => {
   const location = useLocation();
   const navigate = useNavigate();
   // Where we are, from the URL (src/lib/adminRoutes.ts). The event editor, /admin/events/:id, is
@@ -77,18 +73,19 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
   // editor sections.
   const go = (to) => navigate(adminHref(to));
   const selectTab = (tabId) => go(adminRoute(tabId));
-  const [events, setEvents] = useState([]);
+  // The events and the active one come from the store the member pages read too (src/lib/events.ts,
+  // #195): a change made here shows there without a reload (#192).
+  const { events, activeEvent: activeEventState } = useEvents();
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeEventState, setActiveEventState] = useState(activeEvent || null);
   const [editingParty, setEditingParty] = useState(null);
   // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
   // sessionStorage) so they survive switching tabs and sections, and reloads.
   const [eventDraft, setEventDraft] = useState(null);
   const [savingEvent, setSavingEvent] = useState(false);
-  const { toasts, addToast, removeToast } = useToasts(1699);
+  const { addToast } = useToasts(1699);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [realtimeChannel, setRealtimeChannel] = useState(null);
   const [userProfileModal, setUserProfileModal] = useState(null);
@@ -154,16 +151,9 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all events
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select(EVENT_WITH_VENUE)
-        .order('created_at', { ascending: false });
-      if (eventsError) throw eventsError;
-      setEvents(eventsData || []);
-
-      const { activeEvent: activeEv } = splitEvents(eventsData);
-      setActiveEventState(activeEv);
+      // The events again, fresh for the admin; then the active event's data.
+      const { activeEvent: activeEv, error: eventsError } = await refreshEvents();
+      if (eventsError) throw appError(eventsError);
       if (activeEv) {
         await Promise.all([fetchParties(activeEv.id), fetchBudget(activeEv.id)]);
       }
@@ -257,19 +247,13 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
 
   // New base price and main-event ratio. Existing registrations keep the price they locked (#117);
   // only those made while the event had no price get it.
-  const applyPricing = async (pricing) => {
+  const handleApplyPricing = async (pricing) => {
     try {
-      const { error: updateError } = await supabase
-        .from('events')
-        .update(pricing)
-        .eq('id', activeEventState.id);
-      if (updateError) throw updateError;
+      await applyPricing(activeEventState.id, pricing);
       addToast(fr.pricingAppliedToast, 'success');
-      onEventsChange?.();
       await fetchAllData();
     } catch (err) {
-      console.error('Error applying pricing:', err);
-      addToast(fr.updateError, 'error');
+      addToast(err.message, 'error');
     }
   };
 
@@ -281,32 +265,14 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
     }
   };
 
-  // Activation Mutex: validate UI state before DB update
+  // Only one event can be active: the events store checks, and so does the database.
   const handleActivateEvent = async (event) => {
-    const alreadyActive = events.find(e => e.is_active);
-    if (alreadyActive && alreadyActive.id !== event.id) {
-      addToast(fr.eventAlreadyActiveError, 'error');
-      return;
-    }
     try {
-      const { error } = await supabase
-        .from('events')
-        .update({ is_active: true, status: 'ACTIVE' })
-        .eq('id', event.id);
-      if (error) {
-        if (error.code === '23505') {
-          addToast(fr.eventAlreadyActiveError, 'error');
-        } else {
-          throw error;
-        }
-      } else {
-        addToast(fr.eventActivatedToast.replace('{theme}', event.theme), 'success');
-        onEventsChange?.();
-        fetchAllData();
-      }
+      await activateEvent(event);
+      addToast(fr.eventActivatedToast.replace('{theme}', event.theme), 'success');
+      fetchAllData();
     } catch (err) {
-      console.error('Error activating event:', err);
-      addToast(dbErrorMessage(err, fr.eventActivationError), 'error');
+      addToast(err.message, 'error');
     }
   };
 
@@ -315,19 +281,11 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
     if (!event) return;
     setConfirmBusy(true);
     try {
-      const { error } = await supabase
-        .from('events')
-        .update({ is_active: false, status: 'ARCHIVED' })
-        .eq('id', event.id);
-      if (error) throw error;
+      await archiveEvent(event);
       addToast(fr.eventArchivedToast.replace('{theme}', event.theme), 'success');
-      // Archiving moved the event onto a frozen copy of its venue (#148): other places, same layout.
-      invalidateEventPlaces(event.id);
-      onEventsChange?.();
       fetchAllData();
     } catch (err) {
-      console.error('Error archiving event:', err);
-      addToast(dbErrorMessage(err, fr.eventArchivingError), 'error');
+      addToast(err.message, 'error');
     } finally {
       setConfirmBusy(false);
       setPendingArchive(null);
@@ -372,29 +330,15 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
 
   const discardEventChanges = () => setEventDraft({ eventId: editEventId, changes: {}, restored: false });
 
-  const refreshEvents = async () => {
-    const { data, error: eventsError } = await supabase.from('events').select(EVENT_WITH_VENUE).order('created_at', { ascending: false });
-    if (eventsError) throw eventsError;
-    setEvents(data || []);
-    setActiveEventState(splitEvents(data).activeEvent);
-    onEventsChange?.();
-  };
-
-  const saveEventChanges = async () => {
+  const handleSaveEventChanges = async () => {
     if (!editingEvent || !eventDirty.length || Object.keys(eventErrors).length) return;
     setSavingEvent(true);
     try {
-      const { error } = await supabase
-        .from('events')
-        .update(draftUpdate(editingEvent, eventChanges))
-        .eq('id', editingEvent.id);
-      if (error) throw error;
-      await refreshEvents();
+      await saveEventChanges(editingEvent, eventChanges);
       discardEventChanges();
       addToast(fr.eventMetadataUpdatedToast, 'success');
     } catch (err) {
-      console.error('Error updating event:', err);
-      addToast(dbErrorMessage(err, fr.updateError), 'error');
+      addToast(err.message, 'error');
     } finally {
       setSavingEvent(false);
     }
@@ -631,7 +575,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
             restored={!!eventDraft?.restored && eventDirty.length > 0}
             saving={savingEvent}
             onChange={handleEventFieldChange}
-            onSave={saveEventChanges}
+            onSave={handleSaveEventChanges}
             onDiscard={discardEventChanges}
             onBack={backToEvents}
           />
@@ -728,7 +672,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
           onDraftChange={draft => setBudgetDraft({ ...draft, eventId: activeEventState.id })}
           onSaveBudget={saveBudget}
           savingBudget={savingBudget}
-          onApplyPricing={applyPricing}
+          onApplyPricing={handleApplyPricing}
         />
       );
     }
@@ -749,7 +693,6 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-16">
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
       <div className="mb-6 flex flex-col gap-1">
         <p className="font-data text-xs uppercase tracking-widest text-neon">{activeEventState ? activeEventState.theme : fr.adminPageSubtitle}</p>

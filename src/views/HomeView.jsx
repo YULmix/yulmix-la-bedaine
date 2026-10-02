@@ -4,7 +4,6 @@ import { ArrowRight, CalendarX2, Hourglass, Info, PartyPopper, RotateCw } from '
 import RegistrationSummary from './RegistrationSummary';
 import PosterHeader from '../components/brand/PosterHeader';
 import PhaseTrack from '../components/brand/PhaseTrack';
-import ToastContainer from '../components/Toast';
 import { Button, Card, EmptyState, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
@@ -63,7 +62,7 @@ const TOAST_DURATION_MS = 7000;
 
 const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick }) => {
   const { registration, setRegistration, loading, error, refetch } = useMyRegistration(activeEvent, isAuthenticated);
-  const { toasts, addToast, removeToast } = useToasts(TOAST_DURATION_MS);
+  const { addToast } = useToasts(TOAST_DURATION_MS);
   const location = useLocation();
   const navigate = useNavigate();
   // Set by /inscription: 'created' after the confirmation screen, 'updated' straight after an edit.
@@ -98,7 +97,6 @@ const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick
 
   return (
     <div className="space-y-6">
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
 
       <PosterHeader event={activeEvent}>
         <Link to="/event-details" className={secondaryLinkClass}>

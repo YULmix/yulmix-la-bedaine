@@ -1,5 +1,6 @@
 /**
- * Regression test for #33: fetchEvents() must never fabricate a demo active event.
+ * Regression test for #33: loading the events (src/lib/events.ts) must never fabricate a demo
+ * active event.
  * Covers both cases that used to trigger the demo fallback: an empty `events` table,
  * and a failed query.
  */
@@ -10,6 +11,7 @@ import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import App from '../App';
 import { supabase } from '../lib/supabase';
+import { refreshEvents } from '../lib/events';
 
 jest.mock('../lib/supabase', () => ({
   supabase: {
@@ -27,7 +29,10 @@ const authenticatedSession = {
   user: { id: 'user-1', email: 'member@test.local' },
 };
 
-function mockEventsQuery({ data = null, error = null }) {
+
+// The events store (src/lib/events.ts) is shared by the whole app and loads once, so each test
+// reloads it against its own query before rendering.
+async function mockEventsQuery({ data = null, error = null }) {
   supabase.from.mockImplementation((table) => {
     if (table === 'events') {
       return {
@@ -44,9 +49,10 @@ function mockEventsQuery({ data = null, error = null }) {
       }),
     };
   });
+  await refreshEvents();
 }
 
-describe('App — fetchEvents never fabricates demo data (#33)', () => {
+describe('App — the events store never fabricates demo data (#33)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     supabase.auth.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: jest.fn() } } });
@@ -55,7 +61,7 @@ describe('App — fetchEvents never fabricates demo data (#33)', () => {
   });
 
   test('renders the empty state, not demo data, when the events table is empty', async () => {
-    mockEventsQuery({ data: [], error: null });
+    await mockEventsQuery({ data: [], error: null });
 
     render(createElement(BrowserRouter, null, createElement(App)));
 
@@ -64,7 +70,7 @@ describe('App — fetchEvents never fabricates demo data (#33)', () => {
   });
 
   test('renders the empty state, not demo data, when the events query errors', async () => {
-    mockEventsQuery({ data: null, error: new Error('network error') });
+    await mockEventsQuery({ data: null, error: new Error('network error') });
 
     render(createElement(BrowserRouter, null, createElement(App)));
 
