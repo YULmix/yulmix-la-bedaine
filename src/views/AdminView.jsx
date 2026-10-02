@@ -18,12 +18,11 @@ import PartyEmailLog from '../components/admin/PartyEmailLog';
 import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
 import {
   PAYMENT_STATUS,
-  REGISTRATION_STATUS,
   getPaymentStatusShortLabel,
   isActiveRegistration
 } from '../lib/registrationOptions';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
-import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { listEventParties, setPaymentStatus } from '../lib/parties';
 import { invalidateEventPlaces, useEventPlaces } from '../lib/eventPlaces';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
 import { EVENT_WITH_VENUE } from '../lib/venue';
@@ -276,23 +275,9 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
 
   const fetchParties = async (eventId) => {
     try {
-      const { data: partiesData, error } = await orderAttendees(supabase
-        .from('user_parties')
-        .select(`
-          ${PARTY_WITH_ATTENDEES},
-          profiles!inner(id, email, full_name, is_admin, created_at, deleted_at)
-        `)
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: true }));
-      if (error) throw error;
-      // A deleted account's registrations for events to come were cancelled with it (#36): it's no
-      // longer a member of this edition. Its other registrations stay, as history.
-      setParties((partiesData || []).filter(party =>
-        !(party.profiles?.deleted_at && party.status === REGISTRATION_STATUS.CANCELLED)
-      ));
+      setParties(await listEventParties(supabase, eventId));
     } catch (err) {
-      console.error('Error fetching parties:', err);
-      setError(dbErrorMessage(err, fr.loadErrorHint));
+      setError(err.message);
     }
   };
 
@@ -453,16 +438,11 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
     const action = getPaymentStatusShortLabel(newStatus);
     setConfirmBusy(true);
     try {
-      const { error } = await supabase
-        .from('user_parties')
-        .update({ payment_status: newStatus })
-        .eq('id', party.id);
-      if (error) throw error;
+      await setPaymentStatus(supabase, party.id, newStatus);
       addToast(fr.paymentStatusUpdatedToast.replace('{action}', action), 'success');
       fetchParties(activeEventState.id);
     } catch (err) {
-      console.error('Error updating payment status:', err);
-      addToast(dbErrorMessage(err, fr.updateError), 'error');
+      addToast(err.message, 'error');
     } finally {
       setConfirmBusy(false);
       setPendingPayment(null);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { fetchMyParty } from '../lib/parties';
 import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
 
@@ -25,16 +25,10 @@ export const useMyRegistration = (activeEvent, isAuthenticated) => {
       if (userError) throw userError;
       if (!user) return;
 
-      const { data, error: regError } = await orderAttendees(supabase
-        .from('user_parties')
-        .select(PARTY_WITH_ATTENDEES)
-        .eq('user_id', user.id)
-        .eq('event_id', activeEvent.id))
-        .maybeSingle();
-      if (regError) throw regError;
-      setRegistration(data || null);
+      setRegistration(await fetchMyParty(supabase, user.id, activeEvent.id));
     } catch (err) {
-      console.error('Erreur lors de la récupération de l\'inscription:', err);
+      // The party module already logged its own errors and put them in French.
+      if (!err.isAppMessage) console.error('Erreur lors de la récupération de l\'inscription:', err);
       setError(dbErrorMessage(err, fr.loadErrorHint));
     } finally {
       setLoading(false);

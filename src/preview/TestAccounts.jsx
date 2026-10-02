@@ -10,6 +10,7 @@ import fr from '../locales/fr.json';
 import pv from '../locales/fr.preview.json';
 import { initials } from '../lib/eventDisplay';
 import { Button, Dialog, Field, Input, Tag, cx } from '../components/ui';
+import { listPartySummaries } from '../lib/parties';
 
 // Every seeded account's password (supabase/seed.sql, scripts/preview-seed/).
 const TEST_PASSWORD = 'password123';
@@ -77,9 +78,7 @@ const useTestAccounts = (enabled) => {
       let parties = [];
       let problemParties = new Set();
       if (eventId) {
-        const { data: partyRows } = await supabase.from('user_parties')
-          .select('id, user_id, status, is_waitlisted, payment_status, attendees(place:attendee_places(place_id))').eq('event_id', eventId);
-        parties = partyRows || [];
+        parties = await listPartySummaries(supabase, eventId).catch(() => []);
         const { data: problems } = await supabase.from('email_log')
           .select('party_id').in('party_id', parties.map(p => p.id)).in('status', ['failed', 'pending']);
         problemParties = new Set((problems || []).map(row => row.party_id));
@@ -90,7 +89,7 @@ const useTestAccounts = (enabled) => {
         return {
           ...profile,
           party,
-          hasBed: !!party?.attendees?.some(a => a.place),
+          hasBed: !!party?.hasPlace,
           emailProblem: !!party && problemParties.has(party.id)
         };
       });

@@ -180,7 +180,10 @@ not an attendee column but a [place assignment](#sleeping-locations-and-places),
 the attendee, by id, whatever the member edits.
 
 **Reading.** Embed them: `user_parties(*, attendees(*, place:attendee_places(place_id, bed_label)))`,
-ordered by `position` (`PARTY_WITH_ATTENDEES` in `src/lib/parties.js`). Screens receive an
+ordered by `position`. The party module (`src/lib/parties.ts`, #197) is the only client code that
+reads or writes `user_parties` and `attendees`: `fetchParty`, `fetchMyParty`, `listEventParties`,
+`saveRegistration`, `cancelParty`, `setPaymentStatus`. Its functions throw errors whose message is
+already French (ADR 0021). Screens receive an
 `attendees` array, as they did with the JSON, each attendee with `place` (or null). PostgREST
 embeds the view one-to-one, through `place_assignments.attendee_id`'s unique foreign key.
 
