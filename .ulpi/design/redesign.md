@@ -28,12 +28,14 @@ flowchart TD
     D["/event-details Infos pratiques"]
     A["/a-propos"]
   end
-  subgraph Admin["/admin?tab="]
-    O["overview Vue d'ensemble"]
-    U["users Inscriptions"]
-    L["logistics Logistique"]
-    E["events Événements"]
-    T["tools Outils: simulateur, export, commentaires"]
+  subgraph Admin["/admin/&lt;section&gt;/&lt;view&gt; (ADR 0022)"]
+    O["overview Résumé"]
+    U["users Inscrits: Liste, Historique; Exporter"]
+    L["logistics Logistique: 5 views"]
+    B["budget Budget"]
+    E["events Événements → editor"]
+    S["venues Sites → venue → location"]
+    F["feedback Retours"]
   end
   H -->|S'inscrire / Modifier| R
   R -->|saved| H
@@ -43,11 +45,16 @@ flowchart TD
 
 - New route `/inscription` so the phone back button leaves the form instead of the app, and the
   form gets a focused full-screen layout. Existing routes and slugs are unchanged.
-- Admin tabs grow from 2 to 5 (closes the intent of issue #83). `?tab=` stays the source of truth;
-  `users` and `logistics` keep their ids so existing deep links still work. Default tab becomes
-  `overview`.
-- Navigation: top bar (logo, "Infos", "Admin" for admins, account menu). On mobile the admin tabs
-  become a fixed **bottom tab bar** (5 icons + short labels) in the thumb zone. Members get no bottom
+- **Admin (superseded, October 2026):** the 5 tabs below grew to 7 and outgrew the bottom bar. The
+  admin's information architecture and navigation are now
+  [ADR 0022](../../docs/adr/0022-admin-navigation-and-page-widths.md) (#191):
+  - 7 flat sections, Outils dissolved;
+  - a left sidebar with nested views on desktop;
+  - on phones, a bottom bar (Résumé, Inscrits, Logistique, Budget) plus « Plus »;
+  - one-line section headers, dense and narrow page widths, and `/admin/<section>/<view>` paths.
+
+  §3.4 below still describes each section's content.
+- Navigation: top bar (logo, "Infos", "Admin" for admins, account menu). Members get no bottom
   bar (3 destinations don't need one); their bottom zone is reserved for the form's action bar.
 - The feedback button moves into the account menu + footer ("Signaler un problème"), no FAB.
 
