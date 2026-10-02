@@ -32,13 +32,14 @@ const run = (cmd, cmdArgs, options = {}) => execFileSync(cmd, cmdArgs, { encodin
 const diffFromRef = staged ? run('git', ['merge-base', baseRef, 'HEAD']).trim() : `${baseRef}...HEAD`;
 const diffBaseArgs = staged ? ['--cached', diffFromRef] : [diffFromRef];
 
-const changedFiles = run('git', ['diff', '--diff-filter=ACMR', '--name-only', ...diffBaseArgs, '--', '*.jsx'])
+// JSX is where UI strings live: .jsx, and .tsx once components are TypeScript (#201).
+const changedFiles = run('git', ['diff', '--diff-filter=ACMR', '--name-only', ...diffBaseArgs, '--', '*.jsx', '*.tsx'])
   .split('\n')
   .map((f) => f.trim())
   .filter(Boolean);
 
 if (changedFiles.length === 0) {
-  console.log(`lint-diff: no changed .jsx files${staged ? ' staged' : ''}, nothing to check.`);
+  console.log(`lint-diff: no changed .jsx or .tsx files${staged ? ' staged' : ''}, nothing to check.`);
   process.exit(0);
 }
 

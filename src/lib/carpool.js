@@ -2,7 +2,7 @@
 // (carpool.test.js). The database decides who is listed and computes the detours; this only
 // sorts the rows into offers and needs, keeps each one's closest matches, and flags the matches
 // whose times don't line up.
-import { fromEventLocal, toInstant } from './eventTime.js';
+import { fromEventLocal, toInstant } from './eventTime';
 
 // How far apart two arrivals (or two departures) can be and still share a car.
 export const TIME_TOLERANCE_HOURS = 2;

@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { describeChanges } from './editHistory.js';
-import { eventClock } from './eventTime.js';
+import { eventClock } from './eventTime';
 
 // The admin « Historique des changements » (#173): an event's registration_edits, newest first,
 // as a list and as a CSV / Google Sheets export with one row per changed field. The list and the

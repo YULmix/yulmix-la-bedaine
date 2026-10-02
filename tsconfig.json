@@ -1,0 +1,22 @@
+{
+  // Type-checking only (#201): Vite and Babel strip the types; `npm run typecheck` runs tsc.
+  // JS and JSX files are allowed but not checked; .ts files are, strictly. Convert a module by
+  // renaming it to .ts and typing it, never by loosening this file.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.js", "src/**/*.test.jsx", "src/__tests__"]
+}

@@ -8,7 +8,7 @@ import {
   getDietaryRequestsLabel,
   getRegistrationStatusLabel,
   getPaymentStatusLabel
-} from './registrationOptions.js';
+} from './registrationOptions';
 
 // Turns one registration_edits.changes JSON ({ field: { old, new } }) into readable French
 // lines, for the member's "Historique des modifications" and the admin « Historique des

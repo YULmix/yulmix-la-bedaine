@@ -9,7 +9,7 @@ import {
 } from '../../src/lib/registrationOptions';
 import { isValidFsa } from '../../src/lib/postalCode';
 
-// The demo data generator can't import registrationOptions.js directly (it imports JSON), so it
+// The demo data generator can't import registrationOptions.ts directly (it imports JSON), so it
 // keeps its own copy of the values. If this fails, update scripts/preview-seed/options.js.
 const values = (options) => options.map((option) => option.value).sort();
 

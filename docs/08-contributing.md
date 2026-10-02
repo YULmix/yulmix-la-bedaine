@@ -8,21 +8,24 @@ project will not sustain.
 
 1. **French for users, English for code.** Every UI string in `src/locales/fr.json`; every
    identifier, column, filename and comment in English.
+   New modules in `src/lib/` are TypeScript (`.ts`); components stay `.jsx` until touched for
+   another reason (#201). Don't loosen `tsconfig.json` to make a file pass: type it.
 2. **The database is the authority.** Any rule that must hold — money, access, capacity — belongs in
    Postgres. A check in React is a convenience.
-3. **Never render a raw database value.** Map it through `src/lib/registrationOptions.js`.
+3. **Never render a raw database value.** Map it through `src/lib/registrationOptions.ts`.
    The same goes for errors: SQL raises a code (`RAISE EXCEPTION USING MESSAGE = '<code>'`, with any
    parameters as JSON in `DETAIL`), and the UI shows `dbErrorMessage(err, <French fallback>)`, never
-   `err.message`. A new code needs an entry in `src/lib/dbErrors.js` and a `fr.json` key. See
+   `err.message`. A new code needs an entry in `src/lib/dbErrors.ts` and a `fr.json` key. See
    [ADR 0021](./adr/0021-database-errors-are-codes.md).
 4. **Schema changes are migrations.** Every schema change is a new file in `supabase/migrations/`
    (`supabase migration new <name>`), reviewed in the PR, and applied to production by CI when the
    PR merges, after an automatic backup. Merging a migration *is* shipping it. There are no
-   down-migrations: fix a bad one with a new migration. Never paste SQL into the dashboard or run
+   down-migrations: fix a bad one with a new migration. Regenerate the database types with it
+   (`npm run db:types`). Never paste SQL into the dashboard or run
    `supabase db query --linked` to change production. See
    [Development setup → Database migrations](./07-development-setup.md#database-migrations) and
    ADRs [0013](./adr/0013-supabase-migrations.md) and [0014](./adr/0014-ci-applies-migrations-on-merge.md).
-5. **Pricing changes come with a test.** `src/lib/pricingEngine.js` is pure; keep it that way, and
+5. **Pricing changes come with a test.** `src/lib/pricingEngine.ts` is pure; keep it that way, and
    add a case to its test file for any rule change.
 6. **UTF-8 without BOM.** Check before committing; Windows editors add BOMs silently.
 
@@ -46,6 +49,7 @@ The current history (*"head assets"* ×3) is not a model to follow.
 ## Definition of done
 
 - [ ] `npm run build` passes.
+- [ ] `npm run typecheck` passes; a migration came with the regenerated `src/lib/database.types.ts`.
 - [ ] `npm test` passes (includes `npm run test:pricing`).
 - [ ] New/changed UI text is in `fr.json`, not inline.
 - [ ] Schema change is a migration under `supabase/migrations/`, and this repo's docs are updated.
@@ -128,8 +132,8 @@ src/
   views/                   one per screen (plus RegistrationSummary, which is really a component)
   lib/
     supabase.js            the one client instance — never construct another
-    pricingEngine.js       pure business rules + its test
-    registrationOptions.js stored value ↔ French label
+    pricingEngine.ts       pure business rules + its test
+    registrationOptions.ts stored value ↔ French label
   locales/fr.json          every user-facing string
 supabase/
   migrations/              the schema: baseline dump of production + one file per change

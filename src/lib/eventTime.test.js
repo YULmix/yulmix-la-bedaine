@@ -1,4 +1,4 @@
-import { addEventMonths, eventClock, eventDay, formatEventTime, fromEventLocal, hasEventTime, toEventLocal, toInstant } from './eventTime.js';
+import { addEventMonths, eventClock, eventDay, formatEventTime, fromEventLocal, hasEventTime, toEventLocal, toInstant } from './eventTime';
 
 // These must hold in any browser zone: run this file with TZ=Europe/Paris or TZ=Pacific/Auckland too.
 

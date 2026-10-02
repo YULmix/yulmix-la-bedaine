@@ -20,19 +20,35 @@
  * live estimate shown in the UI and the admin simulator. The two must agree.
  */
 
+/** The event's price ratios: the main-event price as a share of the whole-weekend one. */
+export interface PriceRatios {
+  mainWhole: number;
+}
+
+/** A numeric column as PostgREST returns it: a number, or a string for numeric. */
+type Numeric = number | string | null | undefined;
+
+/** What pricing reads of an attendee: a database row (is_new_member) or the form's (isNewMember). */
+export interface PricedAttendee {
+  type: string;
+  participation?: string | null;
+  isNewMember?: boolean | null;
+  is_new_member?: boolean | null;
+}
+
 // The main-event share before it became a per-event setting: 1.075 / 2.0 points.
-export const DEFAULT_PRICE_RATIOS = Object.freeze({ mainWhole: 0.5375 });
+export const DEFAULT_PRICE_RATIOS: Readonly<PriceRatios> = Object.freeze({ mainWhole: 0.5375 });
 
 // Teens pay half the adult price of the same tier. Fixed, also in private.party_amount_owed.
 export const TEEN_SHARE = 0.5;
 
-const toRatio = (value, fallback) => {
+const toRatio = (value: Numeric, fallback: number): number => {
   const ratio = Number(value);
   return Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : fallback;
 };
 
 /** An event row's ratios (numeric columns come back from PostgREST as strings or numbers). */
-export const priceRatiosOf = (event) => ({
+export const priceRatiosOf = (event: { ratio_main_whole?: Numeric } | null | undefined): PriceRatios => ({
   mainWhole: toRatio(event?.ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole)
 });
 
@@ -45,12 +61,15 @@ export const priceRatiosOf = (event) => ({
  * @param {object} event - The events row
  * @returns {{ basePrice: number, ratios: { mainWhole: number } }}
  */
-export const partyPricingOf = (party, event) => {
-  const locked = party && party.status !== 'cancelled' && Number(party.locked_selling_price_whole_event) > 0;
+export const partyPricingOf = (
+  party: { status?: string | null; locked_selling_price_whole_event?: Numeric; locked_ratio_main_whole?: Numeric } | null | undefined,
+  event: { selling_price_whole_event?: Numeric; ratio_main_whole?: Numeric } | null | undefined
+): { basePrice: number; ratios: PriceRatios } => {
+  const locked = !!party && party.status !== 'cancelled' && Number(party.locked_selling_price_whole_event) > 0;
   if (locked) {
     return {
-      basePrice: Number(party.locked_selling_price_whole_event),
-      ratios: { mainWhole: toRatio(party.locked_ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole) }
+      basePrice: Number(party!.locked_selling_price_whole_event),
+      ratios: { mainWhole: toRatio(party!.locked_ratio_main_whole, DEFAULT_PRICE_RATIOS.mainWhole) }
     };
   }
   return { basePrice: Number(event?.selling_price_whole_event) || 0, ratios: priceRatiosOf(event) };
@@ -61,7 +80,7 @@ export const partyPricingOf = (party, event) => {
  * @param {{ type: string, participation?: string, isNewMember?: boolean, is_new_member?: boolean }} attendee
  * @param {{ mainWhole: number }} ratios
  */
-export const getPriceShare = (attendee, ratios = DEFAULT_PRICE_RATIOS) => {
+export const getPriceShare = (attendee: PricedAttendee, ratios: PriceRatios = DEFAULT_PRICE_RATIOS): number => {
   const { type } = attendee;
   if (type !== 'Adult' && type !== 'Teenager') return 0;
   const isNewMember = attendee.isNewMember ?? attendee.is_new_member ?? false;
@@ -70,17 +89,17 @@ export const getPriceShare = (attendee, ratios = DEFAULT_PRICE_RATIOS) => {
 };
 
 /** Sum of the attendees' price shares: how many base prices they pay between them. */
-export const totalPriceShares = (attendees, ratios = DEFAULT_PRICE_RATIOS) =>
+export const totalPriceShares = (attendees: PricedAttendee[], ratios: PriceRatios = DEFAULT_PRICE_RATIOS): number =>
   attendees.reduce((sum, attendee) => sum + getPriceShare(attendee, ratios), 0);
 
 // Rounds away float noise (0.1 + 0.2) before rounding up, so an exact amount isn't bumped a dollar.
-const ceilDollars = (amount) => Math.ceil(Number(amount.toFixed(6)));
+const ceilDollars = (amount: number): number => Math.ceil(Number(amount.toFixed(6)));
 
 /**
  * What one attendee pays, rounded up to the dollar. The one place an attendee's price is rounded:
  * a party owes the sum of these (#120), and every per-attendee price in the UI is this value.
  */
-export const attendeePrice = (attendee, basePrice, ratios = DEFAULT_PRICE_RATIOS) => {
+export const attendeePrice = (attendee: PricedAttendee, basePrice: number, ratios: PriceRatios = DEFAULT_PRICE_RATIOS): number => {
   if (!Number.isFinite(basePrice) || basePrice <= 0) return 0;
   return ceilDollars(getPriceShare(attendee, ratios) * basePrice);
 };
@@ -90,7 +109,7 @@ export const attendeePrice = (attendee, basePrice, ratios = DEFAULT_PRICE_RATIOS
  * @param {number} amount - Amount in CAD
  * @returns {number} Rounded amount
  */
-export const roundUpToNearestTen = (amount) => Math.ceil(Number(amount.toFixed(6)) / 10) * 10;
+export const roundUpToNearestTen = (amount: number): number => Math.ceil(Number(amount.toFixed(6)) / 10) * 10;
 
 /**
  * The lowest base price, rounded up to $10, at which the expected attendees cover the budget plus
@@ -99,7 +118,7 @@ export const roundUpToNearestTen = (amount) => Math.ceil(Number(amount.toFixed(6
  * @param {number} contingencyPct - e.g. 20 for +20 %
  * @param {number} shares - totalPriceShares() of the expected attendees
  */
-export const calculateBreakEvenPrice = (totalCost, contingencyPct, shares) => {
+export const calculateBreakEvenPrice = (totalCost: number, contingencyPct: Numeric, shares: number): number => {
   if (!Number.isFinite(totalCost) || totalCost <= 0 || !(shares > 0)) return 0;
   const withContingency = totalCost * (1 + (Number(contingencyPct) || 0) / 100);
   return roundUpToNearestTen(withContingency / shares);
@@ -112,7 +131,11 @@ export const calculateBreakEvenPrice = (totalCost, contingencyPct, shares) => {
  * @param {{ mainWhole: number }} ratios
  * @returns {{ totalShares: number, calculated_amount_owed: number, parties: Array }}
  */
-export const simulateEventPricing = (attendeeParties, sellingPriceWholeEvent, ratios = DEFAULT_PRICE_RATIOS) => {
+export const simulateEventPricing = <P extends { attendees: PricedAttendee[]; is_paid?: boolean | null; historical_owed?: number | null }>(
+  attendeeParties: P[],
+  sellingPriceWholeEvent: number,
+  ratios: PriceRatios = DEFAULT_PRICE_RATIOS
+): { totalShares: number; calculated_amount_owed: number; parties: Array<P & { party_total: number }> } => {
   const basePrice = Number.isFinite(sellingPriceWholeEvent) && sellingPriceWholeEvent > 0 ? sellingPriceWholeEvent : 0;
   let totalShares = 0;
   let calculated_amount_owed = 0;

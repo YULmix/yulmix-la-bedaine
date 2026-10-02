@@ -1,15 +1,18 @@
 import fr from '../locales/fr.json';
-import { formatDate } from './format.js';
+import { formatDate } from './format';
+
+/** A code's parameters, from the error's `details` (JSON). */
+type ErrorParams = Record<string, string | number | null | undefined>;
 
 // The database raises errors as stable English codes (the error's `message`), with their
 // parameters as JSON in `details`: no user-facing text lives in SQL. This maps each code to its
 // French text. Add a code here, with its fr.json key, whenever a migration raises a new one.
-const DB_ERRORS = {
+const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   not_authenticated: () => fr.dbErrorNotAuthenticated,
   root_admin_cannot_be_deleted: () => fr.dbErrorRootAdminCannotBeDeleted,
   account_deletion_locked: ({ event, close_date: closeDate }) => fr.dbErrorAccountDeletionLocked
-    .replace('{event}', event ?? '')
-    .replace('{date}', formatDate(closeDate)),
+    .replace('{event}', String(event ?? ''))
+    .replace('{date}', formatDate(closeDate as string | null)),
   place_assignment_party_inactive: () => fr.dbErrorPlaceAssignmentPartyInactive,
   admin_only: () => fr.dbErrorAdminOnly,
   logistics_party_not_found: () => fr.dbErrorLogisticsPartyNotFound,
@@ -33,16 +36,16 @@ const DB_ERRORS = {
   attendees_required: () => fr.dbErrorAttendeesRequired,
   attendees_write_through_save_registration: () => fr.dbErrorAttendeesWriteThroughSaveRegistration,
   registration_cancel_locked: ({ close_date: closeDate }) => fr.cancelRegistrationLocked
-    .replace('{date}', formatDate(closeDate)),
+    .replace('{date}', formatDate(closeDate as string | null)),
   carpool_board_forbidden: () => fr.dbErrorCarpoolBoardForbidden,
-  gallery_full: ({ max }) => fr.dbErrorGalleryFull.replace('{max}', max ?? 30),
+  gallery_full: ({ max }) => fr.dbErrorGalleryFull.replace('{max}', String(max ?? 30)),
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
-    .replace('{date}', formatDate(closeDate))
+    .replace('{date}', formatDate(closeDate as string | null))
 };
 
-const parseDetails = (details) => {
+const parseDetails = (details: string | null | undefined): ErrorParams => {
   try {
-    const parsed = JSON.parse(details);
+    const parsed = JSON.parse(details ?? '');
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
@@ -55,7 +58,7 @@ const parseDetails = (details) => {
  * @param {string} message
  * @returns {Error}
  */
-export const appError = (message) => Object.assign(new Error(message), { isAppMessage: true });
+export const appError = (message: string): Error & { isAppMessage: true } => Object.assign(new Error(message), { isAppMessage: true as const });
 
 /**
  * The French message for a Supabase/PostgREST error raised by our own SQL, or for an appError.
@@ -64,8 +67,15 @@ export const appError = (message) => Object.assign(new Error(message), { isAppMe
  * @param {string} fallback
  * @returns {string}
  */
-export const dbErrorMessage = (error, fallback) => {
-  if (error?.isAppMessage) return error.message;
+/** What dbErrorMessage reads of an error: a PostgREST error, an appError, or nothing. */
+export interface ErrorLike {
+  message?: string;
+  details?: string | null;
+  isAppMessage?: boolean;
+}
+
+export const dbErrorMessage = (error: ErrorLike | null | undefined, fallback: string): string => {
+  if (error?.isAppMessage) return error.message ?? fallback;
   const format = error?.message && Object.hasOwn(DB_ERRORS, error.message) ? DB_ERRORS[error.message] : null;
-  return format ? format(parseDetails(error.details)) : fallback;
+  return format ? format(parseDetails(error?.details)) : fallback;
 };

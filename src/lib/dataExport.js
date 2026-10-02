@@ -14,7 +14,7 @@ import {
   getTransportKindLabel,
   isActiveRegistration,
   transportKindOf
-} from './registrationOptions.js';
+} from './registrationOptions';
 
 // The admin data export (#178): two tables, « Par groupe » (one row per party) and « Par
 // participant » (one row per attendee), each built once as { headers, rows } and serialised as a

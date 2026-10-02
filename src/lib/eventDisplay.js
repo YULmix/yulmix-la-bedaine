@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { formatDate, formatShortDate } from './format.js';
-import { eventDay, formatEventTime, hasEventTime } from './eventTime.js';
+import { eventDay, formatEventTime, hasEventTime } from './eventTime';
 
 /**
  * The weekend's dates for display, in the event time zone: "14 au 16 août 2026", or a single

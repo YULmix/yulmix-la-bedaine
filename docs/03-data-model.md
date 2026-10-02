@@ -155,7 +155,7 @@ erDiagram
 Each person in a party is a row of `attendees` ([ADR 0018](./adr/0018-attendees-in-their-own-table.md),
 #126, which superseded the `user_parties.attendees` JSON array of ADR 0004). `position` is the
 display order (from 1, unique per party). The enumerated columns have `CHECK` constraints with the
-values of `src/lib/registrationOptions.js`; `''` means "not answered", as it did in the JSON.
+values of `src/lib/registrationOptions.ts`; `''` means "not answered", as it did in the JSON.
 
 | Column | Values |
 |---|---|
@@ -216,9 +216,9 @@ still contain them.
 or the seats needed (#179): the form starts a need at the party's size, and a need saved before
 it had a count reads as a seat per attendee. With no lift, the form saves `type: ""` and
 `seats: 0`. The schema default is the string `"None"`, which is not one of the two option values;
-readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.js`).
+readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.ts`).
 Where an offer or a need leaves from (#181), both optional and absent with no lift
-(`transportOf()` in `src/lib/registrationDraft.js`):
+(`transportOf()` in `src/lib/registrationDraft.ts`):
 
 - `departure_fsa`: the start of a Canadian postal code (the forward sortation area, e.g. `H2G`),
   what the carpool board (#180) matches on. The `user_parties_transport_departure_fsa` CHECK
@@ -398,10 +398,10 @@ setting that changes nothing deletes the row.
   (`create_event_venue(p_event_id)`, `SECURITY INVOKER`: the venue and the link in one
   transaction, returning the existing venue if there is one). No location or place is edited there.
   The Logistique tab lists the venue's places less the event's exclusions, at the event's
-  capacities (the event places, `src/lib/eventPlaces.js`, #193: one cache shared with Aperçu and
+  capacities (the event places, `src/lib/eventPlaces.ts`, #193: one cache shared with Aperçu and
   Couchage, so a change there shows here without a reload). They are
   assigned in the Logistique tab (`src/components/admin/PlacePicker.jsx`, ordering in
-  `src/lib/places.js`): open places of the attendee's preferred type first, then other open ones,
+  `src/lib/places.ts`): open places of the attendee's preferred type first, then other open ones,
   then full ones, still pickable with a warning. Saving upserts or deletes the attendee's row.
 - Vue d'ensemble shows, for an event with places, each location's occupancy (and each of its
   places'), the attendees still without a place (waitlisted and cancelled parties left out), and
@@ -503,13 +503,13 @@ passed and the caller isn't an admin:
   is in `save_registration()`, the only place that sees the attendees before and after a save.
 
 The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
-`src/lib/eventPhase.js`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
+`src/lib/eventPhase.ts`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
 
 ### Event times and the time zone
 
 `event_start_date` and `reg_start_date` are `timestamptz` (#149): an admin enters a date and a
 time. They are entered and shown in one fixed zone, `America/Toronto` (Montréal's), whatever the
-viewer's browser is set to: `EVENT_TIME_ZONE` in `src/lib/eventTime.js`, and
+viewer's browser is set to: `EVENT_TIME_ZONE` in `src/lib/eventTime.ts`, and
 `private.toronto_day()` in the database. Values from before #149 became 00:00 Toronto on their
 date.
 
@@ -540,7 +540,7 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
    see [Development setup → Database migrations](./07-development-setup.md#database-migrations).
 2. If it is user-visible, add an RLS consideration: does the new column leak anything a member
    should not see? `admin_notes` is the precedent for organiser-only data.
-3. If it is an enum-like value, add it to `src/lib/registrationOptions.js` with a French label, and
+3. If it is an enum-like value, add it to `src/lib/registrationOptions.ts` with a French label, and
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.
 5. Update this document and the ERD above.
@@ -559,7 +559,7 @@ transaction:
    has passed. The amount owed stays owed. It also refuses for the root admin. Refusals are
    raised as codes, not French text: `account_deletion_locked` (with `details` =
    `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
-   maps them to `fr.json` through `src/lib/dbErrors.js`.
+   maps them to `fr.json` through `src/lib/dbErrors.ts`.
 2. It cancels the member's active registrations for events still to come, meaning not archived
    and not over (the start's Toronto day + `duration_days`). This is the same soft status change as a
    member's own cancellation (#35), so the waitlist is promoted. Registrations for past or

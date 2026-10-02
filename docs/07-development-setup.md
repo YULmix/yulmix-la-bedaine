@@ -19,7 +19,7 @@ cp .env.example .env        # then fill in the two VITE_ values
 npm run dev                 # http://localhost:5173
 ```
 
-`src/lib/supabase.js` throws at import time if either variable is missing, so a bad `.env` fails
+`src/lib/supabase.ts` throws at import time if either variable is missing, so a bad `.env` fails
 immediately and loudly rather than at the first query.
 
 > ⚠️ **`npm ci` currently fails**: `package-lock.json` is out of sync with `package.json`
@@ -52,6 +52,7 @@ history.
 supabase migration new add_something        # creates supabase/migrations/<timestamp>_add_something.sql
 # write the SQL (ALTER TABLE…, CREATE OR REPLACE FUNCTION…, new policies, GRANTs)
 supabase db reset                           # local: rebuild from all migrations, fails loudly on bad SQL
+npm run db:types                            # regenerate src/lib/database.types.ts from it, and commit it
 ```
 
 - **Never edit a migration that has been applied to production.** Fix it with a new one.
@@ -60,11 +61,18 @@ supabase db reset                           # local: rebuild from all migrations
   production's baseline grants only what it needs.
 - If you changed the local database interactively (Studio, `psql`), `supabase db diff -f <name>`
   writes the difference to a new migration. Read the output before committing it.
+- **Regenerate the database types** (`npm run db:types`, #201) whenever a migration changes a
+  table, view or function, and commit `src/lib/database.types.ts` with it. The Supabase client is
+  typed with it, so `npm run typecheck` then tells you which typed code the change breaks. Run it
+  against a local database built from the migrations alone (`supabase db reset`), with the CLI
+  version CI pins (`SUPABASE_CLI_VERSION` in `deploy.yml`): CI regenerates the file the same way
+  and fails if yours differs.
 
 Every PR that touches `supabase/migrations/` gets two checks in `.github/workflows/deploy.yml`:
 
 - *Migrations apply cleanly* starts an empty local database and applies every migration. A
-  migration that doesn't parse, or depends on something that doesn't exist, fails here.
+  migration that doesn't parse, or depends on something that doesn't exist, fails here. It then
+  regenerates the database types and fails if `src/lib/database.types.ts` isn't up to date.
 - *Lint migrations (squawk)* runs [Squawk](https://squawkhq.com) on the migration files the PR adds
   or changes, and comments its findings on the PR. It blocks statements that would break the app
   still running while the new one deploys: dropping or renaming a column or table, changing a
@@ -154,6 +162,8 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 | `npm run dev` | Vite dev server on :5173 | — |
 | `npm run build` | Production build to `dist/` | ✅ passes, ~1.3s, 1943 modules |
 | `npm run preview` | Serve the built `dist/` | — |
+| `npm run typecheck` | `tsc --noEmit`: checks the `.ts` modules (strict) and their use of the database types; `.js`/`.jsx` files aren't checked (#201) | what CI's "Build & test" runs; Vite and Babel strip types without checking them |
+| `npm run db:types` | Regenerates `src/lib/database.types.ts` from the local database | needs the local Supabase running; see [Changing the schema](#changing-the-schema) |
 | `npm run test:pricing` | Jest, `pricingEngine.test.js` only | ✅ 5/5 cases pass |
 | `npm test` | Jest, default (unit) suite | ✅ passes — excludes the RLS integration suite, see below |
 | `npm run test:rls` | Jest, RLS suite only, `--config jest.rls.config.js` | needs a local Supabase instance; fails on `ECONNREFUSED` without one (not on a jsdom artifact — see below) |
@@ -170,7 +180,7 @@ creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for 
 
 The repo ships a [pre-commit](https://pre-commit.com) config (`.pre-commit-config.yaml`) that runs
 the same checks as CI's "Build & test" and "Lint migrations (squawk)" jobs before each commit:
-`npm run build`, `npm run test:pricing`, `npm test`, `npm run lint`, `npm run lint:diff:staged`,
+`npm run build`, `npm run typecheck`, `npm run test:pricing`, `npm test`, `npm run lint`, `npm run lint:diff:staged`,
 `deno test` and `deno check` on `supabase/functions/`, and squawk on migrations. Each hook is
 scoped to only run when it's relevant (e.g. `build` only fires when `src/` or `package.json`
 changed), so an unrelated doc-only commit doesn't pay for a full build/test cycle. The Deno hooks
@@ -202,7 +212,7 @@ src/views/HomeView.jsx:129:10 Literal UI string "..." must come from src/locales
 lint-diff: 1 new literal UI string(s) introduced in this diff. Move them into src/locales/fr.json.
 ```
 
-Fix the string (move it into `fr.json` or `registrationOptions.js`) and re-commit — pre-commit
+Fix the string (move it into `fr.json` or `registrationOptions.ts`) and re-commit — pre-commit
 re-runs on the corrected staged snapshot. `git commit --no-verify` skips the hooks entirely; per
 [`CLAUDE.md`](../CLAUDE.md#the-rules-that-actually-matter) don't reach for that as a shortcut.
 
@@ -282,7 +292,7 @@ suite can't log in through the form. Instead `e2e/support/auth.js` calls Supabas
 directly for the seeded `member@test.local` / `admin@test.local` users
 (`supabase/seed.sql`), then hands the resulting tokens to the app's own Supabase client via
 `auth.setSession()` — that client is exposed as `window.__supabase`, but only in dev builds
-(`src/lib/supabase.js`, guarded by `import.meta.env.DEV`; dead-code-eliminated from `npm run
+(`src/lib/supabase.ts`, guarded by `import.meta.env.DEV`; dead-code-eliminated from `npm run
 build`'s output).
 
 Run it with `npm run test:e2e`. `playwright.config.js` reads `supabase status -o env` at config-load

@@ -4,6 +4,18 @@
 
 export const EVENT_TIME_ZONE = 'America/Toronto';
 
+/** An instant as the app holds it: a Date, a timestamptz string, a bare date, or nothing. */
+export type InstantLike = Date | string | null | undefined;
+
+/** A moment on the event zone's wall clock; month is 1-12. */
+export interface EventClock {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+}
+
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const LOCAL_DATETIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
@@ -17,10 +29,10 @@ const partsFormat = new Intl.DateTimeFormat('en-CA', {
   hourCycle: 'h23'
 });
 
-const pad = n => String(n).padStart(2, '0');
+const pad = (n: number): string => String(n).padStart(2, '0');
 
 /** The instant as a Date, or null. A bare 'YYYY-MM-DD' (a date column, before #149) is midnight in the event zone. */
-export const toInstant = (value) => {
+export const toInstant = (value: InstantLike): Date | null => {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (DATE_ONLY.test(value)) return fromEventLocal(`${value}T00:00`);
@@ -29,7 +41,7 @@ export const toInstant = (value) => {
 };
 
 /** Year, month (1-12), day, hour and minute of an instant, on the event zone's clock. */
-export const eventClock = (value) => {
+export const eventClock = (value: InstantLike): EventClock | null => {
   const date = toInstant(value);
   if (!date) return null;
   const parts = Object.fromEntries(partsFormat.formatToParts(date).map(({ type, value: v }) => [type, Number(v)]));
@@ -42,14 +54,14 @@ export const eventClock = (value) => {
  * fall-back repeats is the first of the two.
  * @returns {Date|null}
  */
-export function fromEventLocal(text) {
+export function fromEventLocal(text: string | null | undefined): Date | null {
   const match = LOCAL_DATETIME.exec(text || '');
   if (!match) return null;
   const [year, month, day, hour, minute] = match.slice(1).map(Number);
   const wall = Date.UTC(year, month - 1, day, hour, minute);
   // The zone's offset at a given instant, in ms; a first guess, then corrected once, handles DST.
-  const offsetAt = (instant) => {
-    const c = eventClock(new Date(instant));
+  const offsetAt = (instant: number): number => {
+    const c = eventClock(new Date(instant))!;
     return Date.UTC(c.year, c.month - 1, c.day, c.hour, c.minute) - instant;
   };
   let instant = wall - offsetAt(wall);
@@ -58,7 +70,7 @@ export function fromEventLocal(text) {
 }
 
 /** An instant as the event zone's 'YYYY-MM-DDTHH:mm', for a datetime-local input; '' when unset. */
-export const toEventLocal = (value) => {
+export const toEventLocal = (value: InstantLike): string => {
   const c = eventClock(value);
   return c ? `${c.year}-${pad(c.month)}-${pad(c.day)}T${pad(c.hour)}:${pad(c.minute)}` : '';
 };
@@ -69,26 +81,26 @@ export const toEventLocal = (value) => {
  * any browser zone.
  * @returns {Date|null}
  */
-export const eventDay = (value) => {
+export const eventDay = (value: InstantLike): Date | null => {
   const c = eventClock(value);
   return c ? new Date(c.year, c.month - 1, c.day) : null;
 };
 
 /** True when the instant has a time of day worth showing (not midnight in the event zone). */
-export const hasEventTime = (value) => {
+export const hasEventTime = (value: InstantLike): boolean => {
   const c = eventClock(value);
   return !!c && (c.hour !== 0 || c.minute !== 0);
 };
 
 /** The time of day in the event zone, in French: "18 h 00". */
-export const formatEventTime = (value) => {
+export const formatEventTime = (value: InstantLike): string => {
   const date = toInstant(value);
   if (!date) return '';
   return date.toLocaleTimeString('fr-CA', { timeZone: EVENT_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
 };
 
 /** The instant plus (or minus) whole months on the event zone's calendar, same wall-clock time. */
-export const addEventMonths = (value, months) => {
+export const addEventMonths = (value: InstantLike, months: number): Date | null => {
   const c = eventClock(value);
   if (!c) return null;
   // Clamp the day, so 31 March minus one month is 28/29 February, not 3 March.
