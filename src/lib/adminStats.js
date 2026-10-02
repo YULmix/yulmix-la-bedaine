@@ -6,8 +6,8 @@ import {
   dietaryNeedsOf,
   isActiveRegistration,
   transportKindOf
-} from './registrationOptions.js';
-import { placeOccupancy } from './places.js';
+} from './registrationOptions';
+import { placeOccupancy } from './places';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
 // attendees is stored on the party).

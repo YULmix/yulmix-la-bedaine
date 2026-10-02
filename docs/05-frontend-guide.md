@@ -61,7 +61,7 @@ Sizes, as a blunt signal of where the complexity is:
 | `src/components/RegistrationForm.jsx` | 667 |
 | `src/App.jsx` | 299 |
 | `src/views/RegistrationSummary.jsx` | 244 |
-| `src/lib/pricingEngine.js` | 210 |
+| `src/lib/pricingEngine.ts` | 210 |
 
 `AdminView` keeps all admin state, data fetching and write handlers; each tab is a component in
 `src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
@@ -98,7 +98,7 @@ line, for the same `toCsv` / `toTsv`.
 
 ## State and data ownership
 
-There is one store, for one thing: the **event places** (`src/lib/eventPlaces.js`, #193), a cache
+There is one store, for one thing: the **event places** (`src/lib/eventPlaces.ts`, #193), a cache
 per event that Aperçu, Logistique and the event editor's Couchage section all read through
 `useEventPlaces(eventId)`, so a change made in one shows in the others without a refetch. Its own
 writes (`editPlace`, then `savePlace`) update it; anything else that changes an event's places
@@ -156,7 +156,7 @@ rule that should live in one place.
 
 **Rule:** all user-facing text comes from `src/locales/fr.json`; code, columns and identifiers stay
 English. Raw database values are never rendered — they are mapped through
-`src/lib/registrationOptions.js`, which pairs each stored value with its French label.
+`src/lib/registrationOptions.ts`, which pairs each stored value with its French label.
 
 ```js
 import fr from '../locales/fr.json';
@@ -224,7 +224,7 @@ member reaches the pass by choosing to. An edit goes straight back to the pass w
 "Modifications enregistrées" toast, because there is nothing new to explain. Either way, never
 navigate home after a save without one of the two. `Button` shows a spinner while `loading`.
 
-**Option lists.** Add new choices to `src/lib/registrationOptions.js`, never inline in JSX.
+**Option lists.** Add new choices to `src/lib/registrationOptions.ts`, never inline in JSX.
 `getOptionLabel(options, value, fallback)` and `getDietaryRequestsLabel(csv)` handle display.
 
 **Destructive or consequential actions** get a confirmation through `ConfirmDialog` (payment

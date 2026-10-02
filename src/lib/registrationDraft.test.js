@@ -1,4 +1,4 @@
-import { DEPARTURE_PLACE_MAX_LENGTH, departureFsaInvalid, draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft, transportOf } from './registrationDraft.js';
+import { DEPARTURE_PLACE_MAX_LENGTH, departureFsaInvalid, draftFormFor, draftStorageKey, formStateOf, loadStoredDraft, makeDraft, sameFormState, storeDraft, transportOf } from './registrationDraft';
 
 const travelRange = { defaultArrival: '2026-07-10T12:00', defaultDeparture: '2026-07-12T12:00' };
 

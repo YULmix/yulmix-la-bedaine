@@ -3,7 +3,7 @@
 This is the part of the app that has to be right. The authoritative amount is computed in the
 database (`private.party_amount_owed`, over the party's `attendees` rows, set on every
 `user_parties` write by a trigger);
-`src/lib/pricingEngine.js` computes the same thing for the live estimates in the UI and the admin
+`src/lib/pricingEngine.ts` computes the same thing for the live estimates in the UI and the admin
 simulator. The two must agree: `src/lib/pricingEngine.test.js` covers the rules
 (`npm run test:pricing`), and #109 checked the pair against every seeded party.
 
@@ -97,7 +97,7 @@ sets them and ignores whatever a client sends, member or admin (#117):
   gets a price, the `trg_lock_unpriced_registrations_on_first_price` trigger locks its unpaid
   unlocked registrations at it. That is the only time a price change writes to `user_parties`.
 
-The browser follows the same rule: `partyPricingOf(party, event)` in `src/lib/pricingEngine.js`
+The browser follows the same rule: `partyPricingOf(party, event)` in `src/lib/pricingEngine.ts`
 gives the locked values of an existing registration and the event's current ones for a new one (or
 a re-registration, or an unlocked one). The admin views show the stored `calculated_amount_owed`;
 they never recompute it at today's price.
@@ -185,7 +185,7 @@ price, which get this one.
 
 ## Changing the rules safely
 
-1. Change `private.party_amount_owed` in a new migration **and** `src/lib/pricingEngine.js`, in
+1. Change `private.party_amount_owed` in a new migration **and** `src/lib/pricingEngine.ts`, in
    the same PR.
 2. Add or amend a case in `src/lib/pricingEngine.test.js` and run `npm run test:pricing`. Check the
    same case against the SQL function on a local Supabase: save the party with

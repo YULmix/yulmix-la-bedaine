@@ -1,7 +1,7 @@
 # TECH STACK & ARCHITECTURE
 - Stack: React 19 (SPA), Vite, Tailwind CSS v4, Lucide React, Supabase JS SDK (@supabase/supabase-js).
 - Styling: Use '@tailwindcss/vite' plugin in vite.config.js. Main CSS entry (src/index.css) must contain only '@import "tailwindcss";'. Do not create tailwind.config.js or postcss.config.js.
-- Client Isolation: Initialize and export Supabase client strictly from 'src/lib/supabase.js' using 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'.
+- Client Isolation: Initialize and export Supabase client strictly from 'src/lib/supabase.ts' using 'import.meta.env.VITE_SUPABASE_URL' and 'import.meta.env.VITE_SUPABASE_ANON_KEY'.
 
 # LOCALIZATION & ENCODING (fr-CA)
 - Codebase Language: Code, variables, database entities, file names, and internal comments must be in English.

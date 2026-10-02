@@ -31,7 +31,7 @@ Full detail in [Contributing](./docs/08-contributing.md); the ones most likely t
   `SECURITY DEFINER` function. A check in React is a convenience, not enforcement.
 - **French for users, English for code.** Every UI string goes in `src/locales/fr.json`; every
   identifier, column, and filename is English. Never render a raw database value — map it through
-  `src/lib/registrationOptions.js`.
+  `src/lib/registrationOptions.ts`.
 - **Schema changes are migrations, never hand-run SQL.** Add a file with
   `supabase migration new <name>` under `supabase/migrations/`; it's reviewed in the PR and CI
   applies it to production on merge, after a backup
@@ -39,7 +39,7 @@ Full detail in [Contributing](./docs/08-contributing.md); the ones most likely t
   yourself, and fix a bad migration with a new one (no down-migrations). Do not change production with
   `supabase db query --linked` or the SQL editor (read-only `SELECT`s are fine), and never edit
   the baseline or any already-applied migration. `supabase/legacy/` is history, not a template.
-- **Pricing changes come with a test.** `src/lib/pricingEngine.js` is pure; add a case to
+- **Pricing changes come with a test.** `src/lib/pricingEngine.ts` is pure; add a case to
   `src/lib/pricingEngine.test.js` for any rule change and run `npm run test:pricing`.
 - **UTF-8, no BOM.** Several tracked files already have one; don't add more.
 

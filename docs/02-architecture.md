@@ -61,8 +61,8 @@ flowchart TD
     RF["RegistrationForm"]
   end
   subgraph L["lib (pure + client)"]
-    PE["pricingEngine.js<br/>pure, no I/O"]
-    RO["registrationOptions.js<br/>value↔French label maps"]
+    PE["pricingEngine.ts<br/>pure, no I/O"]
+    RO["registrationOptions.ts<br/>value↔French label maps"]
     SB["supabase.js<br/>single client instance"]
   end
   subgraph I["i18n"]
@@ -90,10 +90,10 @@ flowchart TD
 - **`views/`** are screens; **`components/`** are reused across screens. `RegistrationSummary.jsx`
   lives in `views/` but is really a component rendered inside `HomeView` — a naming inconsistency,
   not a deliberate boundary.
-- **`lib/pricingEngine.js`** is the one genuinely pure module: no React, no Supabase, no I/O. It is
+- **`lib/pricingEngine.ts`** is the one genuinely pure module: no React, no Supabase, no I/O. It is
   the only module with its own test file, and that is not a coincidence — see
   [ADR 0003](./adr/0003-pricing-as-a-pure-module.md).
-- **`lib/registrationOptions.js`** is the single place where a raw DB value (`bed`, `dj_evening`)
+- **`lib/registrationOptions.ts`** is the single place where a raw DB value (`bed`, `dj_evening`)
   is mapped to French UI text. Never render a raw enum.
 
 ## Registration data flow
@@ -197,12 +197,12 @@ Environment variables are build-time (`VITE_` prefix), so they are baked into th
 
 | Variable | Used by | Secret? |
 |---|---|---|
-| `VITE_SUPABASE_URL` | `src/lib/supabase.js` | No — public |
-| `VITE_SUPABASE_ANON_KEY` | `src/lib/supabase.js` | No — public by design, safe *only* because RLS is correct |
+| `VITE_SUPABASE_URL` | `src/lib/supabase.ts` | No — public |
+| `VITE_SUPABASE_ANON_KEY` | `src/lib/supabase.ts` | No — public by design, safe *only* because RLS is correct |
 | `SUPABASE_SERVICE_ROLE_KEY` | RLS test suite only, never the app | **Yes** — never put it in a `VITE_` variable |
 
 The client throws at import time if the two `VITE_` variables are missing
-(`src/lib/supabase.js:3`), so a misconfigured deploy fails loudly rather than silently.
+(`src/lib/supabase.ts:3`), so a misconfigured deploy fails loudly rather than silently.
 
 ## What deliberately does not exist
 

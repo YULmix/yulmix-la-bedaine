@@ -20,6 +20,13 @@ repos:
         pass_filenames: false
         files: ^(src/|package(-lock)?\.json|vite\.config\.js|index\.html)
 
+      - id: typecheck
+        name: npm run typecheck
+        entry: npm run typecheck
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.tsx?$|tsconfig\.json|package(-lock)?\.json)
+
       - id: test-pricing
         name: npm run test:pricing
         entry: npm run test:pricing
@@ -45,14 +52,14 @@ repos:
         entry: npm run lint:diff:staged
         language: system
         pass_filenames: false
-        files: \.jsx$
+        files: \.(jsx|tsx)$
 
       - id: lint
         name: npm run lint
         entry: npm run lint
         language: system
         pass_filenames: false
-        files: (\.(c|m)?jsx?$|^eslint)
+        files: (\.(c|m)?(j|t)sx?$|^eslint)
 
       # The Edge Functions are Deno, outside the Node toolchain. Needs `deno` on PATH.
       - id: deno-test

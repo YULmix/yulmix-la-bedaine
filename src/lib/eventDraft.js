@@ -1,7 +1,7 @@
 // Unsaved edits to an event's descriptive fields (the admin event editor). Pure, apart from the
 // sessionStorage helpers at the bottom, so the dirty and validation rules are tested on their own
 // (eventDraft.test.js).
-import { fromEventLocal, toEventLocal, toInstant } from './eventTime.js';
+import { fromEventLocal, toEventLocal, toInstant } from './eventTime';
 
 // Integer fields, kept as typed while editing (so "90" can be cleared and retyped) and checked on
 // save. `min` is the smallest value the app makes sense with.

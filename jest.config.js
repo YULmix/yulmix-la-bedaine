@@ -1,7 +1,7 @@
 export default {
   testEnvironment: 'jest-environment-jsdom',
   transform: {
-    '^.+\\.(js|jsx)$': 'babel-jest',
+    '^.+\\.(js|jsx|ts)$': 'babel-jest',
   },
   moduleNameMapper: {
     '\\.(png|jpe?g|webp|svg)$': '<rootDir>/src/__tests__/fileStub.js',

@@ -148,7 +148,7 @@ const LeaveGuard = ({ shouldBlock, onLeave }) => {
   );
 };
 
-// `draftKey` (sessionStorage key, see registrationDraft.js) keeps unsaved changes across a reload
+// `draftKey` (sessionStorage key, see registrationDraft.ts) keeps unsaved changes across a reload
 // and guards against leaving them; without it (the admin's dialog) the form has neither.
 // `initialStep` opens the form on a later step: the carpool board links an existing registration
 // straight to its transport card (#180).

@@ -8,7 +8,7 @@
 // from handle_new_user(). The last statement installs the Preview-only "new accounts are admins"
 // trigger, after the seeded users exist so they stay regular members.
 //
-// Option values come from ./options.js, which mirrors src/lib/registrationOptions.js (Node can't
+// Option values come from ./options.js, which mirrors src/lib/registrationOptions.ts (Node can't
 // import that file as-is: it imports JSON); options.test.js fails if they drift apart.
 
 import { Faker, base, en, fr, fr_CA } from '@faker-js/faker';

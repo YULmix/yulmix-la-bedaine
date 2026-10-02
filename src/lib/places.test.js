@@ -61,7 +61,7 @@ test('placeTypeBreakdown adds up to the venue totals', () => {
   expect(rows.reduce((sum, row) => sum + row.capacity, 0)).toBe(totals.capacity);
 });
 
-// An event's places in display order, as the event places module gives them (eventPlaces.js).
+// An event's places in display order, as the event places module gives them (eventPlaces.ts).
 const eventPlaces = [
   { id: 'bedA', label: 'Lit A', type: 'bed', capacity: 1, locationId: 'l1', locationName: 'Chambre 2' },
   { id: 'bedB', label: 'Lit B', type: 'bed', capacity: 1, locationId: 'l1', locationName: 'Chambre 2' },

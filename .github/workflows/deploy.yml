@@ -90,6 +90,10 @@ jobs:
 
       - run: npm run build
 
+      # The .ts modules and their use of the generated database types (#201). Vite and Babel
+      # strip types without checking them, so this is the only place they are checked.
+      - run: npm run typecheck
+
       - run: npm run test:pricing
 
       # The whole Jest unit suite (component and lib tests; the RLS suite is excluded by
@@ -135,6 +139,17 @@ jobs:
       - run: supabase db start
 
       - run: supabase migration list --local
+
+      # src/lib/database.types.ts is generated from this schema (`npm run db:types`, #201): a
+      # migration that changes a table, view or function must come with the regenerated file,
+      # or typecheck would be checking the app against a schema that no longer exists.
+      - name: Database types match the migrations
+        run: |
+          supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"
+          if ! diff -u src/lib/database.types.ts "$RUNNER_TEMP/database.types.ts"; then
+            echo "::error file=src/lib/database.types.ts::Out of date with supabase/migrations/: run npm run db:types and commit the result."
+            exit 1
+          fi
 
   # Decides whether this run has database work to do. Runs alongside
   # build-and-test, so it adds nothing to the critical path of an ordinary

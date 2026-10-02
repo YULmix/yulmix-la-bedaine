@@ -147,7 +147,7 @@ _Avoid_: floor plan, map.
 How one event sees its venue's places: each place with this event's setting merged in (excluded
 or not, its capacity for the event) and who of the event sleeps there. Read by Aperçu, Logistique
 and the event editor's Couchage section through `event_places(p_event_id)`, from one cache they
-share (`useEventPlaces`, `src/lib/eventPlaces.js`); set place by place with `set_place_override`.
+share (`useEventPlaces`, `src/lib/eventPlaces.ts`); set place by place with `set_place_override`.
 _Avoid_: event layout, the event's venue (the venue is shared; its places as one event uses them are not).
 
 **Assignment** (fr. *attribution*, `place_assignments`)

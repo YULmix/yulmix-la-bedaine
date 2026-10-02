@@ -14,7 +14,7 @@ import {
   roundUpToNearestTen,
   simulateEventPricing,
   totalPriceShares
-} from './pricingEngine.js';
+} from './pricingEngine';
 
 describe('pricingEngine — simulateEventPricing', () => {
   test('zero points (all kids/after-party) owe nothing', () => {

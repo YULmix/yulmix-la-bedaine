@@ -1,4 +1,4 @@
-// Values the generated demo data may use, mirroring src/lib/registrationOptions.js. Kept free of
+// Values the generated demo data may use, mirroring src/lib/registrationOptions.ts. Kept free of
 // dependencies so Jest can check them against the app's own lists (options.test.js).
 export const OPTION_VALUES = {
   sleeping: ['camping', 'floor', 'bed', 'sofa', 'outside_other'],
