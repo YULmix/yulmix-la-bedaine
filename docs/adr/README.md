@@ -32,3 +32,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0019](./0019-shared-venues.md) | Venues (and their locations and places) are shared by events; per-edition differences are overrides | accepted, implemented (#145); archived events refined by 0020 |
 | [0020](./0020-freeze-archived-event-layout.md) | Archiving an event copies its venue into a frozen venue only it uses, so past editions keep their layout | accepted, implemented (#148) |
 | [0021](./0021-database-errors-are-codes.md) | Database errors are English codes with JSON parameters; the app maps them to French and never shows a raw message | accepted, implemented (#102) |
+| [0022](./0022-admin-navigation-and-page-widths.md) | Admin navigation: seven flat sections (sidebar on desktop, bottom bar + « Plus » on phones), one switcher per level, two page widths, path URLs | accepted (#191); implementation in progress |

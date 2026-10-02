@@ -96,6 +96,38 @@ controls above the list), the box isn't capped and the page scrolls instead. `de
 « Historique » shows; `historyExportRows()` (`src/lib/changeHistory.js`) makes one export row per
 line, for the same `toCsv` / `toTsv`.
 
+## Navigation and layout
+
+The navigation model is [ADR 0022](./adr/0022-admin-navigation-and-page-widths.md) (#191). It is
+being implemented: until #196, #208 and #209 land, the admin still uses `?tab=` and the 7-tab
+bar described above. New screens follow the model, not the current code.
+
+### Adding an admin section or view
+
+Before adding a screen, answer these in the PR description. Reviewers check them.
+
+1. **Where does its data live?** Put the screen in the section whose data it shows or changes,
+   as a view (Logistique's views are about logistics; Inscrits' « Historique » logs
+   registrations). An action on a section's data, like an export, goes in that section's header,
+   not on its own screen. A new section is for data no existing section owns. There is no
+   miscellaneous section.
+2. **View or drill-down?** A view is a sibling way of looking at the section's data (a list, a
+   log, a per-topic table). A drill-down is one item's page (an event, a venue). Views are listed
+   in the sidebar (desktop) and in `ViewTabs` (phone); a drill-down opens with a back link naming
+   its parent, and its own sections use `ViewTabs` too. Don't build another kind of switcher.
+3. **Dense or narrow?** Lists, logs and tables are `dense`: full width, scrolling inside a box
+   fitted with `useFitToViewport`. Forms and summaries are `narrow` (max ~`3xl`). Declare it on
+   the view; the shell applies it. Don't set your own `max-w-*` on the page.
+4. **What's its URL?** `/admin/<section>/<view>` with English ids, built and parsed only by the
+   admin routes module. If the screen replaces an old URL, add a redirect there.
+5. **A new section?** Add it to the section registry: id, label keys (full and short), icon,
+   views, width, marker. It appears in the sidebar and under « Plus » on phones. Putting it in
+   the phone bar (4 slots: Résumé, Inscrits, Logistique, Budget) is a separate decision that
+   needs an organiser's approval.
+
+Every label goes in `fr.json`, and every view has a heading (visible, or `sr-only` when the
+switcher already names it).
+
 ## State and data ownership
 
 There is one store, for one thing: the **event places** (`src/lib/eventPlaces.ts`, #193), a cache
