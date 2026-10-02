@@ -132,7 +132,19 @@ switcher already names it).
 
 ## State and data ownership
 
-There is one store, for one thing: the **event places** (`src/lib/eventPlaces.ts`, #193), a cache
+Shared state lives in module stores in `src/lib` (`useSyncExternalStore`), not in a component
+that has to stay mounted. #195 is moving the admin's sections onto them, one store per data area.
+
+The **events** (`src/lib/events.ts`, #195): the event list, the active one (`splitEvents`) and
+the others, which the app shell and the admin both read through `useEvents()`, so they can't
+disagree. The list loads when the first screen subscribes. The admin's event writes are the store's
+(`activateEvent`, `archiveEvent`, `saveEventChanges`, `applyPricing`), and each reloads the list,
+so the member pages show the change without a reload (#192).
+
+The **toasts** (`src/lib/toasts.ts`): one app-wide stack. Anything can `notify(message, type)`,
+and the app shell renders the one `ToastContainer`.
+
+The **event places** (`src/lib/eventPlaces.ts`, #193): a cache
 per event that Aperçu, Logistique and the event editor's Couchage section all read through
 `useEventPlaces(eventId)`, so a change made in one shows in the others without a refetch. Its own
 writes (`editPlace`, then `savePlace`) update it; anything else that changes an event's places
@@ -153,12 +165,13 @@ error to `dbErrorMessage`, which keeps it). New data modules follow the same con
 
 Otherwise ownership is:
 
-- **`App.jsx`** — `session`, `user`, `isAuthenticated`, `isAdmin`, `activeEvent`, `otherEvents`.
-  Passed down as props.
+- **`App.jsx`** — `session`, `user`, `isAuthenticated`, `isAdmin`; `activeEvent` and
+  `otherEvents` from the events store. Passed down as props.
 - **`HomeView`** — the current user's registration for the active event, and whether the form is in
   edit mode.
-- **`AdminView`** — its own independent copy of events, parties and profiles, refetched on mount and
-  on Realtime events. It does not trust the props `App.jsx` passes it.
+- **`AdminView`** — parties, profiles, budget, feedback and the drafts, refetched on mount and on
+  Realtime events (until #195 moves them to stores). Events come from the events store, which it
+  reloads on mount.
 - **`RegistrationForm`** — the entire attendee array and all party-level fields as local state,
   hydrated from `userRegistration` on mount.
 
@@ -255,8 +268,10 @@ type, radii, motion, voice) and the screens are specified in
 
 ## Patterns to follow
 
-**Toasts.** Screens that write data use the shared `useToasts` hook and render `ToastContainer`
-(`src/components/Toast.jsx`), a bottom-center stack above the sticky bars.
+**Toasts.** Screens call `addToast` from the `useToasts(durationMs)` hook, or `notify()` from
+`src/lib/toasts.ts`. They don't render a container: the app shell's one `ToastContainer`
+(`src/components/Toast.jsx`) is a bottom-center stack above the sticky bars, and a popover, so it
+also shows above an open modal dialog.
 
 **Saving a registration says so (#155).** A new registration is confirmed in place:
 `RegistrationPage` swaps the form for `RegistrationConfirmation`, which says it is saved and what

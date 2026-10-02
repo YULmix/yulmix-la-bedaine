@@ -5,6 +5,7 @@ import Header from './components/Header';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
 import ResolutionBanner from './components/ResolutionBanner';
+import ToastContainer from './components/Toast';
 import HomeView from './views/HomeView';
 import AdminView from './views/AdminView';
 import EventDetailsView from './views/EventDetailsView';
@@ -14,8 +15,7 @@ import CarpoolView from './views/CarpoolView';
 import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
-import { EVENT_WITH_VENUE } from './lib/venue';
-import { splitEvents } from './lib/activeEvent';
+import { useEvents } from './lib/events';
 
 const signInWithGoogle = async () => {
   try {
@@ -97,12 +97,12 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [activeEvent, setActiveEvent] = useState(null);
-  const [otherEvents, setOtherEvents] = useState([]);
   const [user, setUser] = useState(null);
-  // Routes that need the active event (/inscription, /event-details) must not decide "no event"
-  // before the events query has answered.
-  const [eventsLoaded, setEventsLoaded] = useState(false);
+  // The events and the active one, shared with the admin (src/lib/events.ts, #195). Routes that
+  // need the active event (/inscription, /event-details) must not decide "no event" before the
+  // events query has answered.
+  const { activeEvent, otherEvents, loading: eventsLoading } = useEvents();
+  const eventsLoaded = !eventsLoading;
 
   // Fetch admin status for current user (matches DB is_admin() function logic)
   const fetchAdminStatus = async (userId) => {
@@ -151,36 +151,12 @@ function App() {
     }
   };
 
-  const fetchEvents = async () => {
-    try {
-      const { data: events, error } = await supabase
-        .from('events')
-        .select(EVENT_WITH_VENUE)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // No events in the database: the empty state, not fabricated data.
-      const { activeEvent: active, otherEvents: others } = splitEvents(events);
-      setActiveEvent(active);
-      setOtherEvents(others);
-    } catch (error) {
-      console.error('Erreur lors du chargement des événements:', error);
-      // A failed query is not "no events" — don't claim one is active when we don't know.
-      setActiveEvent(null);
-      setOtherEvents([]);
-    } finally {
-      setEventsLoaded(true);
-    }
-  };
-
   const handleEventClick = (event) => {
     setSelectedEvent(event);
     setIsModalOpen(true);
   };
 
   useEffect(() => {
-    fetchEvents();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -293,11 +269,7 @@ function App() {
               (/admin/events/:id), keeping unsaved drafts. */}
           <Route path="/admin/*" element={
             <ProtectedRoute {...guard} adminOnly>
-              <AdminView
-                activeEvent={activeEvent}
-                isAdmin={isAdmin}
-                onEventsChange={fetchEvents}
-              />
+              <AdminView isAdmin={isAdmin} />
             </ProtectedRoute>
           } />
 
@@ -331,6 +303,9 @@ function App() {
       {isAuthenticated && !isDeleted && (
         <FeedbackModal userId={user?.id} open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       )}
+
+      {/* The app-wide toasts (src/lib/toasts.ts), for every page. */}
+      <ToastContainer />
     </div>
   );
 }

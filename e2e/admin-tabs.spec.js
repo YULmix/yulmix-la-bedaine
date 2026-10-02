@@ -239,6 +239,21 @@ test.describe('admin tabs', () => {
     await expect(edit).toHaveCount(0);
   });
 
+  test('a toast shows above the open edit dialog, not behind it', async ({ page }) => {
+    await openAdmin(page, '/users');
+    await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
+    const edit = modal(page, fr.adminEditRegistrationTitle);
+    await expect(edit).toBeVisible();
+    // The app-wide stack (src/lib/toasts.ts), notified the way a save inside the dialog would.
+    await page.evaluate(() => import('/src/lib/toasts.ts').then(({ notify }) => notify('Toast au-dessus', 'error')));
+    const toast = page.getByRole('alert').filter({ hasText: 'Toast au-dessus' });
+    await expect(toast).toBeVisible();
+    // In the top layer, shown after the dialog, so drawn over it. (Not hit-testable: the modal
+    // dialog makes the rest of the page inert, the toasts too, so this checks the layer.)
+    expect(await toast.evaluate(el => el.closest('[popover]')?.matches(':popover-open') ?? false)).toBe(true);
+    await closeModal(edit);
+  });
+
   test('mobile: no horizontal overflow, tappable tabs, controls within the viewport', async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('mobile'), 'mobile-only layout checks');
 
