@@ -67,7 +67,7 @@ stateDiagram-v2
 
 Exactly one event may be `is_active = TRUE`, enforced by the partial unique index
 `only_one_active_event`. The UI checks first and also catches the constraint error
-(`src/views/AdminView.jsx:129`).
+(`activateEvent` in `src/lib/events.ts`).
 
 ## Registration timeline
 

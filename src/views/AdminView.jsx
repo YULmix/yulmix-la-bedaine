@@ -1,28 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
 import { Banknote, CalendarRange, ClipboardList, BedDouble, Download, History, Inbox, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ADMIN_SECTIONS, TOOLS_VIEW_IDS, adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation } from '../lib/adminRoutes';
 import fr from '../locales/fr.json';
-import RegistrationForm from '../components/RegistrationForm';
-import AdminOverview from '../components/admin/AdminOverview';
 import AdminLogisticsView from '../components/admin/AdminLogisticsView';
-import AdminUserManagement from '../components/admin/AdminUserManagement';
 import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
 import { AdminVenues } from '../components/admin/AdminVenues';
 import EventEditor from '../components/admin/EventEditor';
 import { ChangeHistory, DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import UserProfileDialog from '../components/admin/UserProfileDialog';
-import PartyEmailLog from '../components/admin/PartyEmailLog';
-import { Button, ConfirmDialog, Dialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
-import {
-  PAYMENT_STATUS,
-  getPaymentStatusShortLabel,
-  isActiveRegistration
-} from '../lib/registrationOptions';
+import OverviewSection from '../components/admin/sections/OverviewSection';
+import UsersSection from '../components/admin/sections/UsersSection';
+import NoActiveEvent from '../components/admin/sections/NoActiveEvent';
+import SectionStatus from '../components/admin/sections/SectionStatus';
+import { Button, ConfirmDialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
-import { listEventParties, setPaymentStatus } from '../lib/parties';
+import { refreshAdminParties, useAdminParties } from '../lib/adminParties';
 import { useEventPlaces } from '../lib/eventPlaces';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
 import { activateEvent, applyPricing, archiveEvent, refreshEvents, saveEventChanges, useEvents } from '../lib/events';
@@ -76,20 +71,18 @@ const AdminView = ({ isAdmin }) => {
   // The events and the active one come from the store the member pages read too (src/lib/events.ts,
   // #195): a change made here shows there without a reload (#192).
   const { events, activeEvent: activeEventState } = useEvents();
-  const [parties, setParties] = useState([]);
-  const [profiles, setProfiles] = useState([]);
+  // The active event's parties, for the sections not yet on their own (Logistique, Budget, the
+  // exports), from the store Résumé and Inscrits read (src/lib/adminParties.ts, #195).
+  const { parties, activeParties, loading: partiesLoading, error: partiesError } = useAdminParties(activeEventState?.id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editingParty, setEditingParty] = useState(null);
   // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
   // sessionStorage) so they survive switching tabs and sections, and reloads.
   const [eventDraft, setEventDraft] = useState(null);
   const [savingEvent, setSavingEvent] = useState(false);
   const { addToast } = useToasts(1699);
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [realtimeChannel, setRealtimeChannel] = useState(null);
+  // The member whose profile Logistique opened.
   const [userProfileModal, setUserProfileModal] = useState(null);
-  const [userEventHistory, setUserEventHistory] = useState([]);
   // The Logistique tab's unsaved places and notes (lib/logisticsDraft.js), why the last save
   // refused a party ({ [partyId]: French message }), and whether a save is running (#150).
   const [logisticsChanges, setLogisticsChanges] = useState({});
@@ -102,49 +95,17 @@ const AdminView = ({ isAdmin }) => {
   const [savingBudget, setSavingBudget] = useState(false);
   const [feedbackItems, setFeedbackItems] = useState([]);
   const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
-  const [pendingPayment, setPendingPayment] = useState(null);
   const [pendingArchive, setPendingArchive] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Fetch all events, parties, profiles
+  // Fetch the events, the active event's budget and the feedback.
   useEffect(() => {
     if (!isAdmin) return;
     fetchAllData();
-    return () => {
-      if (realtimeChannel) {
-        supabase.removeChannel(realtimeChannel);
-      }
-    };
   }, [isAdmin]);
 
-  // Get current user ID for admin toggle
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id || null);
-    });
-  }, []);
-
-  // Subscribe to real-time changes for active event's parties
-  useEffect(() => {
-    if (!activeEventState?.id || !isAdmin) return;
-    const channel = supabase.channel(`admin_parties_${activeEventState.id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'user_parties',
-        filter: `event_id=eq.${activeEventState.id}`
-      }, () => {
-        fetchParties(activeEventState.id);
-      })
-      .subscribe();
-    setRealtimeChannel(channel);
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [activeEventState?.id, isAdmin]);
-
-  // The active event's sleeping places as it uses them (#113, #193), for Aperçu's occupancy (#115)
-  // and the Logistique tab's picker: shared with the event editor, so its changes show here.
+  // The active event's sleeping places as it uses them (#113, #193), for the Logistique tab's
+  // picker: shared with the event editor, so its changes show here.
   const { available: places } = useEventPlaces(activeEventState?.id);
 
   const fetchAllData = async () => {
@@ -154,19 +115,7 @@ const AdminView = ({ isAdmin }) => {
       // The events again, fresh for the admin; then the active event's data.
       const { activeEvent: activeEv, error: eventsError } = await refreshEvents();
       if (eventsError) throw appError(eventsError);
-      if (activeEv) {
-        await Promise.all([fetchParties(activeEv.id), fetchBudget(activeEv.id)]);
-      }
-
-      // Fetch all profiles for admin checkbox
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, is_admin')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
-      if (profilesError) throw profilesError;
-      setProfiles(profilesData || []);
-
+      if (activeEv) await fetchBudget(activeEv.id);
       await fetchFeedback();
     } catch (err) {
       console.error('Error fetching admin data:', err);
@@ -251,17 +200,9 @@ const AdminView = ({ isAdmin }) => {
     try {
       await applyPricing(activeEventState.id, pricing);
       addToast(fr.pricingAppliedToast, 'success');
-      await fetchAllData();
+      await Promise.all([fetchAllData(), refreshAdminParties(activeEventState.id)]);
     } catch (err) {
       addToast(err.message, 'error');
-    }
-  };
-
-  const fetchParties = async (eventId) => {
-    try {
-      setParties(await listEventParties(supabase, eventId));
-    } catch (err) {
-      setError(err.message);
     }
   };
 
@@ -344,99 +285,7 @@ const AdminView = ({ isAdmin }) => {
     }
   };
 
-  // Admin checkbox toggle (prevent self-escalation)
-  const handleAdminToggle = async (profile, checked) => {
-    if (profile.id === currentUserId) {
-      addToast(fr.selfAdminToggleError, 'warning');
-      return;
-    }
-    try {
-      const { error } = await supabase.rpc('admin_set_is_admin', {
-        target_user_id: profile.id,
-        new_is_admin: checked
-      });
-      if (error) throw error;
-      addToast(
-        (checked ? fr.adminStatusEnabledToast : fr.adminStatusDisabledToast).replace('{email}', profile.email),
-        'success'
-      );
-      fetchAllData();
-    } catch (err) {
-      console.error('Error updating admin status:', err);
-      if (err.code === 'PGRST202') {
-        addToast(fr.adminToggleNotDeployedError, 'error');
-      } else {
-        addToast(dbErrorMessage(err, fr.updateError), 'error');
-      }
-    }
-  };
-
-  // Payment status toggle: asks for confirmation in a dialog (pendingPayment), then writes.
-  const handlePaymentToggle = (party, newStatus) => {
-    setPendingPayment({ party, newStatus });
-  };
-
-  const confirmPaymentToggle = async () => {
-    if (!pendingPayment) return;
-    const { party, newStatus } = pendingPayment;
-    const action = getPaymentStatusShortLabel(newStatus);
-    setConfirmBusy(true);
-    try {
-      await setPaymentStatus(supabase, party.id, newStatus);
-      addToast(fr.paymentStatusUpdatedToast.replace('{action}', action), 'success');
-      fetchParties(activeEventState.id);
-    } catch (err) {
-      addToast(err.message, 'error');
-    } finally {
-      setConfirmBusy(false);
-      setPendingPayment(null);
-    }
-  };
-
-  // God-Mode editing: open RegistrationForm pre-filled with the exact attendees array
-  const openPartyEdit = (party) => {
-    setEditingParty(party);
-  };
-
-  const closePartyEdit = () => {
-    setEditingParty(null);
-  };
-
-  const handleAdminSave = async () => {
-    addToast(fr.changesSavedToast, 'success');
-    closePartyEdit();
-    fetchParties(activeEventState.id);
-  };
-
-
-  // Cancelled parties owe nothing and count for nothing (no refunds, #101). Only the users tab
-  // (its "Annulées" filter) and the god-mode edit still see them; everything else uses this.
-  const activeParties = useMemo(() => parties.filter(isActiveRegistration), [parties]);
-
-  // User profile modal functions
-  const openUserProfile = async (profile) => {
-    setUserProfileModal(profile);
-    try {
-      // Fetch user event history
-      const { data: history, error } = await supabase
-        .from('user_event_history')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('registration_date', { ascending: false });
-      
-      if (error) throw error;
-      setUserEventHistory(history || []);
-    } catch (err) {
-      console.error('Error fetching user event history:', err);
-      addToast(fr.historyFetchError, 'error');
-      setUserEventHistory([]);
-    }
-  };
-
-  const closeUserProfile = () => {
-    setUserProfileModal(null);
-    setUserEventHistory([]);
-  };
+  const closeUserProfile = () => setUserProfileModal(null);
 
   // Logistics updates: edits stay a draft until the one Save (#150).
   const handleAdminNotesChange = (party, value) => setLogisticsChanges(prev => setNotesChange(prev, party, value));
@@ -459,7 +308,7 @@ const AdminView = ({ isAdmin }) => {
       const { data: failures, error } = await supabase.rpc('save_logistics', { p_changes: logisticsPayload(sent) });
       if (error) throw error;
 
-      await fetchParties(activeEventState.id);
+      await refreshAdminParties(activeEventState.id);
       setLogisticsChanges(current => draftAfterSave(current, sent, failures.map(failure => failure.party_id)));
       setLogisticsErrors(Object.fromEntries(failures.map(failure => [failure.party_id, dbErrorMessage(failure, fr.saveError)])));
 
@@ -534,6 +383,8 @@ const AdminView = ({ isAdmin }) => {
   };
 
   const renderPanel = () => {
+    // Sections that load their own data (#195): no wait on the rest.
+    if (activeTab === 'users') return <UsersSection />;
     if (loading) {
       return (
         <div aria-busy="true" className="space-y-4">
@@ -624,7 +475,7 @@ const AdminView = ({ isAdmin }) => {
         }
         return activeEventState
           ? <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />
-          : <EmptyState icon={CalendarRange} title={fr.noActiveEventTitle}>{fr.adminNoActiveEventHint}</EmptyState>;
+          : <NoActiveEvent />;
       };
       return (
         <div className="space-y-6">
@@ -639,8 +490,10 @@ const AdminView = ({ isAdmin }) => {
         </div>
       );
     }
-    if (!activeEventState) {
-      return <EmptyState icon={CalendarRange} title={fr.noActiveEventTitle}>{fr.adminNoActiveEventHint}</EmptyState>;
+    if (activeTab === 'overview') return <OverviewSection budget={budget} />;
+    if (!activeEventState) return <NoActiveEvent />;
+    if (partiesLoading || partiesError) {
+      return <SectionStatus loading={partiesLoading} error={partiesError} onRetry={() => refreshAdminParties(activeEventState.id)} />;
     }
     if (activeTab === 'logistics') {
       return (
@@ -658,7 +511,7 @@ const AdminView = ({ isAdmin }) => {
           onAdminNotesChange={handleAdminNotesChange}
           onSave={saveLogisticsChanges}
           onDiscard={discardLogisticsChanges}
-          onOpenUserProfile={openUserProfile}
+          onOpenUserProfile={setUserProfileModal}
         />
       );
     }
@@ -676,19 +529,7 @@ const AdminView = ({ isAdmin }) => {
         />
       );
     }
-    if (activeTab === 'users') {
-      return (
-        <AdminUserManagement
-          parties={parties}
-          currentUserId={currentUserId}
-          onOpenUserProfile={openUserProfile}
-          onAdminToggle={handleAdminToggle}
-          onPaymentToggle={handlePaymentToggle}
-          onEditParty={openPartyEdit}
-        />
-      );
-    }
-    return <AdminOverview event={activeEventState} budget={budget} parties={parties} places={places} onOpenParty={openPartyEdit} />;
+    return null;
   };
 
   return (
@@ -744,43 +585,7 @@ const AdminView = ({ isAdmin }) => {
         {renderPanel()}
       </div>
 
-      <UserProfileDialog profile={userProfileModal} history={userEventHistory} onClose={closeUserProfile} />
-
-      <Dialog
-        open={!!editingParty}
-        onClose={closePartyEdit}
-        dismissible={false}
-        size="lg"
-        title={fr.adminEditRegistrationTitle}
-      >
-        {editingParty && (
-          <div className="px-4 pt-5 sm:px-6">
-            <p className="mb-5 text-sm text-muted">{editingParty.profiles?.full_name} <span className="text-faint">{editingParty.profiles?.email}</span></p>
-            <PartyEmailLog partyId={editingParty.id} />
-            <RegistrationForm
-              event={activeEventState}
-              userRegistration={editingParty}
-              adminMode={true}
-              onAdminSave={handleAdminSave}
-              onCancel={closePartyEdit}
-            />
-          </div>
-        )}
-      </Dialog>
-
-      <ConfirmDialog
-        open={!!pendingPayment}
-        tone="primary"
-        title={pendingPayment?.newStatus === PAYMENT_STATUS.PAID ? fr.markPaid : fr.markUnpaid}
-        confirmLabel={pendingPayment?.newStatus === PAYMENT_STATUS.PAID ? fr.markPaid : fr.markUnpaid}
-        onConfirm={confirmPaymentToggle}
-        onCancel={() => setPendingPayment(null)}
-        loading={confirmBusy}
-      >
-        {pendingPayment && fr.paymentToggleConfirm
-          .replace('{action}', getPaymentStatusShortLabel(pendingPayment.newStatus))
-          .replace('{name}', pendingPayment.party.profiles?.full_name || fr.defaultUserFallback)}
-      </ConfirmDialog>
+      <UserProfileDialog profile={userProfileModal} onClose={closeUserProfile} />
 
       <ConfirmDialog
         open={leaveBlocker.state === 'blocked'}
