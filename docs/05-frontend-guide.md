@@ -104,7 +104,13 @@ per event that Aperçu, Logistique and the event editor's Couchage section all r
 writes (`editPlace`, then `savePlace`) update it; anything else that changes an event's places
 calls `invalidateEventPlaces()` (AdminView after archiving, Couchage on arriving and after a venue
 change, the Sites editor after any write). Assignments aren't followed: Aperçu and Logistique take
-who sleeps where from the parties, and only Couchage shows it from the event places. Otherwise ownership is:
+who sleeps where from the parties, and only Couchage shows it from the event places.
+
+The two editors without a Save button, Couchage and Sites (the venue layout, read through
+`venue_layout()`), save through `useAutosave` (`src/hooks/`): writes with the same key go out one
+after the other, each built when its turn comes; a Stepper's writes wait 400 ms for the last
+click; what is still waiting is sent when the editor goes away; one status line
+(« Enregistrement… » / « Enregistré ») and one error say how it went, and a failure reloads. Otherwise ownership is:
 
 - **`App.jsx`** — `session`, `user`, `isAuthenticated`, `isAdmin`, `activeEvent`, `otherEvents`.
   Passed down as props.

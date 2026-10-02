@@ -1,24 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, MapPin, Pencil, Plus, TriangleAlert } from 'lucide-react';
+import { MapPin, Pencil, Plus, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { venueTotals } from '../../lib/places';
 import { invalidateEventPlaces, useEventPlaces } from '../../lib/eventPlaces';
+import { useAutosave } from '../../hooks/useAutosave';
+import { SaveStatus } from './EventLocations';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Notice, Select, Skeleton, Stat, Stepper, Toggle, cx } from '../ui';
-
-// A capacity change is written this long after the last Stepper click, so tapping + five times is
-// one write, not five racing ones.
-const CAPACITY_WRITE_DELAY_MS = 400;
-
-const SaveStatus = ({ status }) => (
-  <p role="status" className="flex items-center gap-1.5 text-sm text-faint">
-    {status === 'saved' && <Check aria-hidden="true" className="size-4 text-ok" strokeWidth={2} />}
-    {status === 'saving' ? fr.sleepingSaving : status === 'saved' ? fr.sleepingSaved : fr.sleepingAutosave}
-  </p>
-);
 
 const venueOption = venue => fr.eventVenueOption
   .replace('{name}', venue.name)
@@ -87,14 +78,12 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   const navigate = useNavigate();
   const { places, loading, error: placesError, editPlace, savePlace } = useEventPlaces(event.id);
   const [venues, setVenues] = useState(null);
-  const [error, setError] = useState(null);
-  const [status, setStatus] = useState('idle');
+  // Couchage's other errors (the venues, a venue change) show where a failed write's does.
+  const save = useAutosave({ errorMessage: writeError => dbErrorMessage(writeError, fr.eventVenueSaveError) });
+  const setError = save.setError;
   const [pendingVenue, setPendingVenue] = useState(null);
   const [changingVenue, setChangingVenue] = useState(false);
   const [blocked, setBlocked] = useState(null);
-  const capacityTimers = useRef({});
-  const placeQueues = useRef({});
-  const inFlight = useRef(0);
   const venueId = event.venue_id;
   // An archived event keeps the layout it had (#148): shown, not changed.
   const frozen = event.status === 'ARCHIVED';
@@ -118,69 +107,25 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   // places: arriving here reads them afresh, as this section always has.
   useEffect(() => { invalidateEventPlaces(event.id); }, [event.id]);
 
-  // A failed write has already put the event places back to what the database holds.
-  const track = async (write) => {
-    inFlight.current += 1;
-    setStatus('saving');
-    const result = await write;
-    inFlight.current -= 1;
-    if (result.error) {
-      console.error('Error saving the event venue:', result.error);
-      setError(dbErrorMessage(result.error, fr.eventVenueSaveError));
-      setStatus('idle');
-    } else {
-      setError(null);
-      if (!inFlight.current) setStatus('saved');
-    }
-    return result;
-  };
-
-  // Writes what the screen shows for one place. One place's writes go out one after the other,
-  // each taking the setting shown when its turn comes, so a quick off/on can't land in the wrong
-  // order: the last one written is what the screen shows.
-  const syncOverride = (placeId) => {
-    const turn = (placeQueues.current[placeId] || Promise.resolve()).then(() => track(savePlace(placeId)));
-    placeQueues.current[placeId] = turn;
-    return turn;
-  };
-
-  // Capacity writes still waiting are dropped: the venue change clears this event's overrides.
-  const dropPendingCapacities = () => {
-    Object.values(capacityTimers.current).forEach(clearTimeout);
-    capacityTimers.current = {};
-  };
-
   const exclude = (place, excluded) => {
     if (excluded && place.occupants.length) {
       return setBlocked({ name: `${place.locationName} · ${place.label}`, names: place.occupants });
     }
+    // savePlace writes the setting shown when its turn comes; a failure reloads the places.
     editPlace(place.id, { isExcluded: excluded });
-    syncOverride(place.id);
+    save.run(place.id, () => savePlace(place.id));
   };
 
   const setCapacity = (place, capacity) => {
     editPlace(place.id, { capacity });
-    clearTimeout(capacityTimers.current[place.id]);
-    setStatus('saving');
-    capacityTimers.current[place.id] = setTimeout(() => {
-      delete capacityTimers.current[place.id];
-      syncOverride(place.id);
-    }, CAPACITY_WRITE_DELAY_MS);
+    save.debounce(place.id, () => savePlace(place.id));
   };
-
-  // Pending capacity writes go out when the admin leaves the section, not never.
-  useEffect(() => () => {
-    Object.entries(capacityTimers.current).forEach(([placeId, timer]) => {
-      clearTimeout(timer);
-      savePlace(placeId).then(({ error: writeError }) => { if (writeError) console.error('Error saving capacity:', writeError); });
-    });
-    capacityTimers.current = {};
-  }, [savePlace]);
 
   const assigned = places.flatMap(place => place.occupants).sort((a, b) => a.localeCompare(b, 'fr'));
 
+  // Capacity writes still waiting are dropped: the venue change clears this event's settings.
   const changeVenue = async (nextVenueId) => {
-    dropPendingCapacities();
+    save.drop();
     setChangingVenue(true);
     try {
       const { error: updateError } = await supabase.from('events').update({ venue_id: nextVenueId }).eq('id', event.id);
@@ -204,7 +149,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   };
 
   const createVenue = async () => {
-    dropPendingCapacities();
+    save.drop();
     setChangingVenue(true);
     try {
       const { error: createError } = await supabase.rpc('create_event_venue', { p_event_id: event.id });
@@ -235,13 +180,13 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
   const available = places.filter(place => !place.isExcluded);
   const venueCapacity = places.reduce((sum, place) => sum + place.venueCapacity, 0);
   const eventCapacity = available.reduce((sum, place) => sum + place.capacity, 0);
-  const shownError = error || placesError;
+  const shownError = save.error || placesError;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="max-w-prose text-muted">{frozen ? fr.eventVenueFrozen : fr.eventVenueHint}</p>
-        {venueId && !frozen && <SaveStatus status={status} />}
+        {venueId && !frozen && <SaveStatus status={save.status} />}
       </div>
       {shownError && <Notice tone="bad" role="alert">{shownError}</Notice>}
 

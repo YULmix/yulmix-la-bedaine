@@ -1,4 +1,4 @@
-import { placeOccupancy, placeTypeBreakdown, venueTotals, placeOptions, searchPlaceOptions, sleepingByLocation } from './places';
+import { venueLayoutOf, placeOccupancy, placeTypeBreakdown, venueTotals, placeOptions, searchPlaceOptions, sleepingByLocation } from './places';
 
 const locations = [
   {
@@ -13,6 +13,20 @@ const locations = [
     ]
   }
 ];
+
+test('venueLayoutOf groups venue_layout rows into locations and their places, in the order given', () => {
+  const row = (location, place, n) => ({
+    location_id: location, location_name: `Lieu ${location}`, location_note: null, location_sort_order: n,
+    place_id: place, label: place && `Place ${place}`, type: place && 'bed', capacity: place && 1, place_sort_order: place && n
+  });
+  const layout = venueLayoutOf([row('l1', 'p1', 0), row('l1', 'p2', 1), row('l2', 'p3', 0), row('l3', null, 2)]);
+  expect(layout.map(location => [location.id, location.places.map(place => place.id)])).toEqual([
+    ['l1', ['p1', 'p2']], ['l2', ['p3']], ['l3', []]
+  ]);
+  expect(layout[0]).toMatchObject({ name: 'Lieu l1', note: null, sort_order: 0 });
+  expect(layout[0].places[1]).toEqual({ id: 'p2', label: 'Place p2', type: 'bed', capacity: 1, sort_order: 1 });
+  expect(venueLayoutOf([])).toEqual([]);
+});
 
 test('venueTotals counts locations, places and capacity', () => {
   expect(venueTotals(locations)).toEqual({ locations: 2, places: 3, capacity: 4 });
