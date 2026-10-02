@@ -31,7 +31,24 @@ _Avoid_: newcomer, first-timer, guest.
 **Admin** (fr. *administrateur*, UI label *Admin*)
 An organiser with full read/write access to every event and registration. Flagged by
 `profiles.is_admin`. Granted only through the `admin_set_is_admin` function, never by direct update.
-_Avoid_: organiser (fine in prose, but the code says admin), moderator, owner.
+The top of the role ladder ([ADR 0023](./adr/0023-edition-roles.md)).
+_Avoid_: organiser (that's the edition role below admin), moderator, owner.
+
+**Edition role** (fr. *rôle pour l'édition*)
+An access role granted to an account for one event, by an admin, in « Équipe »: **Comité** or
+**Organisateur**. Read through `edition_role(event_id)`, which also returns `admin` for admins
+([ADR 0023](./adr/0023-edition-roles.md)).
+
+**Comité** (code: `committee`)
+The read-only edition role: sees that edition's admin area (Résumé, Inscrits, Logistique), not
+the budget, and changes nothing.
+_Avoid_: helper, volunteer (a volunteer is a member who signed up for a task).
+
+**Organisateur** (code: `organiser`)
+The edition role that runs an edition: Comité's access plus Budget, Historique and exports, and
+the edition's operations (places, notes, payments, budget, pricing). Not events, sites,
+roles, or editing a registration: those are admin.
+_Avoid_: admin (an admin is per account and has everything).
 
 **Root admin**
 The hardcoded `yulmixalabedaine@gmail.com` account. Always an admin, cannot be demoted. Break-glass.
