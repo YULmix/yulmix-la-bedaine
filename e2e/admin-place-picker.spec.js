@@ -63,7 +63,7 @@ const bedsOf = async (partyId) => (await getParty(partyId)).attendees.map(a => [
 test('an admin assigns, reassigns and unassigns places; search narrows, preferences first, full places warn', async ({ page }) => {
   await seed();
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
 
   // Zoé asked for a sofa: the sofa comes first. Alice asked for nothing: display order.
   await picker(page, ZOE.name).click();
@@ -129,7 +129,7 @@ test("a waitlisted party's attendees can't be given a place", async ({ page }) =
   // Room for the member's two only: the admin's party lands on the waitlist.
   await seed({ max_attendees: E2E_ATTENDEES.length });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
 
   await expect(picker(page, ZOE.name)).toBeDisabled();
   await expect(panel(page).getByText(fr.placePickerWaitlisted)).toBeVisible();
@@ -140,7 +140,7 @@ test('an event without places says where to define them', async ({ page }) => {
   await seed();
   await deleteLocations(seeded.eventId);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
 
   await expect(panel(page).getByText(fr.logisticsNoPlacesTitle)).toBeVisible();
   await expect(panel(page).getByRole('combobox')).toHaveCount(0);

@@ -153,7 +153,7 @@ test("an admin enters the venue's coordinates, pasted from a map; anything else 
   await setVenueCoordinates(seeded.eventId, null, null);
   await loginAs(page, TEST_USERS.admin);
   // The venue's page in the Sites tab, where its name and address are edited too.
-  await page.goto(`/admin?tab=venues&venue=${(await getEventVenue(seeded.eventId)).id}`);
+  await page.goto(`/admin/venues/${(await getEventVenue(seeded.eventId)).id}`);
   const field = page.getByLabel(fr.venueCoordinatesLabel);
   await expect(field).toHaveValue('');
 

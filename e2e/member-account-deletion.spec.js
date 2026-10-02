@@ -43,7 +43,7 @@ test('a member deletes their account: registration cancelled, signed out, and sh
   // The admin's users tab lists the member while they're registered.
   const adminPage = await (await browser.newContext()).newPage();
   await loginAs(adminPage, TEST_USERS.admin);
-  await adminPage.goto('/admin?tab=users');
+  await adminPage.goto('/admin/users');
   await expect(adminPage.getByRole('tabpanel').getByText(member.fullName).first()).toBeVisible();
 
   await loginAs(page, member);

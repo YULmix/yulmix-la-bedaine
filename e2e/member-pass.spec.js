@@ -25,7 +25,7 @@ test('the Pass says "Montant dû" until an admin marks the party paid, then "Mon
 
   const adminPage = await (await browser.newContext()).newPage();
   await loginAs(adminPage, TEST_USERS.admin);
-  await adminPage.goto('/admin?tab=users');
+  await adminPage.goto('/admin/users');
   await adminPage.getByRole('tabpanel').getByRole('button', { name: fr.unpaidShort, exact: true }).click();
   const confirm = adminPage.getByRole('dialog', { name: fr.markPaid });
   await confirm.getByRole('button', { name: fr.markPaid, exact: true }).click();

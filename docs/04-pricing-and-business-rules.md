@@ -129,7 +129,7 @@ locked price; a paid one doesn't even move when edited.)
 
 ## The budget and the break-even price
 
-The **Budget** admin tab (`?tab=budget`, active event only) holds the event's
+The **Budget** admin tab (`/admin/budget`, active event only) holds the event's
 `event_budgets` row, which only admins can read or write (RLS, #109):
 
 - **Lines**: category (`Chalet`, `Food`, `Music`, `Tech`, `Accessories`, `Other`), description,

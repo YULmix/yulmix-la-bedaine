@@ -79,7 +79,8 @@ const expectView = async (page, label) => {
   await expect(viewTab(page, label)).toHaveAttribute('aria-selected', 'true');
   await expect(view(page, label).getByRole('heading', { level: 2, name: label })).toBeVisible();
 };
-const viewParam = page => new URL(page.url()).searchParams.get('view');
+// The view in the URL, /admin/logistics/<view>; null for the default one (no segment).
+const viewParam = page => new URL(page.url()).pathname.match(/^\/admin\/logistics\/([^/]+)$/)?.[1] ?? null;
 const pending = n => fr.eventEditorUnsaved.replace('{n}', n);
 // Screenshots for visual review, only when E2E_SCREENSHOT_DIR is set (kept out of the repo).
 const screenshot = async (page, name) => {
@@ -88,11 +89,11 @@ const screenshot = async (page, name) => {
 
 test('each view has its URL; Back and Forward move between them; pending places survive', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics&view=food');
+  await page.goto('/admin/logistics/food');
   await expectView(page, fr.logisticsViewFood);
-  await page.goto('/admin?tab=logistics&view=nope');
+  await page.goto('/admin/logistics/nope');
   await expectView(page, fr.logisticsViewTitle);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
   await expectView(page, fr.logisticsViewTitle);
 
   const picker = page.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, Alice E2E` });
@@ -134,7 +135,7 @@ test('each view has its URL; Back and Forward move between them; pending places 
 test('the views show the confirmed parties\' answers, and none of the waitlisted party\'s', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
 
-  await page.goto('/admin?tab=logistics&view=food');
+  await page.goto('/admin/logistics/food');
   const food = view(page, fr.logisticsViewFood);
   await expect(food.getByRole('list', { name: fr.foodSummaryLabel })).toContainText(`1${fr.vegan}`);
   await expect(food.getByRole('list', { name: fr.foodSummaryLabel })).toContainText(`1${fr.otherDietary}`);
@@ -189,7 +190,7 @@ test('the views show the confirmed parties\' answers, and none of the waitlisted
 test('on a phone the views fit: the sub-navigation scrolls on its own, never the page', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics&view=transport');
+  await page.goto('/admin/logistics/transport');
   await expectView(page, fr.logisticsViewTransport);
   await screenshot(page, 'logistics-phone-transport');
   const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
@@ -207,7 +208,7 @@ test('on a phone the views fit: the sub-navigation scrolls on its own, never the
 
 test('a member opening a Logistique view is blocked', async ({ page }) => {
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin?tab=logistics&view=food');
+  await page.goto('/admin/logistics/food');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByText('Pas de coriandre')).toHaveCount(0);
@@ -234,7 +235,7 @@ test('needing a lift counts the seats, starting at the party\'s size; the admin 
 
   const admin = await browser.newPage();
   await loginAs(admin, TEST_USERS.admin);
-  await admin.goto('/admin?tab=logistics&view=transport');
+  await admin.goto('/admin/logistics/transport');
   const row = view(admin, fr.logisticsViewTransport).getByRole('listitem').filter({ hasText: MEMBER });
   await expect(row).toContainText(fr.transportKindNeed);
   await expect(row).toContainText(`${fr.transportSeatsNeeded}3`);

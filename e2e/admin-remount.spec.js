@@ -19,7 +19,7 @@ test.afterEach(async () => {
 });
 
 test('an unsaved admin note survives an app re-render and the tab regaining focus', async ({ page }) => {
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
   const note = page.getByRole('tabpanel', { name: fr.logisticsViewTitle }).getByLabel(fr.logisticsTableAdminNotes).first();
   await note.fill('Arrive tard vendredi');
 

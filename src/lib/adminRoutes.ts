@@ -1,0 +1,127 @@
+// Admin routes (#196, ADR 0022): the one place that knows what an admin URL looks like. A URL is
+// a path, /admin/<section>/<view>, with English ids; a section's default view has no segment.
+// Components parse the location with parseAdminLocation() and build links with adminHref(), and
+// never format an admin URL themselves.
+//
+//   /admin/overview · /admin/users · /admin/budget
+//   /admin/logistics[/<view>]                        view: places (default), food, …
+//   /admin/tools[/<view>]                            view: exports (default), history, feedback
+//   /admin/events · /admin/events/<eventId>[?section=sleeping]
+//   /admin/venues[/<venueId>[/<locationId>]]
+//
+// The query-param URLs that came before (/admin?tab=…&view=…&venue=…&location=…, and a bare
+// /admin) still work: adminRedirect() maps them, and any URL that isn't canonical (an unknown
+// section or view, a trailing slash), to the canonical href, which the admin view navigates to
+// with `replace` so Back doesn't return to the old one.
+
+export const ADMIN_ROOT = '/admin';
+
+export const ADMIN_SECTIONS = ['overview', 'users', 'logistics', 'budget', 'events', 'venues', 'tools'] as const;
+export type AdminSection = (typeof ADMIN_SECTIONS)[number];
+export const DEFAULT_ADMIN_SECTION: AdminSection = 'overview';
+
+// A section's views, the first being its default.
+export const LOGISTICS_VIEW_IDS = ['places', 'food', 'volunteering', 'transport', 'comments'] as const;
+export type LogisticsView = (typeof LOGISTICS_VIEW_IDS)[number];
+export const TOOLS_VIEW_IDS = ['exports', 'history', 'feedback'] as const;
+export type ToolsView = (typeof TOOLS_VIEW_IDS)[number];
+
+export const EDITOR_SECTIONS = ['details', 'sleeping'] as const;
+export type EditorSection = (typeof EDITOR_SECTIONS)[number];
+
+export type AdminRoute =
+  | { section: 'overview' | 'users' | 'budget' }
+  | { section: 'logistics'; view: LogisticsView }
+  | { section: 'tools'; view: ToolsView }
+  | { section: 'events'; eventId: string | null; editorSection: EditorSection }
+  | { section: 'venues'; venueId: string | null; locationId: string | null };
+
+const oneOf = <T extends string>(values: readonly T[], value: string | null | undefined, fallback: T): T =>
+  values.includes(value as T) ? (value as T) : fallback;
+
+const decode = (segment: string | undefined): string | null => {
+  if (!segment) return null;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+};
+
+/** Whether a pathname is in the admin area (the admin view stays mounted across it). */
+export const isAdminPath = (pathname: string): boolean => pathname === ADMIN_ROOT || pathname.startsWith(`${ADMIN_ROOT}/`);
+
+/** The route for a section, at its defaults. */
+export const adminRoute = (section: AdminSection): AdminRoute => {
+  switch (section) {
+    case 'logistics': return { section, view: LOGISTICS_VIEW_IDS[0] };
+    case 'tools': return { section, view: TOOLS_VIEW_IDS[0] };
+    case 'events': return { section, eventId: null, editorSection: EDITOR_SECTIONS[0] };
+    case 'venues': return { section, venueId: null, locationId: null };
+    default: return { section };
+  }
+};
+
+// The route a section's segments describe; missing or unknown values fall back to the defaults.
+const routeOf = (section: AdminSection, rest: Array<string | null>, search: URLSearchParams): AdminRoute => {
+  switch (section) {
+    case 'logistics': return { section, view: oneOf(LOGISTICS_VIEW_IDS, rest[0], LOGISTICS_VIEW_IDS[0]) };
+    case 'tools': return { section, view: oneOf(TOOLS_VIEW_IDS, rest[0], TOOLS_VIEW_IDS[0]) };
+    case 'events': return {
+      section,
+      eventId: rest[0] ?? null,
+      editorSection: rest[0] ? oneOf(EDITOR_SECTIONS, search.get('section'), EDITOR_SECTIONS[0]) : EDITOR_SECTIONS[0]
+    };
+    case 'venues': return { section, venueId: rest[0] ?? null, locationId: rest[0] ? rest[1] ?? null : null };
+    default: return { section };
+  }
+};
+
+/** The admin route a location shows. Never throws: anything unknown falls back to a default. */
+export const parseAdminLocation = (pathname: string, search = ''): AdminRoute => {
+  const params = new URLSearchParams(search);
+  const segments = pathname.slice(ADMIN_ROOT.length).split('/').filter(Boolean).map(decode);
+  const section = oneOf(ADMIN_SECTIONS, segments[0], DEFAULT_ADMIN_SECTION);
+  return routeOf(section, section === segments[0] ? segments.slice(1) : [], params);
+};
+
+const path = (...segments: Array<string | null>): string =>
+  [ADMIN_ROOT, ...segments.filter((segment): segment is string => !!segment).map(encodeURIComponent)].join('/');
+
+/** The canonical href of an admin route. */
+export const adminHref = (route: AdminRoute): string => {
+  switch (route.section) {
+    case 'logistics': return path(route.section, route.view === LOGISTICS_VIEW_IDS[0] ? null : route.view);
+    case 'tools': return path(route.section, route.view === TOOLS_VIEW_IDS[0] ? null : route.view);
+    case 'events': {
+      if (!route.eventId) return path(route.section);
+      const href = path(route.section, route.eventId);
+      return route.editorSection === EDITOR_SECTIONS[0] ? href : `${href}?section=${route.editorSection}`;
+    }
+    case 'venues': return path(route.section, route.venueId, route.venueId ? route.locationId : null);
+    default: return path(route.section);
+  }
+};
+
+// The route an old query-param URL (/admin?tab=…) meant.
+const legacyRoute = (params: URLSearchParams): AdminRoute => {
+  const section = oneOf(ADMIN_SECTIONS, params.get('tab'), DEFAULT_ADMIN_SECTION);
+  if (section === 'venues') {
+    const venueId = params.get('venue') || null;
+    return { section, venueId, locationId: venueId ? params.get('location') || null : null };
+  }
+  return routeOf(section, [params.get('view')], params);
+};
+
+/**
+ * Where a location should be sent instead, or null when it is already canonical: an old
+ * query-param URL (or a bare /admin) goes to the path it meant, and a path with unknown or
+ * superfluous parts to the route it falls back to.
+ */
+export const adminRedirect = (pathname: string, search = ''): string | null => {
+  if (!isAdminPath(pathname)) return null;
+  const params = new URLSearchParams(search);
+  const legacy = pathname.replace(/\/+$/, '') === ADMIN_ROOT;
+  const href = adminHref(legacy ? legacyRoute(params) : parseAdminLocation(pathname, search));
+  return href === `${pathname}${search && search !== '?' ? search : ''}` ? null : href;
+};

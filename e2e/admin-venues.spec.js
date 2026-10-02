@@ -48,7 +48,7 @@ test("the list shows each venue's capacity and events; its page shows the venue,
   const { name } = await getEventVenue(seeded.eventId);
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
-  await page.goto('/admin?tab=venues');
+  await page.goto('/admin/venues');
   const row = venueRow(page, name);
   // E2E_PLACES: two single beds and a sofa for two.
   await expect(row.getByText(fr.venueTotals.replace('{locations}', 2).replace('{places}', 3).replace('{capacity}', 4))).toBeVisible();
@@ -57,7 +57,7 @@ test("the list shows each venue's capacity and events; its page shows the venue,
 
   await row.getByRole('button', { name: fr.venueOpen.replace('{name}', name) }).click();
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
-  await expect(page).toHaveURL(/tab=venues&venue=/);
+  await expect(page).toHaveURL(/\/admin\/venues\/[^/?]+$/);
   await page.getByRole('navigation', { name: fr.locationsListLabel }).getByRole('button', { name: /^Chambre 1/ }).click();
   // A venue lives outside its events: their assignments are the Logistique tab's.
   const chambre = page.getByRole('region', { name: 'Chambre 1' });
@@ -73,7 +73,7 @@ test("the list shows each venue's capacity and events; its page shows the venue,
 test('the venue page splits its places by type, and follows edits without a reload (#164)', async ({ page }) => {
   const { id, name } = await getEventVenue(seeded.eventId);
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto(`/admin?tab=venues&venue=${id}`);
+  await page.goto(`/admin/venues/${id}`);
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
   const byType = page.getByRole('list', { name: fr.sleepingByTypeLabel });
   // E2E_PLACES: two single beds and a sofa for two; no other type shows.
@@ -109,7 +109,7 @@ test('the venue page splits its places by type, and follows edits without a relo
 
 test('an admin creates a venue, gives it a location, and archives it', async ({ page }) => {
   const venueName = `Chalet E2E ${Date.now()}`;
-  await page.goto('/admin?tab=venues');
+  await page.goto('/admin/venues');
   await page.getByRole('button', { name: fr.venueNew }).first().click();
   const dialog = page.getByRole('dialog', { name: fr.venueNewTitle });
   await dialog.getByRole('button', { name: fr.venueCreate }).click();
@@ -141,7 +141,7 @@ test('an admin creates a venue, gives it a location, and archives it', async ({ 
 
 test('on a phone the tab bar fits seven tabs, Logistique reads « Gestion » and Sites is there', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto('/admin?tab=venues');
+  await page.goto('/admin/venues');
   await expect(page.getByRole('heading', { name: fr.venuesTitle })).toBeVisible();
   const bar = page.getByRole('tablist', { name: fr.adminTabsAriaLabel });
   await expect(bar.getByRole('tab', { name: fr.adminTabLogistics }).getByText(fr.adminTabLogisticsShort, { exact: true })).toBeVisible();
@@ -154,7 +154,7 @@ test('an archived edition keeps its layout and who slept where, under its venue'
   const { id: liveId, name } = await getEventVenue(seeded.eventId);
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
-  await page.goto('/admin?tab=events');
+  await page.goto('/admin/events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
   await page.getByRole('dialog', { name: fr.archiveEventConfirmTitle }).getByRole('button', { name: fr.archiveEventButton }).click();
   // Archived: the event is now on a frozen copy (same name, another venue).
@@ -166,7 +166,7 @@ test('an archived edition keeps its layout and who slept where, under its venue'
   expect(await getPlaceLabels(seeded.partyId)).toEqual({ 'Alice E2E': 'Chambre 1 · Lit A' });
 
   // One row for the venue (its frozen copy isn't listed), still naming the archived edition.
-  await page.goto('/admin?tab=venues');
+  await page.goto('/admin/venues');
   await expect(venueRow(page, name)).toHaveCount(1);
   await expect(venueRow(page, name).getByText(fr.venueUsedBy.replace('{events}', E2E_EVENT_THEME))).toBeVisible();
 

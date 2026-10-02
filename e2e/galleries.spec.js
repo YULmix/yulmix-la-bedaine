@@ -47,7 +47,7 @@ const screenshot = async (page, name) => {
 };
 
 const openVenuePage = async (page) => {
-  await page.goto(`/admin?tab=venues&venue=${venue.id}`);
+  await page.goto(`/admin/venues/${venue.id}`);
   const section = page.getByRole('tabpanel', { name: fr.adminTabVenues });
   await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
   return section;
@@ -178,7 +178,7 @@ test('a member sees their location\'s gallery in Couchage; the admin sees the as
 
   const admin = await browser.newPage();
   await loginAs(admin, TEST_USERS.admin);
-  await admin.goto('/admin?tab=logistics');
+  await admin.goto('/admin/logistics');
   const name = `${venue.name} · ${fr.galleryVenueAssignmentsTitle}`;
   await galleryButton(admin, name, 4).click();
   await expect(admin.getByRole('dialog', { name: fr.galleryDialogLabel.replace('{name}', name) }).getByText('1 / 4')).toBeVisible();

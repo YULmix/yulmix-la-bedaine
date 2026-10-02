@@ -102,7 +102,7 @@ test('an edition excludes a place and resizes another; the venue stays as it is'
   // No place editing here: that's the Sites tab.
   await expect(section.getByRole('button', { name: fr.locationAdd })).toHaveCount(0);
   await section.getByRole('button', { name: fr.eventVenueEdit }).click();
-  await expect(page).toHaveURL(/tab=venues&venue=/);
+  await expect(page).toHaveURL(/\/admin\/venues\/[^/?]+$/);
 });
 
 // The event places are one cache shared by the editor, Aperçu and Logistique (#193).

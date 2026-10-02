@@ -40,7 +40,7 @@ test.afterEach(async () => {
 // The e2e event's venue, on its page of the Sites tab.
 const openSleeping = async (page) => {
   const { id } = await getEventVenue(seeded.eventId);
-  await page.goto(`/admin?tab=venues&venue=${id}`);
+  await page.goto(`/admin/venues/${id}`);
   const section = page.getByRole('tabpanel', { name: fr.adminTabVenues });
   await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
   return section;

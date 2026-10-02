@@ -21,7 +21,7 @@ every unsaved draft) stays mounted between the tabs and the editor:
 
 `/admin/events/<id>?section=details|sleeping`
 
-Other tabs link to `/admin?tab=<id>`; coming back to Événements shows the list, where an event
+Other tabs link to `/admin/<id>` (ADR 0022); coming back to Événements shows the list, where an event
 with an unsaved draft is marked.
 
 ```mermaid

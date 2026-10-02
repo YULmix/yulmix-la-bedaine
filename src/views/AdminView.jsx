@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useBlocker, useMatch, useNavigate, useSearchParams } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
 import { Banknote, CalendarRange, ClipboardList, BedDouble, Download, History, Inbox, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { ADMIN_SECTIONS, TOOLS_VIEW_IDS, adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation } from '../lib/adminRoutes';
 import fr from '../locales/fr.json';
 import RegistrationForm from '../components/RegistrationForm';
 import AdminOverview from '../components/admin/AdminOverview';
-import AdminLogisticsView, { LOGISTICS_VIEWS } from '../components/admin/AdminLogisticsView';
+import AdminLogisticsView from '../components/admin/AdminLogisticsView';
 import AdminUserManagement from '../components/admin/AdminUserManagement';
 import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
@@ -32,54 +33,51 @@ import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } 
 import { useToasts } from '../hooks/useToasts';
 import ToastContainer from '../components/Toast';
 
-// Admin sub-navigation tabs; the id is what appears in the URL (?tab=<id>). `users` and
-// `logistics` keep their original ids so existing deep links still work.
-const ADMIN_TABS = [
-  { id: 'overview', labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard },
-  { id: 'users', labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList },
-  { id: 'logistics', labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
-  { id: 'budget', labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote },
-  { id: 'events', labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
-  { id: 'venues', labelKey: 'adminTabVenues', shortKey: 'adminTabVenuesShort', icon: MapPin },
-  { id: 'tools', labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
-];
-const DEFAULT_ADMIN_TAB = ADMIN_TABS[0].id;
+// Admin sub-navigation tabs, in the order and with the ids of the admin routes module (ADR 0022);
+// the id is the URL's first segment, /admin/<id>.
+const TAB_DISPLAY = {
+  overview: { labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard },
+  users: { labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList },
+  logistics: { labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble },
+  budget: { labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote },
+  events: { labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange },
+  venues: { labelKey: 'adminTabVenues', shortKey: 'adminTabVenuesShort', icon: MapPin },
+  tools: { labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench }
+};
+const ADMIN_TABS = ADMIN_SECTIONS.map(id => ({ id, ...TAB_DISPLAY[id] }));
 
-// The Outils tab's views (?view=), one job each, so the change history (#173) can have the
-// screen to itself; the first is the default.
-const TOOLS_VIEWS = [
-  { id: 'exports', labelKey: 'toolsViewExports', icon: Download },
-  { id: 'history', labelKey: 'toolsViewHistory', icon: History },
-  { id: 'feedback', labelKey: 'toolsViewFeedback', icon: Inbox }
-];
+// The Outils tab's views (/admin/tools/<view>), one job each, so the change history (#173) can
+// have the screen to itself; the first is the default.
+const TOOLS_VIEW_DISPLAY = {
+  exports: { labelKey: 'toolsViewExports', icon: Download },
+  history: { labelKey: 'toolsViewHistory', icon: History },
+  feedback: { labelKey: 'toolsViewFeedback', icon: Inbox }
+};
+const TOOLS_VIEWS = TOOLS_VIEW_IDS.map(id => ({ id, ...TOOLS_VIEW_DISPLAY[id] }));
 
 // `onEventsChange` tells the app shell that events changed here (activated, archived, edited,
 // repriced, moved to another venue), so the member pages it feeds show them without a reload (#192).
 const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  // The event editor is its own route, /admin/events/:eventId (?section=&location=), under the
-  // same admin shell: the Événements tab stays selected and this component stays mounted.
-  const editMatch = useMatch('/admin/events/:eventId');
-  const editEventId = editMatch?.params.eventId ?? null;
-  const requestedTab = searchParams.get('tab');
-  const activeTab = editEventId ? 'events'
-    : ADMIN_TABS.some(tab => tab.id === requestedTab) ? requestedTab : DEFAULT_ADMIN_TAB;
-  // Sets or clears (null) query params, keeping the others. Pushes a history entry, so Back
-  // walks back through tabs and editor sections.
-  const updateParams = (params) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      Object.entries(params).forEach(([key, value]) => (value == null ? next.delete(key) : next.set(key, value)));
-      return next;
-    });
-  };
-  const selectTab = (tabId) => navigate(`/admin?tab=${tabId}`);
-  const editSection = searchParams.get('section') === 'sleeping' ? 'sleeping' : 'details';
-  // The Logistique tab's view (#179), ?view=; missing or unknown is the first, places.
-  const requestedView = searchParams.get('view');
-  const logisticsView = LOGISTICS_VIEWS.some(view => view.id === requestedView) ? requestedView : LOGISTICS_VIEWS[0].id;
-  const toolsView = TOOLS_VIEWS.some(view => view.id === requestedView) ? requestedView : TOOLS_VIEWS[0].id;
+  // Where we are, from the URL (src/lib/adminRoutes.ts). The event editor, /admin/events/:id, is
+  // under the same admin shell: the Événements tab stays selected and this component stays mounted.
+  const route = parseAdminLocation(location.pathname, location.search);
+  const activeTab = route.section;
+  const editEventId = route.section === 'events' ? route.eventId : null;
+  const editSection = route.section === 'events' ? route.editorSection : 'details';
+  const logisticsView = route.section === 'logistics' ? route.view : null;
+  const toolsView = route.section === 'tools' ? route.view : null;
+  // Old query-param links (/admin?tab=…) and paths that aren't canonical go to the canonical one,
+  // replacing it in the history so Back doesn't bounce.
+  useEffect(() => {
+    const target = adminRedirect(location.pathname, location.search);
+    if (target) navigate(target, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+  // Moving to another route pushes a history entry, so Back walks back through tabs, views and
+  // editor sections.
+  const go = (to) => navigate(adminHref(to));
+  const selectTab = (tabId) => go(adminRoute(tabId));
   const [events, setEvents] = useState([]);
   const [parties, setParties] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -381,7 +379,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
 
   // Leaving the admin pages in the app drops the Logistique draft with this component, so it asks
   // too (#150). Moving between admin tabs keeps the draft and doesn't ask.
-  const leaveBlocker = useBlocker(({ nextLocation }) => unsavedLogistics > 0 && !nextLocation.pathname.startsWith('/admin'));
+  const leaveBlocker = useBlocker(({ nextLocation }) => unsavedLogistics > 0 && !isAdminPath(nextLocation.pathname));
 
   const handleEventFieldChange = (field, value) => {
     setEventDraft(prev => ({ ...prev, eventId: editEventId, changes: { ...(prev?.eventId === editEventId ? prev.changes : {}), [field]: value } }));
@@ -633,7 +631,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
       );
     }
     if (activeTab === 'events') {
-      const backToEvents = () => navigate('/admin?tab=events');
+      const backToEvents = () => selectTab('events');
       if (editEventId && !editingEvent) {
         return (
           <EmptyState icon={CalendarRange} title={fr.eventEditorNotFound}
@@ -645,7 +643,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
           <EventEditor
             event={editingEvent}
             section={editSection}
-            onSectionChange={section => updateParams({ section: section === 'details' ? null : section })}
+            onSectionChange={section => go({ ...route, editorSection: section })}
             onVenueChange={refreshEvents}
             changes={eventChanges}
             dirtyCount={eventDirty.length}
@@ -665,19 +663,19 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
           draftEventId={hasUnsavedEvent ? eventDraft.eventId : null}
           onActivate={handleActivateEvent}
           onArchive={setPendingArchive}
-          onEdit={(event) => navigate(`/admin/events/${event.id}`)}
+          onEdit={(event) => go({ section: 'events', eventId: event.id, editorSection: 'details' })}
         />
       );
     }
     if (activeTab === 'venues') {
       return (
         <AdminVenues
-          venueId={searchParams.get('venue')}
+          venueId={route.venueId}
           events={events}
-          locationId={searchParams.get('location')}
-          onOpen={venueId => updateParams({ venue: venueId, location: null })}
-          onLocationChange={locationId => updateParams({ location: locationId })}
-          onBack={() => navigate('/admin?tab=venues')}
+          locationId={route.locationId}
+          onOpen={venueId => go({ section: 'venues', venueId, locationId: null })}
+          onLocationChange={locationId => go({ ...route, locationId })}
+          onBack={() => selectTab('venues')}
           onVenueChange={refreshEvents}
           notify={addToast}
         />
@@ -709,7 +707,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
           <ViewTabs
             views={TOOLS_VIEWS.map(({ id, labelKey, icon }) => ({ id, label: fr[labelKey], icon }))}
             value={toolsView}
-            onChange={view => updateParams({ view: view === TOOLS_VIEWS[0].id ? null : view })}
+            onChange={view => go({ section: 'tools', view })}
             label={fr.toolsViewsLabel}
             idPrefix="tools-view"
           />
@@ -725,7 +723,7 @@ const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
         <AdminLogisticsView
           view={logisticsView}
           venue={activeEventState?.venue}
-          onViewChange={view => updateParams({ view: view === LOGISTICS_VIEWS[0].id ? null : view })}
+          onViewChange={view => go({ section: 'logistics', view })}
           parties={activeParties}
           places={places}
           logisticsChanges={logisticsChanges}

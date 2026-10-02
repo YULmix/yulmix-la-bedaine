@@ -65,7 +65,7 @@ for (const { label, viewport } of [
     // Admin: Vue d'ensemble counts failed + pending and lists them by party.
     const adminPage = await (await browser.newContext({ viewport })).newPage();
     await loginAs(adminPage, TEST_USERS.admin);
-    await adminPage.goto('/admin?tab=overview');
+    await adminPage.goto('/admin/overview');
     const problems = adminPage.getByRole('status').filter({ hasText: fr.emailProblemsTitleOther.replace('{count}', 2) });
     await expect(problems).toBeVisible();
     await problems.getByRole('button', { name: fr.emailProblemsShow }).click();
@@ -95,7 +95,7 @@ test('with no email problems, Vue d\'ensemble shows no warning', async ({ page }
   seeded = await seedActiveEventWithMemberParty();
   await seedEmailLog(seeded.partyId, [{ template: 'registration', status: 'sent', recipient: RECIPIENT }]);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=overview');
+  await page.goto('/admin/overview');
   await expect(page.getByText(fr.kpiPeople)).toBeVisible();
   await expect(page.getByText(fr.emailProblemsHint)).toHaveCount(0);
 });

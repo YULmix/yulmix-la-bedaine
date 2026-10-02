@@ -8,6 +8,7 @@ import { dbErrorMessage } from '../lib/dbErrors';
 import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
+import { ADMIN_ROOT } from '../lib/adminRoutes';
 
 // Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
 // false in production builds, which then drop these imports and the whole chunk.
@@ -130,7 +131,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
               </NavLink>
             )}
             {isAdmin && (
-              <NavLink to="/admin" className={navLinkClass}>
+              <NavLink to={ADMIN_ROOT} className={navLinkClass}>
                 <ShieldCheck aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
                 <span className="sr-only sm:not-sr-only">{fr.navAdmin}</span>
               </NavLink>
@@ -173,7 +174,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
               ) : (
                 <>
                   {!isDeleted && isAdmin && (
-                    <button role="menuitem" onClick={() => go('/admin')} className={MENU_ITEM}>
+                    <button role="menuitem" onClick={() => go(ADMIN_ROOT)} className={MENU_ITEM}>
                       <ShieldCheck aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                       {fr.adminNavLink}
                     </button>
