@@ -63,13 +63,15 @@ Sizes, as a blunt signal of where the complexity is:
 | `src/views/RegistrationSummary.jsx` | 244 |
 | `src/lib/pricingEngine.ts` | 210 |
 
-`AdminView` keeps all admin state, data fetching and write handlers; each tab is a component in
-`src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
-`AdminEvents`, `AdminTools`, `UserProfileDialog`). The active tab is the URL's first segment
+`AdminView` is moving to a shell (#195): Résumé and Inscrits are self-contained sections in
+`src/components/admin/sections/` reading the stores; the other tabs' state, fetching and write
+handlers are still in `AdminView`, each tab a component in `src/components/admin/`
+(`AdminLogisticsView`, `AdminBudget`, `AdminEvents`, `AdminTools`). The active tab is the URL's first segment
 (`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
 built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
 also owns the tab and view ids; components never format one themselves.
-Because state lives in `AdminView`, unsaved logistics edits survive a tab switch. On phones the
+Because the Logistique draft lives in `AdminView` (or, for a section, in a store), unsaved
+edits survive a tab switch. On phones the
 tab list is a fixed bottom bar; from `md` up it's a row of pills.
 
 The Logistique tab has views of its own (#179), in `/admin/logistics/<view>` (`places` by default, the
@@ -158,6 +160,19 @@ after the other, each built when its turn comes; a Stepper's writes wait 400 ms 
 click; what is still waiting is sent when the editor goes away; one status line
 (« Enregistrement… » / « Enregistré ») and one error say how it went, and a failure reloads.
 
+The **admin parties** (`src/lib/adminParties.ts`, #195): an event's parties as the admin lists
+them, in one cache per event that Résumé, Inscrits, Logistique, Budget and the exports share
+through `useAdminParties(eventId)` (`parties`, cancelled ones included, and `activeParties`). An
+entry loads for its first screen, on `refreshAdminParties(eventId)` after a write, and on any
+change to the event's `user_parties` rows (a Realtime channel, open only while a screen watches).
+Reloading parties never invalidates the event places. `updatePaymentStatus(party, status)` writes
+and reloads. Profiles (the admin flag, a member's history across editions, who is signed in) are
+plain functions in `src/lib/profiles.ts`.
+
+Admin sections that own their data live in `src/components/admin/sections/`: they take no data
+props, read the stores, own their dialogs, and show `SectionStatus` (skeleton, or the error with
+« Réessayer ») and `NoActiveEvent` themselves. Résumé and Inscrits are there so far.
+
 Parties (registrations) are read and written only through the party module, `src/lib/parties.ts`
 (#197), never with `supabase.from('user_parties')` in a component. Its functions log the raw error
 and throw one whose message is already French, so a caller shows `error.message` (or passes the
@@ -169,9 +184,8 @@ Otherwise ownership is:
   `otherEvents` from the events store. Passed down as props.
 - **`HomeView`** — the current user's registration for the active event, and whether the form is in
   edit mode.
-- **`AdminView`** — parties, profiles, budget, feedback and the drafts, refetched on mount and on
-  Realtime events (until #195 moves them to stores). Events come from the events store, which it
-  reloads on mount.
+- **`AdminView`** — budget, feedback and the drafts, fetched on mount (until #195 moves them to
+  stores). Events and parties come from their stores; it reloads the events on mount.
 - **`RegistrationForm`** — the entire attendee array and all party-level fields as local state,
   hydrated from `userRegistration` on mount.
 
@@ -180,8 +194,8 @@ Two patterns to be aware of because they will bite:
 1. **`window.location.reload()` after a successful save** (`src/views/HomeView.jsx:186`, `:205`).
    It works, and it discards all client state including any unsaved sibling form. Replace with a
    refetch callback when touching that code.
-2. **`AdminView` refetches the full party list on every Realtime event** (`src/views/AdminView.jsx:59`).
-   Fine at ~40 parties; not a pattern to copy at scale.
+2. **The admin parties store refetches the event's full party list on every Realtime event**
+   (`src/lib/adminParties.ts`). Fine at ~40 parties; not a pattern to copy at scale.
 
 ### The auth → admin handshake
 

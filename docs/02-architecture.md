@@ -130,10 +130,12 @@ Two things to notice, because they shape every future change:
 
 ## Admin data flow
 
-`AdminView` fetches everything for the active event on mount and subscribes to Realtime for
-`user_parties` filtered by `event_id` (`src/views/AdminView.jsx:59`), re-fetching the whole list on
-any change. Writes go straight to the tables, except granting admin, which must go through
-`rpc('admin_set_is_admin')` because direct `UPDATE` on `profiles.is_admin` is revoked.
+The admin sections read module stores in `src/lib` (#195). The active event's parties come from
+the admin parties store (`src/lib/adminParties.ts`), which subscribes to Realtime for
+`user_parties` filtered by `event_id` while a section shows them and re-fetches the whole list on
+any change. Writes go through the data modules (`parties.ts`, `profiles.ts`, `events.ts`); granting
+admin must go through `rpc('admin_set_is_admin')` (`setIsAdmin`) because direct `UPDATE` on
+`profiles.is_admin` is revoked.
 
 ## Trust boundaries
 
