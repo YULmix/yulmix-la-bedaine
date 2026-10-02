@@ -15,6 +15,7 @@ import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 import { EVENT_WITH_VENUE } from './lib/venue';
+import { splitEvents } from './lib/activeEvent';
 
 const signInWithGoogle = async () => {
   try {
@@ -159,24 +160,10 @@ function App() {
 
       if (error) throw error;
 
-      if (events && events.length > 0) {
-        const active = events.find(event => event.is_active);
-        const others = events.filter(event => !event.is_active);
-
-        if (active) {
-          setActiveEvent(active);
-          setOtherEvents(others);
-        } else {
-          // If no active event, use the first one as active (demo)
-          const firstEvent = events[0];
-          setActiveEvent({ ...firstEvent, is_active: true });
-          setOtherEvents(events.slice(1));
-        }
-      } else {
-        // No events in database: render the empty state, not fabricated data.
-        setActiveEvent(null);
-        setOtherEvents([]);
-      }
+      // No events in the database: the empty state, not fabricated data.
+      const { activeEvent: active, otherEvents: others } = splitEvents(events);
+      setActiveEvent(active);
+      setOtherEvents(others);
     } catch (error) {
       console.error('Erreur lors du chargement des événements:', error);
       // A failed query is not "no events" — don't claim one is active when we don't know.
@@ -308,8 +295,8 @@ function App() {
             <ProtectedRoute {...guard} adminOnly>
               <AdminView
                 activeEvent={activeEvent}
-                otherEvents={otherEvents}
                 isAdmin={isAdmin}
+                onEventsChange={fetchEvents}
               />
             </ProtectedRoute>
           } />
