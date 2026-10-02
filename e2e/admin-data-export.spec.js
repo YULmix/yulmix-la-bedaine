@@ -65,7 +65,7 @@ const downloadCsv = async (page, exportLabel) => {
 
 test('« Par groupe » CSV: the new columns, the waitlisted party\'s status, escaped text', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   const { name, text } = await downloadCsv(page, fr.exportByParty);
 
   expect(name).toMatch(/^inscriptions_.*\.csv$/);
@@ -84,7 +84,7 @@ test('« Par groupe » CSV: the new columns, the waitlisted party\'s status, esc
 
 test('« Par participant » CSV: one row per attendee with dietary needs, no money', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   const { name, text } = await downloadCsv(page, fr.exportByAttendee);
 
   expect(name).toMatch(/^participants_.*\.csv$/);
@@ -103,7 +103,7 @@ test('« Par participant » CSV: one row per attendee with dietary needs, no mon
 test('the Google Sheets copy puts one line per row in the clipboard', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   await card(page).getByText(fr.exportByParty, { exact: true }).click();
   await card(page).getByRole('button', { name: fr.exportCopyTSVButton }).click();
   await expect(page.getByText(fr.exportCopyToast)).toBeVisible();
@@ -118,7 +118,7 @@ test('the Google Sheets copy puts one line per row in the clipboard', async ({ p
 
 test('a member opening Outils is blocked', async ({ page }) => {
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('button', { name: fr.exportCSVButton })).toHaveCount(0);
 });

@@ -62,7 +62,7 @@ async function expectNoHorizontalOverflow(page) {
 for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'phone', width: 390, height: 844 }]) {
   test(`${viewport.name}: budget lines are saved and drive the break-even price`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await page.goto('/admin?tab=budget');
+    await page.goto('/admin/budget');
     // Collapsed: only the pricing section shows its fields.
     await expect(panel(page).getByRole('button', { name: fr.budgetLineAdd })).toHaveCount(0);
     await expect(panel(page).getByLabel(fr.scenarioAdultWholeCount, { exact: true })).toHaveCount(0);
@@ -117,7 +117,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
 }
 
 test('a new price and ratio apply to new registrations; existing ones keep their locked price', async ({ page, browser }) => {
-  await page.goto('/admin?tab=budget');
+  await page.goto('/admin/budget');
   // Seeded at 200 $, default ratio: 200 + 0.5375 × 200 = 307.50 → 308.
   expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(308);
 
@@ -161,7 +161,7 @@ test('a new price and ratio apply to new registrations; existing ones keep their
     expect(Number((await getParty(newPartyId)).calculated_amount_owed)).toBe(400);
 
     // The admin's totals are the stored amounts, not a recalculation at today's price.
-    await page.goto('/admin?tab=users');
+    await page.goto('/admin/users');
     const members = panel(page);
     await expect(members.getByText(money(308), { exact: true }).filter({ visible: true })).toHaveCount(1);
     await expect(members.getByText(money(400), { exact: true }).filter({ visible: true })).toHaveCount(1);
@@ -186,7 +186,7 @@ test('a new price and ratio apply to new registrations; existing ones keep their
 // #192: the member pages read the event from the app shell, which used to keep the one it loaded
 // on arrival until a reload.
 test('a new price shows on the member pages at once, without a reload', async ({ page }) => {
-  await page.goto('/admin?tab=budget');
+  await page.goto('/admin/budget');
   await panel(page).getByLabel(fr.eventSellingPriceLabel).fill('250');
   await panel(page).getByRole('button', { name: fr.scenarioApply, exact: true }).click();
   await page.getByRole('dialog', { name: fr.scenarioApplyConfirmTitle }).getByRole('button', { name: fr.scenarioApply, exact: true }).click();
@@ -200,9 +200,9 @@ test('a new price shows on the member pages at once, without a reload', async ({
 });
 
 test('the event editor and the tools tab no longer hold money settings', async ({ page }) => {
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   await expect(panel(page).getByRole('heading', { name: fr.scenarioSimulatorTitle })).toHaveCount(0);
-  await page.goto('/admin?tab=events');
+  await page.goto('/admin/events');
   await panel(page).getByRole('button', { name: fr.edit }).click();
   // The editor nests its own section tabpanel, so look page-wide.
   await expect(page.getByLabel(fr.eventTitle)).toBeVisible();

@@ -97,7 +97,7 @@ test('a member needing a lift gives a postal code start and a note; draft, summa
   // The admin's Transport view shows the code.
   const admin = await browser.newPage();
   await loginAs(admin, TEST_USERS.admin);
-  await admin.goto('/admin?tab=logistics&view=transport');
+  await admin.goto('/admin/logistics/transport');
   const row = admin.getByRole('tabpanel', { name: fr.logisticsViewTransport }).getByRole('listitem').filter({ hasText: 'Test Member' });
   await expect(row).toContainText(`${fr.transportDepartureFsa}G1R`);
   await expect(row).toContainText(`${fr.transportDeparturePlace}${fr.emptyValue}`);

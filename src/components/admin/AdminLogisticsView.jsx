@@ -12,6 +12,7 @@ import PlacePicker from './PlacePicker';
 import LogisticsSummary from './LogisticsSummary';
 import SaveBar from './SaveBar';
 import { CommentsView, FORM_VIEW_ICONS, FoodView, TransportView, VolunteeringView } from './LogisticsFormViews';
+import { LOGISTICS_VIEW_IDS } from '../../lib/adminRoutes';
 
 const wantsBed = party => (party.attendees || []).some(a => a.sleeping_preference === 'bed');
 const hasUnassigned = party => !party.is_waitlisted && (party.attendees || []).some(a => !a.place);
@@ -186,15 +187,17 @@ const PlacesView = ({
   );
 };
 
-// The Logistique tab's views (#179): what organisers plan with. The id is the URL's ?view=, the
-// first one being the default. Only places are edited here; the others read the form's answers.
-export const LOGISTICS_VIEWS = [
-  { id: 'places', labelKey: 'logisticsViewTitle', icon: BedDouble },
-  { id: 'food', labelKey: 'logisticsViewFood', icon: FORM_VIEW_ICONS.food },
-  { id: 'volunteering', labelKey: 'logisticsViewVolunteering', icon: FORM_VIEW_ICONS.volunteering },
-  { id: 'transport', labelKey: 'logisticsViewTransport', icon: FORM_VIEW_ICONS.transport },
-  { id: 'comments', labelKey: 'logisticsViewComments', icon: FORM_VIEW_ICONS.comments }
-];
+// The Logistique tab's views (#179): what organisers plan with. Their ids and order come from the
+// admin routes module (/admin/logistics/<view>, the first one the default). Only places are edited
+// here; the others read the form's answers.
+const LOGISTICS_VIEW_DISPLAY = {
+  places: { labelKey: 'logisticsViewTitle', icon: BedDouble },
+  food: { labelKey: 'logisticsViewFood', icon: FORM_VIEW_ICONS.food },
+  volunteering: { labelKey: 'logisticsViewVolunteering', icon: FORM_VIEW_ICONS.volunteering },
+  transport: { labelKey: 'logisticsViewTransport', icon: FORM_VIEW_ICONS.transport },
+  comments: { labelKey: 'logisticsViewComments', icon: FORM_VIEW_ICONS.comments }
+};
+const LOGISTICS_VIEWS = LOGISTICS_VIEW_IDS.map(id => ({ id, ...LOGISTICS_VIEW_DISPLAY[id] }));
 
 const FORM_VIEWS = { food: FoodView, volunteering: VolunteeringView, transport: TransportView, comments: CommentsView };
 

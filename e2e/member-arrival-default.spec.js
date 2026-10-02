@@ -97,7 +97,7 @@ test("an admin editing a member's registration keeps the saved arrival and depar
   await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${START}T09:15`, departure: `${START}T20:45` });
 
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=users');
+  await page.goto('/admin/users');
   await page.getByRole('button', { name: fr.editRegistrationButton }).first().click();
   const dialog = page.getByRole('dialog');
   await openTransportStep(dialog);

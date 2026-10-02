@@ -42,7 +42,7 @@ const pill = (page, label) => panel(page).getByRole('group', { name: fr.filterLa
 const kpi = (page, label) => panel(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
 
 test('with no cancelled party there is no "Annulées" pill', async ({ page }) => {
-  await page.goto('/admin?tab=users');
+  await page.goto('/admin/users');
   await expect(pill(page, fr.filterAll)).toContainText('1');
   await expect(pill(page, fr.filterCancelled)).toHaveCount(0);
 });
@@ -52,12 +52,12 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   await addParty(cancelledMember.id, seeded.eventId, 'cancelled');
 
   // Overview: only the active party's two attendees and one group.
-  await page.goto('/admin?tab=overview');
+  await page.goto('/admin/overview');
   await expect(kpi(page, fr.kpiPeople)).toHaveText(String(E2E_ATTENDEES.length));
   await expect(kpi(page, fr.registeredGroupsStatLabel)).toHaveText('1');
 
   // Users tab: "Tous" has the active party only.
-  await page.goto('/admin?tab=users');
+  await page.goto('/admin/users');
   await expect(pill(page, fr.filterAll)).toContainText('1');
   await expect(pill(page, fr.unpaidShort)).toContainText('1');
   await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
@@ -75,7 +75,7 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   await expect(list.getByRole('button', { name: fr.editRegistrationButton })).toBeVisible();
 
   // Logistics: only the active party.
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
   await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
   await expect(panel(page).getByRole('button', { name: cancelledMember.fullName })).toHaveCount(0);
   for (const attendee of E2E_ATTENDEES) {
@@ -83,7 +83,7 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   }
 
   // CSV export: a header row, the active party, and the totals row. No cancelled party.
-  await page.goto('/admin?tab=tools');
+  await page.goto('/admin/tools');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     panel(page).getByRole('button', { name: fr.exportCSVButton }).click()

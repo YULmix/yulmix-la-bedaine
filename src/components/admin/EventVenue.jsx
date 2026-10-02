@@ -10,6 +10,7 @@ import { invalidateEventPlaces, useEventPlaces } from '../../lib/eventPlaces';
 import { useAutosave } from '../../hooks/useAutosave';
 import { SaveStatus } from './EventLocations';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Notice, Select, Skeleton, Stat, Stepper, Toggle, cx } from '../ui';
+import { adminHref } from '../../lib/adminRoutes';
 
 const venueOption = venue => fr.eventVenueOption
   .replace('{name}', venue.name)
@@ -204,7 +205,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
             )}
           </Field>
           {frozen ? null : venueId ? (
-            <Button variant="secondary" onClick={() => navigate(`/admin?tab=venues&venue=${venueId}`)}>
+            <Button variant="secondary" onClick={() => navigate(adminHref({ section: 'venues', venueId, locationId: null }))}>
               <Pencil aria-hidden="true" className="size-4" />{fr.eventVenueEdit}
             </Button>
           ) : (
@@ -223,7 +224,7 @@ export const EventVenuePlan = ({ event, onVenueChange }) => {
       ) : places.length === 0 ? (
         <Card>
           <EmptyState icon={MapPin} title={fr.locationsEmpty}
-            action={!frozen && <Button onClick={() => navigate(`/admin?tab=venues&venue=${venueId}`)}><Pencil aria-hidden="true" className="size-4.5" />{fr.eventVenueEdit}</Button>}>
+            action={!frozen && <Button onClick={() => navigate(adminHref({ section: 'venues', venueId, locationId: null }))}><Pencil aria-hidden="true" className="size-4.5" />{fr.eventVenueEdit}</Button>}>
             {fr.eventVenueEmptyHint}
           </EmptyState>
         </Card>

@@ -24,7 +24,7 @@ test('member: no admin nav, /admin blocked, RLS limits profiles to own row', asy
   expect(profiles[0].email).toBe(TEST_USERS.member.email);
 });
 
-test('admin: sees admin nav, can open /admin, RLS exposes all profiles', async ({ page }) => {
+test('admin: sees admin nav, can open the admin, RLS exposes all profiles', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
 
   await page.getByRole('button', { name: 'Test Admin' }).click();
@@ -32,7 +32,7 @@ test('admin: sees admin nav, can open /admin, RLS exposes all profiles', async (
   await expect(adminNavButton).toBeVisible();
   await adminNavButton.click();
 
-  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page).toHaveURL(/\/admin\/overview$/);
   await expect(page.getByText('Accès réservé aux administrateurs')).toHaveCount(0);
 
   const profiles = await page.evaluate(async () => {

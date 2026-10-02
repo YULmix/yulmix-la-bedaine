@@ -76,7 +76,7 @@ test("an admin editing a member's registration keeps the beds and the member's a
   const before = (await getParty(seeded.partyId)).attendees;
 
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=users');
+  await page.goto('/admin/users');
   await page.getByRole('button', { name: fr.editRegistrationButton }).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('listitem')

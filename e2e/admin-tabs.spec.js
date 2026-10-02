@@ -1,4 +1,5 @@
-// Admin sub-navigation tabs (issues #29, #83): /admin?tab=overview | users | logistics | events | tools.
+// Admin sub-navigation tabs (issues #29, #83): /admin/<tab>, overview | users | logistics | budget |
+// events | venues | tools (#196, ADR 0022). Older ?tab= links redirect to their path.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
@@ -50,8 +51,8 @@ const bedInputs = (page) => placePickers(panel(page));
 const modal = (page, title) => page.getByRole('dialog', { name: title });
 const closeModal = (dialog) => dialog.getByRole('button', { name: fr.close, exact: true }).click();
 
-async function openAdmin(page, query = '') {
-  await page.goto('/admin' + query);
+async function openAdmin(page, path = '') {
+  await page.goto('/admin' + path);
   await expect(tabBar(page)).toBeVisible();
 }
 
@@ -144,13 +145,27 @@ test.describe('admin tabs', () => {
     await openAdmin(page);
     await expect(tabBar(page).getByRole('tab')).toHaveCount(TAB_COUNT);
     await expectOverviewTabActive(page);
+    await expect(page).toHaveURL(/\/admin\/overview$/);
 
-    await openAdmin(page, '?tab=bogus');
+    await openAdmin(page, '/bogus');
     await expectOverviewTabActive(page);
+    await expect(page).toHaveURL(/\/admin\/overview$/);
+  });
+
+  test('an older ?tab= link lands on its path, and Back skips it', async ({ page }) => {
+    await openAdmin(page, '/users');
+    await page.goto('/admin?tab=logistics&view=food');
+    await expect(page).toHaveURL(/\/admin\/logistics\/food$/);
+    await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: fr.logisticsViewFood })).toHaveAttribute('aria-selected', 'true');
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expectUsersTabActive(page);
   });
 
   test('users tab lists the seeded party with its controls', async ({ page }) => {
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await expectUsersTabActive(page);
     // One party seeded -> exactly one of each per-party control (markup is cards/grid, not a table).
     await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
@@ -161,7 +176,7 @@ test.describe('admin tabs', () => {
   });
 
   test('payment toggle asks for confirmation and cancelling writes nothing', async ({ page }) => {
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
     const confirm = modal(page, fr.markPaid);
     await expect(confirm).toBeVisible();
@@ -171,39 +186,39 @@ test.describe('admin tabs', () => {
     expect(party.payment_status).toBe('unpaid');
   });
 
-  test('clicking tabs switches panels and syncs ?tab=', async ({ page }) => {
+  test('clicking tabs switches panels and syncs the URL', async ({ page }) => {
     await openAdmin(page);
 
     await tab(page, LOGISTICS_TAB).click();
-    await expect(page).toHaveURL(/[?&]tab=logistics(&|$)/);
+    await expect(page).toHaveURL(/\/admin\/logistics$/);
     await expectLogisticsTabActive(page);
 
     await tab(page, USERS_TAB).click();
-    await expect(page).toHaveURL(/[?&]tab=users(&|$)/);
+    await expect(page).toHaveURL(/\/admin\/users$/);
     await expectUsersTabActive(page);
   });
 
-  test('deep link to ?tab=logistics opens logistics directly', async ({ page }) => {
-    await openAdmin(page, '?tab=logistics');
+  test('deep link to /admin/logistics opens logistics directly', async ({ page }) => {
+    await openAdmin(page, '/logistics');
     await expectLogisticsTabActive(page);
   });
 
   test('browser back/forward switch tabs', async ({ page }) => {
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await tab(page, LOGISTICS_TAB).click();
     await expectLogisticsTabActive(page);
 
     await page.goBack();
-    await expect(page).toHaveURL(/[?&]tab=users(&|$)/);
+    await expect(page).toHaveURL(/\/admin\/users$/);
     await expectUsersTabActive(page);
 
     await page.goForward();
-    await expect(page).toHaveURL(/[?&]tab=logistics(&|$)/);
+    await expect(page).toHaveURL(/\/admin\/logistics$/);
     await expectLogisticsTabActive(page);
   });
 
   test('profile modal opens from both tabs', async ({ page }) => {
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await expectProfileModalWorks(page);
 
     await tab(page, LOGISTICS_TAB).click();
@@ -212,7 +227,7 @@ test.describe('admin tabs', () => {
   });
 
   test('god-mode edit modal opens from the users tab', async ({ page }) => {
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
     const edit = modal(page, fr.adminEditRegistrationTitle);
     await expect(edit).toBeVisible();
@@ -227,7 +242,7 @@ test.describe('admin tabs', () => {
   test('mobile: no horizontal overflow, tappable tabs, controls within the viewport', async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('mobile'), 'mobile-only layout checks');
 
-    await openAdmin(page, '?tab=users');
+    await openAdmin(page, '/users');
     await expectUsersTabActive(page);
     await expectMobileTabBarUsable(page);
     await expectNoHorizontalOverflow(page);
@@ -275,7 +290,7 @@ test.describe('admin tabs', () => {
   });
 
   test('unsaved logistics edits survive switching tabs', async ({ page }) => {
-    await openAdmin(page, '?tab=logistics');
+    await openAdmin(page, '/logistics');
     const saveButton = panel(page).getByRole('button', { name: fr.save, exact: true });
     await expect(saveButton).toBeDisabled();
     await expect(bedInputs(page).first()).toHaveValue('');
@@ -300,7 +315,7 @@ test.describe('admin tabs', () => {
   });
 
   test('saving a bed assignment persists across reload', async ({ page }) => {
-    await openAdmin(page, '?tab=logistics');
+    await openAdmin(page, '/logistics');
     await pickPlace(page, bedInputs(page).nth(1), 'Salon · Sofa');
     await panel(page).locator('textarea').fill('Arrive tard vendredi');
     const saveButton = panel(page).getByRole('button', { name: fr.save, exact: true });
@@ -322,9 +337,9 @@ test.describe('admin tabs', () => {
   });
 });
 
-test('member visiting /admin?tab=logistics is blocked and sees no tabs', async ({ page }) => {
+test('member visiting /admin/logistics is blocked and sees no tabs', async ({ page }) => {
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByRole('combobox')).toHaveCount(0);

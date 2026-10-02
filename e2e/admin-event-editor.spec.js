@@ -21,7 +21,7 @@ test.afterEach(async () => {
 });
 
 const openEditor = async (page) => {
-  await page.goto('/admin?tab=events');
+  await page.goto('/admin/events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/events/${seeded.eventId}$`));
   await expect(page.getByRole('tab', { name: fr.adminTabEvents })).toHaveAttribute('aria-selected', 'true');
@@ -76,7 +76,7 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
 
   // Back to the list, which shows the saved title and no unsaved marker.
   await page.getByRole('button', { name: fr.eventEditorBack }).click();
-  await expect(page).toHaveURL(/\/admin\?tab=events$/);
+  await expect(page).toHaveURL(/\/admin\/events$/);
   await expect(page.getByRole('tabpanel').getByText('Soirée mousse')).toBeVisible();
   await expect(page.getByRole('tabpanel').getByText(fr.unsavedTag)).toHaveCount(0);
 });

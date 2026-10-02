@@ -20,7 +20,7 @@ test.afterEach(async () => {
 });
 
 const openArchiveDialog = async (page) => {
-  await page.goto('/admin?tab=events');
+  await page.goto('/admin/events');
   await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
   const dialog = page.getByRole('dialog', { name: fr.archiveEventConfirmTitle });
   await expect(dialog).toContainText(fr.archiveEventConfirm.replace('{theme}', E2E_EVENT_THEME));

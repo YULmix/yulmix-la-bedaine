@@ -63,7 +63,7 @@ const bedsOf = async (partyId) => (await getParty(partyId)).attendees.map(a => [
 
 const openLogistics = async (page) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
   await expect(picker(page, ALICE)).toBeVisible();
 };
 
@@ -140,7 +140,7 @@ test('leaving the admin pages with pending edits asks first; switching tabs or l
   // No edits: leaves straight away.
   await page.getByRole('link', { name: fr.homeLinkLabel }).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.goto('/admin?tab=logistics');
+  await page.goto('/admin/logistics');
 
   await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit A');
   // Another admin tab keeps the draft without asking.
@@ -154,7 +154,7 @@ test('leaving the admin pages with pending edits asks first; switching tabs or l
   await expect(leaveDialog).toBeVisible();
   await expect(leaveDialog).toContainText(fr.logisticsLeaveBody.replace('{n}', 1));
   await leaveDialog.getByRole('button', { name: fr.cancel }).click();
-  await expect(page).toHaveURL(/\/admin\?tab=logistics/);
+  await expect(page).toHaveURL(/\/admin\/logistics$/);
   await expect(picker(page, ALICE)).toHaveValue('Chambre 1 · Lit A');
 
   // Closing or reloading the browser tab asks through the browser; dismissing stays.
@@ -237,7 +237,7 @@ test('the header counts the event places: an excluded place leaves, a venue edit
   await expect(panel(page).getByText(fr.eventEditorAllSaved)).toBeVisible();
   await expectTotals(page, { placed: 1, toPlace: 2, capacity: 4, overbooked: 0 });
 
-  await page.goto('/admin?tab=overview');
+  await page.goto('/admin/overview');
   const couchage = panel(page).getByRole('heading', { name: fr.occupancyTitle }).locator('xpath=../..');
   await expect(couchage).toContainText(`1/4 ${fr.occupancyTaken}`);
   await expect(couchage).toContainText(fr.occupancyUnassignedOther.replace('{count}', 2));

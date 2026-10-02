@@ -384,7 +384,7 @@ setting that changes nothing deletes the row.
   event at the venue, or the location holding it, fails; the Sites editor looks up who holds it
   (in any event) when asked to delete, and names them instead.
 - A venue, its locations and places are edited on its page of the Sites tab
-  (`src/components/admin/AdminVenues.jsx`, `/admin?tab=venues&venue=<id>`, #146; read through
+  (`src/components/admin/AdminVenues.jsx`, `/admin/venues/<id>`, #146; read through
   `venue_layout()`, saved through `useAutosave`, #193), which lists
   every venue with its capacity and events, and archives or restores one. A venue lives outside
   any event, so the page shows its capacity (in total and by place type, #164) but no

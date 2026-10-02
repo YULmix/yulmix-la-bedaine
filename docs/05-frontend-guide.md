@@ -14,8 +14,8 @@ no component library.
 | `/inscription` | `RegistrationPage`: the 4-step registration form, create or edit | Authenticated |
 | `/event-details` | `EventDetailsView` | Authenticated |
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
-| `/admin` | `AdminView`, tabs `?tab=overview\|users\|logistics\|events\|tools` | Authenticated **and** admin |
-| `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=details\|sleeping&location=<id>`), same admin shell | Authenticated **and** admin |
+| `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|tools`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
+| `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
 
 `ProtectedRoute` (`src/App.jsx`) renders a skeleton while auth resolves, redirects
@@ -44,13 +44,13 @@ flowchart TD
   REGPAGE --> FORM["RegistrationForm<br/>4 steps + sticky total"]
   ADMIN -->|"god-mode dialog"| FORM
   ADMIN --> PROFILE["UserProfileDialog"]
-  ADMIN -->|"?tab=overview"| OVERVIEW["AdminOverview"]
-  ADMIN -->|"?tab=users"| USERS["AdminUserManagement"]
-  ADMIN -->|"?tab=logistics&view="| LOGISTICS["AdminLogisticsView<br/>places, food, volunteering,<br/>transport, comments"]
-  ADMIN -->|"?tab=events"| EVENTS["AdminEvents"]
+  ADMIN -->|"/admin/overview"| OVERVIEW["AdminOverview"]
+  ADMIN -->|"/admin/users"| USERS["AdminUserManagement"]
+  ADMIN -->|"/admin/logistics/&lt;view&gt;"| LOGISTICS["AdminLogisticsView<br/>places, food, volunteering,<br/>transport, comments"]
+  ADMIN -->|"/admin/events"| EVENTS["AdminEvents"]
   ADMIN -->|"/admin/events/:id"| EDITOR["EventEditor<br/>details draft, sleeping plan"]
-  ADMIN -->|"?tab=budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
-  ADMIN -->|"?tab=tools"| TOOLS["AdminTools<br/>export, feedback"]
+  ADMIN -->|"/admin/budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
+  ADMIN -->|"/admin/tools/&lt;view&gt;"| TOOLS["AdminTools<br/>export, feedback"]
 ```
 
 Sizes, as a blunt signal of where the complexity is:
@@ -65,13 +65,15 @@ Sizes, as a blunt signal of where the complexity is:
 
 `AdminView` keeps all admin state, data fetching and write handlers; each tab is a component in
 `src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
-`AdminEvents`, `AdminTools`, `UserProfileDialog`). The active tab is the `?tab=` query param
-(`overview` by default), so tabs are deep-linkable; tabs are declared in the `ADMIN_TABS` array.
+`AdminEvents`, `AdminTools`, `UserProfileDialog`). The active tab is the URL's first segment
+(`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
+built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
+also owns the tab and view ids; components never format one themselves.
 Because state lives in `AdminView`, unsaved logistics edits survive a tab switch. On phones the
 tab list is a fixed bottom bar; from `md` up it's a row of pills.
 
-The Logistique tab has views of its own (#179), in `?view=` (`places` by default, declared in
-`LOGISTICS_VIEWS`): place assignment, and read-only views of the form's answers (`food`,
+The Logistique tab has views of its own (#179), in `/admin/logistics/<view>` (`places` by default, the
+ids in `LOGISTICS_VIEW_IDS`): place assignment, and read-only views of the form's answers (`food`,
 `volunteering`, `transport`, `comments`, in `LogisticsFormViews.jsx`). Those list confirmed
 parties only (not cancelled, not waitlisted); their aggregations are pure functions in
 `src/lib/adminStats.js`. Pending place changes stay in `AdminView`, so they survive switching
@@ -82,7 +84,7 @@ The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Outils has views too, in `?view=` (`exports` by default, `history`, `feedback`), switched with the
+Outils has views too, in `/admin/tools/<view>` (`exports` by default, `history`, `feedback`), switched with the
 same `ViewTabs` / `ViewPanel` (`src/components/ui`) as Logistique. Its « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default).
@@ -99,8 +101,8 @@ line, for the same `toCsv` / `toTsv`.
 ## Navigation and layout
 
 The navigation model is [ADR 0022](./adr/0022-admin-navigation-and-page-widths.md) (#191). It is
-being implemented: until #196, #208 and #209 land, the admin still uses `?tab=` and the 7-tab
-bar described above. New screens follow the model, not the current code.
+being implemented: the path URLs are in (#196), but until #208 and #209 land the admin still has
+the 7-tab bar described above. New screens follow the model, not the current code.
 
 ### Adding an admin section or view
 
