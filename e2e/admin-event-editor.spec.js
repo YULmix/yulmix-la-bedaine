@@ -81,6 +81,20 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   await expect(page.getByRole('tabpanel').getByText(fr.unsavedTag)).toHaveCount(0);
 });
 
+// #192: the member pages read the event from the app shell, which used to keep the one it loaded
+// on arrival until a reload.
+test('a saved title shows on the home page at once, without a reload', async ({ page }) => {
+  const details = await openEditor(page);
+  await details.getByLabel(fr.eventTitle).fill('Soirée mousse');
+  await details.getByRole('button', { name: fr.save, exact: true }).click();
+  await expect(details.getByRole('status')).toHaveText(fr.eventEditorAllSaved);
+
+  await page.getByRole('link', { name: fr.homeLinkLabel }).click();
+  // The home page, not the editor still on its way out: then its poster's title.
+  await expect(page.getByRole('heading', { name: fr.inviteTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Soirée mousse');
+});
+
 test('numbers can be cleared and retyped, an invalid one blocks saving, and edits can be discarded', async ({ page }) => {
   const details = await openEditor(page);
   const max = details.getByLabel(fr.eventMaxAttendeesLabel);

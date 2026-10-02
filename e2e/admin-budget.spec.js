@@ -183,6 +183,22 @@ test('a new price and ratio apply to new registrations; existing ones keep their
   }
 });
 
+// #192: the member pages read the event from the app shell, which used to keep the one it loaded
+// on arrival until a reload.
+test('a new price shows on the member pages at once, without a reload', async ({ page }) => {
+  await page.goto('/admin?tab=budget');
+  await panel(page).getByLabel(fr.eventSellingPriceLabel).fill('250');
+  await panel(page).getByRole('button', { name: fr.scenarioApply, exact: true }).click();
+  await page.getByRole('dialog', { name: fr.scenarioApplyConfirmTitle }).getByRole('button', { name: fr.scenarioApply, exact: true }).click();
+  await expect(page.getByText(fr.pricingAppliedToast)).toBeVisible();
+
+  await page.getByRole('link', { name: fr.homeLinkLabel }).click();
+  await expect(page.getByText(fr.invitePriceLabel).locator('..')).toContainText('250');
+  await page.getByRole('link', { name: fr.registerGroupButton }).click();
+  const estimate = page.getByText(fr.estimatedAmountDueLabel).locator('xpath=following-sibling::p[1]');
+  await expect(estimate).toHaveText(money(250));
+});
+
 test('the event editor and the tools tab no longer hold money settings', async ({ page }) => {
   await page.goto('/admin?tab=tools');
   await expect(panel(page).getByRole('heading', { name: fr.scenarioSimulatorTitle })).toHaveCount(0);

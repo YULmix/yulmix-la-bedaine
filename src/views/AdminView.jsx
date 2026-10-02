@@ -26,6 +26,7 @@ import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
 import { invalidateEventPlaces, useEventPlaces } from '../lib/eventPlaces';
 import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
 import { EVENT_WITH_VENUE } from '../lib/venue';
+import { splitEvents } from '../lib/activeEvent';
 import { dbErrorMessage } from '../lib/dbErrors';
 import { dirtyFields, draftUpdate, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
 import { useToasts } from '../hooks/useToasts';
@@ -52,7 +53,9 @@ const TOOLS_VIEWS = [
   { id: 'feedback', labelKey: 'toolsViewFeedback', icon: Inbox }
 ];
 
-const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
+// `onEventsChange` tells the app shell that events changed here (activated, archived, edited,
+// repriced, moved to another venue), so the member pages it feeds show them without a reload (#192).
+const AdminView = ({ activeEvent, isAdmin, onSignOut, onEventsChange }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   // The event editor is its own route, /admin/events/:eventId (?section=&location=), under the
@@ -162,7 +165,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       if (eventsError) throw eventsError;
       setEvents(eventsData || []);
 
-      const activeEv = eventsData?.find(e => e.is_active) || eventsData?.[0];
+      const { activeEvent: activeEv } = splitEvents(eventsData);
       setActiveEventState(activeEv);
       if (activeEv) {
         await Promise.all([fetchParties(activeEv.id), fetchBudget(activeEv.id)]);
@@ -265,6 +268,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         .eq('id', activeEventState.id);
       if (updateError) throw updateError;
       addToast(fr.pricingAppliedToast, 'success');
+      onEventsChange?.();
       await fetchAllData();
     } catch (err) {
       console.error('Error applying pricing:', err);
@@ -314,6 +318,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
         }
       } else {
         addToast(fr.eventActivatedToast.replace('{theme}', event.theme), 'success');
+        onEventsChange?.();
         fetchAllData();
       }
     } catch (err) {
@@ -335,6 +340,7 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
       addToast(fr.eventArchivedToast.replace('{theme}', event.theme), 'success');
       // Archiving moved the event onto a frozen copy of its venue (#148): other places, same layout.
       invalidateEventPlaces(event.id);
+      onEventsChange?.();
       fetchAllData();
     } catch (err) {
       console.error('Error archiving event:', err);
@@ -387,7 +393,8 @@ const AdminView = ({ activeEvent, otherEvents, isAdmin, onSignOut }) => {
     const { data, error: eventsError } = await supabase.from('events').select(EVENT_WITH_VENUE).order('created_at', { ascending: false });
     if (eventsError) throw eventsError;
     setEvents(data || []);
-    setActiveEventState(data?.find(e => e.is_active) || data?.[0]);
+    setActiveEventState(splitEvents(data).activeEvent);
+    onEventsChange?.();
   };
 
   const saveEventChanges = async () => {
