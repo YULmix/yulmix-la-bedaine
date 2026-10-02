@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { PARTY_WITH_ATTENDEES, orderAttendees } from '../lib/parties';
+import { cancelParty } from '../lib/parties';
 import { fetchLocationGalleries } from '../lib/galleries';
 import { sleepingByLocation } from '../lib/places';
-import { dbErrorMessage } from '../lib/dbErrors';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
 import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
@@ -22,7 +21,6 @@ import {
   TRANSPORT_TYPES,
   getOptionLabel,
   EDITABLE_REGISTRATION_STATUSES,
-  REGISTRATION_STATUS,
   getAttendeeTypeLabel,
   getParticipationSummaryLabel
 } from '../lib/registrationOptions';
@@ -70,19 +68,12 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const handleCancel = async () => {
     setCancelling(true);
     try {
-      const { data, error: cancelError } = await orderAttendees(supabase
-        .from('user_parties')
-        .update({ status: REGISTRATION_STATUS.CANCELLED })
-        .eq('id', registration.id)
-        .select(PARTY_WITH_ATTENDEES))
-        .single();
-      if (cancelError) throw cancelError;
+      const cancelled = await cancelParty(supabase, registration.id);
       setConfirmingCancel(false);
-      onCancelled?.(data);
+      onCancelled?.(cancelled);
     } catch (err) {
-      console.error('Error cancelling registration:', err);
       setConfirmingCancel(false);
-      onError?.(dbErrorMessage(err, fr.cancelRegistrationError));
+      onError?.(err.message);
     } finally {
       setCancelling(false);
     }

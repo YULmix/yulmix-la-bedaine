@@ -492,23 +492,17 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       // Party and attendees in one transaction. The database computes the amount owed, the price
       // lock and the waitlist, registers the party (again, if it was cancelled), and leaves
       // payment_status and admin_notes alone.
-      let savedParty;
-      try {
-        savedParty = await saveRegistration(supabase, {
-          eventId: event.id,
-          attendees: attendeesData,
-          party: {
-            logistics,
-            transport,
-            music_requests: musicRequests,
-            message_to_organizers: messageToOrganizers
-          },
-          userId: adminMode ? userId : undefined
-        });
-      } catch (saveError) {
-        console.error('save_registration error:', saveError.message, saveError.code, saveError.details, saveError.hint, JSON.stringify(saveError));
-        throw saveError;
-      }
+      const savedParty = await saveRegistration(supabase, {
+        eventId: event.id,
+        attendees: attendeesData,
+        party: {
+          logistics,
+          transport,
+          music_requests: musicRequests,
+          message_to_organizers: messageToOrganizers
+        },
+        userId: adminMode ? userId : undefined
+      });
 
       if (!savedParty) {
         throw appError(fr.noRowReturnedError);

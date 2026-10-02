@@ -144,7 +144,14 @@ The two editors without a Save button, Couchage and Sites (the venue layout, rea
 `venue_layout()`), save through `useAutosave` (`src/hooks/`): writes with the same key go out one
 after the other, each built when its turn comes; a Stepper's writes wait 400 ms for the last
 click; what is still waiting is sent when the editor goes away; one status line
-(« Enregistrement… » / « Enregistré ») and one error say how it went, and a failure reloads. Otherwise ownership is:
+(« Enregistrement… » / « Enregistré ») and one error say how it went, and a failure reloads.
+
+Parties (registrations) are read and written only through the party module, `src/lib/parties.ts`
+(#197), never with `supabase.from('user_parties')` in a component. Its functions log the raw error
+and throw one whose message is already French, so a caller shows `error.message` (or passes the
+error to `dbErrorMessage`, which keeps it). New data modules follow the same contract.
+
+Otherwise ownership is:
 
 - **`App.jsx`** — `session`, `user`, `isAuthenticated`, `isAdmin`, `activeEvent`, `otherEvents`.
   Passed down as props.
