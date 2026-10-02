@@ -17,6 +17,8 @@ import { Button, ConfirmDialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTab
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
 import { useAdminParties } from '../lib/adminParties';
 import { useUnsavedLogistics } from '../lib/logistics';
+import { useEventPlaces } from '../lib/eventPlaces';
+import { useBudget } from '../lib/budget';
 import { activateEvent, applyPricing, archiveEvent, refreshEvents, saveEventChanges, useEvents } from '../lib/events';
 import { appError, dbErrorMessage } from '../lib/dbErrors';
 import { dirtyFields, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
@@ -71,6 +73,11 @@ const AdminView = ({ isAdmin }) => {
   // The active event's parties, for the exports (until #209 moves them into Inscrits), from the
   // store the sections read (src/lib/adminParties.ts, #195).
   const { activeParties } = useAdminParties(activeEventState?.id);
+  // The shell keeps the active event's other shared caches subscribed, so moving between sections
+  // (and in and out of the event editor) never reloads them: a cache reloads when a screen
+  // subscribes while nobody was.
+  useEventPlaces(activeEventState?.id);
+  useBudget(activeEventState?.id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
