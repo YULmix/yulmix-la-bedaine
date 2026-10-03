@@ -102,8 +102,8 @@ describe('writes reload the list, for every screen', () => {
     expect(client.from).toHaveBeenCalledTimes(1);
   });
 
-  test('activateEvent: the database\'s unique refusal says the same', async () => {
-    const { client } = mockClient([{ data: [OTHER], error: null }, { data: null, error: { message: 'duplicate key', code: '23505' } }]);
+  test('activateEvent: the database\'s coded refusal says the same', async () => {
+    const { client } = mockClient([{ data: [OTHER], error: null }, { data: null, error: { message: 'event_already_active', code: '23505' } }]);
     const store = createEventsStore(client);
     await store.refresh();
     await expect(store.activateEvent(OTHER)).rejects.toThrow(fr.eventAlreadyActiveError);

@@ -2141,6 +2141,31 @@ describe('🛏️ event_places, venue_layout and set_place_override (#193)', () 
     expect(await overrideRows()).toEqual([]);
   });
 
+  test('deleting a place someone holds, or its location, raises place_in_use (#198)', async () => {
+    const party = await saveOk(adminAuthClient, EVENT_ID, [person('Ann')]);
+    await ok(adminAuthClient.from('place_assignments').insert({ place_id: ids['Lit 1'], attendee_id: await attendeeOf(party.id) }));
+
+    const placeDelete = await adminAuthClient.from('places').delete().eq('id', ids['Lit 1']);
+    expect(placeDelete.error?.message).toBe('place_in_use');
+    const locationDelete = await adminAuthClient.from('locations').delete().eq('id', ids['Chambre A']);
+    expect(locationDelete.error?.message).toBe('place_in_use');
+    // A free place still goes.
+    expect((await adminAuthClient.from('places').delete().eq('id', ids.Matelas)).error).toBeNull();
+  });
+
+  test('activating a second event raises event_already_active (#198)', async () => {
+    try {
+      await ok(adminAuthClient.from('events').update({ is_active: false }).eq('is_active', true));
+      await ok(adminAuthClient.from('events').update({ is_active: true }).eq('id', EVENT_ID));
+      const second = await adminAuthClient.from('events').update({ is_active: true }).eq('id', SAME_VENUE_EVENT_ID);
+      expect(second.error?.message).toBe('event_already_active');
+      // Re-saving the active one is not a second.
+      expect((await adminAuthClient.from('events').update({ is_active: true }).eq('id', EVENT_ID)).error).toBeNull();
+    } finally {
+      await adminAuthClient.from('events').update({ is_active: false }).in('id', EVENT_IDS);
+    }
+  });
+
   test("an archived event's settings can't change, even by a write that would change nothing", async () => {
     await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
     // Archiving moved the event onto a frozen copy of the venue; it reads the same.

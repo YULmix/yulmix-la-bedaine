@@ -60,15 +60,13 @@ describe('setIsAdmin', () => {
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  test('maps the database\'s refusal, a missing function, and anything else', async () => {
+  test('maps the database\'s refusal and anything else', async () => {
     const { client } = mockClient(
       { data: null, error: { message: 'root_admin_cannot_be_demoted' } },
-      { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } },
       { data: null, error: { message: 'boom' } }
     );
     const args = { profileId: 'u2', isAdmin: false, currentUser: 'me' };
     await expect(setIsAdmin(client, args)).rejects.toThrow(fr.dbErrorRootAdminCannotBeDemoted);
-    await expect(setIsAdmin(client, args)).rejects.toThrow(fr.adminToggleNotDeployedError);
     await expect(setIsAdmin(client, args)).rejects.toThrow(fr.updateError);
   });
 });

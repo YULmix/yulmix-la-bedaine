@@ -362,7 +362,6 @@
   "selfAdminToggleError": "Vous ne pouvez pas modifier votre propre statut administrateur.",
   "adminStatusEnabledToast": "Statut admin activé pour {email}",
   "adminStatusDisabledToast": "Statut admin désactivé pour {email}",
-  "adminToggleNotDeployedError": "La fonction de gestion des administrateurs n'est pas encore déployée. Contactez le support technique.",
   "paymentStatusUpdatedToast": "Statut de paiement mis à jour: {action}",
   "changesSavedToast": "Modifications enregistrées",
   "historyFetchError": "Erreur lors de la récupération de l'historique",
