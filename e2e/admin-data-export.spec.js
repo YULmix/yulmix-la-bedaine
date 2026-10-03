@@ -1,4 +1,4 @@
-// The Outils tab's data export (#178): « Par groupe » and « Par participant », each as a CSV
+// Inscrits' « Exporter » dialog (#178, #209): « Par groupe » and « Par participant », each as a CSV
 // download (BOM, quoted cells) and a Google Sheets copy (TSV, one line per row). A waitlisted
 // party is listed with its status; members are blocked.
 import { test, expect } from '@playwright/test';
@@ -52,7 +52,11 @@ test.afterEach(async () => {
   waitlisted = null;
 });
 
-const card = page => page.locator('section').filter({ has: page.getByRole('heading', { name: fr.dataExportTitle }) });
+const card = page => page.getByRole('dialog', { name: fr.dataExportTitle });
+const openExport = async page => {
+  await page.getByRole('button', { name: fr.adminExportAction }).click();
+  await expect(card(page)).toBeVisible();
+};
 
 const downloadCsv = async (page, exportLabel) => {
   await card(page).getByText(exportLabel, { exact: true }).click();
@@ -65,7 +69,8 @@ const downloadCsv = async (page, exportLabel) => {
 
 test('« Par groupe » CSV: the new columns, the waitlisted party\'s status, escaped text', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools');
+  await page.goto('/admin/users');
+  await openExport(page);
   const { name, text } = await downloadCsv(page, fr.exportByParty);
 
   expect(name).toMatch(/^inscriptions_.*\.csv$/);
@@ -84,7 +89,8 @@ test('« Par groupe » CSV: the new columns, the waitlisted party\'s status, esc
 
 test('« Par participant » CSV: one row per attendee with dietary needs, no money', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools');
+  await page.goto('/admin/users');
+  await openExport(page);
   const { name, text } = await downloadCsv(page, fr.exportByAttendee);
 
   expect(name).toMatch(/^participants_.*\.csv$/);
@@ -103,7 +109,8 @@ test('« Par participant » CSV: one row per attendee with dietary needs, no mon
 test('the Google Sheets copy puts one line per row in the clipboard', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools');
+  await page.goto('/admin/users');
+  await openExport(page);
   await card(page).getByText(fr.exportByParty, { exact: true }).click();
   await card(page).getByRole('button', { name: fr.exportCopyTSVButton }).click();
   await expect(page.getByText(fr.exportCopyToast)).toBeVisible();
@@ -116,9 +123,31 @@ test('the Google Sheets copy puts one line per row in the clipboard', async ({ p
   expect(tsv).toContain('Daft Punk Justice');
 });
 
-test('a member opening Outils is blocked', async ({ page }) => {
+test('the dialog is a bottom sheet on a phone, and the old export URL lands on Inscrits', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/tools/exports');
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await openExport(page);
+  const box = await card(page).boundingBox();
+  expect(box.width, 'full width').toBeGreaterThanOrEqual(388);
+  expect(box.y + box.height, 'against the bottom edge').toBeGreaterThanOrEqual(795);
+  await expect(card(page).getByRole('button', { name: fr.exportCSVButton })).toBeVisible();
+  await expect(card(page).getByRole('button', { name: fr.exportCopyTSVButton })).toBeVisible();
+});
+
+test('a member opening Inscrits is blocked from exporting', async ({ page }) => {
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin/tools');
+  await page.goto('/admin/users');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
-  await expect(page.getByRole('button', { name: fr.exportCSVButton })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
+});
+
+test('« Exporter » is on the list, not on the history', async ({ page }) => {
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users');
+  await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toBeVisible();
+  await page.goto('/admin/users/history');
+  await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toHaveCount(0);
 });

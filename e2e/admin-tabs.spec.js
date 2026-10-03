@@ -1,5 +1,5 @@
 // The admin navigation (#29, #83, #208): /admin/<section>, overview | users | logistics | budget |
-// events | venues | tools (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
+// events | venues | feedback (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
 // on phones. Older ?tab= links redirect to their path.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
@@ -22,13 +22,13 @@ const OVERVIEW_TAB = fr.adminTabOverview;
 const USERS_TAB = fr.adminTabUsers;
 const LOGISTICS_TAB = fr.adminTabLogistics;
 // The page titles (h1): the section, and the view after a dot.
-const USERS_HEADING = fr.adminTabUsers;
+const USERS_HEADING = `${fr.adminTabUsers} · ${fr.usersViewList}`;
 const LOGISTICS_HEADING = `${fr.adminTabLogistics} · ${fr.logisticsViewTitle}`;
 const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, exact: true });
 const SECTION_COUNT = 7;
 // The phone bar's sections (ADR 0022); the others are under « Plus ».
 const BAR_SECTIONS = [fr.adminTabOverview, fr.adminTabUsers, fr.adminTabLogistics, fr.adminTabBudget];
-const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTools];
+const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabFeedback];
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in
@@ -215,7 +215,7 @@ test.describe('admin tabs', () => {
     await page.route('**/rest/v1/app_feedback*', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' }));
     await openAdmin(page, '/logistics');
     await expectLogisticsTabActive(page);
-    await openAdmin(page, '/tools/feedback');
+    await openAdmin(page, '/feedback');
     await expect(panel(page).getByText(fr.adminLoadError)).toBeVisible();
     await expect(panel(page).getByRole('button', { name: fr.retry })).toBeVisible();
   });
@@ -428,18 +428,19 @@ test.describe('admin navigation shell', () => {
     const fromHeader = async (locator) => 64 + (await locator.boundingBox()).y - (await page.locator('#main').boundingBox()).y;
 
     await openAdmin(page, '/users');
-    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT);
+    // The sections, and Inscrits' two views under it.
+    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT + 2);
     await expect(page.getByRole('tablist', { name: fr.adminTabsAriaLabel })).toHaveCount(0);
     const filters = adminMain(page).getByRole('group', { name: fr.filterLabel });
     await expect(filters).toBeVisible();
     expect(await fromHeader(filters), 'Inscrits starts low').toBeLessThanOrEqual(160);
     await shot(page, 'desktop-users');
 
-    await openAdmin(page, '/tools/history');
-    await expect(adminNav(page).getByRole('link', { name: fr.toolsViewHistory })).toHaveAttribute('aria-current', 'page');
+    await openAdmin(page, '/users/history');
+    await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toHaveAttribute('aria-current', 'page');
     // No view tabs on desktop: the sidebar lists the views.
-    await expect(page.getByRole('tablist', { name: fr.toolsViewsLabel })).toBeHidden();
-    const history = page.getByRole('tabpanel', { name: fr.toolsViewHistory });
+    await expect(page.getByRole('tablist', { name: fr.usersViewsLabel })).toBeHidden();
+    const history = page.getByRole('tabpanel', { name: fr.usersViewHistory });
     await expect(history).toBeVisible();
     expect(await fromHeader(history), 'the change history starts low').toBeLessThanOrEqual(160);
     await shot(page, 'desktop-history');

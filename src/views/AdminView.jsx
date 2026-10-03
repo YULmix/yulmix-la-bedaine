@@ -9,7 +9,7 @@ import LogisticsSection from '../components/admin/sections/LogisticsSection';
 import BudgetSection from '../components/admin/sections/BudgetSection';
 import EventsSection from '../components/admin/sections/EventsSection';
 import VenuesSection from '../components/admin/sections/VenuesSection';
-import ToolsSection from '../components/admin/sections/ToolsSection';
+import FeedbackSection from '../components/admin/sections/FeedbackSection';
 import { AdminBottomBar, AdminHeaderActionsProvider, AdminPageHeader, AdminSidebar } from '../components/admin/AdminNav';
 import { ConfirmDialog, Notice, ViewPanel, ViewTabs } from '../components/ui';
 import { pageWidthClass } from '../lib/pageWidth';
@@ -19,6 +19,7 @@ import { useEventPlaces } from '../lib/eventPlaces';
 import { useBudget } from '../lib/budget';
 import { useUnsavedLogistics } from '../lib/logistics';
 import { useUnsavedEventIds } from '../lib/eventDrafts';
+import { useFeedback } from '../lib/feedback';
 
 // The admin shell (#195, #208): routes to the current section, the navigation, and the guards for
 // unsaved work. Each section loads, shows and changes its own data through the stores in src/lib;
@@ -33,7 +34,7 @@ const SECTION_COMPONENTS = {
   budget: BudgetSection,
   events: EventsSection,
   venues: VenuesSection,
-  tools: ToolsSection
+  feedback: FeedbackSection
 };
 
 const AdminView = ({ isAdmin }) => {
@@ -70,6 +71,7 @@ const AdminView = ({ isAdmin }) => {
   // its store, src/lib/logistics.ts.)
   const hasUnsavedEvent = useUnsavedEventIds(events).length > 0;
   const unsavedLogistics = useUnsavedLogistics();
+  const { unresolvedCount: unresolvedFeedback } = useFeedback();
   useEffect(() => {
     if (!hasUnsavedEvent && !unsavedLogistics) return;
     const warn = (event) => { event.preventDefault(); };
@@ -92,7 +94,8 @@ const AdminView = ({ isAdmin }) => {
 
   // Whether each section shows its marker (the registry says which), in the sidebar, the bar and
   // « Plus ».
-  const markerValues = { unsavedLogistics: unsavedLogistics > 0, unsavedEvent: hasUnsavedEvent };
+  // A marker is a dot, or a count (a number: nothing for 0).
+  const markerValues = { unsavedLogistics: unsavedLogistics > 0, unsavedEvent: hasUnsavedEvent, unresolvedFeedback: unresolvedFeedback > 0 && unresolvedFeedback };
   const markers = Object.fromEntries(ADMIN_SECTION_ENTRIES.map(entry => [entry.id, !!entry.marker && markerValues[entry.marker]]));
   const Section = SECTION_COMPONENTS[route.section];
   const theme = activeEvent?.theme;

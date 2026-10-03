@@ -571,3 +571,13 @@ export async function ensureOtherEvent() {
     'create other e2e event'
   ).id;
 }
+
+// The feedback inbox (#209): start from an empty one, then add items sent by the admin account
+// (the insert policy only lets a user write their own); only the seeded users' items are cleared.
+export async function resetFeedback(contents = []) {
+  const db = await adminClient();
+  check(await db.from('app_feedback').delete().in('user_id', [MEMBER_ID, ADMIN_ID]), 'clear feedback');
+  if (contents.length) {
+    check(await db.from('app_feedback').insert(contents.map(content => ({ user_id: ADMIN_ID, content }))), 'seed feedback');
+  }
+}

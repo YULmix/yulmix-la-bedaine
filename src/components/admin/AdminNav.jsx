@@ -13,8 +13,15 @@ import { Dialog, cx } from '../ui';
 // the page header, one line with the page's title and its actions.
 
 // `markers` maps a section id to the marker it shows (src/views/AdminView.jsx), or nothing.
-const Marker = ({ className }) => (
-  <span className={cx('size-2 shrink-0 rounded-full bg-warn', className)} aria-label={fr.unsavedTag} title={fr.unsavedTag} />
+// `value` is true for a dot (unsaved work) or a number for a count (unresolved feedback).
+const Marker = ({ value, label = fr.unsavedTag, className }) => typeof value === 'number' ? (
+  <span
+    className={cx('flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-warn px-1 font-data text-[0.6875rem] font-semibold leading-none text-night', className)}
+    aria-label={fr.adminFeedbackUnresolvedCount.replace('{count}', value)}
+    title={fr.adminFeedbackUnresolvedCount.replace('{count}', value)}
+  >{value}</span>
+) : (
+  <span className={cx('size-2 shrink-0 rounded-full bg-warn', className)} aria-label={label} title={label} />
 );
 
 const sectionHref = (section) => adminHref(adminRoute(section.id));
@@ -44,7 +51,7 @@ export const AdminSidebar = ({ page, markers, theme }) => (
               >
                 <Icon aria-hidden="true" className={cx('size-4.5 shrink-0', active ? 'text-neon' : 'text-faint')} strokeWidth={1.75} />
                 <span className="min-w-0 flex-1 truncate">{fr[section.labelKey]}</span>
-                {markers[section.id] && <Marker />}
+                {markers[section.id] && <Marker value={markers[section.id]} />}
               </Link>
               {active && section.views.length > 0 && (
                 <ul className="mb-1 ml-7 mt-0.5">
@@ -61,7 +68,7 @@ export const AdminSidebar = ({ page, markers, theme }) => (
                           )}
                         >
                           <span className="min-w-0 flex-1 truncate">{fr[view.labelKey]}</span>
-                          {view.showsMarker && markers[section.id] && <Marker />}
+                          {view.showsMarker && markers[section.id] && <Marker value={markers[section.id]} />}
                         </Link>
                       </li>
                     );
@@ -91,6 +98,8 @@ export const AdminBottomBar = ({ page, markers }) => {
   const moreRef = useRef(null);
   const moreActive = MORE_SECTIONS.some(section => section.id === page.section.id);
   const moreMarked = MORE_SECTIONS.some(section => markers[section.id]);
+  // « Plus » says « Non enregistré » when unsaved work is behind it, and otherwise only that there is something to deal with.
+  const moreUnsaved = MORE_SECTIONS.some(section => markers[section.id] === true);
   const closeMore = () => {
     setMoreOpen(false);
     // The native dialog gives focus back to what opened it; say so for the link that closed it.
@@ -112,7 +121,7 @@ export const AdminBottomBar = ({ page, markers }) => {
               aria-current={active ? 'page' : undefined} className={barItemClass(active)}>
               <Icon aria-hidden="true" className="size-5" strokeWidth={1.75} />
               <span aria-hidden="true">{fr[section.shortKey]}</span>
-              {markers[section.id] && <Marker className="absolute right-[calc(50%-1.25rem)] top-2" />}
+              {markers[section.id] && <Marker value={markers[section.id]} className="absolute right-[calc(50%-1.25rem)] top-2" />}
             </Link>
           );
         })}
@@ -120,7 +129,7 @@ export const AdminBottomBar = ({ page, markers }) => {
           aria-current={moreActive ? 'true' : undefined} className={barItemClass(moreActive)}>
           <Ellipsis aria-hidden="true" className="size-5" strokeWidth={1.75} />
           <span>{fr.adminMore}</span>
-          {moreMarked && <Marker className="absolute right-[calc(50%-1.25rem)] top-2" />}
+          {moreMarked && <Marker value label={moreUnsaved ? fr.unsavedTag : fr.adminMoreMarked} className="absolute right-[calc(50%-1.25rem)] top-2" />}
         </button>
       </nav>
 
@@ -138,7 +147,7 @@ export const AdminBottomBar = ({ page, markers }) => {
                   )}>
                   <Icon aria-hidden="true" className={cx('size-5 shrink-0', active ? 'text-neon' : 'text-faint')} strokeWidth={1.75} />
                   <span className="min-w-0 flex-1">{fr[section.labelKey]}</span>
-                  {markers[section.id] && <Marker />}
+                  {markers[section.id] && <Marker value={markers[section.id]} />}
                   <ChevronRight aria-hidden="true" className="size-4.5 shrink-0 text-faint" />
                 </Link>
               </li>
@@ -172,9 +181,10 @@ export const AdminPageHeader = ({ page, slotRef, theme }) => (
   <div className="mb-3 md:mb-4">
     {theme && <p className="truncate font-data text-xs uppercase tracking-widest text-neon md:hidden">{theme}</p>}
     <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2">
-      <h1 id="admin-page-title" className="min-w-0 flex-1 font-display text-xl text-ink md:text-display-md">
+      <h1 id="admin-page-title" className="min-w-0 flex-auto font-display text-xl text-ink md:text-display-md">
         {fr[page.section.labelKey]}
-        {page.view && <span className="text-faint"> · {fr[page.view.labelKey]}</span>}
+        {/* On a phone the view's tabs under the title name it. */}
+        {page.view && <span className="text-faint max-md:sr-only"> · {fr[page.view.labelKey]}</span>}
       </h1>
       <div ref={slotRef} className="flex flex-wrap items-center gap-2 empty:hidden" />
     </div>

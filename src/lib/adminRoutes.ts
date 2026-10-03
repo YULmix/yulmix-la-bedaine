@@ -3,38 +3,50 @@
 // Components parse the location with parseAdminLocation() and build links with adminHref(), and
 // never format an admin URL themselves.
 //
-//   /admin/overview · /admin/users · /admin/budget
+//   /admin/overview · /admin/budget · /admin/feedback
+//   /admin/users[/<view>]                            view: list (default), history
 //   /admin/logistics[/<view>]                        view: places (default), food, …
-//   /admin/tools[/<view>]                            view: exports (default), history, feedback
 //   /admin/events · /admin/events/<eventId>[?section=sleeping]
 //   /admin/venues[/<venueId>[/<locationId>]]
 //
 // The query-param URLs that came before (/admin?tab=…&view=…&venue=…&location=…, and a bare
 // /admin) still work: adminRedirect() maps them, and any URL that isn't canonical (an unknown
 // section or view, a trailing slash), to the canonical href, which the admin view navigates to
-// with `replace` so Back doesn't return to the old one.
+// with `replace` so Back doesn't return to the old one. So do the dissolved « Outils » URLs
+// (#209): /admin/tools[/<view>] and ?tab=tools&view=… go to where each view moved.
 
 export const ADMIN_ROOT = '/admin';
 
-export const ADMIN_SECTIONS = ['overview', 'users', 'logistics', 'budget', 'events', 'venues', 'tools'] as const;
+export const ADMIN_SECTIONS = ['overview', 'users', 'logistics', 'budget', 'events', 'venues', 'feedback'] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 export const DEFAULT_ADMIN_SECTION: AdminSection = 'overview';
 
 // A section's views, the first being its default.
 export const LOGISTICS_VIEW_IDS = ['places', 'food', 'volunteering', 'transport', 'comments'] as const;
 export type LogisticsView = (typeof LOGISTICS_VIEW_IDS)[number];
-export const TOOLS_VIEW_IDS = ['exports', 'history', 'feedback'] as const;
-export type ToolsView = (typeof TOOLS_VIEW_IDS)[number];
+export const USERS_VIEW_IDS = ['list', 'history'] as const;
+export type UsersView = (typeof USERS_VIEW_IDS)[number];
 
 export const EDITOR_SECTIONS = ['details', 'sleeping'] as const;
 export type EditorSection = (typeof EDITOR_SECTIONS)[number];
 
 export type AdminRoute =
-  | { section: 'overview' | 'users' | 'budget' }
+  | { section: 'overview' | 'budget' | 'feedback' }
+  | { section: 'users'; view: UsersView }
   | { section: 'logistics'; view: LogisticsView }
-  | { section: 'tools'; view: ToolsView }
   | { section: 'events'; eventId: string | null; editorSection: EditorSection }
   | { section: 'venues'; venueId: string | null; locationId: string | null };
+
+// Where the views of the dissolved « Outils » section moved (#209). Any other view, or none, was
+// its default, the export, which is now an action of Inscrits.
+const TOOLS_VIEW_ROUTES: Record<string, AdminRoute> = {
+  history: { section: 'users', view: 'history' },
+  feedback: { section: 'feedback' }
+};
+const TOOLS_DEFAULT_ROUTE: AdminRoute = { section: 'users', view: USERS_VIEW_IDS[0] };
+const toolsRoute = (view: string | null | undefined): AdminRoute =>
+  (view && Object.hasOwn(TOOLS_VIEW_ROUTES, view) ? TOOLS_VIEW_ROUTES[view] : TOOLS_DEFAULT_ROUTE);
+const LEGACY_TOOLS = 'tools';
 
 const oneOf = <T extends string>(values: readonly T[], value: string | null | undefined, fallback: T): T =>
   values.includes(value as T) ? (value as T) : fallback;
@@ -55,7 +67,7 @@ export const isAdminPath = (pathname: string): boolean => pathname === ADMIN_ROO
 export const adminRoute = (section: AdminSection): AdminRoute => {
   switch (section) {
     case 'logistics': return { section, view: LOGISTICS_VIEW_IDS[0] };
-    case 'tools': return { section, view: TOOLS_VIEW_IDS[0] };
+    case 'users': return { section, view: USERS_VIEW_IDS[0] };
     case 'events': return { section, eventId: null, editorSection: EDITOR_SECTIONS[0] };
     case 'venues': return { section, venueId: null, locationId: null };
     default: return { section };
@@ -66,7 +78,7 @@ export const adminRoute = (section: AdminSection): AdminRoute => {
 const routeOf = (section: AdminSection, rest: Array<string | null>, search: URLSearchParams): AdminRoute => {
   switch (section) {
     case 'logistics': return { section, view: oneOf(LOGISTICS_VIEW_IDS, rest[0], LOGISTICS_VIEW_IDS[0]) };
-    case 'tools': return { section, view: oneOf(TOOLS_VIEW_IDS, rest[0], TOOLS_VIEW_IDS[0]) };
+    case 'users': return { section, view: oneOf(USERS_VIEW_IDS, rest[0], USERS_VIEW_IDS[0]) };
     case 'events': return {
       section,
       eventId: rest[0] ?? null,
@@ -81,6 +93,7 @@ const routeOf = (section: AdminSection, rest: Array<string | null>, search: URLS
 export const parseAdminLocation = (pathname: string, search = ''): AdminRoute => {
   const params = new URLSearchParams(search);
   const segments = pathname.slice(ADMIN_ROOT.length).split('/').filter(Boolean).map(decode);
+  if (segments[0] === LEGACY_TOOLS) return toolsRoute(segments[1]);
   const section = oneOf(ADMIN_SECTIONS, segments[0], DEFAULT_ADMIN_SECTION);
   return routeOf(section, section === segments[0] ? segments.slice(1) : [], params);
 };
@@ -92,7 +105,7 @@ const path = (...segments: Array<string | null>): string =>
 export const adminHref = (route: AdminRoute): string => {
   switch (route.section) {
     case 'logistics': return path(route.section, route.view === LOGISTICS_VIEW_IDS[0] ? null : route.view);
-    case 'tools': return path(route.section, route.view === TOOLS_VIEW_IDS[0] ? null : route.view);
+    case 'users': return path(route.section, route.view === USERS_VIEW_IDS[0] ? null : route.view);
     case 'events': {
       if (!route.eventId) return path(route.section);
       const href = path(route.section, route.eventId);
@@ -105,6 +118,7 @@ export const adminHref = (route: AdminRoute): string => {
 
 // The route an old query-param URL (/admin?tab=…) meant.
 const legacyRoute = (params: URLSearchParams): AdminRoute => {
+  if (params.get('tab') === LEGACY_TOOLS) return toolsRoute(params.get('view'));
   const section = oneOf(ADMIN_SECTIONS, params.get('tab'), DEFAULT_ADMIN_SECTION);
   if (section === 'venues') {
     const venueId = params.get('venue') || null;
