@@ -106,8 +106,8 @@ Notes on specific choices:
   [Data model](./03-data-model.md#account-deletion-36).
 - **A registration's admin-only fields are protected by a trigger, not by the policies** (#94).
   RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
-  whatever a non-admin end user sends for `payment_status` and `admin_notes`: on insert they become
-  `unpaid` and no notes, on update the stored values stay, so a paid party stays paid through a
+  whatever a non-admin end user sends for `payment_status`, `admin_notes` and
+  `message_to_participants` (#216): on insert they become `unpaid` and no texts, on update the stored values stay, so a paid party stays paid through a
   member's own save (#31) or when they re-register over their cancelled row (#35). Where an
   attendee sleeps is a `place_assignments` row, which only an admin writes (#114), and
   `trg_guard_attendee_write` refuses every client write to `attendees` outside `save_registration()`
@@ -119,7 +119,7 @@ Notes on specific choices:
   (`bedaine.saving_party`); the attendees trigger only lets writes to that party through.
   PostgREST offers clients no way to set it (`set_config` isn't exposed).
 - **`save_logistics()` is `SECURITY INVOKER` too** (#150): the Logistique tab's one Save writes
-  every pending `place_assignments` row and `admin_notes` through it, under the caller's RLS and
+  every pending `place_assignments` row, `admin_notes` and `message_to_participants` through it, under the caller's RLS and
   the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
   own subtransaction, all or nothing, and returns the parties it refused with their error code.
 - **`event_places()`, `set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193):

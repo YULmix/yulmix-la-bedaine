@@ -644,6 +644,7 @@ export type Database = {
           locked_selling_price_whole_event: number | null
           logistics: Json
           message_to_organizers: string | null
+          message_to_participants: string | null
           music_requests: string | null
           payment_status: string | null
           status: string | null
@@ -664,6 +665,7 @@ export type Database = {
           locked_selling_price_whole_event?: number | null
           logistics?: Json
           message_to_organizers?: string | null
+          message_to_participants?: string | null
           music_requests?: string | null
           payment_status?: string | null
           status?: string | null
@@ -684,6 +686,7 @@ export type Database = {
           locked_selling_price_whole_event?: number | null
           logistics?: Json
           message_to_organizers?: string | null
+          message_to_participants?: string | null
           music_requests?: string | null
           payment_status?: string | null
           status?: string | null
@@ -930,6 +933,7 @@ export type Database = {
           locked_selling_price_whole_event: number | null
           logistics: Json
           message_to_organizers: string | null
+          message_to_participants: string | null
           music_requests: string | null
           payment_status: string | null
           status: string | null

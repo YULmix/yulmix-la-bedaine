@@ -81,6 +81,7 @@ erDiagram
     text payment_status "unpaid|paid"
     bool is_waitlisted "trigger-computed"
     text admin_notes "organisers only"
+    text message_to_participants "organisers write, member reads (#216)"
     timestamptz last_edited_at
     int edit_count
     timestamptz created_at
@@ -187,9 +188,11 @@ already French (ADR 0021). Screens receive an
 `attendees` array, as they did with the JSON, each attendee with `place` (or null). PostgREST
 embeds the view one-to-one, through `place_assignments.attendee_id`'s unique foreign key.
 
-**Assigning.** The Logistique tab keeps places and admin notes as a draft (`src/lib/logisticsDraft.js`)
-and saves them all with `save_logistics(p_changes)` (#150): `[{ party_id, places: { <attendee id>:
-<place id> | null }, admin_notes? }]`. Each party is saved entirely or not at all; the function
+**Assigning.** The Logistique tab keeps places, admin notes and the message to participants as a
+draft (`src/lib/logisticsDraft.js`) and saves them all with `save_logistics(p_changes)` (#150):
+`[{ party_id, places: { <attendee id>: <place id> | null }, admin_notes?, message_to_participants? }]`
+(an absent text is left as is). `admin_notes` are the organisers' private notes;
+`message_to_participants` (#216) is shown to the party's member in their « Logistique » card. Each party is saved entirely or not at all; the function
 returns the refused ones (`[{ party_id, code, message, details }]`, `message` being the error code),
 and the tab keeps their drafts.
 
