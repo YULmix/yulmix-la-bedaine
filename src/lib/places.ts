@@ -1,4 +1,4 @@
-import { ACCOMMODATION_OPTIONS, getOptionLabel } from './registrationOptions';
+import { ACCOMMODATION_OPTIONS, getOptionLabel, isActiveRegistration } from './registrationOptions';
 import type { Database } from './database.types';
 
 // Sleeping places (#112, #145): a venue's totals, and the Logistique tab's place picker (#114). Pure,
@@ -179,3 +179,23 @@ export const sleepingByLocation = (
   });
   return [...byLocation.values()];
 };
+
+// Who gets a bed first (#216): parties where someone asked for a bed for health reasons, then
+// for young children (and nobody for health), then everyone else. Bed reasons are per attendee
+// (bed_reason); a cancelled party's don't count. Waitlisted parties follow the same rule.
+const BED_PRIORITY_REASONS = ['health', 'children'];
+
+const bedPriorityOf = (party: { status?: string | null; attendees?: Array<{ bed_reason?: string | null }> | null }): number => {
+  if (!isActiveRegistration(party)) return BED_PRIORITY_REASONS.length;
+  const reasons = new Set((party.attendees || []).map(attendee => attendee.bed_reason));
+  const rank = BED_PRIORITY_REASONS.findIndex(reason => reasons.has(reason));
+  return rank === -1 ? BED_PRIORITY_REASONS.length : rank;
+};
+
+/** The parties in bed priority order (health, children, the rest), keeping their order within each. */
+export const byBedPriority = <P extends { status?: string | null; attendees?: Array<{ bed_reason?: string | null }> | null }>(
+  parties: P[] | null | undefined
+): P[] => (parties || [])
+  .map((party, index) => ({ party, index, rank: bedPriorityOf(party) }))
+  .sort((a, b) => a.rank - b.rank || a.index - b.index)
+  .map(({ party }) => party);

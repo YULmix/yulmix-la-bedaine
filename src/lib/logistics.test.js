@@ -71,6 +71,7 @@ describe('logistics store (#195)', () => {
     const store = createLogisticsStore(client);
     store.setPlaceChange(EVENT, p1, 'a1', 'bedA');
     store.setNotesChange(EVENT, p2, '');
+    store.setMessageChange(EVENT, p2, 'Bienvenue');
 
     const saving = store.save(EVENT);
     expect(store.getSnapshot(EVENT).saving).toBe(true);
@@ -78,7 +79,7 @@ describe('logistics store (#195)', () => {
 
     expect(client.rpc).toHaveBeenCalledWith('save_logistics', { p_changes: [
       { party_id: 'p1', places: { a1: 'bedA' } },
-      { party_id: 'p2', places: {}, admin_notes: '' }
+      { party_id: 'p2', places: {}, admin_notes: '', message_to_participants: 'Bienvenue' }
     ] });
     expect(refreshAdminParties).toHaveBeenCalledWith(EVENT);
     // Aperçu and Logistique take occupancy from the parties; the places don't need reloading.
@@ -91,13 +92,14 @@ describe('logistics store (#195)', () => {
     const store = createLogisticsStore(client);
     store.setPlaceChange(EVENT, p1, 'a1', 'bedA');
     store.setNotesChange(EVENT, p2, 'Arrive tard');
+    store.setMessageChange(EVENT, p2, 'Votre lit est au sous-sol');
 
     await expect(store.save(EVENT)).resolves.toEqual({ failedPartyIds: ['p2'] });
 
     expect(store.getSnapshot(EVENT)).toMatchObject({
-      changes: { p2: { adminNotes: 'Arrive tard' } },
+      changes: { p2: { adminNotes: 'Arrive tard', participantMessage: 'Votre lit est au sous-sol' } },
       errors: { p2: fr.dbErrorLogisticsPartyNotFound },
-      unsavedCount: 1
+      unsavedCount: 2
     });
   });
 

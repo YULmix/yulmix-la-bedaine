@@ -1,4 +1,4 @@
-import { venueLayoutOf, placeOccupancy, placeTypeBreakdown, venueTotals, placeOptions, searchPlaceOptions, sleepingByLocation } from './places';
+import { venueLayoutOf, placeOccupancy, placeTypeBreakdown, venueTotals, placeOptions, searchPlaceOptions, sleepingByLocation, byBedPriority } from './places';
 
 const locations = [
   {
@@ -121,5 +121,36 @@ describe('sleepingByLocation', () => {
       .toEqual([{ locationId: 'l1', name: 'Grenier', sleepers: [{ name: 'Bob', place: 'Lit 1' }] }]);
     expect(sleepingByLocation([{ name: 'Alice', place: null }])).toEqual([]);
     expect(sleepingByLocation(undefined)).toEqual([]);
+  });
+});
+
+describe('byBedPriority (#216)', () => {
+  const party = (id, reasons, extra = {}) => ({ id, status: 'registered', attendees: reasons.map(bed_reason => ({ bed_reason })), ...extra });
+  const ids = parties => byBedPriority(parties).map(p => p.id);
+
+  test('health first, then children, then the rest', () => {
+    expect(ids([party('a', ['comfort']), party('b', ['children']), party('c', ['', 'health']), party('d', [])]))
+      .toEqual(['c', 'b', 'a', 'd']);
+  });
+
+  test('a party with both health and children ranks with health', () => {
+    expect(ids([party('kids', ['children']), party('both', ['children', 'health'])])).toEqual(['both', 'kids']);
+  });
+
+  test("a cancelled party's reasons don't count; a waitlisted party's do", () => {
+    expect(ids([
+      party('rest', ['other']),
+      party('cancelled', ['health'], { status: 'cancelled' }),
+      party('waitlisted', ['health'], { is_waitlisted: true })
+    ])).toEqual(['waitlisted', 'rest', 'cancelled']);
+  });
+
+  test('keeps the original order within each group, and leaves its input alone', () => {
+    const parties = [party('r1', []), party('h1', ['health']), party('c1', ['children']), party('r2', ['comfort']),
+      party('h2', ['health']), party('c2', ['children']), party('r3', [])];
+    const before = parties.map(p => p.id);
+    expect(ids(parties)).toEqual(['h1', 'h2', 'c1', 'c2', 'r1', 'r2', 'r3']);
+    expect(parties.map(p => p.id)).toEqual(before);
+    expect(byBedPriority(null)).toEqual([]);
   });
 });
