@@ -206,7 +206,9 @@ export const getOptionLabel = (options: ReadonlyArray<Option>, value: string | n
   return match ? match.label : value;
 };
 
-// Dietary requests are stored as a comma-joined string of raw DIETARY_OPTIONS values
+// Kept for old history rows (#200): registration_edits snapshots taken before attendees (migration
+// 20260929003000) still hold logistics.food_requests.requests, and editHistory.js renders them.
+// Dietary requests were stored as a comma-joined string of raw DIETARY_OPTIONS values
 // (e.g. 'vegetarian, gluten_free'). This translates each token to French before rejoining.
 export const getDietaryRequestsLabel = (requestsString: string | null | undefined, fallback = 'Aucune'): string => {
   if (!requestsString) return fallback;
