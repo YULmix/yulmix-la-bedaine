@@ -149,7 +149,9 @@ test('on a laptop, a long history scrolls inside a box that ends on screen', asy
   const box = await measure(page);
   expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
   expect(box.bottom).toBeLessThanOrEqual(box.barTop);
-  expect(box.bottom).toBeGreaterThan(box.barTop - 80);
+  // The whole page ends on screen too (the footer included): the list's scrollbar is the only one.
+  expect(await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight])).toEqual([900, 900]);
+  await page.screenshot({ path: test.info().outputPath('history-1440.png') });
   await scrollBox(page).evaluate(el => { el.scrollTop = el.scrollHeight; });
   await expect(entries(page).last()).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -192,10 +194,29 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await expect(history).not.toContainText(/calculated_amount_owed|attendees|created|registered|\{/);
 });
 
-test('on a phone a long history has one scrollbar: the page\'s, with no cap on the list', async ({ page }) => {
-  for (let i = 0; i < 30; i++) {
-    await saveRegistrationAs(registrant, seeded.eventId, i % 2 ? [person('Hélène'), person('Hugo')] : [person('Hélène')]);
+const editMany = async (registrant, eventId, n) => {
+  for (let i = 0; i < n; i++) {
+    await saveRegistrationAs(registrant, eventId, i % 2 ? [person('Hélène'), person('Hugo')] : [person('Hélène')]);
   }
+};
+
+// The page title is whole (not squeezed under the header's actions) and the actions are clear of it.
+const expectTitleClear = async (page) => {
+  const h1 = page.locator('#admin-page-title');
+  const box = await h1.boundingBox();
+  expect(await h1.evaluate(el => el.scrollWidth), 'the title is not clipped').toBeLessThanOrEqual(Math.ceil(box.width));
+  const children = page.locator('#admin-page-title + div > *');
+  if (!(await children.count())) return;
+  // Every action, not only the first (Inscrits has the Exporter icon and the search).
+  const boxes = await children.evaluateAll(els => els.map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
+  for (const actions of boxes) {
+  const apart = actions.x >= box.x + box.width - 1 || actions.y >= box.y + box.height - 1 || actions.x + actions.width <= box.x + 1;
+  expect(apart, 'the actions do not sit on the title').toBe(true);
+  }
+};
+
+test('on a phone a long history has one scrollbar: the page\'s, with no cap on the list', async ({ page }) => {
+  await editMany(registrant, seeded.eventId, 30);
   await page.setViewportSize({ width: 390, height: 900 });
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin/users/history');
@@ -203,10 +224,43 @@ test('on a phone a long history has one scrollbar: the page\'s, with no cap on t
   const scroll = page.getByTestId('change-history-scroll');
   expect(await scroll.evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(900);
-  // The export buttons sit side by side.
-  const [csv, copy] = await Promise.all([
-    card(page).getByRole('button', { name: fr.exportCSVButton }).boundingBox(),
-    card(page).getByRole('button', { name: fr.exportCopyTSVButton }).boundingBox()
-  ]);
-  expect(Math.abs(csv.y - copy.y)).toBeLessThan(4);
+  // The export buttons fit in the card.
+  for (const name of [fr.exportCSVButton, fr.exportCopyTSVButton]) {
+    const button = card(page).getByRole('button', { name });
+    expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth), `${name} fits`).toBe(true);
+    const [b, c] = [await button.boundingBox(), await card(page).boundingBox()];
+    expect(b.x + b.width).toBeLessThanOrEqual(c.x + c.width);
+  }
+  await expect(page.getByRole('heading', { level: 1, name: `${fr.adminTabUsers} · ${fr.usersViewHistory}` })).toBeAttached();
+  await page.screenshot({ path: test.info().outputPath('history-390.png') });
+});
+
+test('on a phone the Inscrits title is whole next to the Exporter icon', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await loginAs(page, TEST_USERS.admin);
+  for (const path of ['/admin/users', '/admin/logistics']) {
+    await page.goto(path);
+    await expect(page.locator('#admin-page-title')).toBeVisible();
+    await expectTitleClear(page);
+  }
+  await page.goto('/admin/users');
+  await page.screenshot({ path: test.info().outputPath('users-390.png') });
+});
+
+test('on a desktop a long Inscrits list ends on screen too', async ({ page }) => {
+  const members = [];
+  try {
+    for (let i = 0; i < 40; i++) {
+      const member = await createThrowawayMember(`list-${i}`);
+      members.push(member);
+      await addParty(member.id, seeded.eventId);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, TEST_USERS.admin);
+    await page.goto('/admin/users');
+    await expect(page.getByRole('button', { name: members[39].fullName })).toBeVisible();
+    expect(await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight])).toEqual([900, 900]);
+  } finally {
+    for (const member of members) await deleteThrowawayMember(member.id);
+  }
 });

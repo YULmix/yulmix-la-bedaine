@@ -84,7 +84,7 @@ const AdminUserManagement = ({
         .some(value => value?.toLowerCase().includes(needle));
     });
   }, [parties, query, filter, counts]);
-  useFitToViewport(listRef, { reserve: 24, deps: [visible] });
+  useFitToViewport(listRef, { deps: [visible] });
 
   return (
     <section className="space-y-4">
@@ -117,7 +117,8 @@ const AdminUserManagement = ({
             <span>{fr.adminTableHeader}</span>
             <span className="sr-only">{fr.actionsTableHeader}</span>
           </div>
-          <ul ref={listRef} className="divide-y divide-line overflow-y-auto overscroll-contain">
+          {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
+          <ul ref={listRef} className="relative divide-y divide-line overflow-y-auto overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
               const isSelf = profile.id === currentUserId;
