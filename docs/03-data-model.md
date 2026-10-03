@@ -221,7 +221,7 @@ it had a count reads as a seat per attendee. With no lift, the form saves `type:
 `seats: 0`. The schema default is the string `"None"`, which is not one of the two option values;
 readers treat it like `""` (`transportKindOf()` in `src/lib/registrationOptions.ts`).
 Where an offer or a need leaves from (#181), both optional and absent with no lift
-(`transportOf()` in `src/lib/registrationDraft.ts`):
+(`transportOf()` in `src/lib/registration.ts`):
 
 - `departure_fsa`: the start of a Canadian postal code (the forward sortation area, e.g. `H2G`),
   what the carpool board (#180) matches on. The `user_parties_transport_departure_fsa` CHECK
