@@ -2,7 +2,7 @@
 // Every change saves right away; an occupied place or location can't be deleted, and says who's
 // in it.
 import { test, expect } from '@playwright/test';
-import { adminMain } from './support/admin.js';
+import { adminMain, backLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   assignPlace,
@@ -112,9 +112,10 @@ test('an admin builds a sleeping plan: locations, places in bulk, reorder, dupli
   await expect(page.getByRole('region', { name: copyName }).getByLabel(fr.locationNameLabel)).toHaveValue(copyName);
   await screenshot(page, 'locations-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('button', { name: fr.locationsBackToList })).toBeVisible();
+  const { name: venueName } = await getEventVenue(seeded.eventId);
+  await expect(backLink(page, venueName)).toBeVisible();
   await screenshot(page, 'locations-phone-detail');
-  await page.getByRole('button', { name: fr.locationsBackToList }).click();
+  await backLink(page, venueName).click();
   await expect(locationList(page)).toBeVisible();
   await expect(page.getByRole('region', { name: copyName })).toBeHidden();
   await screenshot(page, 'locations-phone-list');

@@ -1,7 +1,7 @@
 // The Sites tab (#146): venues with their capacity and events, a venue's page to edit its
 // locations and places, and archiving instead of deleting.
 import { test, expect } from '@playwright/test';
-import { adminMain, moreButton, sectionLink } from './support/admin.js';
+import { adminMain, backLink, moreButton, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_EVENT_THEME,
@@ -57,7 +57,7 @@ test("the list shows each venue's capacity and events; its page shows the venue,
   await screenshot(page, 'venues-list');
 
   await row.getByRole('button', { name: fr.venueOpen.replace('{name}', name) }).click();
-  await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/venues\/[^/?]+$/);
   await page.getByRole('navigation', { name: fr.locationsListLabel }).getByRole('button', { name: /^Chambre 1/ }).click();
   // A venue lives outside its events: their assignments are the Logistique tab's.
@@ -67,7 +67,7 @@ test("the list shows each venue's capacity and events; its page shows the venue,
   await expect(page.getByText(fr.sleepingStatAssigned)).toHaveCount(0);
   await screenshot(page, 'venue-page');
 
-  await page.getByRole('button', { name: fr.venuesBack }).click();
+  await backLink(page, fr.adminTabVenues).click();
   await expect(page.getByRole('heading', { name: fr.venuesTitle })).toBeVisible();
 });
 
@@ -75,7 +75,7 @@ test('the venue page splits its places by type, and follows edits without a relo
   const { id, name } = await getEventVenue(seeded.eventId);
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(`/admin/venues/${id}`);
-  await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   const byType = page.getByRole('list', { name: fr.sleepingByTypeLabel });
   // E2E_PLACES: two single beds and a sofa for two; no other type shows.
   await expect(byType.getByRole('listitem')).toHaveText([
@@ -119,7 +119,7 @@ test('an admin creates a venue, gives it a location, and archives it', async ({ 
   await dialog.getByLabel(fr.venueAddressLabel).fill('1 chemin du Lac, Val-David');
   await dialog.getByRole('button', { name: fr.venueCreate }).click();
 
-  await expect(page.getByRole('heading', { level: 2, name: venueName })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: venueName })).toBeVisible();
   await expect(page.getByText(fr.venueUnused)).toBeVisible();
   await expect(page.getByLabel(fr.venueAddressLabel)).toHaveValue('1 chemin du Lac, Val-David');
   await page.getByRole('button', { name: fr.locationAdd }).click();
@@ -128,7 +128,7 @@ test('an admin creates a venue, gives it a location, and archives it', async ({ 
   // Archived: gone from the list, back with the toggle, and restorable.
   await page.getByRole('button', { name: fr.venueArchive }).click();
   await expect(page.getByText(fr.venueArchivedHint)).toBeVisible();
-  await page.getByRole('button', { name: fr.venuesBack }).click();
+  await backLink(page, fr.adminTabVenues).click();
   await expect(venueRow(page, venueName)).toHaveCount(0);
   await page.getByRole('switch', { name: /Afficher les sites archivés/ }).click();
   await expect(venueRow(page, venueName).getByText(fr.venueArchivedTag)).toBeVisible();
