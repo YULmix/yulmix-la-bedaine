@@ -4,6 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  E2E_ATTENDEES,
   deleteParty,
   findMemberParty,
   seedActiveEventWithMemberParty,
@@ -90,6 +91,35 @@ test('an existing registration with no saved times gets the defaults', async ({ 
   await openTransportStep(page);
   await expect(arrival(page)).toHaveValue(`${START}T12:00`);
   await expect(departure(page)).toHaveValue(`${LAST}T15:00`);
+});
+
+// An edited registration is never a new one, even with every saved attendee removed (#194): an
+// arrival the member cleared stays cleared when a reload restores the draft.
+test('a cleared arrival on an edited registration stays cleared across a reload', async ({ page }) => {
+  seeded = await seedActiveEventWithMemberParty(EVENT);
+  await setPartyTransport(seeded.partyId, { type: '', seats: 0, arrival: `${START}T09:15`, departure: `${START}T20:45` });
+  // The reload asks first (unsaved changes): go ahead.
+  page.on('dialog', dialog => dialog.accept());
+
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/inscription');
+  const names = page.getByLabel(fr.fullNameLabel);
+  await expect(names.first()).toHaveValue(E2E_ATTENDEES[0].name);
+  await page.getByRole('button', { name: fr.addParticipantButton }).click();
+  await names.nth(2).fill('Chloé E2E');
+  for (const { name } of E2E_ATTENDEES) {
+    await page.getByRole('button', { name: fr.removeAttendeeLabel.replace('{name}', name) }).click();
+  }
+  await expect(names).toHaveCount(1);
+  await openTransportStep(page);
+  await arrival(page).fill('');
+  await expect(arrival(page)).toHaveValue('');
+
+  await page.reload();
+  await expect(page.getByText(fr.registrationDraftRestored)).toBeVisible();
+  await openTransportStep(page);
+  await expect(arrival(page)).toHaveValue('');
+  await expect(departure(page)).toHaveValue(`${START}T20:45`);
 });
 
 test("an admin editing a member's registration keeps the saved arrival and departure", async ({ page }) => {
