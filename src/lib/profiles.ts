@@ -39,6 +39,5 @@ export const fetchEventHistory = async (client: Client, userId: string): Promise
 export const setIsAdmin = async (client: Client, { profileId, isAdmin, currentUser }: { profileId: string; isAdmin: boolean; currentUser: string | null }): Promise<void> => {
   if (profileId === currentUser) throw appError(fr.selfAdminToggleError);
   const { error } = await client.rpc('admin_set_is_admin', { target_user_id: profileId, new_is_admin: isAdmin });
-  if (error && (error as { code?: string }).code === 'PGRST202') throw failure('admin_set_is_admin missing', error, fr.adminToggleNotDeployedError);
   if (error) throw failure('Error updating admin status', error, fr.updateError);
 };

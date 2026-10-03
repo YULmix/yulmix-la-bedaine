@@ -17,10 +17,6 @@ import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, 
 const nextSortOrder = rows => (rows.length ? Math.max(...rows.map(row => row.sort_order)) + 1 : 0);
 const capacityOf = places => places.reduce((sum, place) => sum + place.capacity, 0);
 
-// Deleting a place (or location) someone was given between the check and the delete: the foreign
-// key refuses it.
-const FOREIGN_KEY_VIOLATION = '23503';
-
 // A text input that saves when it loses focus (or on Enter), and only if the value changed. A
 // required value left empty goes back to what it was.
 const BlurInput = ({ value, onCommit, onChange, required = false, ...props }) => {
@@ -213,9 +209,7 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   // A failed write reloads, so the screen goes back to what the database holds; a successful one
   // reaches every event at this venue (#193).
   const save = useAutosave({
-    errorMessage: writeError => (writeError.code === FOREIGN_KEY_VIOLATION
-      ? fr.placeOccupiedUnseen
-      : dbErrorMessage(writeError, fr.locationsSaveError)),
+    errorMessage: writeError => dbErrorMessage(writeError, fr.locationsSaveError),
     onSuccess: () => invalidateEventPlaces(),
     onFailure: () => loadRef.current()
   });
