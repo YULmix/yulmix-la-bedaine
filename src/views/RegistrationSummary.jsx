@@ -116,8 +116,9 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
 
       <MyPartyEmails registration={registration} />
 
-      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-        <Card className="p-5 sm:p-6">
+      {/* min-w-0 columns: a long unbroken text (a pasted link) wraps instead of widening them. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <Card className="min-w-0 p-5 sm:p-6">
           <h3 className="text-lg font-semibold text-ink">{fr.attendeesList}</h3>
           <ul className="mt-4 divide-y divide-line">
             {attendees.map((attendee, index) => (
@@ -153,7 +154,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
           </ul>
         </Card>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* What the party told us in the form; Logistique is what the organisers decided, so it
               only shows once there is something (a place, or their message). */}
           <Card className="space-y-5 p-5 sm:p-6">
@@ -186,12 +187,12 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
             </InfoBlock>
             {registration.music_requests && (
               <InfoBlock icon={Music} title={fr.musicRequests}>
-                <p className="whitespace-pre-line">{registration.music_requests}</p>
+                <p className="whitespace-pre-line [overflow-wrap:anywhere]">{registration.music_requests}</p>
               </InfoBlock>
             )}
             {registration.message_to_organizers && (
               <InfoBlock icon={MessageSquareText} title={fr.messageToOrganizers}>
-                <p className="whitespace-pre-line">{registration.message_to_organizers}</p>
+                <p className="whitespace-pre-line [overflow-wrap:anywhere]">{registration.message_to_organizers}</p>
               </InfoBlock>
             )}
           </Card>

@@ -124,3 +124,26 @@ test('no message, or only spaces: the member sees no message and no notes', asyn
   await expect(page.getByRole('heading', { name: fr.messageFromOrganizers })).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText(SECRET_NOTE);
 });
+
+// A pasted link or any long unbroken text wraps on a phone: no card gets wider than the screen.
+test('long unbroken messages wrap on a phone, in their cards (390 px)', async ({ page }) => {
+  const toMember = `https://example.com/${'a'.repeat(280)}`;
+  const toOrganizers = `https://example.org/${'b'.repeat(280)}`;
+  await setPartyAnswers(seeded.partyId, { message_to_participants: toMember, message_to_organizers: toOrganizers });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: fr.messageFromOrganizers })).toBeVisible();
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/member-long-message-390.png`, fullPage: true });
+  }
+
+  for (const text of [toMember, toOrganizers]) {
+    const fits = await page.getByText(text, { exact: true }).evaluate(el => el.scrollWidth <= el.clientWidth);
+    expect(fits, text.slice(0, 25)).toBe(true);
+  }
+  // Every card (ui Card: a section.rounded-card) ends inside the viewport.
+  const rights = await page.locator('section.rounded-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().right));
+  expect(rights.length).toBeGreaterThan(2);
+  rights.forEach(right => expect(right).toBeLessThanOrEqual(390));
+});
