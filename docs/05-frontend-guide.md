@@ -50,7 +50,7 @@ flowchart TD
   ADMIN -->|"/admin/events"| EVENTS["AdminEvents"]
   ADMIN -->|"/admin/events/:id"| EDITOR["EventEditor<br/>details draft, sleeping plan"]
   ADMIN -->|"/admin/budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
-  ADMIN -->|"/admin/users/history"| TOOLS["ChangeHistory<br/>history"]
+  ADMIN -->|"/admin/users/history"| HISTORY["ChangeHistory<br/>history"]
 ```
 
 Sizes, as a blunt signal of where the complexity is:
@@ -99,7 +99,7 @@ the Logistique views, it keeps waitlisted parties, with a « Statut » column; t
 
 Inscrits has views too, in `/admin/users/<view>` (`list` by default, `history`), switched by
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
-old `/admin/tools/…` URLs redirect. Its « Historique des
+old `/admin/tools/…` URLs redirect. The « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default).
 

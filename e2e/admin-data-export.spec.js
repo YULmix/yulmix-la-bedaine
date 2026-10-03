@@ -142,3 +142,12 @@ test('a member opening Inscrits is blocked from exporting', async ({ page }) => 
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
 });
+
+test('« Exporter » is on the list, not on the history', async ({ page }) => {
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users');
+  await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toBeVisible();
+  await page.goto('/admin/users/history');
+  await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toHaveCount(0);
+});

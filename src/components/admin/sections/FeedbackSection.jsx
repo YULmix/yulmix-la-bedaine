@@ -15,7 +15,7 @@ const FeedbackInbox = ({ items, showResolved, onToggleResolved, onResolve }) => 
   return (
     <Card className="p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-lg font-semibold text-ink">{fr.adminFeedbackSectionTitle}</h3>
+        <h3 className="sr-only">{fr.adminFeedbackSectionTitle}</h3>
         <Toggle label={fr.adminFeedbackShowResolved} checked={showResolved} onChange={onToggleResolved} className="sm:justify-end" />
       </div>
       {visible.length === 0 ? (
