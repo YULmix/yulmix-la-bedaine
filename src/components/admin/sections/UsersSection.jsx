@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { History } from 'lucide-react';
 import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
-import { useEvents } from '../../../lib/events';
+import { refreshEvents, useEvents } from '../../../lib/events';
 import { refreshAdminParties, updatePaymentStatus, useAdminParties } from '../../../lib/adminParties';
 import { currentUserId as fetchCurrentUserId, setIsAdmin } from '../../../lib/profiles';
 import { PAYMENT_STATUS, getPaymentStatusShortLabel } from '../../../lib/registrationOptions';
@@ -9,14 +10,18 @@ import { useToasts } from '../../../hooks/useToasts';
 import AdminUserManagement from '../AdminUserManagement';
 import PartyEditDialog from '../PartyEditDialog';
 import UserProfileDialog from '../UserProfileDialog';
-import { ConfirmDialog } from '../../ui';
+import { ChangeHistory } from '../ChangeHistory';
+import ExportDialog from '../ExportDialog';
+import { ConfirmDialog, EmptyState } from '../../ui';
 import NoActiveEvent from './NoActiveEvent';
 import SectionStatus from './SectionStatus';
 
-// Inscrits (#195): the active event's parties, cancelled ones included. It owns its dialogs: the
-// payment confirmation, a member's profile, the god-mode editor. Payment and admin changes reload
-// the parties from the shared store.
-const UsersSection = () => {
+// Inscrits (#195, #209): « Liste », the active event's parties, cancelled ones included, and
+// « Historique », the change history of an event's registrations (/admin/users/history). The
+// header's « Exporter » is on the list only: the history has its own export buttons. The list owns its dialogs: the payment confirmation, a
+// member's profile, the god-mode editor. Payment and admin changes reload the parties from the
+// shared store.
+const UsersList = ({ addToast }) => {
   const { activeEvent } = useEvents();
   const { parties, loading, error } = useAdminParties(activeEvent?.id);
   const [currentUser, setCurrentUser] = useState(null);
@@ -25,7 +30,6 @@ const UsersSection = () => {
   // { party, newStatus } while the payment change waits for confirmation.
   const [pendingPayment, setPendingPayment] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const { addToast } = useToasts(1699);
 
   // Who is signed in, so the list doesn't offer to change one's own admin flag.
   useEffect(() => {
@@ -95,6 +99,26 @@ const UsersSection = () => {
           .replace('{action}', getPaymentStatusShortLabel(pendingPayment.newStatus))
           .replace('{name}', pendingPayment.party.profiles?.full_name || fr.defaultUserFallback)}
       </ConfirmDialog>
+    </>
+  );
+};
+
+const HistoryView = ({ addToast }) => {
+  const { events, loading, error } = useEvents();
+  if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={refreshEvents} />;
+  return events.length > 0
+    ? <ChangeHistory events={events} notify={addToast} />
+    : <EmptyState icon={History} title={fr.changeHistoryEmpty} />;
+};
+
+const UsersSection = ({ view }) => {
+  const { addToast } = useToasts(1699);
+  const { activeEvent } = useEvents();
+  const { activeParties } = useAdminParties(activeEvent?.id);
+  return (
+    <>
+      {activeEvent && view === 'list' && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}
+      {view === 'history' ? <HistoryView addToast={addToast} /> : <UsersList addToast={addToast} />}
     </>
   );
 };

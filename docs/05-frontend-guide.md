@@ -14,7 +14,7 @@ no component library.
 | `/inscription` | `RegistrationPage`: the 4-step registration form, create or edit | Authenticated |
 | `/event-details` | `EventDetailsView` | Authenticated |
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
-| `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|tools`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
+| `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
 
@@ -50,7 +50,7 @@ flowchart TD
   ADMIN -->|"/admin/events"| EVENTS["AdminEvents"]
   ADMIN -->|"/admin/events/:id"| EDITOR["EventEditor<br/>details draft, sleeping plan"]
   ADMIN -->|"/admin/budget"| BUDGET["AdminBudget<br/>budget lines, simulator"]
-  ADMIN -->|"/admin/tools/&lt;view&gt;"| TOOLS["AdminTools<br/>export, feedback"]
+  ADMIN -->|"/admin/users/history"| HISTORY["ChangeHistory<br/>history"]
 ```
 
 Sizes, as a blunt signal of where the complexity is:
@@ -66,7 +66,7 @@ Sizes, as a blunt signal of where the complexity is:
 `AdminView` is the shell (#195); each tab is a self-contained section in
 `src/components/admin/sections/` reading the stores, around the presentational components in
 `src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
-`AdminBudget`, `AdminEvents`, `AdminVenues`, `AdminTools`). The active tab is the URL's first segment
+`AdminBudget`, `AdminEvents`, `AdminVenues`, `ChangeHistory`, `ExportDialog`). The active tab is the URL's first segment
 (`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
 built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
 also owns the tab and view ids; components never format one themselves.
@@ -79,7 +79,7 @@ views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with f
 « Plus », a sheet (`Dialog`) with the rest, and the views as `ViewTabs` under the page header.
 The page header is one line, the `h1` (« Section · Vue ») and the page's actions: a section
 puts a button or a search field there with `<AdminHeaderActions>`, from anywhere in its tree.
-The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`), inside one centred
+The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`, `pageWidthClass` in `src/lib/pageWidth.ts`, which the member pages use too), inside one centred
 container (`max-w-screen-2xl`) that the header shares on admin pages. The sidebar sticks under
 the header at its measured height (`--header-height`, set by `Header.jsx`). Save bars
 (`SaveBar`) float over the page as a raised toolbar, not a pane. A drill-down (the
@@ -92,13 +92,14 @@ parties only (not cancelled, not waitlisted); their aggregations are pure functi
 `src/lib/adminStats.js`. Pending place changes stay in the logistics store, so they survive
 switching views too.
 
-The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
+Inscrits' « Exporter » (#178, #209), a dialog opened from the page header, builds each table once, as `{ headers, rows }`
 (`partyExportRows`, `attendeeExportRows` in `src/lib/dataExport.js`), and serialises it with
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Outils has views too, in `/admin/tools/<view>` (`exports` by default, `history`, `feedback`), switched by
-the shell like Logistique's. Its « Historique des
+Inscrits has views too, in `/admin/users/<view>` (`list` by default, `history`), switched by
+the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
+old `/admin/tools/…` URLs redirect. The « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default).
 
@@ -114,8 +115,8 @@ line, for the same `toCsv` / `toTsv`.
 ## Navigation and layout
 
 The navigation model is [ADR 0022](./adr/0022-admin-navigation-and-page-widths.md) (#191). It is
-being implemented: the path URLs (#196) and the shell (#208) are in; « Outils » is still a section
-until #209, and the drill-downs keep their own headers until #210. New screens follow the model.
+being implemented: the path URLs (#196), the shell (#208) and the dissolution of « Outils » (#209) are in;
+the drill-downs keep their own headers until #210. New screens follow the model.
 
 ### Adding an admin section or view
 

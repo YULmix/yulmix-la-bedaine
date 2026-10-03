@@ -162,7 +162,7 @@ export const attendeeExportRows = (allParties) => {
 export const PARTY_EXPORT = 'parties';
 export const ATTENDEE_EXPORT = 'attendees';
 
-/** The two exports, in the order the Outils card offers them. */
+/** The two exports, in the order the Exporter dialog offers them. */
 export const EXPORTS = [
   { id: PARTY_EXPORT, labelKey: 'exportByParty', filePrefix: 'inscriptions', build: partyExportRows },
   { id: ATTENDEE_EXPORT, labelKey: 'exportByAttendee', filePrefix: 'participants', build: attendeeExportRows }

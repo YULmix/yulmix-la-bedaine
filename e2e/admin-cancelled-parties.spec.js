@@ -84,10 +84,11 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   }
 
   // CSV export: a header row, the active party, and the totals row. No cancelled party.
-  await page.goto('/admin/tools');
+  await page.goto('/admin/users');
+  await page.getByRole('button', { name: fr.adminExportAction }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    panel(page).getByRole('button', { name: fr.exportCSVButton }).click()
+    page.getByRole('dialog', { name: fr.dataExportTitle }).getByRole('button', { name: fr.exportCSVButton }).click()
   ]);
   const csv = readFileSync(await download.path(), 'utf-8');
   expect(csv).toContain(MEMBER_NAME);

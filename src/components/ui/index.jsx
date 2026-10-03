@@ -319,7 +319,7 @@ export const ConfirmDialog = ({ open, title, children, confirmLabel, onConfirm, 
   </Dialog>
 );
 
-// Switches between the views of one admin tab (Logistique, Outils): pills in a tablist, the
+// Switches between the views of one admin tab (Logistique, Inscrits): pills in a tablist, the
 // view's id in the URL (?view=). `views` is [{ id, label, icon, badge? }]; `idPrefix` makes the
 // tab and panel ids (`${idPrefix}-${id}`, `${idPrefix}-${id}-panel`). Arrow keys, Home and End
 // move between views (automatic activation), as in the admin tab bar. Scrolls sideways on its own

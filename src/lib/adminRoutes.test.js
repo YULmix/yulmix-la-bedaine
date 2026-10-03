@@ -1,5 +1,5 @@
 import {
-  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, TOOLS_VIEW_IDS,
+  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, USERS_VIEW_IDS,
   adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation
 } from './adminRoutes';
 
@@ -17,7 +17,7 @@ describe('adminHref and parseAdminLocation', () => {
   const routes = [
     ...ADMIN_SECTIONS.map(adminRoute),
     ...LOGISTICS_VIEW_IDS.map(view => ({ section: 'logistics', view })),
-    ...TOOLS_VIEW_IDS.map(view => ({ section: 'tools', view })),
+    ...USERS_VIEW_IDS.map(view => ({ section: 'users', view })),
     { section: 'events', eventId: EVENT, editorSection: 'details' },
     { section: 'events', eventId: EVENT, editorSection: 'sleeping' },
     { section: 'venues', venueId: VENUE, locationId: null },
@@ -32,8 +32,9 @@ describe('adminHref and parseAdminLocation', () => {
     expect(adminHref(adminRoute('overview'))).toBe('/admin/overview');
     expect(adminHref(adminRoute('logistics'))).toBe('/admin/logistics');
     expect(adminHref({ section: 'logistics', view: 'food' })).toBe('/admin/logistics/food');
-    expect(adminHref(adminRoute('tools'))).toBe('/admin/tools');
-    expect(adminHref({ section: 'tools', view: 'history' })).toBe('/admin/tools/history');
+    expect(adminHref(adminRoute('users'))).toBe('/admin/users');
+    expect(adminHref({ section: 'users', view: 'history' })).toBe('/admin/users/history');
+    expect(adminHref(adminRoute('feedback'))).toBe('/admin/feedback');
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'details' })).toBe(`/admin/events/${EVENT}`);
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'sleeping' })).toBe(`/admin/events/${EVENT}?section=sleeping`);
     expect(adminHref({ section: 'venues', venueId: VENUE, locationId: LOCATION })).toBe(`/admin/venues/${VENUE}/${LOCATION}`);
@@ -47,7 +48,7 @@ describe('adminHref and parseAdminLocation', () => {
     expect(parseAdminLocation('/admin')).toEqual(adminRoute('overview'));
     expect(parseAdminLocation('/admin/bogus/food')).toEqual(adminRoute('overview'));
     expect(parseAdminLocation('/admin/logistics/nope')).toEqual(adminRoute('logistics'));
-    expect(parseAdminLocation('/admin/tools/nope')).toEqual(adminRoute('tools'));
+    expect(parseAdminLocation('/admin/users/nope')).toEqual(adminRoute('users'));
     expect(parseAdminLocation(`/admin/events/${EVENT}`, '?section=bogus'))
       .toEqual({ section: 'events', eventId: EVENT, editorSection: 'details' });
     expect(parseAdminLocation('/admin/events', '?section=sleeping')).toEqual(adminRoute('events'));
@@ -56,6 +57,23 @@ describe('adminHref and parseAdminLocation', () => {
 });
 
 describe('adminRedirect', () => {
+  test.each([
+    ['/admin/tools', '/admin/users'],
+    ['/admin/tools/exports', '/admin/users'],
+    ['/admin/tools/history', '/admin/users/history'],
+    ['/admin/tools/feedback', '/admin/feedback'],
+    ['/admin/tools/nope', '/admin/users'],
+    ['/admin/tools/', '/admin/users']
+  ])('the Outils path %s → %s', (pathname, href) => {
+    expect(adminRedirect(pathname)).toBe(href);
+  });
+
+  test('the new homes are canonical', () => {
+    expect(adminRedirect('/admin/users')).toBeNull();
+    expect(adminRedirect('/admin/users/history')).toBeNull();
+    expect(adminRedirect('/admin/feedback')).toBeNull();
+  });
+
   test.each([
     ['', '/admin/overview'],
     ['?tab=overview', '/admin/overview'],
@@ -66,10 +84,14 @@ describe('adminRedirect', () => {
     ['?tab=logistics', '/admin/logistics'],
     ['?tab=logistics&view=food', '/admin/logistics/food'],
     ['?tab=logistics&view=nope', '/admin/logistics'],
-    ['?tab=tools', '/admin/tools'],
-    ['?tab=tools&view=exports', '/admin/tools'],
-    ['?tab=tools&view=history', '/admin/tools/history'],
-    ['?tab=tools&view=feedback', '/admin/tools/feedback'],
+    ['?tab=users&view=history', '/admin/users/history'],
+    ['?tab=feedback', '/admin/feedback'],
+    // The dissolved Outils section (#209).
+    ['?tab=tools', '/admin/users'],
+    ['?tab=tools&view=exports', '/admin/users'],
+    ['?tab=tools&view=history', '/admin/users/history'],
+    ['?tab=tools&view=feedback', '/admin/feedback'],
+    ['?tab=tools&view=nope', '/admin/users'],
     ['?tab=venues', '/admin/venues'],
     [`?tab=venues&venue=${VENUE}`, `/admin/venues/${VENUE}`],
     [`?tab=venues&venue=${VENUE}&location=${LOCATION}`, `/admin/venues/${VENUE}/${LOCATION}`],

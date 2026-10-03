@@ -1,4 +1,4 @@
-// The Outils tab's « Historique des changements » (#173): one event's registrations and edits,
+// Inscrits' « Historique » view, « Historique des changements » (#173): one event's registrations and edits,
 // newest first, with their author; a CSV download and a Google Sheets copy of the same rows, one
 // per changed field. Members can't reach it; their own history still reads in French.
 import { test, expect } from '@playwright/test';
@@ -52,7 +52,7 @@ const entries = page => card(page).getByTestId('change-history-entry');
 
 test('the active event\'s history, newest first, with authors, head counts and amounts', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(card(page).getByLabel(fr.changeHistoryEventLabel)).toHaveValue(seeded.eventId);
 
   // The member's edit, their registration, then the seeded member's registration made by the admin.
@@ -71,7 +71,7 @@ test('the active event\'s history, newest first, with authors, head counts and a
 
 test('switching events shows only that event\'s entries', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
 
   await card(page).getByLabel(fr.changeHistoryEventLabel).selectOption(await ensureOtherEvent());
@@ -82,7 +82,7 @@ test('switching events shows only that event\'s entries', async ({ page }) => {
 
 test('the CSV holds only the selected event\'s rows, one per changed field', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -104,7 +104,7 @@ test('the CSV holds only the selected event\'s rows, one per changed field', asy
 test('the Google Sheets copy says so', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   await card(page).getByRole('button', { name: fr.exportCopyTSVButton }).click();
   await expect(page.getByText(fr.changeHistoryCopyToast)).toBeVisible();
@@ -116,7 +116,7 @@ test('the Google Sheets copy says so', async ({ page, context }) => {
 test('at phone width the history doesn\'t scroll the page sideways', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
@@ -143,13 +143,15 @@ test('on a laptop, a long history scrolls inside a box that ends on screen', asy
   await addEdits();
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(23);
 
   const box = await measure(page);
   expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
   expect(box.bottom).toBeLessThanOrEqual(box.barTop);
-  expect(box.bottom).toBeGreaterThan(box.barTop - 80);
+  // The whole page ends on screen too (the footer included): the list's scrollbar is the only one.
+  expect(await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight])).toEqual([900, 900]);
+  await page.screenshot({ path: test.info().outputPath('history-1440.png') });
   await scrollBox(page).evaluate(el => { el.scrollTop = el.scrollHeight; });
   await expect(entries(page).last()).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -160,7 +162,7 @@ test('on a phone, a long history scrolls with the page, not inside a box', async
   await addEdits();
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(23);
 
   // Polled: a banner loading late above the list (the test-account marker) moves it down, and the
@@ -180,7 +182,7 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await saveRegistrationAs(TEST_USERS.member, seeded.eventId, [person('Alice E2E'), person('Bob E2E')]);
 
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(0);
 
@@ -190,4 +192,75 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await expect(history).toContainText(fr.historyFieldCreated);
   await expect(history).toContainText(`${fr.historyFieldAttendees} ${people(1)}`);
   await expect(history).not.toContainText(/calculated_amount_owed|attendees|created|registered|\{/);
+});
+
+const editMany = async (registrant, eventId, n) => {
+  for (let i = 0; i < n; i++) {
+    await saveRegistrationAs(registrant, eventId, i % 2 ? [person('Hélène'), person('Hugo')] : [person('Hélène')]);
+  }
+};
+
+// The page title is whole (not squeezed under the header's actions) and the actions are clear of it.
+const expectTitleClear = async (page) => {
+  const h1 = page.locator('#admin-page-title');
+  const box = await h1.boundingBox();
+  expect(await h1.evaluate(el => el.scrollWidth), 'the title is not clipped').toBeLessThanOrEqual(Math.ceil(box.width));
+  const children = page.locator('#admin-page-title + div > *');
+  if (!(await children.count())) return;
+  // Every action, not only the first (Inscrits has the Exporter icon and the search).
+  const boxes = await children.evaluateAll(els => els.map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
+  for (const actions of boxes) {
+  const apart = actions.x >= box.x + box.width - 1 || actions.y >= box.y + box.height - 1 || actions.x + actions.width <= box.x + 1;
+  expect(apart, 'the actions do not sit on the title').toBe(true);
+  }
+};
+
+test('on a phone a long history has one scrollbar: the page\'s, with no cap on the list', async ({ page }) => {
+  await editMany(registrant, seeded.eventId, 30);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users/history');
+  await expect(entries(page).first()).toBeVisible();
+  const scroll = page.getByTestId('change-history-scroll');
+  expect(await scroll.evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(900);
+  // The export buttons fit in the card.
+  for (const name of [fr.exportCSVButton, fr.exportCopyTSVButton]) {
+    const button = card(page).getByRole('button', { name });
+    expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth), `${name} fits`).toBe(true);
+    const [b, c] = [await button.boundingBox(), await card(page).boundingBox()];
+    expect(b.x + b.width).toBeLessThanOrEqual(c.x + c.width);
+  }
+  await expect(page.getByRole('heading', { level: 1, name: `${fr.adminTabUsers} · ${fr.usersViewHistory}` })).toBeAttached();
+  await page.screenshot({ path: test.info().outputPath('history-390.png') });
+});
+
+test('on a phone the Inscrits title is whole next to the Exporter icon', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await loginAs(page, TEST_USERS.admin);
+  for (const path of ['/admin/users', '/admin/logistics']) {
+    await page.goto(path);
+    await expect(page.locator('#admin-page-title')).toBeVisible();
+    await expectTitleClear(page);
+  }
+  await page.goto('/admin/users');
+  await page.screenshot({ path: test.info().outputPath('users-390.png') });
+});
+
+test('on a desktop a long Inscrits list ends on screen too', async ({ page }) => {
+  const members = [];
+  try {
+    for (let i = 0; i < 40; i++) {
+      const member = await createThrowawayMember(`list-${i}`);
+      members.push(member);
+      await addParty(member.id, seeded.eventId);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, TEST_USERS.admin);
+    await page.goto('/admin/users');
+    await expect(page.getByRole('button', { name: members[39].fullName })).toBeVisible();
+    expect(await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight])).toEqual([900, 900]);
+  } finally {
+    for (const member of members) await deleteThrowawayMember(member.id);
+  }
 });

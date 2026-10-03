@@ -9,15 +9,17 @@ import LogisticsSection from '../components/admin/sections/LogisticsSection';
 import BudgetSection from '../components/admin/sections/BudgetSection';
 import EventsSection from '../components/admin/sections/EventsSection';
 import VenuesSection from '../components/admin/sections/VenuesSection';
-import ToolsSection from '../components/admin/sections/ToolsSection';
+import FeedbackSection from '../components/admin/sections/FeedbackSection';
 import { AdminBottomBar, AdminHeaderActionsProvider, AdminPageHeader, AdminSidebar } from '../components/admin/AdminNav';
-import { ConfirmDialog, Notice, ViewPanel, ViewTabs, cx } from '../components/ui';
+import { ConfirmDialog, Notice, ViewPanel, ViewTabs } from '../components/ui';
+import { pageWidthClass } from '../lib/pageWidth';
 import { refreshEvents, useEvents } from '../lib/events';
 import { useAdminParties } from '../lib/adminParties';
 import { useEventPlaces } from '../lib/eventPlaces';
 import { useBudget } from '../lib/budget';
 import { useUnsavedLogistics } from '../lib/logistics';
 import { useUnsavedEventIds } from '../lib/eventDrafts';
+import { useFeedback } from '../lib/feedback';
 
 // The admin shell (#195, #208): routes to the current section, the navigation, and the guards for
 // unsaved work. Each section loads, shows and changes its own data through the stores in src/lib;
@@ -32,7 +34,7 @@ const SECTION_COMPONENTS = {
   budget: BudgetSection,
   events: EventsSection,
   venues: VenuesSection,
-  tools: ToolsSection
+  feedback: FeedbackSection
 };
 
 const AdminView = ({ isAdmin }) => {
@@ -69,6 +71,7 @@ const AdminView = ({ isAdmin }) => {
   // its store, src/lib/logistics.ts.)
   const hasUnsavedEvent = useUnsavedEventIds(events).length > 0;
   const unsavedLogistics = useUnsavedLogistics();
+  const { unresolvedCount: unresolvedFeedback } = useFeedback();
   useEffect(() => {
     if (!hasUnsavedEvent && !unsavedLogistics) return;
     const warn = (event) => { event.preventDefault(); };
@@ -91,7 +94,8 @@ const AdminView = ({ isAdmin }) => {
 
   // Whether each section shows its marker (the registry says which), in the sidebar, the bar and
   // « Plus ».
-  const markerValues = { unsavedLogistics: unsavedLogistics > 0, unsavedEvent: hasUnsavedEvent };
+  // A marker is a dot, or a count (a number: nothing for 0).
+  const markerValues = { unsavedLogistics: unsavedLogistics > 0, unsavedEvent: hasUnsavedEvent, unresolvedFeedback: unresolvedFeedback > 0 && unresolvedFeedback };
   const markers = Object.fromEntries(ADMIN_SECTION_ENTRIES.map(entry => [entry.id, !!entry.marker && markerValues[entry.marker]]));
   const Section = SECTION_COMPONENTS[route.section];
   const theme = activeEvent?.theme;
@@ -105,7 +109,7 @@ const AdminView = ({ isAdmin }) => {
       <AdminSidebar page={page} markers={markers} theme={theme} />
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-4 md:pb-16 md:pl-8 md:pr-6 md:pt-5">
-        <div className={cx(page.width === 'narrow' && 'max-w-3xl')}>
+        <div className={pageWidthClass(page.width)}>
           {/* A drill-down (the event editor, a venue) brings its own header and back link (#210). */}
           {!page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}
           <AdminHeaderActionsProvider slot={page.drillDown ? null : actionsSlot}>

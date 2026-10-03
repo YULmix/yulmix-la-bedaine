@@ -8,6 +8,7 @@ import fr from '../locales/fr.json';
 import { getEventPhase } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
 import { isActiveRegistration } from '../lib/registrationOptions';
+import { pageWidthClass } from '../lib/pageWidth';
 import { draftStorageKey } from '../lib/registrationDraft';
 
 // /inscription: the registration flow on its own route, so the phone's back button leaves the
@@ -37,7 +38,8 @@ const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
   };
 
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 md:px-6 md:pt-8">
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-4 md:px-6 md:pt-8">
+      <div className={`mx-auto ${pageWidthClass('narrow')}`}>
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="truncate font-data text-xs uppercase tracking-widest text-neon">{activeEvent.theme}</p>
@@ -72,6 +74,7 @@ const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
           initialStep={initialStep}
         />
       )}
+      </div>
     </main>
   );
 };
