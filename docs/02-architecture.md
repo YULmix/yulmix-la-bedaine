@@ -90,15 +90,15 @@ flowchart TD
 - **`views/`** are screens; **`components/`** are reused across screens. `RegistrationSummary.jsx`
   lives in `views/` but is really a component rendered inside `HomeView` — a naming inconsistency,
   not a deliberate boundary.
-- **`lib/pricingEngine.ts`** is the one genuinely pure module: no React, no Supabase, no I/O. It is
-  the only module with its own test file, and that is not a coincidence — see
+- **`lib/pricingEngine.ts`** is pure: no React, no Supabase, no I/O, and it has its own test file
+  (`npm run test:pricing`); that is not a coincidence — see
   [ADR 0003](./adr/0003-pricing-as-a-pure-module.md).
 - **`lib/registrationOptions.ts`** is the single place where a raw DB value (`bed`, `dj_evening`)
   is mapped to French UI text. Never render a raw enum.
 - **`lib/registration.ts`** is the registration form's model, also pure (#194): the form state read
   from a saved party (`fromParty`), the save payload (`toSavePayload`), every rule between fields
-  (`registrationReducer`) and the validation (`validate`). A new party-level field changes it and
-  its input, nothing else.
+  (`registrationReducer`) and the validation (`validate`). `RegistrationForm` is that reducer plus
+  rendering. A new party-level field changes the module and its input, nothing else.
 
 ## Registration data flow
 
@@ -110,12 +110,12 @@ sequenceDiagram
   participant PG as Supabase / Postgres
 
   U->>RF: add attendees, pick tiers, logistics
-  RF->>PE: simulateEventPricing(party, partyPricingOf(registration, event))
+  RF->>PE: partyPrice(attendees, partyPricingOf(registration, event))
   PE-->>RF: estimated amount owed
   RF-->>U: live total ("Montant dû")
   U->>RF: Sauvegarder
-  RF->>PG: select profiles (self-heal: upsert if missing)
-  RF->>PG: rpc save_registration(event, attendees, party-wide fields)
+  Note over RF: validate(form): go to the first issue's step
+  RF->>PG: rpc save_registration(event, toSavePayload(form))
   Note over PG: one transaction, under the caller's RLS:<br/>upsert user_parties on (user_id, event_id)<br/>update / insert / delete attendees rows by id<br/>update the party, whose triggers run:<br/>enforce_calculated_amount_owed locks the price, computes the amount<br/>enforce_capacity_and_waitlist sets is_waitlisted<br/>increment_edit_count bumps edit_count<br/>log_registration_edit writes registration_edits
   PG-->>RF: saved party
   RF->>PG: select user_parties(*, attendees(*))

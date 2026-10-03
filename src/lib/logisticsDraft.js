@@ -1,13 +1,17 @@
-// The Logistique tab's unsaved edits (#150), held by AdminView until the one Save:
-// `{ [partyId]: { places?: { [attendeeId]: placeId | null }, adminNotes?: string } }`.
+// The Logistique tab's unsaved edits (#150), held by the logistics store until the one Save:
+// `{ [partyId]: { places?: { [attendeeId]: placeId | null }, adminNotes?: string, participantMessage?: string } }`.
+// adminNotes are the organisers' private notes; participantMessage is shown to the member (#216).
 // A place of null unassigns; an absent key means "as saved". A party with nothing pending has no
 // entry, so the draft's keys are exactly the parties marked unsaved. Pure (logisticsDraft.test.js).
+
+// The party's free texts: draft key → user_parties column (and save_logistics() key).
+const TEXTS = [['adminNotes', 'admin_notes'], ['participantMessage', 'message_to_participants']];
 
 const without = (object, key) => Object.fromEntries(Object.entries(object || {}).filter(([k]) => k !== key));
 
 const withParty = (changes, partyId, partyChanges) => {
   const next = { ...changes };
-  if (Object.keys(partyChanges.places || {}).length || partyChanges.adminNotes !== undefined) next[partyId] = partyChanges;
+  if (Object.keys(partyChanges.places || {}).length || TEXTS.some(([key]) => partyChanges[key] !== undefined)) next[partyId] = partyChanges;
   else delete next[partyId];
   return next;
 };
@@ -22,21 +26,27 @@ export const setPlaceChange = (changes, party, attendeeId, placeId) => {
   return withParty(changes, party.id, Object.keys(places).length ? { ...rest, places } : rest);
 };
 
-/** Sets a party's pending admin notes; the saved text drops the change. */
-export const setNotesChange = (changes, party, adminNotes) => {
-  const rest = without(changes[party.id], 'adminNotes');
-  return withParty(changes, party.id, adminNotes === (party.admin_notes || '') ? rest : { ...rest, adminNotes });
+const setTextChange = (key, column) => (changes, party, text) => {
+  const rest = without(changes[party.id], key);
+  return withParty(changes, party.id, text === (party[column] || '') ? rest : { ...rest, [key]: text });
 };
 
-/** How many edits are pending: one per attendee whose place changed, one per party's notes. */
+/** Sets a party's pending admin notes; the saved text drops the change. */
+export const setNotesChange = setTextChange('adminNotes', 'admin_notes');
+
+/** Sets a party's pending message to its participants (#216); the saved text drops the change. */
+export const setMessageChange = setTextChange('participantMessage', 'message_to_participants');
+
+/** How many edits are pending: one per attendee whose place changed, one per party's text. */
 export const countChanges = (changes) => Object.values(changes)
-  .reduce((sum, party) => sum + Object.keys(party.places || {}).length + (party.adminNotes !== undefined ? 1 : 0), 0);
+  .reduce((sum, party) => sum + Object.keys(party.places || {}).length
+    + TEXTS.filter(([key]) => party[key] !== undefined).length, 0);
 
 /** The save_logistics() argument: one entry per party with pending edits. */
 export const logisticsPayload = (changes) => Object.entries(changes).map(([partyId, party]) => ({
   party_id: partyId,
   places: party.places || {},
-  ...(party.adminNotes !== undefined && { admin_notes: party.adminNotes })
+  ...Object.fromEntries(TEXTS.filter(([key]) => party[key] !== undefined).map(([key, column]) => [column, party[key]]))
 }));
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useBlocker } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, MilkOff, Sprout, Trash2, UserPlus, Utensils, WheatOff
@@ -7,7 +7,7 @@ import { ACCOMMODATION_ICONS } from './accommodationIcons';
 import { supabase } from '../lib/supabase';
 import { saveRegistration } from '../lib/parties';
 import { appError, dbErrorMessage } from '../lib/dbErrors';
-import { attendeePrice, partyPricingOf, simulateEventPricing } from '../lib/pricingEngine';
+import { attendeePrice, partyPrice, partyPricingOf } from '../lib/pricingEngine';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
 import { plural, getTravelRange } from '../lib/eventDisplay';
@@ -18,23 +18,17 @@ import {
   BED_REASON_OPTIONS,
   VOLUNTEERING_OPTIONS,
   TRANSPORT_TYPES,
-  DIETARY_OPTIONS,
-  nextDietaryNeeds
+  DIETARY_OPTIONS
 } from '../lib/registrationOptions';
 import {
   DEPARTURE_PLACE_MAX_LENGTH,
-  LOGISTICS_FIELDS,
-  departureFsaInvalid,
-  draftFormFor,
-  formStateOf,
-  loadStoredDraft,
-  makeDraft,
-  newAttendee,
-  sameChoice,
-  sameFormState,
-  storeDraft,
-  transportOf
-} from '../lib/registrationDraft';
+  fromParty,
+  issuesUpToStep,
+  registrationReducer,
+  toSavePayload,
+  validate
+} from '../lib/registration';
+import { draftFormFor, loadStoredDraft, makeDraft, sameFormState, storeDraft } from '../lib/registrationDraft';
 import { normalizeFsa } from '../lib/postalCode';
 
 const STEPS = [
@@ -63,12 +57,10 @@ const ACCOMMODATION_CHIPS = withIcons(ACCOMMODATION_OPTIONS, ACCOMMODATION_ICONS
 const DIETARY_CHIPS = withIcons(DIETARY_OPTIONS, DIETARY_ICONS);
 const TRANSPORT_CHIPS = [{ value: '', label: fr.transportTypeNone, icon: Ban }, ...withIcons(TRANSPORT_TYPES, TRANSPORT_ICONS)];
 
-const needsDietaryDetail = attendee => attendee.dietaryNeeds.includes('other') && !attendee.dietaryOther.trim();
-
 // Per-attendee sleeping + food choices. Rendered once for the whole group ("mêmes choix pour
-// tout le monde") or once per attendee. onChange takes a field and its value, or several fields.
-// Dietary needs are several choices (#153): « Aucune restriction » alone, and unticking « Autre »
-// drops its text.
+// tout le monde") or once per attendee. onChange takes a field and its value. Dietary needs are
+// several choices (#153): the reducer keeps « Aucune restriction » alone, and drops the « Autre »
+// text when « Autre » is unticked.
 const StayChoices = ({ attendee, onChange, idPrefix, dietError }) => (
   <div className="space-y-6">
     <div className="space-y-3">
@@ -109,10 +101,7 @@ const StayChoices = ({ attendee, onChange, idPrefix, dietError }) => (
         multiple
         options={DIETARY_CHIPS}
         value={attendee.dietaryNeeds}
-        onChange={value => {
-          const dietaryNeeds = nextDietaryNeeds(attendee.dietaryNeeds, value);
-          onChange(dietaryNeeds.includes('other') ? { dietaryNeeds } : { dietaryNeeds, dietaryOther: '' });
-        }}
+        onChange={value => onChange('dietaryNeeds', value)}
       />
       {attendee.dietaryNeeds.includes('other') && (
         <Field label={fr.pleaseSpecify} error={dietError} htmlFor={`diet-other-${idPrefix}`}>
@@ -147,6 +136,14 @@ const LeaveGuard = ({ shouldBlock, onLeave }) => {
   );
 };
 
+// A draft stored before a field existed lacks it: the form's state has every field, in the order
+// fromParty gives them (the dirty check compares them as JSON).
+const formOfDraft = draft => ({
+  ...Object.fromEntries(Object.keys(fromParty(null)).map(key => [key, draft[key]])),
+  transportDepartureFsa: draft.transportDepartureFsa ?? '',
+  transportDeparturePlace: draft.transportDeparturePlace ?? ''
+});
+
 // `draftKey` (sessionStorage key, see registrationDraft.ts) keeps unsaved changes across a reload
 // and guards against leaving them; without it (the admin's dialog) the form has neither.
 // `initialStep` opens the form on a later step: the carpool board links an existing registration
@@ -156,27 +153,19 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // What the form opens with: a draft this tab left for this registration, else what's saved.
   const [initial] = useState(() => {
     const draft = draftKey ? draftFormFor(loadStoredDraft(draftKey), userRegistration) : null;
-    return { form: draft || formStateOf(userRegistration, travelRange), restored: !!draft };
+    return { form: draft ? formOfDraft(draft) : fromParty(userRegistration, travelRange), restored: !!draft };
   });
-  const [attendees, setAttendees] = useState(initial.form.attendees);
+  // The form's state; every rule between its fields is registration.ts's reducer.
+  const [form, dispatch] = useReducer(registrationReducer, initial.form);
+  const {
+    attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
+    transportDepartureFsa, transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
+  } = form;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [step, setStep] = useState(initialStep);
-  const [nameErrors, setNameErrors] = useState({});
-  const [dietErrors, setDietErrors] = useState({});
-
-  const [sameForEveryone, setSameForEveryone] = useState(initial.form.sameForEveryone);
-  const [transportType, setTransportType] = useState(initial.form.transportType);
-  const [transportSeats, setTransportSeats] = useState(initial.form.transportSeats);
-  const [transportArrival, setTransportArrival] = useState(initial.form.transportArrival);
-  const [transportDeparture, setTransportDeparture] = useState(initial.form.transportDeparture);
-  const [transportDepartureFsa, setTransportDepartureFsa] = useState(initial.form.transportDepartureFsa ?? '');
-  const [transportDeparturePlace, setTransportDeparturePlace] = useState(initial.form.transportDeparturePlace ?? '');
-  const [fsaError, setFsaError] = useState('');
-  const [volunteeringSelections, setVolunteeringSelections] = useState(initial.form.volunteeringSelections);
-  const [volunteeringOtherDetail, setVolunteeringOtherDetail] = useState(initial.form.volunteeringOtherDetail);
-  const [musicRequests, setMusicRequests] = useState(initial.form.musicRequests);
-  const [messageToOrganizers, setMessageToOrganizers] = useState(initial.form.messageToOrganizers);
+  // The validation issues shown at their fields (registration.ts's validate), until fixed.
+  const [shownIssues, setShownIssues] = useState([]);
   const [restored, setRestored] = useState(initial.restored);
   // The name filled in for a new registration (#133): part of the untouched form, not a change.
   const [prefilledName, setPrefilledName] = useState('');
@@ -184,35 +173,25 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   const formTopRef = useRef(null);
   const isEditing = !!userRegistration;
 
+  const change = changes => dispatch({ type: 'changed', changes });
+
   // A new registration starts with arrival on the event's first day and departure on its last
   // (#123): most people stay the whole event. Only while a field is still empty, so it never
-  // overwrites what the member picked.
+  // overwrites what the member picked, and never for a saved registration, even one whose saved
+  // attendees were all removed (a cleared arrival restored from a draft stays cleared).
   useEffect(() => {
     if (isEditing) return;
-    setTransportArrival(current => current || travelRange.defaultArrival);
-    setTransportDeparture(current => current || travelRange.defaultDeparture);
+    dispatch({ type: 'travelDefaultsApplied', travelRange: { defaultArrival: travelRange.defaultArrival, defaultDeparture: travelRange.defaultDeparture } });
   }, [isEditing, travelRange.defaultArrival, travelRange.defaultDeparture]);
 
   // A different registration handed in after the first render replaces the form. The same one
   // fetched again (a new object, as happens right after mounting) must not: it would wipe what
   // the member typed, or the draft just restored.
-  const shownRegistration = useRef(formStateOf(userRegistration));
+  const shownRegistration = useRef(fromParty(userRegistration));
   useEffect(() => {
-    if (!userRegistration?.attendees || sameFormState(shownRegistration.current, formStateOf(userRegistration))) return;
-    shownRegistration.current = formStateOf(userRegistration);
-    const form = formStateOf(userRegistration, travelRange);
-    setAttendees(form.attendees);
-    setSameForEveryone(form.sameForEveryone);
-    setTransportType(form.transportType);
-    setTransportSeats(form.transportSeats);
-    setTransportArrival(form.transportArrival);
-    setTransportDeparture(form.transportDeparture);
-    setTransportDepartureFsa(form.transportDepartureFsa);
-    setTransportDeparturePlace(form.transportDeparturePlace);
-    setVolunteeringSelections(form.volunteeringSelections);
-    setVolunteeringOtherDetail(form.volunteeringOtherDetail);
-    setMusicRequests(form.musicRequests);
-    setMessageToOrganizers(form.messageToOrganizers);
+    if (!userRegistration?.attendees || sameFormState(shownRegistration.current, fromParty(userRegistration))) return;
+    shownRegistration.current = fromParty(userRegistration);
+    dispatch({ type: 'replaced', form: fromParty(userRegistration, travelRange) });
     setRestored(false);
   }, [userRegistration, travelRange]);
 
@@ -228,50 +207,31 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       const name = (data?.full_name || user.user_metadata?.full_name || '').trim();
       if (ignore || !name) return;
       setPrefilledName(name);
-      setAttendees(current => (current[0].name ? current : [{ ...current[0], name }, ...current.slice(1)]));
+      dispatch({ type: 'namePrefilled', name });
     };
     prefillName();
     return () => { ignore = true; };
   }, [isEditing, adminMode]);
 
-  // Offering a lift counts the seats offered; needing one, the seats needed (#179), which starts
-  // at the party's size: most parties travel together. No lift, no departure place (#181).
+  // Fixing a field hides its issue; the others stay until the next check.
+  const dismissIssues = (matches) => setShownIssues(current => (current.some(matches) ? current.filter(issue => !matches(issue)) : current));
+  const issueAt = (field, attendeeId) => shownIssues.find(issue => issue.field === field && issue.attendeeId === attendeeId)?.message;
+
+  // The reducer resets the seats, and with no lift the departure place (#179, #181).
   const changeTransportType = (type) => {
     if (type === transportType) return;
-    setTransportType(type);
-    setTransportSeats(type === 'need' ? attendees.length : 0);
-    if (type !== 'offer' && type !== 'need') {
-      setTransportDepartureFsa('');
-      setTransportDeparturePlace('');
-      setFsaError('');
-    }
+    change({ transportType: type });
+    if (type !== 'offer' && type !== 'need') dismissIssues(issue => issue.field === 'transportDepartureFsa');
   };
-
-  // Sync logistics across attendees when "same for everyone" is enabled
-  useEffect(() => {
-    if (!sameForEveryone || attendees.length < 2) return;
-    const first = attendees[0];
-    const needsSync = attendees.some(att => LOGISTICS_FIELDS.some(field => !sameChoice(att[field], first[field])));
-    if (needsSync) {
-      setAttendees(attendees.map(att => ({
-        ...att,
-        ...Object.fromEntries(LOGISTICS_FIELDS.map(field => [field, first[field]]))
-      })));
-    }
-  }, [sameForEveryone, attendees]);
 
   // Unsaved: the form differs from what it shows untouched (the saved registration, or a new one
   // with its defaults and prefilled name). Changing a field and back again is not a change.
-  const formState = {
-    attendees, sameForEveryone, transportType, transportSeats, transportArrival, transportDeparture,
-    transportDepartureFsa, transportDeparturePlace, volunteeringSelections, volunteeringOtherDetail, musicRequests, messageToOrganizers
-  };
   const untouchedForm = useMemo(() => {
-    const form = formStateOf(userRegistration, travelRange);
-    if (userRegistration || !prefilledName) return form;
-    return { ...form, attendees: [{ ...form.attendees[0], name: prefilledName }] };
+    const untouched = fromParty(userRegistration, travelRange);
+    if (userRegistration || !prefilledName) return untouched;
+    return { ...untouched, attendees: [{ ...untouched.attendees[0], name: prefilledName }] };
   }, [userRegistration, travelRange, prefilledName]);
-  const isDirty = !sameFormState(formState, untouchedForm);
+  const isDirty = !sameFormState(form, untouchedForm);
 
   // Set once the registration is saved or the member chose to leave: the draft is gone for good,
   // and the navigation that follows must not ask.
@@ -283,7 +243,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     storeDraft(draftKey, null);
   };
 
-  const formJson = JSON.stringify(formState);
+  const formJson = JSON.stringify(form);
   useEffect(() => {
     if (!draftKey || draftClosed.current) return;
     storeDraft(draftKey, isDirty ? makeDraft(JSON.parse(formJson), userRegistration) : null);
@@ -301,99 +261,55 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
   // An existing registration is priced at what it locked when it was made, not today's price (#117).
   const { basePrice, ratios } = useMemo(() => partyPricingOf(userRegistration, event), [userRegistration, event]);
 
-  const estimatedBalance = useMemo(() => {
-    if (!event) return 0;
-    return simulateEventPricing(
-      [{
-        id: 'temp-party',
-        is_paid: false,
-        attendees: attendees.map(a => ({ type: a.type, participation: a.participation, isNewMember: a.isNewMember }))
-      }],
-      basePrice,
-      ratios
-    ).calculated_amount_owed;
-  }, [attendees, event, basePrice, ratios]);
+  const estimatedBalance = useMemo(() => (event ? partyPrice(attendees, basePrice, ratios) : 0), [attendees, event, basePrice, ratios]);
 
   const isWaitlisted = !!(event?.max_attendees && attendees.length > event.max_attendees);
 
-  const handleAddAttendee = () => {
-    setAttendees([...attendees, newAttendee(`attendee-${Date.now()}`)]);
-  };
+  const handleAddAttendee = () => dispatch({ type: 'attendeeAdded', id: `attendee-${Date.now()}` });
 
-  const handleRemoveAttendee = (id) => {
-    if (attendees.length > 1) setAttendees(attendees.filter(attendee => attendee.id !== id));
-  };
+  const handleRemoveAttendee = (id) => dispatch({ type: 'attendeeRemoved', id });
 
   // A field and its value, or an object of several fields.
   const changesOf = (field, value) => (typeof field === 'object' ? field : { [field]: value });
 
+  // An age pick also sets the tier a Kid has (the reducer's age rule).
   const handleAttendeeChange = (id, field, value) => {
     const changes = changesOf(field, value);
-    setAttendees(attendees.map(attendee => (attendee.id === id ? { ...attendee, ...changes } : attendee)));
-    if (field === 'name' && value.trim()) setNameErrors(prev => ({ ...prev, [id]: undefined }));
-    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) setDietErrors(prev => ({ ...prev, [id]: undefined }));
+    dispatch({ type: 'attendeeChanged', id, changes });
+    if (field === 'name' && value.trim()) dismissIssues(issue => issue.field === 'name' && issue.attendeeId === id);
+    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) dismissIssues(issue => issue.field === 'dietaryOther' && issue.attendeeId === id);
   };
 
   // "Mêmes choix pour tout le monde": edits go to everyone at once.
   const handleGroupStayChange = (field, value) => {
     const changes = changesOf(field, value);
-    setAttendees(attendees.map(attendee => ({ ...attendee, ...changes })));
-    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) setDietErrors({});
+    dispatch({ type: 'groupStayChanged', changes });
+    if ('dietaryNeeds' in changes || 'dietaryOther' in changes) dismissIssues(issue => issue.field === 'dietaryOther');
   };
 
-  const handleAgeChange = (id, type) => {
-    setAttendees(attendees.map(attendee => {
-      if (attendee.id !== id) return attendee;
-      if (type === 'Kid') return { ...attendee, type, participation: 'After-Party' };
-      return { ...attendee, type, participation: attendee.participation === 'After-Party' ? 'Whole' : attendee.participation };
-    }));
+  // The input an issue points at. With one set of choices for the group, a diet issue is the
+  // group's « Autre » text.
+  const inputIdOf = (issue) => {
+    if (issue.field === 'name') return `name-${issue.attendeeId}`;
+    if (issue.field === 'dietaryOther') return `diet-other-${sameForEveryone || attendees.length === 1 ? 'group' : issue.attendeeId}`;
+    return 'transport-departure-fsa';
   };
 
-  const validateNames = () => {
-    const errors = {};
-    attendees.forEach(attendee => {
-      if (!attendee.name.trim()) errors[attendee.id] = fr.nameRequiredError;
-    });
-    setNameErrors(errors);
-    const firstInvalid = attendees.find(attendee => errors[attendee.id]);
-    if (firstInvalid) {
-      setStep(0);
-      requestAnimationFrame(() => document.getElementById(`name-${firstInvalid.id}`)?.focus());
-      return false;
-    }
-    return true;
-  };
-
-  // « Autre » needs its text (the database refuses it blank).
-  const validateDietary = () => {
-    const errors = Object.fromEntries(attendees.filter(needsDietaryDetail).map(attendee => [attendee.id, fr.dietaryOtherRequired]));
-    setDietErrors(errors);
-    const firstInvalid = attendees.find(attendee => errors[attendee.id]);
-    if (firstInvalid) {
-      setStep(1);
-      const idPrefix = sameForEveryone || attendees.length === 1 ? 'group' : firstInvalid.id;
-      requestAnimationFrame(() => document.getElementById(`diet-other-${idPrefix}`)?.focus());
-      return false;
-    }
-    return true;
-  };
-
-  // The departure postal code is optional, but not malformed (the database refuses it).
-  const validateDepartureFsa = () => {
-    if (!departureFsaInvalid(formState)) {
-      setFsaError('');
-      return true;
-    }
-    setFsaError(fr.transportDepartureFsaInvalid);
-    setStep(2);
-    requestAnimationFrame(() => document.getElementById('transport-departure-fsa')?.focus());
+  // Whether nothing in `issues` (in step order) blocks. The steps are checked in order, up to
+  // `lastStep` or the first with an issue: those steps show their issues now, the later ones keep
+  // what they showed. With an issue, the form goes to its step and focuses its field.
+  const passes = (issues, lastStep) => {
+    const [first] = issues;
+    const checkedUpTo = first ? first.step : lastStep;
+    setShownIssues(current => [...current.filter(issue => issue.step > checkedUpTo), ...issues.filter(issue => issue.step === checkedUpTo)]);
+    if (!first) return true;
+    setStep(first.step);
+    requestAnimationFrame(() => document.getElementById(inputIdOf(first))?.focus());
     return false;
   };
 
   const goToStep = (index) => {
-    if (index > step && step === 0 && !validateNames()) return;
-    if (index > step && step === 1 && !validateDietary()) return;
-    if (index > step && step === 2 && !validateDepartureFsa()) return;
+    if (index > step && !passes(issuesUpToStep(validate(form), step), step)) return;
     setStep(index);
     requestAnimationFrame(() => formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -404,7 +320,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
       goToStep(step + 1);
       return;
     }
-    if (!validateNames() || !validateDietary() || !validateDepartureFsa()) return;
+    if (!passes(validate(form), STEPS.length - 1)) return;
     if (!event || !event.id) {
       setError(fr.eventNotSpecifiedError);
       addToast(fr.eventNotSpecifiedError, 'error');
@@ -415,92 +331,14 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
     setError(null);
 
     try {
-      // Handle admin mode vs normal mode
-      let userId;
-      let authUser = null; // Only populated in normal mode for self-healing
-      if (adminMode && userRegistration) {
-        // In admin mode, use the user_id from the existing registration
-        userId = userRegistration.user_id;
-      } else {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        if (!user) throw appError(fr.mustBeSignedInError);
-        userId = user.id;
-        authUser = user;
-      }
-
-      // The bed an admin assigned stays on the attendee; the form never sends one.
-      const attendeesData = attendees.map(attendee => ({
-        ...(attendee.isSaved ? { id: attendee.id } : {}),
-        name: attendee.name.trim(),
-        type: attendee.type,
-        participation: attendee.participation,
-        is_new_member: attendee.isNewMember,
-        sleeping_preference: attendee.sleepingPreference,
-        sleeping_preference_other: attendee.sleepingPreferenceOther,
-        dietary_needs: attendee.dietaryNeeds,
-        bed_reason: attendee.bedReason,
-        bed_reason_other: attendee.bedReasonOther,
-        dietary_other: attendee.dietaryNeeds.includes('other') ? attendee.dietaryOther.trim() : ''
-      }));
-
-      // Party-wide answers only; everything about a person is on their attendee row.
-      const logistics = {
-        volunteering: volunteeringSelections,
-        volunteering_other: volunteeringOtherDetail
-      };
-
-      const transport = transportOf(formState);
-
-      // Get or create user profile (self-healing if missing)
-      const { data: fetchedProfile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Supabase profiles fetch error:', fetchError.message, fetchError.code, fetchError.details, fetchError.hint, JSON.stringify(fetchError));
-        throw fetchError;
-      }
-      let profile = fetchedProfile;
-
-      // If profile doesn't exist, attempt to create it (only possible in normal mode where we have authUser)
-      if (!profile && authUser) {
-        const { data: upsertedProfile, error: upsertErr } = await supabase
-          .from('profiles')
-          .upsert([{
-            id: authUser.id,
-            email: authUser.email,
-            full_name: authUser.user_metadata?.full_name || ''
-          }], { onConflict: 'id' })
-          .select('id')
-          .maybeSingle();
-
-        if (upsertErr) {
-          console.error('Supabase profiles upsert error:', upsertErr.message, upsertErr.code, upsertErr.details, upsertErr.hint, JSON.stringify(upsertErr));
-          throw upsertErr;
-        }
-        profile = upsertedProfile;
-      }
-
-      if (!profile) {
-        throw appError(adminMode ? fr.adminProfileMissingError : fr.profileMissingError);
-      }
-
-      // Party and attendees in one transaction. The database computes the amount owed, the price
-      // lock and the waitlist, registers the party (again, if it was cancelled), and leaves
-      // payment_status and admin_notes alone.
+      // Party and attendees in one transaction. The database takes the member from the session
+      // (an admin saves for the party's member), computes the amount owed, the price lock and the
+      // waitlist, registers the party (again, if it was cancelled), and leaves payment_status and
+      // admin_notes alone.
       const savedParty = await saveRegistration(supabase, {
         eventId: event.id,
-        attendees: attendeesData,
-        party: {
-          logistics,
-          transport,
-          music_requests: musicRequests,
-          message_to_organizers: messageToOrganizers
-        },
-        userId: adminMode ? userId : undefined
+        ...toSavePayload(form),
+        userId: adminMode ? userRegistration?.user_id : undefined
       });
 
       if (!savedParty) {
@@ -535,7 +373,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
         <ol className="grid grid-cols-4 gap-2">
           {STEPS.map((s, index) => {
             const isCurrent = index === step;
-            const hasError = (index === 0 && Object.values(nameErrors).some(Boolean)) || (index === 1 && Object.values(dietErrors).some(Boolean)) || (index === 2 && !!fsaError);
+            const hasError = shownIssues.some(issue => issue.step === index);
             return (
               <li key={s.id}>
                 <button
@@ -589,7 +427,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                       </div>
                     </div>
                     <div className="space-y-5">
-                      <Field label={fr.fullNameLabel} error={nameErrors[attendee.id]} htmlFor={`name-${attendee.id}`}>
+                      <Field label={fr.fullNameLabel} error={issueAt('name', attendee.id)} htmlFor={`name-${attendee.id}`}>
                         {({ id, describedBy, invalid }) => (
                           <Input
                             id={id}
@@ -609,7 +447,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                           name={`age-${attendee.id}`}
                           options={AGE_OPTIONS}
                           value={attendee.type}
-                          onChange={value => handleAgeChange(attendee.id, value)}
+                          onChange={value => handleAttendeeChange(attendee.id, 'type', value)}
                         />
                         {attendee.type !== 'Kid' ? (
                           <ChipGroup
@@ -646,12 +484,12 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
             <StepTitle title={fr.stepStayTitle} text={fr.accommodationNotice} />
             {attendees.length > 1 && (
               <Card className="mb-4 px-5 py-3">
-                <Toggle label={fr.sameForEveryone} checked={sameForEveryone} onChange={setSameForEveryone} />
+                <Toggle label={fr.sameForEveryone} checked={sameForEveryone} onChange={value => change({ sameForEveryone: value })} />
               </Card>
             )}
             {sameForEveryone || attendees.length === 1 ? (
               <Card className="p-5">
-                <StayChoices attendee={attendees[0]} onChange={handleGroupStayChange} idPrefix="group" dietError={dietErrors[attendees[0].id]} />
+                <StayChoices attendee={attendees[0]} onChange={handleGroupStayChange} idPrefix="group" dietError={issueAt('dietaryOther', attendees[0].id)} />
               </Card>
             ) : (
               <ul className="space-y-4">
@@ -663,7 +501,7 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                         attendee={attendee}
                         onChange={(field, value) => handleAttendeeChange(attendee.id, field, value)}
                         idPrefix={attendee.id}
-                        dietError={dietErrors[attendee.id]}
+                        dietError={issueAt('dietaryOther', attendee.id)}
                       />
                     </Card>
                   </li>
@@ -684,30 +522,30 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                 <div className="flex items-center justify-between gap-4">
                   <label htmlFor="transport-seats" className="text-base text-ink">{transportType === 'need' ? fr.transportSeatsNeededLabel : fr.transportSeats}</label>
                   <Stepper id="transport-seats" label={transportType === 'need' ? fr.transportSeatsNeededLabel : fr.transportSeats}
-                    value={transportSeats} onChange={setTransportSeats} min={transportType === 'need' ? 1 : 0} max={20} />
+                    value={transportSeats} onChange={value => change({ transportSeats: value })} min={transportType === 'need' ? 1 : 0} max={20} />
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={fr.transportArrival} className="min-w-0">
-                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportArrival} onChange={(e) => setTransportArrival(e.target.value)} />}
+                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportArrival} onChange={(e) => change({ transportArrival: e.target.value })} />}
                 </Field>
                 <Field label={fr.transportDeparture} className="min-w-0">
-                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportDeparture} onChange={(e) => setTransportDeparture(e.target.value)} />}
+                  {({ id }) => <Input id={id} type="datetime-local" min={travelRange.min || undefined} max={travelRange.max || undefined} className="min-w-0 max-w-full" value={transportDeparture} onChange={(e) => change({ transportDeparture: e.target.value })} />}
                 </Field>
               </div>
               {(transportType === 'offer' || transportType === 'need') && (
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_1fr]">
-                  <Field label={fr.transportDepartureFsa} hint={fr.transportDepartureFsaHint} error={fsaError} htmlFor="transport-departure-fsa" className="min-w-0">
+                  <Field label={fr.transportDepartureFsa} hint={fr.transportDepartureFsaHint} error={issueAt('transportDepartureFsa')} htmlFor="transport-departure-fsa" className="min-w-0">
                     {({ id, describedBy, invalid }) => (
                       <Input id={id} type="text" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={7}
                         placeholder={fr.transportDepartureFsaPlaceholder} aria-describedby={describedBy} invalid={invalid}
                         className="font-data" value={transportDepartureFsa}
-                        onChange={(e) => { setTransportDepartureFsa(e.target.value.toUpperCase()); setFsaError(''); }}
-                        onBlur={() => setTransportDepartureFsa(current => normalizeFsa(current))} />
+                        onChange={(e) => { change({ transportDepartureFsa: e.target.value.toUpperCase() }); dismissIssues(issue => issue.field === 'transportDepartureFsa'); }}
+                        onBlur={(e) => change({ transportDepartureFsa: normalizeFsa(e.target.value) })} />
                     )}
                   </Field>
                   <Field label={fr.transportDeparturePlace} className="min-w-0">
-                    {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => setTransportDeparturePlace(e.target.value)} />}
+                    {({ id }) => <Input id={id} type="text" maxLength={DEPARTURE_PLACE_MAX_LENGTH} placeholder={fr.transportDeparturePlacePlaceholder} value={transportDeparturePlace} onChange={(e) => change({ transportDeparturePlace: e.target.value })} />}
                   </Field>
                 </div>
               )}
@@ -719,11 +557,11 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
                 size="sm"
                 options={VOLUNTEERING_OPTIONS}
                 value={volunteeringSelections}
-                onChange={setVolunteeringSelections}
+                onChange={value => change({ volunteeringSelections: value })}
               />
               {volunteeringSelections.includes('other') && (
                 <Field label={fr.pleaseSpecify}>
-                  {({ id }) => <Input id={id} value={volunteeringOtherDetail} onChange={(e) => setVolunteeringOtherDetail(e.target.value)} placeholder={fr.volunteeringOtherPlaceholder} />}
+                  {({ id }) => <Input id={id} value={volunteeringOtherDetail} onChange={(e) => change({ volunteeringOtherDetail: e.target.value })} placeholder={fr.volunteeringOtherPlaceholder} />}
                 </Field>
               )}
             </Card>
@@ -735,10 +573,10 @@ const RegistrationForm = ({ event, userRegistration, onRegistrationSuccess, onCa
             <StepTitle title={fr.stepReviewTitle} />
             <Card className="space-y-5 p-5">
               <Field label={fr.musicRequests}>
-                {({ id }) => <Textarea id={id} value={musicRequests} onChange={(e) => setMusicRequests(e.target.value)} placeholder={fr.musicRequestsPlaceholder} />}
+                {({ id }) => <Textarea id={id} value={musicRequests} onChange={(e) => change({ musicRequests: e.target.value })} placeholder={fr.musicRequestsPlaceholder} />}
               </Field>
               <Field label={fr.messageToOrganizers}>
-                {({ id }) => <Textarea id={id} value={messageToOrganizers} onChange={(e) => setMessageToOrganizers(e.target.value)} placeholder={fr.messageToOrganizersPlaceholder} />}
+                {({ id }) => <Textarea id={id} value={messageToOrganizers} onChange={(e) => change({ messageToOrganizers: e.target.value })} placeholder={fr.messageToOrganizersPlaceholder} />}
               </Field>
             </Card>
             <Card className="p-5">

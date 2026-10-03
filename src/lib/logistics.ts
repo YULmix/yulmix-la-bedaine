@@ -6,9 +6,16 @@ import { supabase } from './supabase';
 import { appError, dbErrorMessage } from './dbErrors';
 import type { ErrorLike } from './dbErrors';
 import { refreshAdminParties } from './adminParties';
-import { countChanges, draftAfterSave, logisticsPayload, setNotesChange as withNotes, setPlaceChange as withPlace } from './logisticsDraft';
+import {
+  countChanges,
+  draftAfterSave,
+  logisticsPayload,
+  setMessageChange as withMessage,
+  setNotesChange as withNotes,
+  setPlaceChange as withPlace
+} from './logisticsDraft';
 
-// Logistique (#150, #195): the unsaved places and notes of each event's parties (the shape is
+// Logistique (#150, #195): the unsaved places, notes and messages (#216) of each event's parties (the shape is
 // logisticsDraft.js's), why the last save refused a party, and whether a save is running. Held
 // here, not in a screen, so the draft survives switching sections; it isn't kept across a reload.
 // The admin shell asks getUnsavedTotal() for its leave warnings and its unsaved marker.
@@ -19,8 +26,12 @@ import { countChanges, draftAfterSave, logisticsPayload, setNotesChange as withN
 // who sleeps where from the parties.
 
 type Client = SupabaseClient<Database>;
-type Draft = Record<string, { places?: Record<string, string | null>; adminNotes?: string }>;
-type DraftParty = { id: string; admin_notes?: string | null; attendees?: Array<{ id: string; place?: { place_id: string } | null }> };
+type Draft = Record<string, { places?: Record<string, string | null>; adminNotes?: string; participantMessage?: string }>;
+type DraftParty = {
+  id: string;
+  admin_notes?: string | null;
+  message_to_participants?: string | null;
+  attendees?: Array<{ id: string; place?: { place_id: string } | null }> };
 
 export interface LogisticsSnapshot {
   changes: Draft;
@@ -83,6 +94,13 @@ export const createLogisticsStore = (client: Client) => {
     publish(entry);
   };
 
+  /** The party's message to its participants (#216), shown to its member once saved. */
+  const setMessageChange = (eventId: string, party: DraftParty, message: string): void => {
+    const entry = entryOf(eventId);
+    entry.changes = withMessage(entry.changes, party, message);
+    publish(entry);
+  };
+
   const discard = (eventId: string): void => {
     const entry = entryOf(eventId);
     entry.changes = {};
@@ -119,7 +137,7 @@ export const createLogisticsStore = (client: Client) => {
     }
   };
 
-  return { subscribe, getSnapshot, getUnsavedTotal, setPlaceChange, setNotesChange, discard, save };
+  return { subscribe, getSnapshot, getUnsavedTotal, setPlaceChange, setNotesChange, setMessageChange, discard, save };
 };
 
 export type LogisticsStore = ReturnType<typeof createLogisticsStore>;
@@ -128,6 +146,7 @@ const store = createLogisticsStore(supabase);
 
 export const setLogisticsPlace = store.setPlaceChange;
 export const setLogisticsNotes = store.setNotesChange;
+export const setLogisticsMessage = store.setMessageChange;
 export const discardLogistics = store.discard;
 export const saveLogistics = store.save;
 

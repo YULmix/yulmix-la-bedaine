@@ -28,7 +28,8 @@ const FIELD_LABEL_KEYS = {
   calculated_amount_owed: 'amountDue',
   payment_status: 'paymentStatus',
   is_waitlisted: 'eventHistoryTableWaitlisted',
-  admin_notes: 'historyFieldAdminNotes'
+  admin_notes: 'historyFieldAdminNotes',
+  message_to_participants: 'historyFieldMessageToParticipants'
 };
 
 const headCount = (attendees) =>
