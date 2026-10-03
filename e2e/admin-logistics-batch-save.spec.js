@@ -2,7 +2,7 @@
 // Save and Discard; a party the database refuses keeps its draft and says why; leaving with
 // pending edits asks first; members can't use the save.
 import { test, expect } from '@playwright/test';
-import { adminMain } from './support/admin.js';
+import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,

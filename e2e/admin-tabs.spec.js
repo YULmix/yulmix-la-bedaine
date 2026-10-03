@@ -145,8 +145,9 @@ test.describe('admin tabs', () => {
 
   test('no tab param or an unknown one shows the overview tab', async ({ page }) => {
     await openAdmin(page);
-    // The sidebar lists every section (and only the current one's views).
-    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT);
+    // The sidebar lists every section (and only the current one's views); a phone's bar, four.
+    const phone = page.viewportSize().width < 768;
+    await expect(adminNav(page).getByRole('link')).toHaveCount(phone ? BAR_SECTIONS.length : SECTION_COUNT);
     await expectOverviewTabActive(page);
     await expect(page).toHaveURL(/\/admin\/overview$/);
 
@@ -160,7 +161,10 @@ test.describe('admin tabs', () => {
     await page.goto('/admin?tab=logistics&view=food');
     await expect(page).toHaveURL(/\/admin\/logistics\/food$/);
     await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-current', /page|true/);
-    await expect(adminNav(page).getByRole('link', { name: fr.logisticsViewFood })).toHaveAttribute('aria-current', 'page');
+    // The view is current: in the sidebar, or the phone's view tabs.
+    await expect(page.viewportSize().width < 768
+      ? page.getByRole('tab', { name: fr.logisticsViewFood })
+      : adminNav(page).getByRole('link', { name: fr.logisticsViewFood })).toHaveAttribute(...(page.viewportSize().width < 768 ? ['aria-selected', 'true'] : ['aria-current', 'page']));
 
     await page.goBack();
     await expect(page).toHaveURL(/\/admin\/users$/);
