@@ -18,8 +18,9 @@ import {
   dietaryLabelsOf,
   departureOf,
   VOLUNTEERING_OPTIONS,
-  TRANSPORT_TYPES,
   getOptionLabel,
+  getTransportTypeLabel,
+  transportKindOf,
   EDITABLE_REGISTRATION_STATUSES,
   getAttendeeTypeLabel,
   getParticipationSummaryLabel
@@ -95,6 +96,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const organizersMessage = registration.message_to_participants?.trim();
   const logistics = registration.logistics || {};
   const transport = registration.transport || {};
+  const transportKind = transportKindOf(transport);
   const volunteering = logistics.volunteering || [];
   const isCancellable = EDITABLE_REGISTRATION_STATUSES.includes(registration.status);
   const locked = isRegistrationLocked(event);
@@ -160,21 +162,17 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
           <Card className="space-y-5 p-5 sm:p-6">
             <h3 className="text-lg font-semibold text-ink">{fr.inputSummary}</h3>
             <InfoBlock icon={Car} title={fr.transport}>
-              {transport.type ? (
-                <>
-                  <p>
-                    {getOptionLabel(TRANSPORT_TYPES, transport.type)}
-                    {['offer', 'need'].includes(transport.type) && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
-                  </p>
-                  {(transport.arrival || transport.departure || departureOf(transport)) && (
-                    <p className="mt-1 text-sm text-muted">
-                      {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
-                      {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
-                      {departureOf(transport) && <span className="block [overflow-wrap:anywhere]">{fr.transportDeparturePlaceLabel} {departureOf(transport)}</span>}
-                    </p>
-                  )}
-                </>
-              ) : <p className="text-muted">{fr.notSpecified}</p>}
+              <p>
+                {getTransportTypeLabel(transport)}
+                {transportKind !== 'none' && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
+              </p>
+              {transportKind !== 'none' && (transport.arrival || transport.departure || departureOf(transport)) && (
+                <p className="mt-1 text-sm text-muted">
+                  {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
+                  {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
+                  {departureOf(transport) && <span className="block [overflow-wrap:anywhere]">{fr.transportDeparturePlaceLabel} {departureOf(transport)}</span>}
+                </p>
+              )}
             </InfoBlock>
             <InfoBlock icon={HandHeart} title={fr.volunteering}>
               {volunteering.length > 0 ? (

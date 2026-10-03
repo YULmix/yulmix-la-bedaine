@@ -163,6 +163,12 @@ export const departureOf = (transport: Transport | null | undefined): string => 
 /** The short admin label of a transport kind (transportKindOf): « Offre », « Besoin », « Aucun ». */
 export const getTransportKindLabel = (kind: TransportKind): string => TRANSPORT_KIND_LABELS[kind];
 
+/** What a member reads about their own transport (#232): « Je me débrouille » when there is none. */
+export const getTransportTypeLabel = (transport: Transport | null | undefined): string => {
+  const kind = transportKindOf(transport);
+  return kind === 'none' ? fr.transportTypeNone : getOptionLabel(TRANSPORT_TYPES, kind);
+};
+
 export const DIETARY_OPTIONS = [
   { value: 'none', label: fr.noDietaryNeeds },
   { value: 'vegetarian', label: fr.vegetarian },
