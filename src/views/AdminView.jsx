@@ -11,7 +11,8 @@ import EventsSection from '../components/admin/sections/EventsSection';
 import VenuesSection from '../components/admin/sections/VenuesSection';
 import ToolsSection from '../components/admin/sections/ToolsSection';
 import { AdminBottomBar, AdminHeaderActionsProvider, AdminPageHeader, AdminSidebar } from '../components/admin/AdminNav';
-import { ConfirmDialog, Notice, ViewPanel, ViewTabs, cx } from '../components/ui';
+import { ConfirmDialog, Notice, ViewPanel, ViewTabs } from '../components/ui';
+import { pageWidthClass } from '../lib/pageWidth';
 import { refreshEvents, useEvents } from '../lib/events';
 import { useAdminParties } from '../lib/adminParties';
 import { useEventPlaces } from '../lib/eventPlaces';
@@ -105,7 +106,7 @@ const AdminView = ({ isAdmin }) => {
       <AdminSidebar page={page} markers={markers} theme={theme} />
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-4 md:pb-16 md:pl-8 md:pr-6 md:pt-5">
-        <div className={cx(page.width === 'narrow' && 'max-w-3xl')}>
+        <div className={pageWidthClass(page.width)}>
           {/* A drill-down (the event editor, a venue) brings its own header and back link (#210). */}
           {!page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}
           <AdminHeaderActionsProvider slot={page.drillDown ? null : actionsSlot}>
