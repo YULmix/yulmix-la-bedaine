@@ -28,7 +28,7 @@ enforced.
 |---|---|---|
 | Anonymous | no session | `SELECT` on ACTIVE/ARCHIVED events only |
 | Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback. A soft-deleted account (#36) keeps only read access to its own profile row |
-| Comité (per edition, #217) | an `edition_roles` row with `committee`, granted by an admin | reads that edition's registrations in full (parties, attendees and their places, the registrants' profiles, the change history, the organisers' notes in `party_admin_notes`), its places (`event_places()`) and its venue's `assignments` gallery; writes nothing more than a member |
+| Comité (per edition, #217) | an `edition_roles` row with `committee`, granted by an admin in « Équipe » | reads that edition's registrations in full (parties, attendees and their places, the registrants' profiles, the change history, the organisers' notes in `party_admin_notes`), its places (`event_places()`) and its venue's `assignments` gallery; writes nothing more than a member |
 | Organisateur (per edition) | an `edition_roles` row with `organiser` | Comité's reads, plus that edition's budget (read and write) and email log, its parties' notes (write), and through role-checking functions: payment status (`set_payment_status()`), places, notes and messages (`save_logistics()`), pricing (`apply_event_pricing()`). Not events, venues, roles, nor editing a registration |
 | Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `party_admin_notes`; the only one who grants edition roles |
 | Root admin | email = `yulmixalabedaine@gmail.com` | always admin, cannot be demoted |
