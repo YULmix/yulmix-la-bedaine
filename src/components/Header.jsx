@@ -42,7 +42,9 @@ const navLinkClass = ({ isActive }) => cx(
   isActive ? 'text-neon' : 'text-muted hover:text-ink'
 );
 
-const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted = false, onOpenFeedback }) => {
+// `canOpenAdmin`: an admin, or someone with a role on the active event (#217); `isAdmin` is the
+// account's own flag.
+const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdmin = isAdmin, isDeleted = false, onOpenFeedback }) => {
   const { pathname } = useLocation();
   const menu = useMenu();
   // The header's height, as --header-height on the root, for what sticks under it (the admin
@@ -147,7 +149,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
                 <span className="sr-only sm:not-sr-only">{fr.navCarpool}</span>
               </NavLink>
             )}
-            {isAdmin && (
+            {canOpenAdmin && (
               <NavLink to={ADMIN_ROOT} className={navLinkClass}>
                 <ShieldCheck aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
                 <span className="sr-only sm:not-sr-only">{fr.navAdmin}</span>
@@ -190,7 +192,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
                 </>
               ) : (
                 <>
-                  {!isDeleted && isAdmin && (
+                  {!isDeleted && canOpenAdmin && (
                     <button role="menuitem" onClick={() => go(ADMIN_ROOT)} className={MENU_ITEM}>
                       <ShieldCheck aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                       {fr.adminNavLink}

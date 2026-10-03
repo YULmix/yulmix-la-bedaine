@@ -18,6 +18,7 @@ import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 import { useEvents } from './lib/events';
+import { fetchMyEditionRoles, roleOn } from './lib/editionRoles';
 
 const signInWithGoogle = async () => {
   try {
@@ -98,6 +99,8 @@ function App() {
   const adminPage = isAdminPath(useLocation().pathname);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // The signed-in person's edition roles, by event (#217, ADR 0023).
+  const [editionRoles, setEditionRoles] = useState({});
   // Soft-deleted account (#36): the database gives it no member access; the app shows why.
   const [isDeleted, setIsDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -140,6 +143,16 @@ function App() {
     }
   };
 
+  // Comité and Organisateur are per edition. An admin has none (they count as admin everywhere);
+  // a failed lookup leaves none, and the admin stays closed to them, which the database does too.
+  const fetchEditionRoles = async (userId) => {
+    try {
+      setEditionRoles(await fetchMyEditionRoles(supabase, userId));
+    } catch {
+      setEditionRoles({});
+    }
+  };
+
   // A deleted member can still read their own profile row; everything else is closed to them.
   // If the lookup fails, the database still refuses a deleted account everything; only the
   // explanation is missing, so treat it as active rather than signing the user out.
@@ -170,10 +183,11 @@ function App() {
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
         if (session?.user) {
-          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id), fetchEditionRoles(session.user.id)]);
         } else {
           setIsAdmin(false);
           setIsDeleted(false);
+          setEditionRoles({});
         }
         setLoading(false);
       }
@@ -187,7 +201,7 @@ function App() {
         setUser(session?.user || null);
         setIsAuthenticated(!!session);
         if (session?.user) {
-          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id)]);
+          await Promise.all([fetchAdminStatus(session.user.id), fetchAccountStatus(session.user.id), fetchEditionRoles(session.user.id)]);
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
@@ -208,6 +222,9 @@ function App() {
   if (loading) return <ShellSkeleton />;
 
   const guard = { ready: !loading && eventsLoaded, isAuthenticated, isAdmin };
+  // The admin area is about the active event: it opens to admins and to anyone with a role on
+  // that event (ADR 0023), each seeing what their role allows.
+  const activeRole = isAuthenticated && !isDeleted ? roleOn(activeEvent?.id, { isAdmin, roles: editionRoles }) : null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-night text-ink">
@@ -218,6 +235,7 @@ function App() {
         setIsAuthenticated={setIsAuthenticated}
         user={user}
         isAdmin={isAdmin}
+        canOpenAdmin={!!activeRole}
         isDeleted={isDeleted}
         onOpenFeedback={() => setIsFeedbackOpen(true)}
       />
@@ -275,8 +293,8 @@ function App() {
           {/* /admin/* so AdminView stays mounted between its tabs and the event editor
               (/admin/events/:id), keeping unsaved drafts. */}
           <Route path="/admin/*" element={
-            <ProtectedRoute {...guard} adminOnly>
-              <AdminView isAdmin={isAdmin} />
+            <ProtectedRoute {...guard} isAdmin={!!activeRole} adminOnly>
+              <AdminView isAdmin={isAdmin} role={activeRole} editionRoles={editionRoles} />
             </ProtectedRoute>
           } />
 

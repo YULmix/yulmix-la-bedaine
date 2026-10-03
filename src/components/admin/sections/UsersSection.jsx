@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { History } from 'lucide-react';
 import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
@@ -7,6 +7,8 @@ import { refreshAdminParties, updatePaymentStatus, useAdminParties } from '../..
 import { currentUserId as fetchCurrentUserId, setIsAdmin } from '../../../lib/profiles';
 import { PAYMENT_STATUS, getPaymentStatusShortLabel } from '../../../lib/registrationOptions';
 import { useToasts } from '../../../hooks/useToasts';
+import { useAdminAccess } from '../../../hooks/useAdminAccess';
+import { can, organiserEditions } from '../../../lib/editionRoles';
 import AdminUserManagement from '../AdminUserManagement';
 import PartyEditDialog from '../PartyEditDialog';
 import UserProfileDialog from '../UserProfileDialog';
@@ -20,8 +22,11 @@ import SectionStatus from './SectionStatus';
 // « Historique », the change history of an event's registrations (/admin/users/history). The
 // header's « Exporter » is on the list only: the history has its own export buttons. The list owns its dialogs: the payment confirmation, a
 // member's profile, the god-mode editor. Payment and admin changes reload the parties from the
-// shared store.
+// shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list,
+// Organisateur also marks payments, and only an admin edits a registration or the admin flag.
 const UsersList = ({ addToast }) => {
+  const { role } = useAdminAccess();
+  const canEdit = can(role, 'editRegistration');
   const { activeEvent } = useEvents();
   const { parties, loading, error } = useAdminParties(activeEvent?.id);
   const [currentUser, setCurrentUser] = useState(null);
@@ -80,12 +85,12 @@ const UsersList = ({ addToast }) => {
         parties={parties}
         currentUserId={currentUser}
         onOpenUserProfile={setProfile}
-        onAdminToggle={handleAdminToggle}
-        onPaymentToggle={(party, newStatus) => setPendingPayment({ party, newStatus })}
-        onEditParty={setEditingParty}
+        onAdminToggle={can(role, 'adminFlag') ? handleAdminToggle : undefined}
+        onPaymentToggle={can(role, 'markPayment') ? (party, newStatus) => setPendingPayment({ party, newStatus }) : undefined}
+        onEditParty={canEdit ? setEditingParty : undefined}
       />
       <UserProfileDialog profile={profile} onClose={() => setProfile(null)} />
-      <PartyEditDialog party={editingParty} event={activeEvent} onClose={() => setEditingParty(null)} onSaved={handleSaved} />
+      {canEdit && <PartyEditDialog party={editingParty} event={activeEvent} onClose={() => setEditingParty(null)} onSaved={handleSaved} />}
       <ConfirmDialog
         open={!!pendingPayment}
         tone="primary"
@@ -103,8 +108,12 @@ const UsersList = ({ addToast }) => {
   );
 };
 
+// The editions offered are those whose history the person may read: every one for an admin, else
+// those they are Organisateur of, past ones included (ADR 0023).
 const HistoryView = ({ addToast }) => {
-  const { events, loading, error } = useEvents();
+  const { isAdmin, roles } = useAdminAccess();
+  const { events: allEvents, loading, error } = useEvents();
+  const events = useMemo(() => organiserEditions(allEvents, { isAdmin, roles }), [allEvents, isAdmin, roles]);
   if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={refreshEvents} />;
   return events.length > 0
     ? <ChangeHistory events={events} notify={addToast} />
@@ -113,11 +122,12 @@ const HistoryView = ({ addToast }) => {
 
 const UsersSection = ({ view }) => {
   const { addToast } = useToasts(1699);
+  const { role } = useAdminAccess();
   const { activeEvent } = useEvents();
   const { activeParties } = useAdminParties(activeEvent?.id);
   return (
     <>
-      {activeEvent && view === 'list' && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}
+      {activeEvent && view === 'list' && can(role, 'exportData') && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}
       {view === 'history' ? <HistoryView addToast={addToast} /> : <UsersList addToast={addToast} />}
     </>
   );

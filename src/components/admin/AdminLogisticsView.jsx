@@ -32,7 +32,18 @@ const FILTERS = [
 // `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
 // the event places module (`available`, #193); with none, there is nothing to assign until they're defined (Événements tab).
 // The venue's assignments gallery (#177) is in the page header's actions.
+// `readOnly` (Comité, #217): the saved places and texts, without pickers, fields or Save.
+const ReadOnlyText = ({ label, value }) => (
+  <div className="mt-4">
+    <p className="mb-1.5 text-sm font-semibold text-muted">{label}</p>
+    <p className={cx('whitespace-pre-line text-sm [overflow-wrap:anywhere]', value?.trim() ? 'text-ink' : 'text-faint')}>
+      {value?.trim() || fr.logisticsTextEmpty}
+    </p>
+  </div>
+);
+
 const PlacesView = ({
+  readOnly = false,
   venue,
   parties,
   places,
@@ -144,7 +155,12 @@ const PlacesView = ({
                             {reason && <span className="text-faint">{`, ${reason}`}</span>}
                           </p>
                         </div>
-                        {places.length > 0 && (
+                        {places.length > 0 && readOnly && (
+                          <p className={cx('text-sm sm:text-right', attendee.place ? 'text-ink' : 'text-faint')}>
+                            {attendee.place?.bed_label || fr.logisticsNoPlaceAssigned}
+                          </p>
+                        )}
+                        {places.length > 0 && !readOnly && (
                           <div>
                             <PlacePicker
                               id={pickerId}
@@ -179,27 +195,36 @@ const PlacesView = ({
                   </div>
                 )}
 
-                <div className="mt-4">
-                  <label htmlFor={notesId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableAdminNotes}</label>
-                  <Textarea
-                    id={notesId}
-                    value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
-                    onChange={(e) => onAdminNotesChange(party, e.target.value)}
-                    rows={2}
-                    placeholder={fr.adminNotesPlaceholder}
-                  />
-                </div>
+                {readOnly ? (
+                  <>
+                    <ReadOnlyText label={fr.logisticsTableAdminNotes} value={party.admin_notes} />
+                    <ReadOnlyText label={fr.logisticsTableParticipantMessage} value={party.message_to_participants} />
+                  </>
+                ) : (
+                  <>
+                  <div className="mt-4">
+                    <label htmlFor={notesId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableAdminNotes}</label>
+                    <Textarea
+                      id={notesId}
+                      value={changes.adminNotes !== undefined ? changes.adminNotes : (party.admin_notes || '')}
+                      onChange={(e) => onAdminNotesChange(party, e.target.value)}
+                      rows={2}
+                      placeholder={fr.adminNotesPlaceholder}
+                    />
+                  </div>
 
-                <div className="mt-4">
-                  <label htmlFor={messageId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableParticipantMessage}</label>
-                  <Textarea
-                    id={messageId}
-                    value={changes.participantMessage !== undefined ? changes.participantMessage : (party.message_to_participants || '')}
-                    onChange={(e) => onParticipantMessageChange(party, e.target.value)}
-                    rows={2}
-                    placeholder={fr.participantMessagePlaceholder}
-                  />
-                </div>
+                  <div className="mt-4">
+                    <label htmlFor={messageId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableParticipantMessage}</label>
+                    <Textarea
+                      id={messageId}
+                      value={changes.participantMessage !== undefined ? changes.participantMessage : (party.message_to_participants || '')}
+                      onChange={(e) => onParticipantMessageChange(party, e.target.value)}
+                      rows={2}
+                      placeholder={fr.participantMessagePlaceholder}
+                    />
+                  </div>
+                  </>
+                )}
 
               </Card>
             </li>
@@ -207,7 +232,7 @@ const PlacesView = ({
         })}
       </ul>
 
-      <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} />
+      {!readOnly && <SaveBar dirtyCount={unsavedCount} saving={saving} onSave={onSave} onDiscard={onDiscard} />}
     </section>
   );
 };

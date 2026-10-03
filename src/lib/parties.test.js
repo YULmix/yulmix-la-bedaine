@@ -119,11 +119,11 @@ describe('writes', () => {
     expect(calledWith(queries[0], 'order')).toContainEqual(ORDER_ATTENDEES);
   });
 
-  test('setPaymentStatus updates only payment_status', async () => {
+  test('setPaymentStatus goes through set_payment_status(), which changes only that (#217)', async () => {
     const { client, queries } = mockClient({ data: null, error: null });
     await setPaymentStatus(client, 'p1', 'paid');
-    expect(calledWith(queries[0], 'update')).toEqual([[{ payment_status: 'paid' }]]);
-    expect(calledWith(queries[0], 'eq')).toEqual([['id', 'p1']]);
+    expect(client.rpc).toHaveBeenCalledWith('set_payment_status', { p_party_id: 'p1', p_payment_status: 'paid' });
+    expect(queries).toEqual([]);
   });
 });
 

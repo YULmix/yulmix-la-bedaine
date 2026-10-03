@@ -4,13 +4,14 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Ellipsis } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { adminHref, adminRoute } from '../../lib/adminRoutes';
-import { ADMIN_SECTION_ENTRIES, BAR_SECTIONS, MORE_SECTIONS } from '../../lib/adminSections';
+import { ADMIN_SECTION_ENTRIES } from '../../lib/adminSections';
 import { Dialog, cx } from '../ui';
 
 // The admin navigation (#208, ADR 0022), all rendered from the section registry
 // (src/lib/adminSections.ts): a sidebar from md up, with the current section's views nested
 // under it; on phones a bottom bar with four sections and « Plus », a sheet with the rest; and
 // the page header, one line with the page's title and its actions.
+// `sections` are the ones the signed-in role may open (sectionsFor, #217); every one by default.
 
 // `markers` maps a section id to the marker it shows (src/views/AdminView.jsx), or nothing.
 // `value` is true for a dot (unsaved work) or a number for a count (unresolved feedback).
@@ -28,13 +29,13 @@ const sectionHref = (section) => adminHref(adminRoute(section.id));
 const viewHref = (section, view) => adminHref({ ...adminRoute(section.id), view: view.id });
 
 /** Desktop (md and up): the sections, the current one's views nested under it. */
-export const AdminSidebar = ({ page, markers, theme }) => (
+export const AdminSidebar = ({ page, markers, theme, sections = ADMIN_SECTION_ENTRIES }) => (
   <nav aria-label={fr.adminTabsAriaLabel} className="hidden w-60 shrink-0 border-r border-line md:block">
     {/* Stuck under the header, whatever its height (--header-height, set by the header). */}
     <div className="sticky top-(--header-height,4rem) max-h-[calc(100dvh-var(--header-height,4rem))] overflow-y-auto px-3 py-5">
       {theme && <p className="truncate px-3 pb-3 font-data text-xs uppercase tracking-widest text-neon">{theme}</p>}
       <ul className="space-y-0.5">
-        {ADMIN_SECTION_ENTRIES.map(section => {
+        {sections.map(section => {
           const active = section.id === page.section.id;
           const Icon = section.icon;
           // A section with views isn't itself the page: its current view is.
@@ -88,18 +89,24 @@ const barItemClass = (active) => cx(
   active ? 'text-neon' : 'text-faint hover:text-ink'
 );
 
+// The bar's grid, by its number of items: a role with fewer sections gets fewer, wider ones.
+const BAR_COLUMNS = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5' };
+
 /**
  * Phones (below md): a fixed bottom bar in the thumb zone with the bar's sections and « Plus »,
  * a sheet with the others. « Plus » is highlighted when the current section is behind it, and
- * shows a marker when one of those sections has one.
+ * shows a marker when one of those sections has one. Without any section behind it, there is no
+ * « Plus ».
  */
-export const AdminBottomBar = ({ page, markers }) => {
+export const AdminBottomBar = ({ page, markers, sections = ADMIN_SECTION_ENTRIES }) => {
+  const barSections = sections.filter(section => section.inBar);
+  const moreSections = sections.filter(section => !section.inBar);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
-  const moreActive = MORE_SECTIONS.some(section => section.id === page.section.id);
-  const moreMarked = MORE_SECTIONS.some(section => markers[section.id]);
+  const moreActive = moreSections.some(section => section.id === page.section.id);
+  const moreMarked = moreSections.some(section => markers[section.id]);
   // « Plus » says « Non enregistré » when unsaved work is behind it, and otherwise only that there is something to deal with.
-  const moreUnsaved = MORE_SECTIONS.some(section => markers[section.id] === true);
+  const moreUnsaved = moreSections.some(section => markers[section.id] === true);
   const closeMore = () => {
     setMoreOpen(false);
     // The native dialog gives focus back to what opened it; say so for the link that closed it.
@@ -111,9 +118,12 @@ export const AdminBottomBar = ({ page, markers }) => {
       <nav
         aria-label={fr.adminTabsAriaLabel}
         data-bottom-bar
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+        className={cx(
+          'fixed inset-x-0 bottom-0 z-40 grid border-t border-line bg-night/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden',
+          BAR_COLUMNS[barSections.length + (moreSections.length ? 1 : 0)]
+        )}
       >
-        {BAR_SECTIONS.map(section => {
+        {barSections.map(section => {
           const active = section.id === page.section.id;
           const Icon = section.icon;
           return (
@@ -125,17 +135,19 @@ export const AdminBottomBar = ({ page, markers }) => {
             </Link>
           );
         })}
-        <button ref={moreRef} type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}
-          aria-current={moreActive ? 'true' : undefined} className={barItemClass(moreActive)}>
-          <Ellipsis aria-hidden="true" className="size-5" strokeWidth={1.75} />
-          <span>{fr.adminMore}</span>
-          {moreMarked && <Marker value label={moreUnsaved ? fr.unsavedTag : fr.adminMoreMarked} className="absolute right-[calc(50%-1.25rem)] top-2" />}
-        </button>
+        {moreSections.length > 0 && (
+          <button ref={moreRef} type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}
+            aria-current={moreActive ? 'true' : undefined} className={barItemClass(moreActive)}>
+            <Ellipsis aria-hidden="true" className="size-5" strokeWidth={1.75} />
+            <span>{fr.adminMore}</span>
+            {moreMarked && <Marker value label={moreUnsaved ? fr.unsavedTag : fr.adminMoreMarked} className="absolute right-[calc(50%-1.25rem)] top-2" />}
+          </button>
+        )}
       </nav>
 
       <Dialog open={moreOpen} onClose={closeMore} title={fr.adminMore} size="sm">
         <ul className="divide-y divide-line pb-[env(safe-area-inset-bottom)]">
-          {MORE_SECTIONS.map(section => {
+          {moreSections.map(section => {
             const active = section.id === page.section.id;
             const Icon = section.icon;
             return (

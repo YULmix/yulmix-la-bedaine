@@ -147,8 +147,11 @@ export const cancelParty = async (client: Client, partyId: string): Promise<Part
   return data as unknown as Party;
 };
 
-/** Sets a party's payment status (admins only, as the database enforces). */
+/**
+ * Sets a party's payment status, and nothing else of it, through set_payment_status(): Organisateur
+ * and above on the party's event (#217), as the database enforces.
+ */
 export const setPaymentStatus = async (client: Client, partyId: string, status: PaymentStatus): Promise<void> => {
-  const { error } = await client.from('user_parties').update({ payment_status: status }).eq('id', partyId);
+  const { error } = await client.rpc('set_payment_status', { p_party_id: partyId, p_payment_status: status });
   if (error) throw failure('Error updating payment status', error, fr.updateError);
 };

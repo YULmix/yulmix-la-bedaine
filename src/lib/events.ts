@@ -116,10 +116,16 @@ export const createEventsStore = (client: Client) => {
 
   /**
    * New base price and main-event ratio. Existing registrations keep the price they locked (#117);
-   * only those made while the event had no price get it.
+   * only those made while the event had no price get it. Through apply_event_pricing(), which
+   * changes only those two and lets Organisateur and above do it (#217).
    */
-  const applyPricing = async (eventId: string, pricing: Database['public']['Tables']['events']['Update']): Promise<void> => {
-    await update(eventId, pricing, 'Error applying pricing', fr.updateError);
+  const applyPricing = async (eventId: string, pricing: Pick<AppEvent, 'selling_price_whole_event' | 'ratio_main_whole'>): Promise<void> => {
+    const { error } = await client.rpc('apply_event_pricing', {
+      p_event_id: eventId,
+      p_selling_price_whole_event: Number(pricing.selling_price_whole_event),
+      p_ratio_main_whole: Number(pricing.ratio_main_whole)
+    });
+    if (error) throw failure('Error applying pricing', error, fr.updateError);
     await refresh();
   };
 
