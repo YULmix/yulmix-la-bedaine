@@ -108,6 +108,8 @@ BEGIN
                 RAISE EXCEPTION USING MESSAGE = 'logistics_party_not_found', ERRCODE = 'no_data_found';
             END IF;
 
+            -- Two saves of one party take turns, so the before snapshot is what this save changes.
+            PERFORM 1 FROM public.user_parties WHERE id = v_party_id FOR UPDATE;
             v_places_before := private.party_places_snapshot(v_party_id);
 
             FOR v_place IN
