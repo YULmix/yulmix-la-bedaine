@@ -1,5 +1,6 @@
 import fr from '../../../locales/fr.json';
 import { applyPricing, useEvents } from '../../../lib/events';
+import { dbErrorMessage } from '../../../lib/dbErrors';
 import { refreshAdminParties, useAdminParties } from '../../../lib/adminParties';
 import { refreshBudget, saveBudget, setBudgetDraft, useBudget } from '../../../lib/budget';
 import { useToasts } from '../../../hooks/useToasts';
@@ -26,7 +27,7 @@ const BudgetSection = () => {
       await saveBudget(eventId, lines, contingency);
       addToast(fr.budgetSavedToast, 'success');
     } catch (err) {
-      addToast(err.message, 'error');
+      addToast(dbErrorMessage(err, fr.saveError), 'error');
     }
   };
 
@@ -38,7 +39,7 @@ const BudgetSection = () => {
       addToast(fr.pricingAppliedToast, 'success');
       await refreshAdminParties(eventId);
     } catch (err) {
-      addToast(err.message, 'error');
+      addToast(dbErrorMessage(err, fr.updateError), 'error');
     }
   };
 
