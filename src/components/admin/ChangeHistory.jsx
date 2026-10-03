@@ -2,7 +2,7 @@ import { ArrowRight, ClipboardCopy, Download, History, RotateCw } from 'lucide-r
 import { useEffect, useMemo, useRef, useState } from 'react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
-import { exportFileName, toCsv, toTsv } from '../../lib/dataExport';
+import { downloadFile, exportFileName, toCsv, toTsv } from '../../lib/dataExport';
 import { defaultHistoryEvent, historyEntries, historyExportRows } from '../../lib/changeHistory';
 import { Button, Card, EmptyState, Field, Notice, Select, Skeleton, cx } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
@@ -38,17 +38,6 @@ const fetchProfiles = async (edits) => {
     data.forEach(profile => profiles.set(profile.id, profile));
   }
   return profiles;
-};
-
-const downloadCsv = (csv, fileName) => {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 };
 
 // « Historique des changements » (#173): one event's registrations and edits, newest first, with a
@@ -91,7 +80,7 @@ export const ChangeHistory = ({ events, notify }) => {
   const hasRows = !!exportRows?.rows.length;
 
   const exportCsv = () => {
-    downloadCsv(toCsv(exportRows), exportFileName('historique', event?.theme));
+    downloadFile(exportFileName('historique', event?.theme), toCsv(exportRows));
     notify(fr.changeHistoryCSVToast, 'success');
   };
 
