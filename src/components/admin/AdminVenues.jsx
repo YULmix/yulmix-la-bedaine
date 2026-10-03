@@ -6,6 +6,7 @@ import { dbErrorMessage } from '../../lib/dbErrors';
 import { venueTotals } from '../../lib/places';
 import { Button, Dialog, EmptyState, Field, Input, Notice, Skeleton, Tag, Toggle } from '../ui';
 import { VenuePlan } from './EventLocations';
+import { AdminHeaderActions } from './AdminNav';
 
 // The events held at a venue: on it, or on one of its frozen copies (an archived edition, #148).
 // Those still to come (not archived) are whose occupants the venue page shows.
@@ -109,13 +110,10 @@ const VenueList = ({ events, onOpen }) => {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-ink">{fr.venuesTitle}</h2>
-          <p className="max-w-prose text-sm text-faint">{fr.venuesHint}</p>
-        </div>
+      <p className="max-w-prose text-sm text-faint">{fr.venuesHint}</p>
+      <AdminHeaderActions>
         <Button onClick={() => setCreating(true)}><Plus aria-hidden="true" className="size-4.5" />{fr.venueNew}</Button>
-      </div>
+      </AdminHeaderActions>
       {error && <Notice tone="bad">{error}</Notice>}
       {archivedCount > 0 && (
         <Toggle checked={showArchived} onChange={setShowArchived}

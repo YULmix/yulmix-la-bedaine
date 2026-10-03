@@ -1,6 +1,7 @@
 // The overview's sleeping figures (#115): per-location occupancy, attendees without a place, and
 // overbooked places, following what's assigned in the Logistique tab.
 import { test, expect } from '@playwright/test';
+import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
@@ -29,9 +30,8 @@ test.afterEach(async () => {
   seeded = null;
 });
 
-const tab = (page, name) => page.getByRole('tab', { name, exact: true });
-// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
-const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+// The current admin page (the shell's main).
+const panel = page => adminMain(page);
 const occupancy = page => panel(page).locator('section').filter({ has: page.getByRole('heading', { name: fr.occupancyTitle }) });
 const unassigned = count => (count === 1 ? fr.occupancyUnassignedOne : fr.occupancyUnassignedOther).replace('{count}', count);
 // A location's row: its name, its assigned/capacity, and a chip per place with its own.
@@ -58,11 +58,11 @@ test('the overview follows assignments made in Logistique, and warns about an ov
   await expect(chip(page, 'Chambre 1', 'Lit A')).toContainText('0/1');
 
   // Both of the member's attendees in the one-person Lit A.
-  await tab(page, fr.adminTabLogistics).click();
+  await openSection(page, fr.adminTabLogistics);
   await assign(page, ALICE, 'Chambre 1 · Lit A');
   await assign(page, BOB, 'Chambre 1 · Lit A');
 
-  await tab(page, fr.adminTabOverview).click();
+  await openSection(page, fr.adminTabOverview);
   await expect(occupancy(page).getByText(fr.occupancyAllPlaced)).toBeVisible();
   await expect(locationRatio(page, 'Chambre 1')).toHaveText('2/2');
   await expect(locationRatio(page, 'Salon')).toHaveText('0/2');

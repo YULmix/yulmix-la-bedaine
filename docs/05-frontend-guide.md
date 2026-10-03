@@ -70,8 +70,20 @@ Sizes, as a blunt signal of where the complexity is:
 (`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
 built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
 also owns the tab and view ids; components never format one themselves.
-Because the drafts live in stores, unsaved edits survive a tab switch. On phones the
-tab list is a fixed bottom bar; from `md` up it's a row of pills.
+Because the drafts live in stores, unsaved edits survive a tab switch.
+
+The navigation (#208) renders from the section registry, `src/lib/adminSections.ts`: each
+section's labels, icon, views, page width, marker, and whether it has a slot in the phone bar.
+`src/components/admin/AdminNav.jsx` draws it: from `md` up a sidebar with the current section's
+views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with four sections and
+« Plus », a sheet (`Dialog`) with the rest, and the views as `ViewTabs` under the page header.
+The page header is one line, the `h1` (« Section · Vue ») and the page's actions: a section
+puts a button or a search field there with `<AdminHeaderActions>`, from anywhere in its tree.
+The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`), inside one centred
+container (`max-w-screen-2xl`) that the header shares on admin pages. The sidebar sticks under
+the header at its measured height (`--header-height`, set by `Header.jsx`). Save bars
+(`SaveBar`) float over the page as a raised toolbar, not a pane. A drill-down (the
+event editor, a venue) still brings its own header until #210.
 
 The Logistique tab has views of its own (#179), in `/admin/logistics/<view>` (`places` by default, the
 ids in `LOGISTICS_VIEW_IDS`): place assignment, and read-only views of the form's answers (`food`,
@@ -85,15 +97,15 @@ The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Outils has views too, in `/admin/tools/<view>` (`exports` by default, `history`, `feedback`), switched with the
-same `ViewTabs` / `ViewPanel` (`src/components/ui`) as Logistique. Its « Historique des
+Outils has views too, in `/admin/tools/<view>` (`exports` by default, `history`, `feedback`), switched by
+the shell like Logistique's. Its « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default).
 
 **One scrollbar at a time.** A long list that scrolls inside its own box must end on screen with
 the page at the top, or the box and the page fight over the wheel. `useFitToViewport`
 (`src/hooks/`) caps the box at the height left above the bottom of the screen (and the phone's
-fixed tab bar, `[data-bottom-bar]`). Where that would be under 256 px (a phone, under the
+fixed bottom bar, `[data-bottom-bar]`). Where that would be under 256 px (a phone, under the
 controls above the list), the box isn't capped and the page scrolls instead. `describeChanges()`
 (`src/lib/editHistory.js`) turns each entry into French lines, the same ones the member's
 « Historique » shows; `historyExportRows()` (`src/lib/changeHistory.js`) makes one export row per
@@ -102,8 +114,8 @@ line, for the same `toCsv` / `toTsv`.
 ## Navigation and layout
 
 The navigation model is [ADR 0022](./adr/0022-admin-navigation-and-page-widths.md) (#191). It is
-being implemented: the path URLs are in (#196), but until #208 and #209 land the admin still has
-the 7-tab bar described above. New screens follow the model, not the current code.
+being implemented: the path URLs (#196) and the shell (#208) are in; « Outils » is still a section
+until #209, and the drill-downs keep their own headers until #210. New screens follow the model.
 
 ### Adding an admin section or view
 
@@ -118,14 +130,17 @@ Before adding a screen, answer these in the PR description. Reviewers check them
    log, a per-topic table). A drill-down is one item's page (an event, a venue). Views are listed
    in the sidebar (desktop) and in `ViewTabs` (phone); a drill-down opens with a back link naming
    its parent, and its own sections use `ViewTabs` too. Don't build another kind of switcher.
-3. **Dense or narrow?** Lists, logs and tables are `dense`: full width, scrolling inside a box
-   fitted with `useFitToViewport`. Forms and summaries are `narrow` (max ~`3xl`). Declare it on
+3. **Dense or narrow?** Lists, logs, tables and dashboards are `dense`: full width, scrolling
+   inside a box fitted with `useFitToViewport`. Forms are `narrow` (max ~`3xl`). Cards side by
+   side switch columns with container queries (`@container`, `@4xl:`), since the sidebar takes
+   part of the window. Declare it on
    the view; the shell applies it. Don't set your own `max-w-*` on the page.
 4. **What's its URL?** `/admin/<section>/<view>` with English ids, built and parsed only by the
    admin routes module. If the screen replaces an old URL, add a redirect there.
-5. **A new section?** Add it to the section registry: id, label keys (full and short), icon,
-   views, width, marker. It appears in the sidebar and under « Plus » on phones. Putting it in
-   the phone bar (4 slots: Résumé, Inscrits, Logistique, Budget) is a separate decision that
+5. **A new section?** Add it to the section registry (`src/lib/adminSections.ts`): id, label
+   keys (full and short), icon, views, width, marker; then its id to the admin routes module and
+   its component to `SECTION_COMPONENTS` in `src/views/AdminView.jsx`. It appears in the
+   sidebar and under « Plus » on phones. Putting it in the phone bar (4 slots: Résumé, Inscrits, Logistique, Budget) is a separate decision that
    needs an organiser's approval.
 
 Every label goes in `fr.json`, and every view has a heading (visible, or `sr-only` when the

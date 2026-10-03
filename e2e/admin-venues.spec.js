@@ -1,6 +1,7 @@
 // The Sites tab (#146): venues with their capacity and events, a venue's page to edit its
 // locations and places, and archiving instead of deleting.
 import { test, expect } from '@playwright/test';
+import { adminMain, moreButton, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_EVENT_THEME,
@@ -139,13 +140,13 @@ test('an admin creates a venue, gives it a location, and archives it', async ({ 
   await expect(page.getByText(fr.venueArchivedHint)).toBeVisible();
 });
 
-test('on a phone the tab bar fits seven tabs, Logistique reads « Gestion » and Sites is there', async ({ page }) => {
+test('on a phone Sites is under « Plus », which is highlighted there, and Logistique reads « Gestion »', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto('/admin/venues');
   await expect(page.getByRole('heading', { name: fr.venuesTitle })).toBeVisible();
-  const bar = page.getByRole('tablist', { name: fr.adminTabsAriaLabel });
-  await expect(bar.getByRole('tab', { name: fr.adminTabLogistics }).getByText(fr.adminTabLogisticsShort, { exact: true })).toBeVisible();
-  await expect(bar.getByRole('tab', { name: fr.adminTabVenues })).toHaveAttribute('aria-selected', 'true');
+  await expect(sectionLink(page, fr.adminTabLogistics).getByText(fr.adminTabLogisticsShort, { exact: true })).toBeVisible();
+  await expect(sectionLink(page, fr.adminTabVenues)).toHaveCount(0);
+  await expect(moreButton(page)).toHaveAttribute('aria-current', 'true');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await screenshot(page, 'venues-phone');
 });
@@ -155,7 +156,7 @@ test('an archived edition keeps its layout and who slept where, under its venue'
   await assignPlace(placeIds['Chambre 1 · Lit A'], seeded.partyId, 1);
 
   await page.goto('/admin/events');
-  await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
+  await adminMain(page).getByRole('button', { name: fr.archiveEventButton }).click();
   await page.getByRole('dialog', { name: fr.archiveEventConfirmTitle }).getByRole('button', { name: fr.archiveEventButton }).click();
   // Archived: the event is now on a frozen copy (same name, another venue).
   await expect.poll(async () => (await getEventVenue(seeded.eventId)).id).not.toBe(liveId);

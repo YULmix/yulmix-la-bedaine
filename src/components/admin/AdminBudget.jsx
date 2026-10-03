@@ -357,7 +357,6 @@ const AdminBudget = ({ event, budget, draft, parties, onDraftChange, onSaveBudge
   const contingencyPct = Number(draft?.contingency ?? budget?.contingency_pct ?? 20) || 0;
   return (
     <section className="space-y-6">
-      <h2 className="sr-only">{fr.adminTabBudget}</h2>
       <BudgetEditor budget={budget} draft={draft} onDraftChange={onDraftChange} onSave={onSaveBudget} saving={savingBudget} />
       {/* Keyed on the saved price and ratio, so applying them resets the tried values. */}
       <Pricing

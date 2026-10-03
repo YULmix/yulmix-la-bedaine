@@ -2,14 +2,16 @@ import { Check, Save, TriangleAlert, Undo2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { Button, cx } from '../ui';
 
-// Sticky in the thumb zone, above the phone tab bar (3.5rem + safe area), so Save is always one
-// tap away however long the page gets. Put it last in the section it saves. The buttons keep
-// their size and stay on the status line; the status wraps beside them rather than under them.
+// Sticky in the thumb zone, above the phone's bottom bar (3.5rem + safe area), so Save is always
+// one tap away however long the page gets. Put it last in the section it saves. A floating
+// toolbar, not a pane: the raised colour and a deep shadow set it apart from the cards it passes
+// over, and from sm up it only takes the room it needs, on the right. The outer strip lets clicks
+// through to the page beside it. The buttons keep their size and stay on the status line.
 const SaveBar = ({ dirtyCount, invalid = false, saving, onSave, onDiscard }) => (
-  <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 md:bottom-4">
+  <div className="pointer-events-none sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 flex justify-end md:bottom-6">
     <div className={cx(
-      'flex items-center gap-2 rounded-card border bg-surface/95 py-2 pr-2 pl-4 shadow-pop backdrop-blur-md sm:gap-3 sm:py-3 sm:pr-3 sm:pl-5',
-      dirtyCount ? 'border-warn/50' : 'border-line'
+      'pointer-events-auto flex w-full items-center gap-2 rounded-card border bg-raised py-2 pr-2 pl-4 shadow-pop sm:w-auto sm:max-w-full sm:gap-4 sm:pl-5',
+      dirtyCount ? 'border-warn/60' : 'border-edge/60'
     )}>
       <p role="status" className={cx('flex min-w-0 flex-1 items-center gap-2 text-sm leading-snug', dirtyCount ? 'text-warn' : 'text-faint')}>
         {invalid

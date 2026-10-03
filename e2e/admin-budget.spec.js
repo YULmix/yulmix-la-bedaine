@@ -2,6 +2,7 @@
 // event_budgets table, and the simulator whose "apply" sets the base price and main-event ratio.
 // That price applies to new registrations only: existing ones keep the price they locked (#117).
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
@@ -38,7 +39,7 @@ test.afterEach(async () => {
   seeded = null;
 });
 
-const panel = (page) => page.getByRole('tabpanel');
+const panel = (page) => adminMain(page);
 // A <Stat>'s value is the paragraph right after its label.
 const stat = (page, label) => panel(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
 // Same formatting as src/lib/format.js (fr-CA, e.g. "1 000,00 $").

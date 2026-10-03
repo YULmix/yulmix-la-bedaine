@@ -1,6 +1,7 @@
 // "Supprimer mon compte" (issue #36): a soft delete from the account menu, refused after the
 // registration close date. Uses a throwaway member: a deleted account can't be restored.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   addParty,
@@ -44,7 +45,7 @@ test('a member deletes their account: registration cancelled, signed out, and sh
   const adminPage = await (await browser.newContext()).newPage();
   await loginAs(adminPage, TEST_USERS.admin);
   await adminPage.goto('/admin/users');
-  await expect(adminPage.getByRole('tabpanel').getByText(member.fullName).first()).toBeVisible();
+  await expect(adminMain(adminPage).getByText(member.fullName).first()).toBeVisible();
 
   await loginAs(page, member);
   await openAccountMenu(page);
@@ -60,8 +61,8 @@ test('a member deletes their account: registration cancelled, signed out, and sh
 
   // ...and no longer once the account is deleted.
   await adminPage.reload();
-  await expect(adminPage.getByRole('tabpanel')).toBeVisible();
-  await expect(adminPage.getByRole('tabpanel').getByText(member.fullName)).toHaveCount(0);
+  await expect(adminMain(adminPage)).toBeVisible();
+  await expect(adminMain(adminPage).getByText(member.fullName)).toHaveCount(0);
 
   // Signing in again shows the deleted-account state, not the app.
   await loginAs(page, member);

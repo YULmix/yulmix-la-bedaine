@@ -131,7 +131,8 @@ const addEdits = async () => {
 const scrollBox = page => card(page).getByTestId('change-history-scroll');
 const measure = page => scrollBox(page).evaluate(el => {
   const bar = document.querySelector('[data-bottom-bar]');
-  const barTop = bar && getComputedStyle(bar).position === 'fixed' ? bar.getBoundingClientRect().top : window.innerHeight;
+  // The phone's bar; hidden (display: none) from md up.
+  const barTop = bar && bar.offsetHeight && getComputedStyle(bar).position === 'fixed' ? bar.getBoundingClientRect().top : window.innerHeight;
   return { bottom: el.getBoundingClientRect().bottom, barTop, clientHeight: el.clientHeight, scrollHeight: el.scrollHeight };
 });
 

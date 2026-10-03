@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Car, ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
@@ -8,7 +8,7 @@ import { dbErrorMessage } from '../lib/dbErrors';
 import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
-import { ADMIN_ROOT } from '../lib/adminRoutes';
+import { ADMIN_ROOT, isAdminPath } from '../lib/adminRoutes';
 
 // Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
 // false in production builds, which then drop these imports and the whole chunk.
@@ -43,7 +43,22 @@ const navLinkClass = ({ isActive }) => cx(
 );
 
 const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted = false, onOpenFeedback }) => {
+  const { pathname } = useLocation();
   const menu = useMenu();
+  // The header's height, as --header-height on the root, for what sticks under it (the admin
+  // sidebar): 4rem, plus the test-account banner on previews.
+  const headerRef = useRef(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header || typeof ResizeObserver === 'undefined') return undefined;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty('--header-height', `${header.offsetHeight}px`));
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--header-height');
+    };
+  }, []);
   const navigate = useNavigate();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -108,11 +123,13 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, isDeleted 
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-night/85 backdrop-blur-md">
+    <header ref={headerRef} className="sticky top-0 z-30 border-b border-line bg-night/85 backdrop-blur-md">
       {TestAccountMarker && isAuthenticated && (
         <Suspense fallback={null}><TestAccountMarker email={user?.email} /></Suspense>
       )}
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 md:px-6">
+      {/* On admin pages the header shares the admin's container (ADMIN_WIDTH in AdminView): the
+          logo lines up with the sidebar, the account menu with the content's right edge. */}
+      <div className={cx('mx-auto flex h-16 items-center gap-2 px-4 md:px-6', isAdminPath(pathname) ? 'max-w-screen-2xl' : 'max-w-6xl')}>
         <Link to="/" className="mr-auto flex shrink-0 items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
           <img src={yulmixLogo} alt="" aria-hidden="true" className="h-7 w-auto" />
           <span className="hidden whitespace-nowrap font-display text-base text-ink min-[440px]:inline sm:text-lg">{fr.brandName}</span>

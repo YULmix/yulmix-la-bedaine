@@ -2,6 +2,7 @@
 // Every change saves right away; an occupied place or location can't be deleted, and says who's
 // in it.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   assignPlace,
@@ -41,7 +42,7 @@ test.afterEach(async () => {
 const openSleeping = async (page) => {
   const { id } = await getEventVenue(seeded.eventId);
   await page.goto(`/admin/venues/${id}`);
-  const section = page.getByRole('tabpanel', { name: fr.adminTabVenues });
+  const section = adminMain(page);
   await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
   return section;
 };

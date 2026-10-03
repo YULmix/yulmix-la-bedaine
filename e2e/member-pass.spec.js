@@ -1,6 +1,7 @@
 // The member's Pass labels the amount to match its stamp (issue #90): "Montant dû" while unpaid,
 // "Montant payé" once an admin has marked the party paid.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { getParty, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ test('the Pass says "Montant dû" until an admin marks the party paid, then "Mon
   const adminPage = await (await browser.newContext()).newPage();
   await loginAs(adminPage, TEST_USERS.admin);
   await adminPage.goto('/admin/users');
-  await adminPage.getByRole('tabpanel').getByRole('button', { name: fr.unpaidShort, exact: true }).click();
+  await adminMain(adminPage).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
   const confirm = adminPage.getByRole('dialog', { name: fr.markPaid });
   await confirm.getByRole('button', { name: fr.markPaid, exact: true }).click();
   await expect(confirm).toHaveCount(0);

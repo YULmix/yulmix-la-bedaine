@@ -64,9 +64,10 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
     return calculateBreakEvenPrice(totalCost, Number(budget?.contingency_pct ?? 20), totalPriceShares(attendees, ratios));
   }, [parties, totalCost, budget?.contingency_pct, ratios]);
 
+  // Columns follow the page's own width (container queries), not the window's: the admin
+  // sidebar takes 15rem of it from md up.
   return (
-    <div className="space-y-6">
-      <h2 className="sr-only">{fr.adminTabOverview}</h2>
+    <div className="@container space-y-6">
 
       <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
       {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}
@@ -87,7 +88,7 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+      <div className="grid gap-6 @4xl:grid-cols-[3fr_2fr]">
         <Card className="space-y-6 p-5 sm:p-6">
           <h3 className="text-lg font-semibold text-ink">{fr.budgetTitle}</h3>
           <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
@@ -139,7 +140,7 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 @xl:grid-cols-2 @3xl:grid-cols-3">
         <Card className="p-5 sm:p-6">
           <h3 className="mb-4 text-lg font-semibold text-ink">{fr.kpiTiersTitle}</h3>
           <BarList

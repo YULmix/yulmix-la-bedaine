@@ -1,6 +1,7 @@
 // The event editor's Couchage section (#147): pick the event's venue, and choose what of it this
 // edition uses (a place excluded, or another capacity). The venue itself is edited in Sites.
 import { test, expect } from '@playwright/test';
+import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { placeOption } from './support/placePicker.js';
 import {
@@ -115,9 +116,9 @@ test('an exclusion made here shows in Logistique at once, without reading the pl
   const readsBefore = placeReads.length;
 
   await page.getByRole('button', { name: fr.eventEditorBack }).click();
-  await page.getByRole('tab', { name: fr.adminTabLogistics, exact: true }).click();
+  await openSection(page, fr.adminTabLogistics);
   const [alice] = E2E_ATTENDEES.map(attendee => attendee.name);
-  const panel = page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+  const panel = adminMain(page);
   await panel.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${alice}` }).click();
   await expect(placeOption(page, 'Chambre 1 · Lit A')).toBeVisible();
   await expect(placeOption(page, 'Chambre 1 · Lit B')).toHaveCount(0);

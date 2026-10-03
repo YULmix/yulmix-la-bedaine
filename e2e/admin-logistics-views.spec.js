@@ -2,6 +2,7 @@
 // transport, comments) of confirmed parties. The view is in the URL; pending place changes
 // survive moving between views; a waitlisted party's answers are left out; members are blocked.
 import { test, expect } from '@playwright/test';
+import { adminNav, sectionLink, viewLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
@@ -73,11 +74,16 @@ test.afterEach(async () => {
   waitlisted = null;
 });
 
-const viewTab = (page, label) => page.getByRole('tablist', { name: fr.logisticsViewsLabel }).getByRole('tab', { name: label });
+// The views are in the sidebar from md up, in ViewTabs on phones (#208).
+const isPhone = page => page.viewportSize().width < 768;
+const viewTab = (page, label) => (isPhone(page)
+  ? page.getByRole('tablist', { name: fr.logisticsViewsLabel }).getByRole('tab', { name: label })
+  : viewLink(page, label));
 const view = (page, label) => page.getByRole('tabpanel', { name: label });
 const expectView = async (page, label) => {
-  await expect(viewTab(page, label)).toHaveAttribute('aria-selected', 'true');
-  await expect(view(page, label).getByRole('heading', { level: 2, name: label })).toBeVisible();
+  await expect(viewTab(page, label)).toHaveAttribute(...(isPhone(page) ? ['aria-selected', 'true'] : ['aria-current', 'page']));
+  await expect(page.getByRole('heading', { level: 1, name: `${fr.adminTabLogistics} · ${label}` })).toBeVisible();
+  await expect(view(page, label)).toBeVisible();
 };
 // The view in the URL, /admin/logistics/<view>; null for the default one (no segment).
 const viewParam = page => new URL(page.url()).pathname.match(/^\/admin\/logistics\/([^/]+)$/)?.[1] ?? null;
@@ -120,15 +126,6 @@ test('each view has its URL; Back and Forward move between them; pending places 
   await page.goForward();
   await expectView(page, fr.logisticsViewFood);
 
-  // Arrow keys move along the views, End to the last, Home back to the first.
-  await viewTab(page, fr.logisticsViewFood).focus();
-  await page.keyboard.press('ArrowRight');
-  await expectView(page, fr.logisticsViewVolunteering);
-  await expect(viewTab(page, fr.logisticsViewVolunteering)).toBeFocused();
-  await page.keyboard.press('End');
-  await expectView(page, fr.logisticsViewComments);
-  await page.keyboard.press('Home');
-  await expectView(page, fr.logisticsViewTitle);
   await expect(page.getByText(pending(1))).toBeVisible();
 });
 
@@ -148,12 +145,12 @@ test('the views show the confirmed parties\' answers, and none of the waitlisted
   await viewTab(page, fr.logisticsViewVolunteering).click();
   const volunteering = view(page, fr.logisticsViewVolunteering);
   const choice = label => volunteering.getByRole('listitem').filter({ has: page.getByRole('heading', { name: label }) });
-  await expect(choice(fr.volunteeringCookMeal)).toContainText(fr.logisticsPartiesCount.replace('{n}', 2));
   await expect(choice(fr.volunteeringCookMeal)).toContainText(MEMBER);
   await expect(choice(fr.volunteeringCookMeal)).toContainText(ADMIN);
   await expect(choice(fr.volunteeringOther)).toContainText('Jongler au feu');
   await expect(choice(fr.volunteeringPharmacy)).toContainText(fr.volunteeringNobody);
-  await expect(volunteering.getByRole('heading', { level: 3 }).first()).toContainText(`1. ${fr.volunteeringFoodPurchase}`);
+  // In the form's order, unnumbered.
+  await expect(volunteering.getByRole('heading', { level: 3 }).first()).toHaveText(fr.volunteeringFoodPurchase);
   await screenshot(page, 'logistics-volunteering');
 
   await viewTab(page, fr.logisticsViewTransport).click();
@@ -201,9 +198,16 @@ test('on a phone the views fit: the sub-navigation scrolls on its own, never the
   await comments.click();
   await expectView(page, fr.logisticsViewComments);
   expect(await fits()).toBe(true);
-  // The phone tab bar now calls Logistique « Gestion ».
-  const bar = page.getByRole('tablist', { name: fr.adminTabsAriaLabel });
-  await expect(bar.getByRole('tab', { name: fr.adminTabLogistics }).getByText(fr.adminTabLogisticsShort, { exact: true })).toBeVisible();
+  // Arrow keys move along the phone's view tabs, End to the last, Home back to the first.
+  await page.keyboard.press('Home');
+  await expectView(page, fr.logisticsViewTitle);
+  await expect(viewTab(page, fr.logisticsViewTitle)).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expectView(page, fr.logisticsViewFood);
+  await page.keyboard.press('End');
+  await expectView(page, fr.logisticsViewComments);
+  // The phone bar calls Logistique « Gestion ».
+  await expect(sectionLink(page, fr.adminTabLogistics).getByText(fr.adminTabLogisticsShort, { exact: true })).toBeVisible();
 });
 
 test('a member opening a Logistique view is blocked', async ({ page }) => {
@@ -211,6 +215,7 @@ test('a member opening a Logistique view is blocked', async ({ page }) => {
   await page.goto('/admin/logistics/food');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('tablist')).toHaveCount(0);
+  await expect(adminNav(page)).toHaveCount(0);
   await expect(page.getByText('Pas de coriandre')).toHaveCount(0);
 });
 

@@ -2,12 +2,13 @@ import { useLayoutEffect } from 'react';
 
 // Caps a scrolling element's height so that, with the page scrolled to the top, its bottom (plus
 // `reserve` px, e.g. its card's padding) ends on screen, above any fixed bottom bar
-// ([data-bottom-bar], the admin tabs on phones). An inner scroll that runs past the bottom of the
-// screen means two scrollbars fighting over the wheel; this keeps it to one. Where that would
-// leave less than `min` px (a phone, under the controls above the list), the element isn't capped
-// at all: no inner scroll, the page scrolls instead, still one scrollbar. Recomputed on resize,
-// when `deps` change (e.g. once the list has loaded), and when the page's layout changes (a banner
-// or a header settling above the element moves it down after the first measure).
+// ([data-bottom-bar], the admin's bar on phones; hidden from md up, where it measures 0). An
+// inner scroll that runs past the bottom of the screen means two scrollbars fighting over the
+// wheel; this keeps it to one. Where that would leave less than `min` px (a phone, under the
+// controls above the list), the element isn't capped at all: no inner scroll, the page scrolls
+// instead, still one scrollbar. Recomputed on resize, when `deps` change (e.g. once the list has
+// loaded), and when the page's layout changes (a banner or a header settling above the element
+// moves it down after the first measure).
 export const useFitToViewport = (ref, { reserve = 0, min = 256, deps = [] } = {}) => {
   useLayoutEffect(() => {
     const element = ref.current;

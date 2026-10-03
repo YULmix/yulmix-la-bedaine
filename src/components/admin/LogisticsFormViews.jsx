@@ -6,14 +6,14 @@ import { dietaryBreakdown, partyComments, transportRows, volunteersByChoice } fr
 import { formatDateTime } from '../../lib/format';
 import { Card, EmptyState, Tag } from '../ui';
 
-// The Logistique tab's read-only views of what parties answered in the form (#179). They list
+// Logistique's read-only views of what parties answered in the form (#179). They list
 // confirmed parties only (lib/adminStats.js); members change their answers by editing their
 // registration.
 
-const ViewHeader = ({ title, description }) => (
+// The view's title is the page header's (the admin shell's).
+const ViewHeader = ({ description }) => (
   <div>
-    <h2 className="text-xl font-semibold text-ink">{title}</h2>
-    <p className="mt-2 max-w-prose text-muted">{description}</p>
+    <p className="max-w-prose text-muted">{description}</p>
     <p className="mt-1 max-w-prose text-sm text-faint">{fr.logisticsConfirmedOnly}</p>
   </div>
 );
@@ -24,7 +24,7 @@ export const FoodView = ({ parties }) => {
   const needs = useMemo(() => dietaryBreakdown(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewFood} description={fr.foodViewDescription} />
+      <ViewHeader description={fr.foodViewDescription} />
       {needs.length === 0 ? <EmptyState icon={Utensils} title={fr.foodViewEmpty} /> : (
         <>
           <Card className="p-4 sm:p-5">
@@ -68,18 +68,15 @@ export const VolunteeringView = ({ parties }) => {
   const choices = useMemo(() => volunteersByChoice(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewVolunteering} description={fr.volunteeringViewDescription} />
-      <ol className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {choices.map(({ choice, parties: volunteers }, index) => (
+      <ViewHeader description={fr.volunteeringViewDescription} />
+      <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {choices.map(({ choice, parties: volunteers }) => (
           <li key={choice}>
             <Card className={`h-full p-4 sm:p-5 ${volunteers.length ? '' : 'opacity-80'}`}>
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <h3 className="font-semibold text-ink">
-                  <span className="font-data text-faint">{`${index + 1}. `}</span>
-                  {getOptionLabel(VOLUNTEERING_OPTIONS, choice)}
-                </h3>
-                <Count template={fr.logisticsPartiesCount} n={volunteers.length} />
-              </div>
+              <h3 className="mb-3 flex items-center gap-2 font-semibold text-neon">
+                <HandHeart aria-hidden="true" className="size-4.5 shrink-0" strokeWidth={1.75} />
+                {getOptionLabel(VOLUNTEERING_OPTIONS, choice)}
+              </h3>
               {volunteers.length === 0 ? <p className="text-sm text-faint">{fr.volunteeringNobody}</p> : (
                 <ul className="space-y-1.5">
                   {volunteers.map(volunteer => (
@@ -93,7 +90,7 @@ export const VolunteeringView = ({ parties }) => {
             </Card>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   );
 };
@@ -105,7 +102,7 @@ export const TransportView = ({ parties }) => {
   const orDash = value => value || fr.emptyValue;
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewTransport} description={fr.transportViewDescription} />
+      <ViewHeader description={fr.transportViewDescription} />
       {rows.length === 0 ? <EmptyState icon={Car} title={fr.transportViewEmpty} /> : (
         <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map(row => (
@@ -140,7 +137,6 @@ const CommentList = ({ icon: Icon, title, items, empty }) => (
     <h3 className="mb-3 flex items-center gap-2 font-semibold text-ink">
       <Icon aria-hidden="true" className="size-4.5 text-neon" strokeWidth={1.75} />
       {title}
-      <Count template={fr.logisticsPartiesCount} n={items.length} />
     </h3>
     {items.length === 0 ? <p className="text-sm text-faint">{empty}</p> : (
       <ul aria-label={title} className="divide-y divide-line">
@@ -159,7 +155,7 @@ export const CommentsView = ({ parties }) => {
   const { music, messages } = useMemo(() => partyComments(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewComments} description={fr.commentsViewDescription} />
+      <ViewHeader description={fr.commentsViewDescription} />
       <div className="grid gap-4 xl:grid-cols-2">
         <CommentList icon={Music} title={fr.musicRequests} items={music} empty={fr.commentsMusicEmpty} />
         <CommentList icon={MessageSquareText} title={fr.messageToOrganizers} items={messages} empty={fr.commentsMessagesEmpty} />
@@ -168,4 +164,3 @@ export const CommentsView = ({ parties }) => {
   );
 };
 
-export const FORM_VIEW_ICONS = { food: Utensils, volunteering: HandHeart, transport: Car, comments: MessageSquareText };

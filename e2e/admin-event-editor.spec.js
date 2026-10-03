@@ -2,6 +2,7 @@
 // survives the app re-rendering (it used to remount the whole admin page, e.g. when the browser tab
 // regained focus), a trip to another admin tab, and a reload.
 import { test, expect } from '@playwright/test';
+import { adminMain, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -22,9 +23,11 @@ test.afterEach(async () => {
 
 const openEditor = async (page) => {
   await page.goto('/admin/events');
-  await page.getByRole('tabpanel').getByRole('button', { name: fr.edit }).click();
+  await adminMain(page).getByRole('button', { name: fr.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/events/${seeded.eventId}$`));
-  await expect(page.getByRole('tab', { name: fr.adminTabEvents })).toHaveAttribute('aria-selected', 'true');
+  // The editor keeps Événements current: in the sidebar, or « Plus » on a phone.
+  const current = page.viewportSize().width < 768 ? moreButton(page) : sectionLink(page, fr.adminTabEvents);
+  await expect(current).toHaveAttribute('aria-current', /page|true/);
   return page.getByRole('tabpanel', { name: fr.eventSectionDetails });
 };
 
@@ -34,6 +37,22 @@ const iso = value => (value ? new Date(value).toISOString() : value);
 const screenshot = async (page, name) => {
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}.png`, fullPage: true });
 };
+
+// Événements is under « Plus » on phones (#208): the marker shows on « Plus », and on its row.
+test('on a phone, an unsaved event draft marks « Plus » and Événements in its sheet', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const details = await openEditor(page);
+  await details.getByLabel(fr.eventTitle).fill('Soirée mousse');
+  await sectionLink(page, fr.adminTabOverview).click();
+  await expect(moreButton(page).getByLabel(fr.unsavedTag)).toBeVisible();
+  await expect(sectionLink(page, fr.adminTabOverview).getByLabel(fr.unsavedTag)).toHaveCount(0);
+  await moreButton(page).click();
+  await expect(moreSheet(page).getByRole('link', { name: fr.adminTabEvents }).getByLabel(fr.unsavedTag)).toBeVisible();
+  await screenshot(page, 'phone-more-draft');
+  await moreSheet(page).getByRole('link', { name: fr.adminTabEvents }).click();
+  await adminMain(page).getByRole('button', { name: fr.edit }).click();
+  await expect(page.getByLabel(fr.eventTitle)).toHaveValue('Soirée mousse');
+});
 
 test('an unsaved edit survives an app re-render, the browser tab refocusing, another admin tab and a reload', async ({ page }) => {
   const details = await openEditor(page);
@@ -55,13 +74,13 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   await expect(title).toHaveValue('Soirée mousse');
   await expect(page.getByText(fr.eventEditorRestored)).toHaveCount(0);
 
-  await page.getByRole('tab', { name: fr.adminTabOverview }).click();
-  await expect(page.getByRole('tab', { name: fr.adminTabEvents }).getByLabel(fr.unsavedTag)).toBeVisible();
+  await openSection(page, fr.adminTabOverview);
+  await expect(sectionLink(page, fr.adminTabEvents).getByLabel(fr.unsavedTag)).toBeVisible();
   // Événements shows the list again; the event's row says it has unsaved edits, and reopening it
   // brings them back.
-  await page.getByRole('tab', { name: fr.adminTabEvents }).click();
-  await expect(page.getByRole('tabpanel').getByText(fr.unsavedTag)).toBeVisible();
-  await page.getByRole('tabpanel').getByRole('button', { name: fr.edit }).click();
+  await openSection(page, fr.adminTabEvents);
+  await expect(adminMain(page).getByText(fr.unsavedTag)).toBeVisible();
+  await adminMain(page).getByRole('button', { name: fr.edit }).click();
   await expect(page.getByLabel(fr.eventTitle)).toHaveValue('Soirée mousse');
 
   await page.reload();
@@ -77,8 +96,8 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   // Back to the list, which shows the saved title and no unsaved marker.
   await page.getByRole('button', { name: fr.eventEditorBack }).click();
   await expect(page).toHaveURL(/\/admin\/events$/);
-  await expect(page.getByRole('tabpanel').getByText('Soirée mousse')).toBeVisible();
-  await expect(page.getByRole('tabpanel').getByText(fr.unsavedTag)).toHaveCount(0);
+  await expect(adminMain(page).getByText('Soirée mousse')).toBeVisible();
+  await expect(adminMain(page).getByText(fr.unsavedTag)).toHaveCount(0);
 });
 
 // #192: the member pages read the event from the app shell, which used to keep the one it loaded
