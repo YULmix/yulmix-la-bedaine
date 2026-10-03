@@ -137,6 +137,9 @@ const SERIAL_ENTRIES = [
   // Removing an attendee (#237) reseeds the same shared active event, with places, so it runs
   // after admin-event-create, on its own.
   { name: 'attendee-removal' },
+  // Edition roles (#217): reseeds the shared active event and grants roles on it, so it runs
+  // after attendee-removal, on its own. Sets its own phone viewport.
+  { name: 'admin-roles' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 

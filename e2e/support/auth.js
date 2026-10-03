@@ -5,7 +5,10 @@
 // localStorage directly, so this doesn't depend on the auth-js storage format.
 export const TEST_USERS = {
   member: { email: 'member@test.local', password: 'password123' },
-  admin: { email: 'admin@test.local', password: 'password123' }
+  admin: { email: 'admin@test.local', password: 'password123' },
+  // Edition roles (#217): e2e/support/testData.js grants them on the e2e event.
+  committee: { email: 'committee@test.local', password: 'password123' },
+  organiser: { email: 'organiser@test.local', password: 'password123' }
 };
 
 export async function loginAs(page, { email, password }) {
