@@ -1,10 +1,11 @@
-import { ArrowLeft, BedDouble, FileText, Plus, Trash2 } from 'lucide-react';
+import { BedDouble, FileText, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
 import { NUMBER_FIELDS, dateInputValue } from '../../lib/eventDraft';
-import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, cx } from '../ui';
+import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, ViewPanel, ViewTabs } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
 import { EventVenuePlan } from './EventVenue';
+import DrillDownHeader from './DrillDownHeader';
 import SaveBar from './SaveBar';
 
 const SECTIONS = [
@@ -132,58 +133,43 @@ const EventEditor = ({
   onChange,
   onSave,
   onDiscard,
-  onBack
+  backTo
 }) => {
   const value = field => (field in changes ? changes[field] : event[field]);
   const status = EVENT_STATUS[event.status] || EVENT_STATUS.DRAFT;
   const dates = formatEventDates(event);
   const invalid = Object.keys(errors).length > 0;
 
-  const handleSectionKeyDown = (keyEvent) => {
-    if (!['ArrowLeft', 'ArrowRight'].includes(keyEvent.key)) return;
-    keyEvent.preventDefault();
-    keyEvent.stopPropagation();
-    const next = SECTIONS[(SECTIONS.findIndex(s => s.id === section) + 1) % SECTIONS.length].id;
-    onSectionChange(next);
-    requestAnimationFrame(() => document.getElementById(`event-section-${next}`)?.focus());
-  };
-
   return (
-    <section className="space-y-6" aria-labelledby="event-editor-title">
-      <div className="space-y-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="-ml-3">
-          <ArrowLeft aria-hidden="true" className="size-4" />{fr.eventEditorBack}
-        </Button>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 id="event-editor-title" className="min-w-0 text-display-md font-display text-ink [overflow-wrap:anywhere]">
-            {value('theme') || fr.eventTitle}
-          </h2>
-          <Tag tone={status.tone}>{fr[status.key]}</Tag>
-          {dirtyCount > 0 && <Tag tone="warn">{fr.unsavedTag}</Tag>}
-        </div>
-        {dates && <p className="font-data text-xs text-faint">{dates}</p>}
-      </div>
+    <section className="space-y-5 md:space-y-6" aria-labelledby="event-editor-title">
+      <DrillDownHeader
+        backTo={backTo}
+        backLabel={fr.adminTabEvents}
+        titleId="event-editor-title"
+        title={value('theme') || fr.eventTitle}
+        tags={(
+          <>
+            <Tag tone={status.tone}>{fr[status.key]}</Tag>
+            {dirtyCount > 0 && <Tag tone="warn">{fr.unsavedTag}</Tag>}
+          </>
+        )}
+        meta={dates && <p className="font-data text-xs text-faint">{dates}</p>}
+      />
 
-      <div role="tablist" aria-label={fr.eventEditorSectionsLabel} onKeyDown={handleSectionKeyDown}
-        className="inline-flex gap-1 rounded-full border border-line bg-surface p-1">
-        {SECTIONS.map(({ id, labelKey, icon: Icon }) => {
-          const selected = id === section;
-          return (
-            <button key={id} type="button" role="tab" id={`event-section-${id}`} aria-selected={selected}
-              aria-controls={`event-section-panel-${id}`} tabIndex={selected ? 0 : -1} onClick={() => onSectionChange(id)}
-              className={cx(
-                'inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold transition duration-150',
-                selected ? 'tint-neon text-ink' : 'text-faint hover:text-ink'
-              )}>
-              <Icon aria-hidden="true" className={cx('size-4.5', selected && 'text-neon')} strokeWidth={1.75} />
-              {fr[labelKey]}
-              {id === 'details' && dirtyCount > 0 && <span className="size-2 rounded-full bg-warn" aria-label={fr.unsavedTag} />}
-            </button>
-          );
-        })}
-      </div>
+      <ViewTabs
+        views={SECTIONS.map(({ id, labelKey, icon }) => ({
+          id,
+          label: fr[labelKey],
+          icon,
+          badge: id === 'details' && dirtyCount > 0 && <span className="size-2 rounded-full bg-warn" aria-label={fr.unsavedTag} />
+        }))}
+        value={section}
+        onChange={onSectionChange}
+        label={fr.eventEditorSectionsLabel}
+        idPrefix="event-section"
+      />
 
-      <div role="tabpanel" id={`event-section-panel-${section}`} aria-labelledby={`event-section-${section}`} key={section} className="animate-step">
+      <ViewPanel idPrefix="event-section" value={section}>
         {section === 'sleeping' ? (
           <EventVenuePlan event={event} onVenueChange={onVenueChange} />
         ) : (
@@ -207,7 +193,7 @@ const EventEditor = ({
             </div>
           </div>
         )}
-      </div>
+      </ViewPanel>
     </section>
   );
 };

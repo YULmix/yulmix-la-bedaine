@@ -30,3 +30,6 @@ export async function openSection(page, name) {
     await expect(moreSheet(page)).toHaveCount(0);
   }
 }
+
+/** The back link a detail page opens with (#210): « ← Événements », « ← Sites », « ← {venue} ». */
+export const backLink = (page, parentName) => page.getByRole('link', { name: fr.adminBackTo.replace('{name}', parentName) });
