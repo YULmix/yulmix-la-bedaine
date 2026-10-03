@@ -9,6 +9,7 @@ import {
   DEFAULT_PRICE_RATIOS,
   attendeePrice,
   calculateBreakEvenPrice,
+  partyPrice,
   partyPricingOf,
   priceRatiosOf,
   roundUpToNearestTen,
@@ -301,5 +302,39 @@ describe('pricingEngine — break-even price (#109)', () => {
   test('no budget or nobody paying gives 0', () => {
     expect(calculateBreakEvenPrice(0, 20, 10)).toBe(0);
     expect(calculateBreakEvenPrice(1000, 20, 0)).toBe(0);
+  });
+});
+
+describe('pricingEngine — partyPrice, an unpaid party\'s total (#194)', () => {
+  const unpaidOwed = (attendees, basePrice, ratios) =>
+    simulateEventPricing([{ id: 'p', is_paid: false, attendees }], basePrice, ratios).calculated_amount_owed;
+
+  const cases = [
+    ['nobody who pays', [{ type: 'Kid', participation: 'After-Party' }], 200, undefined, 0],
+    ['one adult, whole event', [{ type: 'Adult', participation: 'Whole' }], 1000, undefined, 1000],
+    ['newbies at the main-event share, form-shaped', [
+      { type: 'Adult', participation: 'Whole', isNewMember: true },
+      { type: 'Teenager', participation: 'Whole', isNewMember: true }
+    ], 1000, undefined, 807],
+    ['a mixed party whose lines round up, row-shaped', [
+      { type: 'Adult', participation: 'Whole' },
+      { type: 'Adult', participation: 'Main' },
+      { type: 'Teenager', participation: 'Main' },
+      { type: 'Teenager', participation: 'Whole', is_new_member: true },
+      { type: 'Kid', participation: 'Whole' }
+    ], 205, { mainWhole: 0.6 }, 452],
+    ['no price yet', [{ type: 'Adult', participation: 'Whole' }], 0, undefined, 0],
+    ['a price that is not a number', [{ type: 'Adult', participation: 'Whole' }], Number.NaN, undefined, 0]
+  ];
+
+  test.each(cases)('%s', (_name, attendees, basePrice, ratios, expected) => {
+    expect(partyPrice(attendees, basePrice, ratios)).toBe(expected);
+    expect(partyPrice(attendees, basePrice, ratios)).toBe(unpaidOwed(attendees, basePrice, ratios));
+  });
+
+  test('a paid party still keeps what it paid in the simulator; partyPrice ignores payment', () => {
+    const attendees = [{ type: 'Adult', participation: 'Whole' }];
+    expect(simulateEventPricing([{ id: 'p', is_paid: true, historical_owed: 150, attendees }], 200).calculated_amount_owed).toBe(150);
+    expect(partyPrice(attendees, 200)).toBe(200);
   });
 });
