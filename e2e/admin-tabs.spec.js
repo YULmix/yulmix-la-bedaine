@@ -203,6 +203,16 @@ test.describe('admin tabs', () => {
     await expectLogisticsTabActive(page);
   });
 
+  // Each section loads its own data (#195): one failing query doesn't take the others down.
+  test('with the feedback query failing, Logistique still renders and Retours says so', async ({ page }) => {
+    await page.route('**/rest/v1/app_feedback*', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' }));
+    await openAdmin(page, '/logistics');
+    await expectLogisticsTabActive(page);
+    await openAdmin(page, '/tools/feedback');
+    await expect(panel(page).getByText(fr.adminLoadError)).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: fr.retry })).toBeVisible();
+  });
+
   test('browser back/forward switch tabs', async ({ page }) => {
     await openAdmin(page, '/users');
     await tab(page, LOGISTICS_TAB).click();

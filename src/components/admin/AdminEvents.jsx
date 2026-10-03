@@ -12,7 +12,7 @@ export const EVENT_STATUS = {
 // Event list with lifecycle actions (activate / archive / edit). The only-one-active rule lives
 // in the database (only_one_active_event); the UI checks first and reports the constraint error.
 // Editing opens the event editor page (EventEditor); an event with an unsaved draft says so.
-export const AdminEventList = ({ events, draftEventId, onActivate, onArchive, onEdit }) => (
+export const AdminEventList = ({ events, draftEventIds = [], onActivate, onArchive, onEdit }) => (
   <section className="space-y-4">
     <h2 className="text-xl font-semibold text-ink">{fr.adminEventsManagementTitle}</h2>
     {events.length === 0 ? (
@@ -29,7 +29,7 @@ export const AdminEventList = ({ events, draftEventId, onActivate, onArchive, on
                   <p className="font-semibold text-ink">{event.theme}</p>
                   <Tag tone={status.tone}>{fr[status.key]}</Tag>
                   {event.is_active && event.is_reg_open && <Tag tone="neon">{fr.eventRegOpenLabel}</Tag>}
-                  {event.id === draftEventId && <Tag tone="warn">{fr.unsavedTag}</Tag>}
+                  {draftEventIds.includes(event.id) && <Tag tone="warn">{fr.unsavedTag}</Tag>}
                 </div>
                 {dates && <p className="mt-1 font-data text-xs text-faint">{dates}</p>}
                 {event.description && <p className="mt-1 line-clamp-1 text-sm text-muted">{event.description}</p>}

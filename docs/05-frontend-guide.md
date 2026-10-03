@@ -57,29 +57,28 @@ Sizes, as a blunt signal of where the complexity is:
 
 | File | Lines |
 |---|---|
-| `src/views/AdminView.jsx` | 1000 |
-| `src/components/RegistrationForm.jsx` | 667 |
-| `src/App.jsx` | 299 |
-| `src/views/RegistrationSummary.jsx` | 244 |
-| `src/lib/pricingEngine.ts` | 210 |
+| `src/components/RegistrationForm.jsx` | 808 |
+| `src/App.jsx` | 313 |
+| `src/views/RegistrationSummary.jsx` | 293 |
+| `src/views/AdminView.jsx` | 186 |
+| `src/lib/pricingEngine.ts` | 154 |
 
-`AdminView` is moving to a shell (#195): Résumé, Inscrits, Logistique and Budget are
-self-contained sections in `src/components/admin/sections/` reading the stores; Événements, Sites
-and Outils' state, fetching and write handlers are still in `AdminView` (`AdminEvents`,
-`AdminVenues`, `AdminTools` in `src/components/admin/`). The active tab is the URL's first segment
+`AdminView` is the shell (#195); each tab is a self-contained section in
+`src/components/admin/sections/` reading the stores, around the presentational components in
+`src/components/admin/` (`AdminOverview`, `AdminUserManagement`, `AdminLogisticsView`,
+`AdminBudget`, `AdminEvents`, `AdminVenues`, `AdminTools`). The active tab is the URL's first segment
 (`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
 built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
 also owns the tab and view ids; components never format one themselves.
-Because the drafts live in stores (or, for the event editor, still in `AdminView`), unsaved
-edits survive a tab switch. On phones the
+Because the drafts live in stores, unsaved edits survive a tab switch. On phones the
 tab list is a fixed bottom bar; from `md` up it's a row of pills.
 
 The Logistique tab has views of its own (#179), in `/admin/logistics/<view>` (`places` by default, the
 ids in `LOGISTICS_VIEW_IDS`): place assignment, and read-only views of the form's answers (`food`,
 `volunteering`, `transport`, `comments`, in `LogisticsFormViews.jsx`). Those list confirmed
 parties only (not cancelled, not waitlisted); their aggregations are pure functions in
-`src/lib/adminStats.js`. Pending place changes stay in `AdminView`, so they survive switching
-views too.
+`src/lib/adminStats.js`. Pending place changes stay in the logistics store, so they survive
+switching views too.
 
 The Outils tab's export (#178) builds each table once, as `{ headers, rows }`
 (`partyExportRows`, `attendeeExportRows` in `src/lib/dataExport.js`), and serialises it with
@@ -135,7 +134,8 @@ switcher already names it).
 ## State and data ownership
 
 Shared state lives in module stores in `src/lib` (`useSyncExternalStore`), not in a component
-that has to stay mounted. #195 is moving the admin's sections onto them, one store per data area.
+that has to stay mounted (#195): one store per data area, each admin section reading the ones it
+needs.
 
 The **events** (`src/lib/events.ts`, #195): the event list, the active one (`splitEvents`) and
 the others, which the app shell and the admin both read through `useEvents()`, so they can't
@@ -150,7 +150,7 @@ The **event places** (`src/lib/eventPlaces.ts`, #193): a cache
 per event that Aperçu, Logistique and the event editor's Couchage section all read through
 `useEventPlaces(eventId)`, so a change made in one shows in the others without a refetch. Its own
 writes (`editPlace`, then `savePlace`) update it; anything else that changes an event's places
-calls `invalidateEventPlaces()` (AdminView after archiving, Couchage on arriving and after a venue
+calls `invalidateEventPlaces()` (the events store after archiving, Couchage on arriving and after a venue
 change, the Sites editor after any write). Assignments aren't followed: Aperçu and Logistique take
 who sleeps where from the parties, and only Couchage shows it from the event places.
 
@@ -180,10 +180,22 @@ through `useLogistics(eventId)`. `saveLogistics(eventId)` sends one `save_logist
 the parties (never the event places), clears what was saved and keeps what was refused. The admin
 shell reads `useUnsavedLogistics()` for its leave warnings and the tab's unsaved marker.
 
+The **event editor's drafts** (`src/lib/eventDrafts.ts`, #195): each event's unsaved editor
+changes, mirrored to sessionStorage on every edit and restored from it when the event is first
+opened (`restored`), through `useEventDraft(eventId)`; `saveEventDraft(event)` sends only what
+differs (`eventDraft.js`'s rules) through the events store. `useUnsavedEventIds(events)` marks the
+list and the shell's leave warning.
+
+The **feedback** (`src/lib/feedback.ts`, #195): the members' reports, newest first, and the
+unresolved count, through `useFeedback()`; `resolveFeedback(id)` writes and reloads.
+
 Admin sections that own their data live in `src/components/admin/sections/`: they take no data
 props, read the stores, own their dialogs, and show `SectionStatus` (skeleton, or the error with
-« Réessayer ») and `NoActiveEvent` themselves. Résumé, Inscrits, Logistique and Budget are there
-so far.
+« Réessayer ») and `NoActiveEvent` (which also covers the events still loading, or failing)
+themselves. Every section is there; `AdminView` is the shell: it routes to the section, draws the
+navigation, keeps the active event's caches subscribed so switching sections never reloads them,
+and guards unsaved work (`beforeunload`, the leave-admin blocker, the tab markers). It never reads
+or writes the database.
 
 Parties (registrations) are read and written only through the party module, `src/lib/parties.ts`
 (#197), never with `supabase.from('user_parties')` in a component. Its functions log the raw error
@@ -196,9 +208,8 @@ Otherwise ownership is:
   `otherEvents` from the events store. Passed down as props.
 - **`HomeView`** — the current user's registration for the active event, and whether the form is in
   edit mode.
-- **`AdminView`** — the feedback and the event editor's draft (until #195's last PR moves them to
-  stores), the leave warnings, the navigation. Everything else comes from the stores; it reloads
-  the events on mount.
+- **`AdminView`** — the navigation and the leave warnings; no data. It reloads the events on
+  arrival.
 - **`RegistrationForm`** — the entire attendee array and all party-level fields as local state,
   hydrated from `userRegistration` on mount.
 

@@ -1,28 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
-import { Banknote, CalendarRange, ClipboardList, BedDouble, Download, History, Inbox, LayoutDashboard, MapPin, RotateCw, Wrench } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { ADMIN_SECTIONS, TOOLS_VIEW_IDS, adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation } from '../lib/adminRoutes';
+import { Banknote, CalendarRange, ClipboardList, BedDouble, LayoutDashboard, MapPin, Wrench } from 'lucide-react';
+import { adminHref, adminRedirect, adminRoute, ADMIN_SECTIONS, isAdminPath, parseAdminLocation } from '../lib/adminRoutes';
 import fr from '../locales/fr.json';
-import { AdminEventList } from '../components/admin/AdminEvents';
-import { AdminVenues } from '../components/admin/AdminVenues';
-import EventEditor from '../components/admin/EventEditor';
-import { ChangeHistory, DataExport, FeedbackInbox } from '../components/admin/AdminTools';
 import OverviewSection from '../components/admin/sections/OverviewSection';
 import UsersSection from '../components/admin/sections/UsersSection';
 import LogisticsSection from '../components/admin/sections/LogisticsSection';
 import BudgetSection from '../components/admin/sections/BudgetSection';
-import NoActiveEvent from '../components/admin/sections/NoActiveEvent';
-import { Button, ConfirmDialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
-import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
+import EventsSection from '../components/admin/sections/EventsSection';
+import VenuesSection from '../components/admin/sections/VenuesSection';
+import ToolsSection from '../components/admin/sections/ToolsSection';
+import { ConfirmDialog, Notice, cx } from '../components/ui';
+import { refreshEvents, useEvents } from '../lib/events';
 import { useAdminParties } from '../lib/adminParties';
-import { useUnsavedLogistics } from '../lib/logistics';
 import { useEventPlaces } from '../lib/eventPlaces';
 import { useBudget } from '../lib/budget';
-import { activateEvent, applyPricing, archiveEvent, refreshEvents, saveEventChanges, useEvents } from '../lib/events';
-import { appError, dbErrorMessage } from '../lib/dbErrors';
-import { dirtyFields, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
-import { useToasts } from '../hooks/useToasts';
+import { useUnsavedLogistics } from '../lib/logistics';
+import { useUnsavedEventIds } from '../lib/eventDrafts';
+
+// The admin shell (#195): routes to the current section, the navigation, and the guards for
+// unsaved work. Each section loads, shows and changes its own data through the stores in src/lib;
+// nothing here reads or writes the database.
 
 // Admin sub-navigation tabs, in the order and with the ids of the admin routes module (ADR 0022);
 // the id is the URL's first segment, /admin/<id>.
@@ -37,26 +35,26 @@ const TAB_DISPLAY = {
 };
 const ADMIN_TABS = ADMIN_SECTIONS.map(id => ({ id, ...TAB_DISPLAY[id] }));
 
-// The Outils tab's views (/admin/tools/<view>), one job each, so the change history (#173) can
-// have the screen to itself; the first is the default.
-const TOOLS_VIEW_DISPLAY = {
-  exports: { labelKey: 'toolsViewExports', icon: Download },
-  history: { labelKey: 'toolsViewHistory', icon: History },
-  feedback: { labelKey: 'toolsViewFeedback', icon: Inbox }
+// The section for a route (src/lib/adminRoutes.ts); each takes only its route params.
+const renderSection = (route) => {
+  switch (route.section) {
+    case 'users': return <UsersSection />;
+    case 'logistics': return <LogisticsSection view={route.view} />;
+    case 'budget': return <BudgetSection />;
+    case 'events': return <EventsSection eventId={route.eventId} editorSection={route.editorSection} />;
+    case 'venues': return <VenuesSection venueId={route.venueId} locationId={route.locationId} />;
+    case 'tools': return <ToolsSection view={route.view} />;
+    default: return <OverviewSection />;
+  }
 };
-const TOOLS_VIEWS = TOOLS_VIEW_IDS.map(id => ({ id, ...TOOLS_VIEW_DISPLAY[id] }));
 
 const AdminView = ({ isAdmin }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  // Where we are, from the URL (src/lib/adminRoutes.ts). The event editor, /admin/events/:id, is
-  // under the same admin shell: the Événements tab stays selected and this component stays mounted.
+  // Where we are, from the URL. The event editor, /admin/events/:id, is under the same admin
+  // shell: the Événements tab stays selected.
   const route = parseAdminLocation(location.pathname, location.search);
   const activeTab = route.section;
-  const editEventId = route.section === 'events' ? route.eventId : null;
-  const editSection = route.section === 'events' ? route.editorSection : 'details';
-  const logisticsView = route.section === 'logistics' ? route.view : null;
-  const toolsView = route.section === 'tools' ? route.view : null;
   // Old query-param links (/admin?tab=…) and paths that aren't canonical go to the canonical one,
   // replacing it in the history so Back doesn't bounce.
   useEffect(() => {
@@ -65,128 +63,25 @@ const AdminView = ({ isAdmin }) => {
   }, [location.pathname, location.search, navigate]);
   // Moving to another route pushes a history entry, so Back walks back through tabs, views and
   // editor sections.
-  const go = (to) => navigate(adminHref(to));
-  const selectTab = (tabId) => go(adminRoute(tabId));
-  // The events and the active one come from the store the member pages read too (src/lib/events.ts,
-  // #195): a change made here shows there without a reload (#192).
-  const { events, activeEvent: activeEventState } = useEvents();
-  // The active event's parties, for the exports (until #209 moves them into Inscrits), from the
-  // store the sections read (src/lib/adminParties.ts, #195).
-  const { activeParties } = useAdminParties(activeEventState?.id);
-  // The shell keeps the active event's other shared caches subscribed, so moving between sections
-  // (and in and out of the event editor) never reloads them: a cache reloads when a screen
-  // subscribes while nobody was.
-  useEventPlaces(activeEventState?.id);
-  useBudget(activeEventState?.id);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
-  // sessionStorage) so they survive switching tabs and sections, and reloads.
-  const [eventDraft, setEventDraft] = useState(null);
-  const [savingEvent, setSavingEvent] = useState(false);
-  const { addToast } = useToasts(1699);
-  const [feedbackItems, setFeedbackItems] = useState([]);
-  const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
-  const [pendingArchive, setPendingArchive] = useState(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
+  const selectTab = (tabId) => navigate(adminHref(adminRoute(tabId)));
 
-  // Fetch the events and the feedback.
+  // The events come from the store the member pages read too (src/lib/events.ts): a change made
+  // here shows there without a reload (#192). Fresh for the admin on arrival.
+  const { events, activeEvent } = useEvents();
   useEffect(() => {
-    if (!isAdmin) return;
-    fetchAllData();
+    if (isAdmin) refreshEvents();
   }, [isAdmin]);
-
-  const fetchAllData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // The events again, fresh for the admin; then the feedback.
-      const { error: eventsError } = await refreshEvents();
-      if (eventsError) throw appError(eventsError);
-      await fetchFeedback();
-    } catch (err) {
-      console.error('Error fetching admin data:', err);
-      setError(dbErrorMessage(err, fr.loadErrorHint));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFeedback = async () => {
-    try {
-      const { data: feedbackData, error: feedbackError } = await supabase
-        .from('app_feedback')
-        .select('*, profiles(email, full_name)')
-        .order('created_at', { ascending: false });
-      if (feedbackError) throw feedbackError;
-      setFeedbackItems(feedbackData || []);
-    } catch (err) {
-      console.error('Error fetching feedback:', err);
-    }
-  };
-
-  const handleResolveFeedback = async (feedbackId) => {
-    try {
-      const { error: resolveError } = await supabase
-        .from('app_feedback')
-        .update({ is_resolved: true, resolved_at: new Date().toISOString() })
-        .eq('id', feedbackId);
-      if (resolveError) throw resolveError;
-      addToast(fr.adminFeedbackResolve, 'success');
-      fetchFeedback();
-    } catch (err) {
-      console.error('Error resolving feedback:', err);
-      addToast(dbErrorMessage(err, fr.error), 'error');
-    }
-  };
-
-  // Only one event can be active: the events store checks, and so does the database.
-  const handleActivateEvent = async (event) => {
-    try {
-      await activateEvent(event);
-      addToast(fr.eventActivatedToast.replace('{theme}', event.theme), 'success');
-      fetchAllData();
-    } catch (err) {
-      addToast(err.message, 'error');
-    }
-  };
-
-  const confirmArchiveEvent = async () => {
-    const event = pendingArchive;
-    if (!event) return;
-    setConfirmBusy(true);
-    try {
-      await archiveEvent(event);
-      addToast(fr.eventArchivedToast.replace('{theme}', event.theme), 'success');
-      fetchAllData();
-    } catch (err) {
-      addToast(err.message, 'error');
-    } finally {
-      setConfirmBusy(false);
-      setPendingArchive(null);
-    }
-  };
-
-  const editingEvent = editEventId ? events.find(event => event.id === editEventId) : null;
-  const eventChanges = eventDraft?.eventId === editEventId ? eventDraft.changes : {};
-  const eventDirty = editingEvent ? dirtyFields(editingEvent, eventChanges) : [];
-  const eventErrors = validateDraft(editingEvent, eventChanges);
-
-  // Opening an event picks up a draft left in sessionStorage (a reload, a closed tab…).
-  useEffect(() => {
-    if (!editEventId || eventDraft?.eventId === editEventId) return;
-    const stored = loadStoredDraft(editEventId);
-    setEventDraft({ eventId: editEventId, changes: stored || {}, restored: !!stored });
-  }, [editEventId, eventDraft?.eventId]);
-
-  useEffect(() => {
-    if (eventDraft) storeDraft(eventDraft.eventId, eventDraft.changes);
-  }, [eventDraft]);
+  // The shell keeps the active event's shared caches subscribed, so moving between sections (and
+  // in and out of the event editor) never reloads them: a cache reloads when a screen subscribes
+  // while nobody was.
+  useAdminParties(activeEvent?.id);
+  useEventPlaces(activeEvent?.id);
+  useBudget(activeEvent?.id);
 
   // Closing or reloading the browser tab with unsaved edits asks first. (The event editor's would
   // be restored from sessionStorage on a reload, but not in a new tab; Logistique's live only in
   // its store, src/lib/logistics.ts.)
-  const hasUnsavedEvent = !!eventDraft && events.some(event => event.id === eventDraft.eventId && dirtyFields(event, eventDraft.changes).length > 0);
+  const hasUnsavedEvent = useUnsavedEventIds(events).length > 0;
   const unsavedLogistics = useUnsavedLogistics();
   useEffect(() => {
     if (!hasUnsavedEvent && !unsavedLogistics) return;
@@ -199,60 +94,6 @@ const AdminView = ({ isAdmin }) => {
   // nothing outside the admin shows or saves it, and a reload loses it. Moving between admin tabs
   // doesn't ask.
   const leaveBlocker = useBlocker(({ nextLocation }) => unsavedLogistics > 0 && !isAdminPath(nextLocation.pathname));
-
-  const handleEventFieldChange = (field, value) => {
-    setEventDraft(prev => ({ ...prev, eventId: editEventId, changes: { ...(prev?.eventId === editEventId ? prev.changes : {}), [field]: value } }));
-  };
-
-  const discardEventChanges = () => setEventDraft({ eventId: editEventId, changes: {}, restored: false });
-
-  const handleSaveEventChanges = async () => {
-    if (!editingEvent || !eventDirty.length || Object.keys(eventErrors).length) return;
-    setSavingEvent(true);
-    try {
-      await saveEventChanges(editingEvent, eventChanges);
-      discardEventChanges();
-      addToast(fr.eventMetadataUpdatedToast, 'success');
-    } catch (err) {
-      addToast(err.message, 'error');
-    } finally {
-      setSavingEvent(false);
-    }
-  };
-
-  // Data export (#178): both formats are built from the same rows (src/lib/dataExport.js).
-  const exportOf = (exportId) => EXPORTS.find(item => item.id === exportId);
-
-  const exportToCSV = (exportId) => {
-    if (!activeParties.length) {
-      addToast(fr.noDataToExport, 'warning');
-      return;
-    }
-    const { build, filePrefix } = exportOf(exportId);
-    const blob = new Blob([toCsv(build(activeParties))], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = exportFileName(filePrefix, activeEventState?.theme);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    addToast(fr.exportCSVToast, 'success');
-  };
-
-  const copyToClipboardForSheets = (exportId) => {
-    if (!activeParties.length) {
-      addToast(fr.noDataToCopy, 'warning');
-      return;
-    }
-    navigator.clipboard.writeText(toTsv(exportOf(exportId).build(activeParties))).then(() => {
-      addToast(fr.exportCopyToast, 'success');
-    }).catch(err => {
-      console.error('Failed to copy:', err);
-      addToast(fr.copyError, 'error');
-    });
-  };
 
   if (!isAdmin) {
     return (
@@ -276,125 +117,11 @@ const AdminView = ({ isAdmin }) => {
     requestAnimationFrame(() => document.getElementById(`admin-tab-${ADMIN_TABS[next].id}`)?.focus());
   };
 
-  const renderPanel = () => {
-    // Sections that load their own data (#195): no wait on the rest.
-    if (activeTab === 'users') return <UsersSection />;
-    if (activeTab === 'overview') return <OverviewSection />;
-    if (activeTab === 'logistics') return <LogisticsSection view={logisticsView} />;
-    if (activeTab === 'budget') return <BudgetSection />;
-    if (loading) {
-      return (
-        <div aria-busy="true" className="space-y-4">
-          <span className="sr-only">{fr.adminDashboardLoading}</span>
-          <Skeleton className="h-24 rounded-card" />
-          <Skeleton className="h-64 rounded-card" />
-        </div>
-      );
-    }
-    if (error) {
-      return (
-        <Notice
-          tone="bad"
-          title={fr.adminLoadError}
-          action={<Button variant="secondary" size="sm" onClick={fetchAllData}><RotateCw aria-hidden="true" className="size-4" />{fr.retry}</Button>}
-        >
-          {error}
-        </Notice>
-      );
-    }
-    if (activeTab === 'events') {
-      const backToEvents = () => selectTab('events');
-      if (editEventId && !editingEvent) {
-        return (
-          <EmptyState icon={CalendarRange} title={fr.eventEditorNotFound}
-            action={<Button variant="secondary" onClick={backToEvents}>{fr.eventEditorBack}</Button>} />
-        );
-      }
-      if (editingEvent) {
-        return (
-          <EventEditor
-            event={editingEvent}
-            section={editSection}
-            onSectionChange={section => go({ ...route, editorSection: section })}
-            onVenueChange={refreshEvents}
-            changes={eventChanges}
-            dirtyCount={eventDirty.length}
-            errors={eventErrors}
-            restored={!!eventDraft?.restored && eventDirty.length > 0}
-            saving={savingEvent}
-            onChange={handleEventFieldChange}
-            onSave={handleSaveEventChanges}
-            onDiscard={discardEventChanges}
-            onBack={backToEvents}
-          />
-        );
-      }
-      return (
-        <AdminEventList
-          events={events}
-          draftEventId={hasUnsavedEvent ? eventDraft.eventId : null}
-          onActivate={handleActivateEvent}
-          onArchive={setPendingArchive}
-          onEdit={(event) => go({ section: 'events', eventId: event.id, editorSection: 'details' })}
-        />
-      );
-    }
-    if (activeTab === 'venues') {
-      return (
-        <AdminVenues
-          venueId={route.venueId}
-          events={events}
-          locationId={route.locationId}
-          onOpen={venueId => go({ section: 'venues', venueId, locationId: null })}
-          onLocationChange={locationId => go({ ...route, locationId })}
-          onBack={() => selectTab('venues')}
-          onVenueChange={refreshEvents}
-          notify={addToast}
-        />
-      );
-    }
-    if (activeTab === 'tools') {
-      const renderToolsView = () => {
-        if (toolsView === 'history') {
-          return events.length > 0
-            ? <ChangeHistory events={events} notify={addToast} />
-            : <EmptyState icon={History} title={fr.changeHistoryEmpty} />;
-        }
-        if (toolsView === 'feedback') {
-          return (
-            <FeedbackInbox
-              items={feedbackItems}
-              showResolved={showResolvedFeedback}
-              onToggleResolved={setShowResolvedFeedback}
-              onResolve={handleResolveFeedback}
-            />
-          );
-        }
-        return activeEventState
-          ? <DataExport hasData={activeParties.length > 0} onExportCSV={exportToCSV} onCopyTSV={copyToClipboardForSheets} />
-          : <NoActiveEvent />;
-      };
-      return (
-        <div className="space-y-6">
-          <ViewTabs
-            views={TOOLS_VIEWS.map(({ id, labelKey, icon }) => ({ id, label: fr[labelKey], icon }))}
-            value={toolsView}
-            onChange={view => go({ section: 'tools', view })}
-            label={fr.toolsViewsLabel}
-            idPrefix="tools-view"
-          />
-          <ViewPanel idPrefix="tools-view" value={toolsView}>{renderToolsView()}</ViewPanel>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-16">
 
       <div className="mb-6 flex flex-col gap-1">
-        <p className="font-data text-xs uppercase tracking-widest text-neon">{activeEventState ? activeEventState.theme : fr.adminPageSubtitle}</p>
+        <p className="font-data text-xs uppercase tracking-widest text-neon">{activeEvent ? activeEvent.theme : fr.adminPageSubtitle}</p>
         <h1 className="font-display text-display-md text-ink">{fr.adminPageTitle}</h1>
       </div>
 
@@ -440,9 +167,8 @@ const AdminView = ({ isAdmin }) => {
       </div>
 
       <div role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`} key={activeTab} className="animate-step">
-        {renderPanel()}
+        {renderSection(route)}
       </div>
-
 
       <ConfirmDialog
         open={leaveBlocker.state === 'blocked'}
@@ -452,17 +178,6 @@ const AdminView = ({ isAdmin }) => {
         onCancel={() => leaveBlocker.reset()}
       >
         {fr.logisticsLeaveBody.replace('{n}', unsavedLogistics)}
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={!!pendingArchive}
-        title={fr.archiveEventConfirmTitle}
-        confirmLabel={fr.archiveEventButton}
-        onConfirm={confirmArchiveEvent}
-        onCancel={() => setPendingArchive(null)}
-        loading={confirmBusy}
-      >
-        {pendingArchive && fr.archiveEventConfirm.replace('{theme}', pendingArchive.theme)}
       </ConfirmDialog>
     </main>
   );
