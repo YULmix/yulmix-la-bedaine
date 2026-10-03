@@ -316,6 +316,17 @@ horizontal page overflow, 44px tab targets, controls within the viewport. That p
 to run it alone. Set `E2E_SCREENSHOT_DIR=<dir>` to save full-page mobile screenshots for a visual
 check.
 
+Every spec shares one active event and the seeded member's registration, so they never run side by
+side: each project is a link in a chain (`dependencies`), and `chromium`, which holds several such
+files, runs one worker (#170). To run one project alone, pass `--no-deps`; never run two projects
+at once.
+
+**When the suite fails for reasons that look unrelated, reset the local database first**
+(`supabase db reset`, always safe locally). Interrupted runs leave throwaway members and parties
+behind, and the preview seed (`scripts/preview-seed`) must never be applied locally: its trigger
+makes every new account an admin. `createThrowawayMember()` refuses to go on when it sees that,
+with a message saying to reset.
+
 Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
 "For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
 browser-install strategy and runtime cost for CI runners are worked out.
