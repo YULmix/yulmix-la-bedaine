@@ -45,3 +45,13 @@ test('the message to participants has its own label, apart from the private note
     { label: fr.historyFieldMessageToParticipants, from: fr.historyEmptyValue, to: 'Bienvenue' }
   ]);
 });
+
+test("place changes are not described: the member's history never shows them (#188)", () => {
+  const places = {
+    old: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: 'p1', label: 'Grange · Lit 3' }],
+    new: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: null, label: null }]
+  };
+  expect(describeChanges({ places })).toEqual([]);
+  expect(describeChanges({ places, admin_notes: { old: null, new: 'Note' } }))
+    .toEqual([{ label: fr.historyFieldAdminNotes, from: fr.historyEmptyValue, to: 'Note' }]);
+});

@@ -1,5 +1,5 @@
 import fr from '../locales/fr.json';
-import { defaultHistoryEvent, formatHistoryTimestamp, historyEntries, historyExportRows, personName } from './changeHistory';
+import { defaultHistoryEvent, describePlaceChanges, formatHistoryTimestamp, historyEntries, historyExportRows, personName } from './changeHistory';
 import { formatCurrency } from './format';
 
 const MEMBER = 'member-id';
@@ -68,4 +68,49 @@ test('the history opens on the active event, else the latest by registration sta
   expect(defaultHistoryEvent([old, recent, active]).id).toBe('active');
   expect(defaultHistoryEvent([old, recent]).id).toBe('recent');
   expect(defaultHistoryEvent([])).toBeNull();
+});
+
+describe('place changes (#188)', () => {
+  const marie = { attendee_id: 'a1', attendee_name: 'Marie' };
+  const luc = { attendee_id: 'a2', attendee_name: 'Luc' };
+  const at = (who, label) => ({ ...who, place_id: label ? `id-${label}` : null, label });
+  const placeEdit = (places, extra = {}) => ({
+    id: 'e3', edited_at: '2026-10-02T16:00:00Z', edited_by: ADMIN, registration: { user_id: MEMBER },
+    changes: { places, ...extra }
+  });
+
+  test('one line per attendee: « Place : Marie », old label → new label, null as « non assigné »', () => {
+    expect(describePlaceChanges({
+      old: [at(marie, 'Grange · Lit 3'), at(luc, null)],
+      new: [at(marie, 'Maison · Sofa'), at(luc, 'Grange · Lit 1')]
+    })).toEqual([
+      { label: 'Place : Marie', from: 'Grange · Lit 3', to: 'Maison · Sofa' },
+      { label: 'Place : Luc', from: 'non assigné', to: 'Grange · Lit 1' }
+    ]);
+    expect(describePlaceChanges({ old: [at(marie, 'Grange · Lit 3')], new: [at(marie, null)] }))
+      .toEqual([{ label: 'Place : Marie', from: 'Grange · Lit 3', to: fr.historyPlaceUnassigned }]);
+  });
+
+  test('a venue change says why the places were cleared', () => {
+    expect(describePlaceChanges({ old: [at(marie, 'Grange · Lit 3')], new: [at(marie, null)], reason: 'venue_changed' }))
+      .toEqual([{ label: 'Place : Marie', from: 'Grange · Lit 3', to: fr.historyPlaceVenueChanged }]);
+  });
+
+  test('nothing, or something malformed, is no line', () => {
+    expect(describePlaceChanges(undefined)).toEqual([]);
+    expect(describePlaceChanges({ old: null, new: [] })).toEqual([]);
+  });
+
+  test('the entry lists the other fields, then the places; the export has one row per attendee change', () => {
+    const [entry] = historyEntries([placeEdit(
+      { old: [at(marie, 'Grange · Lit 3'), at(luc, null)], new: [at(marie, 'Maison · Sofa'), at(luc, 'Grange · Lit 1')] },
+      { admin_notes: { old: null, new: 'Allergies' } }
+    )], profiles);
+    expect(entry.lines.map(line => line.label)).toEqual([fr.historyFieldAdminNotes, 'Place : Marie', 'Place : Luc']);
+    expect(historyExportRows([entry]).rows).toEqual([
+      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', fr.historyFieldAdminNotes, fr.historyEmptyValue, 'Allergies'],
+      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place : Marie', 'Grange · Lit 3', 'Maison · Sofa'],
+      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place : Luc', 'non assigné', 'Grange · Lit 1']
+    ]);
+  });
 });

@@ -1,6 +1,7 @@
 // The Logistique tab saves every pending place and note at once (#150): one bar with the count,
 // Save and Discard; a party the database refuses keeps its draft and says why; leaving with
-// pending edits asks first; members can't use the save.
+// pending edits asks first; members can't use the save. Saved places are in the change history
+// (#188).
 import { test, expect } from '@playwright/test';
 import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
@@ -242,4 +243,44 @@ test('the header counts the event places: an excluded place leaves, a venue edit
   const couchage = panel(page).getByRole('heading', { name: fr.occupancyTitle }).locator('xpath=../..');
   await expect(couchage).toContainText(`1/4 ${fr.occupancyTaken}`);
   await expect(couchage).toContainText(fr.occupancyUnassignedOther.replace('{count}', 2));
+});
+
+// #188: the saves are in the change history, one line per attendee whose place changed, and in
+// its CSV.
+test('saved places show in the change history and its CSV, one line per attendee', async ({ page }) => {
+  await openLogistics(page);
+  await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit A');
+  await pickPlace(page, picker(page, ZOE.name), 'Salon · Sofa');
+  await notes(page, ZOE.name).fill('Arrive samedi');
+  await saveButton(page).click();
+  await expect(panel(page).getByText(fr.eventEditorAllSaved)).toBeVisible();
+  // A move.
+  await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit B');
+  await saveButton(page).click();
+  await expect(panel(page).getByText(fr.eventEditorAllSaved)).toBeVisible();
+
+  await page.goto('/admin/users/history');
+  const history = panel(page).locator('section').filter({ has: page.getByRole('heading', { name: fr.changeHistoryTitle }) });
+  const placeLabel = (name) => fr.historyFieldPlace.replace('{name}', name);
+  // A change line, inside an entry (both are list items).
+  const placeLine = (name) => history.getByTestId('change-history-entry').getByRole('listitem').filter({ hasText: placeLabel(name) });
+  await expect(placeLine(ALICE)).toHaveCount(2);
+  await expect(placeLine(ALICE).first()).toContainText('Chambre 1 · Lit A');
+  await expect(placeLine(ALICE).first()).toContainText('Chambre 1 · Lit B');
+  await expect(placeLine(ALICE).last()).toContainText(fr.historyPlaceUnassigned);
+  // Zoé's place and note were one save: one entry, two lines.
+  const zoeEntry = history.getByTestId('change-history-entry').filter({ hasText: placeLabel(ZOE.name) });
+  await expect(zoeEntry).toHaveCount(1);
+  await expect(zoeEntry).toContainText(fr.historyFieldAdminNotes);
+  await expect(zoeEntry).toContainText('Salon · Sofa');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    history.getByRole('button', { name: fr.exportCSVButton }).click()
+  ]);
+  const text = readFileSync(await download.path(), 'utf-8');
+  const csvRow = (...cells) => `,${cells.map(cell => `"${cell}"`).join(',')}`;
+  expect(text).toContain(csvRow(placeLabel(ALICE), 'Chambre 1 · Lit A', 'Chambre 1 · Lit B'));
+  expect(text).toContain(csvRow(placeLabel(ALICE), fr.historyPlaceUnassigned, 'Chambre 1 · Lit A'));
+  expect(text).toContain(csvRow(placeLabel(ZOE.name), fr.historyPlaceUnassigned, 'Salon · Sofa'));
 });
