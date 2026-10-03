@@ -95,6 +95,10 @@ flowchart TD
   [ADR 0003](./adr/0003-pricing-as-a-pure-module.md).
 - **`lib/registrationOptions.ts`** is the single place where a raw DB value (`bed`, `dj_evening`)
   is mapped to French UI text. Never render a raw enum.
+- **`lib/registration.ts`** is the registration form's model, also pure (#194): the form state read
+  from a saved party (`fromParty`), the save payload (`toSavePayload`), every rule between fields
+  (`registrationReducer`) and the validation (`validate`). A new party-level field changes it and
+  its input, nothing else.
 
 ## Registration data flow
 

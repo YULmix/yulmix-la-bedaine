@@ -39,6 +39,8 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
     .replace('{date}', formatDate(closeDate as string | null)),
   carpool_board_forbidden: () => fr.dbErrorCarpoolBoardForbidden,
   gallery_full: ({ max }) => fr.dbErrorGalleryFull.replace('{max}', String(max ?? 30)),
+  event_already_active: () => fr.eventAlreadyActiveError,
+  place_in_use: () => fr.placeOccupiedUnseen,
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
     .replace('{date}', formatDate(closeDate as string | null))
 };
