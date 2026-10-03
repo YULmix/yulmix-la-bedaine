@@ -95,7 +95,7 @@ payments due at the latest **1 week** before.
 
 ## Relationship to the spreadsheet
 
-The app is intended to *replace* the workbook, with the Outils tab's export as the bridge while
+The app is intended to *replace* the workbook, with Inscrits' « Exporter » as the bridge while
 organisers still trust the sheet: « Par groupe » (one row per party: counts, money, status,
 transport, volunteering, comments) and « Par participant » (one row per attendee: type, dietary
 needs, sleeping), each as a CSV download or a copy for Google Sheets (`src/lib/dataExport.js`).
