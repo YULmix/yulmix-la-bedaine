@@ -212,7 +212,7 @@ export async function getParty(partyId) {
   return check(
     await db
       .from('user_parties')
-      .select('attendees(*, place:attendee_places(place_id, bed_label)), transport, admin_notes, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .select('attendees(*, place:attendee_places(place_id, bed_label)), transport, admin_notes, message_to_participants, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
       .eq('id', partyId)
       .order('position', { referencedTable: 'attendees' })
       .single(),

@@ -51,6 +51,9 @@ test.afterAll(async () => {
 
 const tab = (page, name) => sectionLink(page, name);
 const panel = (page) => adminMain(page);
+// The party's private notes, and its message to the participants (#216).
+const adminNotes = (page) => panel(page).getByRole('textbox', { name: fr.logisticsTableAdminNotes });
+const participantMessage = (page) => panel(page).getByRole('textbox', { name: fr.logisticsTableParticipantMessage });
 const bedInputs = (page) => placePickers(panel(page));
 // Modals are native <dialog>s, labelled by their title.
 const modal = (page, title) => page.getByRole('dialog', { name: title });
@@ -306,7 +309,8 @@ test.describe('admin tabs', () => {
     for (let i = 0; i < E2E_ATTENDEES.length; i++) {
       await expectWithinViewportWidth(page, bedInputs(page).nth(i));
     }
-    await expectWithinViewportWidth(page, panel(page).locator('textarea'));
+    await expectWithinViewportWidth(page, adminNotes(page));
+    await expectWithinViewportWidth(page, participantMessage(page));
     await shot(page, 'mobile-tab-logistics');
     // The open list fits the phone too.
     await bedInputs(page).first().click();
@@ -328,7 +332,7 @@ test.describe('admin tabs', () => {
     await expect(bedInputs(page).first()).toHaveValue('');
 
     await pickPlace(page, bedInputs(page).first(), 'Chambre 1 · Lit A');
-    await panel(page).locator('textarea').fill('Note non sauvegardée');
+    await adminNotes(page).fill('Note non sauvegardée');
     await expect(saveButton).toBeEnabled();
 
     await openSection(page, USERS_TAB);
@@ -337,7 +341,7 @@ test.describe('admin tabs', () => {
     await expectLogisticsTabActive(page);
 
     await expect(bedInputs(page).first()).toHaveValue('Chambre 1 · Lit A');
-    await expect(panel(page).locator('textarea')).toHaveValue('Note non sauvegardée');
+    await expect(adminNotes(page)).toHaveValue('Note non sauvegardée');
     await expect(saveButton).toBeEnabled();
 
     // Nothing was written: the draft only lives in page state.
@@ -349,7 +353,7 @@ test.describe('admin tabs', () => {
   test('saving a bed assignment persists across reload', async ({ page }) => {
     await openAdmin(page, '/logistics');
     await pickPlace(page, bedInputs(page).nth(1), 'Salon · Sofa');
-    await panel(page).locator('textarea').fill('Arrive tard vendredi');
+    await adminNotes(page).fill('Arrive tard vendredi');
     const saveButton = panel(page).getByRole('button', { name: fr.save, exact: true });
     await saveButton.click();
 
@@ -360,7 +364,7 @@ test.describe('admin tabs', () => {
     await expectLogisticsTabActive(page);
     await expect(bedInputs(page).nth(1)).toHaveValue('Salon · Sofa');
     await expect(bedInputs(page).first()).toHaveValue('');
-    await expect(panel(page).locator('textarea')).toHaveValue('Arrive tard vendredi');
+    await expect(adminNotes(page)).toHaveValue('Arrive tard vendredi');
 
     const party = await getParty(seeded.partyId);
     expect(party.attendees[1].place?.bed_label).toBe('Salon · Sofa');
