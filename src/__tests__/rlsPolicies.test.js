@@ -2487,3 +2487,59 @@ describe('📜 place assignment history (#188)', () => {
       .map(row => Object.keys(row.changes))).toEqual([['created']]);
   });
 });
+
+describe('🛏️ a bed reason only goes with « Lit » (#228)', () => {
+  jest.setTimeout(30000);
+
+  const REASON_EVENT_ID = 'a0000000-a000-a000-a000-a00000000228';
+  const REASON_PARTY_ID = 'a0000000-a000-a000-a000-a00000000229';
+
+  let memberClient;
+  let adminAuthClient;
+
+  const attendeesOf = async () => {
+    const { data, error } = await adminAuthClient
+      .from('attendees')
+      .select('sleeping_preference, bed_reason, bed_reason_other')
+      .eq('party_id', REASON_PARTY_ID)
+      .order('position');
+    if (error) throw error;
+    return data;
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: REASON_EVENT_ID, theme: 'Bed Reason Test', status: 'ACTIVE', event_start_date: startsIn(60), selling_price_whole_event: 100
+    });
+    if (error) throw error;
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', REASON_PARTY_ID);
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('id', REASON_PARTY_ID);
+  });
+
+  test('save_registration stores no reason for a camping attendee, silently, and keeps it for a bed', async () => {
+    await saveOk(memberClient, REASON_EVENT_ID, [
+      { type: 'Adult', participation: 'Whole', sleeping_preference: 'camping', bed_reason: 'health', bed_reason_other: 'Dos' },
+      { type: 'Adult', participation: 'Whole', sleeping_preference: 'bed', bed_reason: 'health', bed_reason_other: 'Dos' }
+    ], { id: REASON_PARTY_ID });
+    expect(await attendeesOf()).toEqual([
+      { sleeping_preference: 'camping', bed_reason: '', bed_reason_other: '' },
+      { sleeping_preference: 'bed', bed_reason: 'health', bed_reason_other: 'Dos' }
+    ]);
+
+    // Switching a saved attendee away from a bed clears it on update too.
+    const { data } = await adminAuthClient.from('attendees').select('id, position').eq('party_id', REASON_PARTY_ID).order('position');
+    await saveOk(memberClient, REASON_EVENT_ID, [
+      { id: data[0].id, type: 'Adult', participation: 'Whole', sleeping_preference: 'sofa', bed_reason: 'comfort' },
+      { id: data[1].id, type: 'Adult', participation: 'Whole', sleeping_preference: 'sofa', bed_reason: 'comfort' }
+    ]);
+    expect((await attendeesOf()).map(a => [a.bed_reason, a.bed_reason_other])).toEqual([['', ''], ['', '']]);
+  });
+});
