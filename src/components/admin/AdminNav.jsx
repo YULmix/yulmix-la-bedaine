@@ -183,7 +183,8 @@ export const AdminPageHeader = ({ page, slotRef, theme }) => (
     <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2">
       <h1 id="admin-page-title" className="min-w-0 flex-1 font-display text-xl text-ink md:text-display-md">
         {fr[page.section.labelKey]}
-        {page.view && <span className="text-faint"> · {fr[page.view.labelKey]}</span>}
+        {/* On a phone the view's tabs under the title name it. */}
+        {page.view && <span className="text-faint max-md:sr-only"> · {fr[page.view.labelKey]}</span>}
       </h1>
       <div ref={slotRef} className="flex flex-wrap items-center gap-2 empty:hidden" />
     </div>

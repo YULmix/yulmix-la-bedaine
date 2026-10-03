@@ -85,7 +85,7 @@ export const ChangeHistory = ({ events, notify }) => {
 
   // The list scrolls inside the card, and the card ends on screen: one scrollbar, not two.
   const scrollRef = useRef(null);
-  useFitToViewport(scrollRef, { reserve: 40, deps: [entries] });
+  useFitToViewport(scrollRef, { reserve: 40, fromWidth: 768, deps: [entries] });
 
   const exportRows = useMemo(() => (entries ? historyExportRows(entries) : null), [entries]);
   const hasRows = !!exportRows?.rows.length;
@@ -136,7 +136,7 @@ export const ChangeHistory = ({ events, notify }) => {
             {events.map(item => <option key={item.id} value={item.id}>{eventOption(item)}</option>)}
           </Select>
         </Field>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="grid grid-cols-2 gap-3 sm:flex">
           <Button variant="secondary" onClick={exportCsv} disabled={!hasRows}>
             <Download aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.exportCSVButton}
           </Button>

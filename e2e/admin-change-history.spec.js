@@ -191,3 +191,22 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await expect(history).toContainText(`${fr.historyFieldAttendees} ${people(1)}`);
   await expect(history).not.toContainText(/calculated_amount_owed|attendees|created|registered|\{/);
 });
+
+test('on a phone a long history has one scrollbar: the page\'s, with no cap on the list', async ({ page }) => {
+  for (let i = 0; i < 30; i++) {
+    await saveRegistrationAs(registrant, seeded.eventId, i % 2 ? [person('Hélène'), person('Hugo')] : [person('Hélène')]);
+  }
+  await page.setViewportSize({ width: 390, height: 900 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users/history');
+  await expect(entries(page).first()).toBeVisible();
+  const scroll = page.getByTestId('change-history-scroll');
+  expect(await scroll.evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(900);
+  // The export buttons sit side by side.
+  const [csv, copy] = await Promise.all([
+    card(page).getByRole('button', { name: fr.exportCSVButton }).boundingBox(),
+    card(page).getByRole('button', { name: fr.exportCopyTSVButton }).boundingBox()
+  ]);
+  expect(Math.abs(csv.y - copy.y)).toBeLessThan(4);
+});

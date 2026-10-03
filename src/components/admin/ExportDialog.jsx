@@ -48,8 +48,9 @@ const ExportDialog = ({ event, parties, addToast }) => {
   return (
     <>
       <AdminHeaderActions>
-        <Button variant="secondary" onClick={() => setOpen(true)} aria-haspopup="dialog">
-          <Share aria-hidden="true" className="size-4.5" strokeWidth={1.75} />{fr.adminExportAction}
+        {/* Icon only on a phone, to stay on the title's line. */}
+        <Button variant="secondary" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={fr.adminExportAction} className="max-sm:px-3">
+          <Share aria-hidden="true" className="size-4.5" strokeWidth={1.75} /><span className="max-sm:hidden">{fr.adminExportAction}</span>
         </Button>
       </AdminHeaderActions>
       <Dialog open={open} onClose={() => setOpen(false)} title={fr.dataExportTitle} size="sm">

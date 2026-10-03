@@ -24,10 +24,10 @@ const FeedbackInbox = ({ items, showResolved, onToggleResolved, onResolve }) => 
         <ul className="mt-4 divide-y divide-line">
           {visible.map(item => (
             <li key={item.id} className="py-4 first:pt-0 last:pb-0">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-ink">{item.profiles?.full_name || item.profiles?.email || fr.adminFeedbackUnknownAuthor}</p>
-                  <p className="font-data text-xs text-faint">{new Date(item.created_at).toLocaleString('fr-CA')}</p>
+                  <p className="font-data text-xs text-faint">{new Date(item.created_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' })}</p>
                 </div>
                 {item.is_resolved ? (
                   <Tag tone="ok" icon={CheckCircle2}>{fr.adminFeedbackResolved}</Tag>

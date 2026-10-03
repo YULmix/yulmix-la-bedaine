@@ -9,7 +9,9 @@ import { useLayoutEffect } from 'react';
 // instead, still one scrollbar. Recomputed on resize, when `deps` change (e.g. once the list has
 // loaded), and when the page's layout changes (a banner or a header settling above the element
 // moves it down after the first measure).
-export const useFitToViewport = (ref, { reserve = 0, min = 256, deps = [] } = {}) => {
+// `fromWidth`: below this viewport width the element is never capped (a phone's page scrolls on
+// its own, its controls above the list being tall).
+export const useFitToViewport = (ref, { reserve = 0, min = 256, fromWidth = 0, deps = [] } = {}) => {
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return undefined;
@@ -21,7 +23,7 @@ export const useFitToViewport = (ref, { reserve = 0, min = 256, deps = [] } = {}
       const bar = document.querySelector('[data-bottom-bar]');
       const barHeight = bar && getComputedStyle(bar).position === 'fixed' ? bar.offsetHeight : 0;
       const available = window.innerHeight - top - barHeight - reserve;
-      element.style.maxHeight = available >= min ? `${available}px` : 'none';
+      element.style.maxHeight = window.innerWidth >= fromWidth && available >= min ? `${available}px` : 'none';
     };
     fit();
     window.addEventListener('resize', fit);
