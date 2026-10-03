@@ -2,7 +2,7 @@
 // survives the app re-rendering (it used to remount the whole admin page, e.g. when the browser tab
 // regained focus), a trip to another admin tab, and a reload.
 import { test, expect } from '@playwright/test';
-import { adminMain, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
+import { adminMain, backLink, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -94,7 +94,7 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   await expect(page.getByText(fr.eventEditorRestored)).toHaveCount(0);
 
   // Back to the list, which shows the saved title and no unsaved marker.
-  await page.getByRole('button', { name: fr.eventEditorBack }).click();
+  await backLink(page, fr.adminTabEvents).click();
   await expect(page).toHaveURL(/\/admin\/events$/);
   await expect(adminMain(page).getByText('Soirée mousse')).toBeVisible();
   await expect(adminMain(page).getByText(fr.unsavedTag)).toHaveCount(0);

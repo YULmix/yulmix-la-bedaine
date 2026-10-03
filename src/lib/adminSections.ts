@@ -98,8 +98,9 @@ export interface AdminPage {
   /** The current view, for a section that has views. */
   view: AdminViewEntry | null;
   /**
-   * One item's page (an event, a venue) rather than the section's own. It brings its own header
-   * and back link, and manages its own width until #210 gives drill-downs one pattern.
+   * One item's page (an event, a venue) rather than the section's own. Its parent section stays
+   * current in the navigation, and it opens with its own header, a back link naming the parent and
+   * its title (DrillDownHeader, #210), instead of the section's.
    */
   drillDown: boolean;
   width: PageWidth;

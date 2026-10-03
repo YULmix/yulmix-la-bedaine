@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ClipboardCopy, Download, Share } from 'lucide-react';
 import fr from '../../locales/fr.json';
-import { EXPORTS, exportFileName, toCsv, toTsv } from '../../lib/dataExport';
+import { EXPORTS, downloadFile, exportFileName, toCsv, toTsv } from '../../lib/dataExport';
 import { Button, ChipGroup, Dialog } from '../ui';
 import { AdminHeaderActions } from './AdminNav';
 
@@ -20,15 +20,7 @@ const ExportDialog = ({ event, parties, addToast }) => {
       addToast(fr.noDataToExport, 'warning');
       return;
     }
-    const blob = new Blob([toCsv(build(parties))], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = exportFileName(filePrefix, event.theme);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadFile(exportFileName(filePrefix, event.theme), toCsv(build(parties)));
     addToast(fr.exportCSVToast, 'success');
   };
 

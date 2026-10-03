@@ -46,23 +46,27 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const [editHistory, setEditHistory] = useState([]);
   const [locationGalleries, setLocationGalleries] = useState(new Map());
 
+  // Keyed on the party id only: a new `registration` object (a refresh, realtime) must not refetch.
+  const registrationId = registration?.id;
   useEffect(() => {
+    if (!registrationId) return undefined;
+    let stale = false;
     const loadEditHistory = async () => {
-      if (!registration?.id) return;
       try {
         const { data, error } = await supabase
           .from('registration_edits')
           .select('*')
-          .eq('registration_id', registration.id)
+          .eq('registration_id', registrationId)
           .order('edited_at', { ascending: false });
         if (error) throw error;
-        setEditHistory(data || []);
+        if (!stale) setEditHistory(data || []);
       } catch (err) {
-        console.error("Erreur lors du chargement de l'historique des modifications:", err);
+        if (!stale) console.error("Erreur lors du chargement de l'historique des modifications:", err);
       }
     };
     loadEditHistory();
-  }, [registration]);
+    return () => { stale = true; };
+  }, [registrationId]);
 
   // Cancelling is a soft status change (#35): the row stays, the waitlist is promoted by the
   // database, and after the close date the database refuses it (the button is hidden by then).

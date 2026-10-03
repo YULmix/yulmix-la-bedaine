@@ -186,3 +186,18 @@ export const toTsv = ({ headers, rows }) =>
 /** e.g. inscriptions_<theme>_2026-09-30.csv */
 export const exportFileName = (prefix, theme, date = new Date()) =>
   `${prefix}_${theme || 'event'}_${date.toISOString().slice(0, 10)}.csv`;
+
+/**
+ * Hands `content` to the browser as a file download. A CSV is built with its BOM (toCsv), so the
+ * bytes written are exactly `content`.
+ */
+export const downloadFile = (name, content, mime = 'text/csv;charset=utf-8;') => {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};

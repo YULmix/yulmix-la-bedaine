@@ -57,7 +57,7 @@ export default defineConfig({
       // active event and the seeded member's registration, so in parallel they see each other's
       // parties and throwaway members (#170).
       workers: 1,
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|member-transport-none|galleries)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down|member-transport-none)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -276,11 +276,19 @@ export default defineConfig({
       dependencies: ['member-carpool-board']
     },
     {
+      // The admin detail pages' header and geometry (#210) reseed the same shared active event and
+      // give its venue locations, so it runs after galleries, on its own. Sets its own viewports.
+      name: 'admin-drill-down',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-drill-down\.spec\.js/,
+      dependencies: ['galleries']
+    },
+    {
       // The summary's transport line (#232) reseeds the shared active event, so it runs last, alone.
       name: 'member-transport-none',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-transport-none\.spec\.js/,
-      dependencies: ['galleries']
+      dependencies: ['admin-drill-down']
     }
   ],
   webServer: {
