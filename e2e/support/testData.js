@@ -493,6 +493,15 @@ export async function createThrowawayMember(label) {
     email, password, email_confirm: true, user_metadata: { full_name: fullName }
   });
   if (error) throw new Error(`create throwaway member: ${error.message}`);
+  // A new account must be a plain member. If the database made it an admin, it carries the preview
+  // seed's preview_new_accounts_are_admins trigger (scripts/preview-seed), which only belongs on
+  // the preview project: every spec relying on a member would fail in confusing ways.
+  const db = await adminClient();
+  const profile = check(await db.from('profiles').select('is_admin').eq('id', data.user.id).single(), 'read throwaway profile');
+  if (profile.is_admin) {
+    await authAdmin().deleteUser(data.user.id);
+    throw new Error('The local database makes new accounts admins: the preview seed was applied to it. Run `supabase db reset` (local only) and run the tests again.');
+  }
   return { id: data.user.id, email, password, fullName };
 }
 

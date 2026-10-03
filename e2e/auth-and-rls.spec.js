@@ -40,6 +40,9 @@ test('admin: sees admin nav, can open the admin, RLS exposes all profiles', asyn
     if (error) throw error;
     return data;
   });
-  const emails = profiles.map((p) => p.email).sort();
-  expect(emails).toEqual([TEST_USERS.admin.email, TEST_USERS.member.email].sort());
+  // RLS scope, not a head count (#170): the admin sees other people's profiles too, so both
+  // seeded users. Other specs' throwaway members may exist at the same time; the member test
+  // proves a member sees only their own row.
+  const emails = profiles.map((p) => p.email);
+  expect(emails).toEqual(expect.arrayContaining([TEST_USERS.admin.email, TEST_USERS.member.email]));
 });
