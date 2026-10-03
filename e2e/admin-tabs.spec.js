@@ -444,4 +444,64 @@ test.describe('admin navigation shell', () => {
     expect(await fromHeader(history), 'the change history starts low').toBeLessThanOrEqual(160);
     await shot(page, 'desktop-history');
   });
+
+  // The page review of #223: what geometry checks alone let through.
+  test('desktop: the overview uses the width, and its figures and their labels never wrap', async ({ page }) => {
+    for (const width of [1024, 1280, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await openAdmin(page, '/overview');
+      const budget = adminMain(page).getByRole('heading', { name: fr.budgetTitle });
+      await expect(budget).toBeVisible();
+      // Full width (dense): the page's cards reach the page's right edge.
+      const [main, kpis] = await Promise.all([panel(page).boundingBox(), panel(page).locator('> div > *').last().boundingBox()]);
+      expect(main.x + main.width - (kpis.x + kpis.width), `space left unused at ${width} px`).toBeLessThanOrEqual(40);
+      // Each figure (font-data) and the label above it fit on one line.
+      const wrapped = await adminMain(page).locator('.font-data').evaluateAll(els => els
+        .flatMap(el => [el, el.previousElementSibling].filter(Boolean))
+        .filter(el => el.offsetHeight > 1.6 * parseFloat(getComputedStyle(el).lineHeight))
+        .map(el => el.textContent));
+      expect(wrapped, `figures or labels wrap at ${width} px`).toEqual([]);
+    }
+  });
+
+  test('desktop: the sidebar stays put while the page scrolls', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await openAdmin(page, '/logistics');
+    await expect(panel(page).getByRole('heading', { name: fr.occupancyTitle })).toBeVisible();
+    const top = () => sectionLink(page, OVERVIEW_TAB).evaluate(el => el.getBoundingClientRect().top);
+    const before = await top();
+    await page.evaluate(() => window.scrollBy(0, 300));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(await top()).toBe(before);
+  });
+
+  test('desktop: Couchage keeps each count next to its type on a wide screen', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await openAdmin(page, '/logistics');
+    const row = panel(page).getByRole('row').filter({ has: page.getByRole('rowheader') }).first();
+    // The texts, not the cells: a cell stretches to its neighbour.
+    const [type, count] = await Promise.all([
+      row.getByRole('rowheader').locator('span.truncate').boundingBox(),
+      row.getByRole('cell').locator('span').first().boundingBox()
+    ]);
+    expect(count.x - (type.x + type.width), 'the count is far from its type').toBeLessThanOrEqual(200);
+  });
+
+  // An ultra-wide screen: the admin (sidebar and page) is clamped and centred, and the header's
+  // content lines up with it.
+  test('ultra-wide: the admin is clamped to 1536 px and centred, the header aligned with it', async ({ page }) => {
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await openAdmin(page, '/overview');
+    await expect(adminMain(page).getByRole('heading', { name: fr.budgetTitle })).toBeVisible();
+    const sidebar = await adminNav(page).boundingBox();
+    const main = await adminMain(page).boundingBox();
+    const left = sidebar.x;
+    const right = 3440 - (main.x + main.width);
+    expect(main.x + main.width - left, 'the admin is wider than its clamp').toBeLessThanOrEqual(1536);
+    expect(Math.abs(left - right), 'the admin is off-centre').toBeLessThanOrEqual(2);
+    const logo = await page.getByRole('link', { name: fr.homeLinkLabel }).boundingBox();
+    expect(logo.x, 'the logo starts left of the admin').toBeGreaterThanOrEqual(left);
+    expect(logo.x - left, 'the logo isn\'t lined up with the sidebar').toBeLessThanOrEqual(32);
+    await shot(page, 'ultrawide-overview');
+  });
 });

@@ -69,7 +69,8 @@ const viewsOf = <Id extends string>(ids: readonly Id[], entries: Record<Id, Omit
   ids.map(id => ({ id, ...entries[id] }));
 
 const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
-  overview: { labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard, inBar: true, views: [], width: 'narrow' },
+  // Résumé is a dashboard of cards side by side, which a narrow page cramps: dense.
+  overview: { labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard, inBar: true, views: [], width: 'dense' },
   users: { labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList, inBar: true, views: [], width: 'dense' },
   logistics: {
     labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble, inBar: true,

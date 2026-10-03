@@ -69,17 +69,14 @@ export const VolunteeringView = ({ parties }) => {
   return (
     <section className="space-y-4">
       <ViewHeader description={fr.volunteeringViewDescription} />
-      <ol className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {choices.map(({ choice, parties: volunteers }, index) => (
+      <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {choices.map(({ choice, parties: volunteers }) => (
           <li key={choice}>
             <Card className={`h-full p-4 sm:p-5 ${volunteers.length ? '' : 'opacity-80'}`}>
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <h3 className="font-semibold text-ink">
-                  <span className="font-data text-faint">{`${index + 1}. `}</span>
-                  {getOptionLabel(VOLUNTEERING_OPTIONS, choice)}
-                </h3>
-                <Count template={fr.logisticsPartiesCount} n={volunteers.length} />
-              </div>
+              <h3 className="mb-3 flex items-center gap-2 font-semibold text-neon">
+                <HandHeart aria-hidden="true" className="size-4.5 shrink-0" strokeWidth={1.75} />
+                {getOptionLabel(VOLUNTEERING_OPTIONS, choice)}
+              </h3>
               {volunteers.length === 0 ? <p className="text-sm text-faint">{fr.volunteeringNobody}</p> : (
                 <ul className="space-y-1.5">
                   {volunteers.map(volunteer => (
@@ -93,7 +90,7 @@ export const VolunteeringView = ({ parties }) => {
             </Card>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   );
 };
@@ -140,7 +137,6 @@ const CommentList = ({ icon: Icon, title, items, empty }) => (
     <h3 className="mb-3 flex items-center gap-2 font-semibold text-ink">
       <Icon aria-hidden="true" className="size-4.5 text-neon" strokeWidth={1.75} />
       {title}
-      <Count template={fr.logisticsPartiesCount} n={items.length} />
     </h3>
     {items.length === 0 ? <p className="text-sm text-faint">{empty}</p> : (
       <ul aria-label={title} className="divide-y divide-line">

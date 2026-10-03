@@ -23,7 +23,8 @@ const viewHref = (section, view) => adminHref({ ...adminRoute(section.id), view:
 /** Desktop (md and up): the sections, the current one's views nested under it. */
 export const AdminSidebar = ({ page, markers, theme }) => (
   <nav aria-label={fr.adminTabsAriaLabel} className="hidden w-60 shrink-0 border-r border-line md:block">
-    <div className="sticky top-16 max-h-[calc(100dvh-4rem)] overflow-y-auto px-3 py-5">
+    {/* Stuck under the header, whatever its height (--header-height, set by the header). */}
+    <div className="sticky top-(--header-height,4rem) max-h-[calc(100dvh-var(--header-height,4rem))] overflow-y-auto px-3 py-5">
       {theme && <p className="truncate px-3 pb-3 font-data text-xs uppercase tracking-widest text-neon">{theme}</p>}
       <ul className="space-y-0.5">
         {ADMIN_SECTION_ENTRIES.map(section => {

@@ -99,10 +99,12 @@ const AdminView = ({ isAdmin }) => {
   const content = <Section {...route} />;
 
   return (
-    <div className="flex flex-1">
+    // One centred container for the sidebar and the page, as wide as the header's on admin pages
+    // (max-w-screen-2xl, src/components/Header.jsx).
+    <div className="mx-auto flex w-full max-w-screen-2xl flex-1">
       <AdminSidebar page={page} markers={markers} theme={theme} />
 
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-16 md:pt-5">
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-4 md:pb-16 md:pl-8 md:pr-6 md:pt-5">
         <div className={cx(page.width === 'narrow' && 'max-w-3xl')}>
           {/* A drill-down (the event editor, a venue) brings its own header and back link (#210). */}
           {!page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}

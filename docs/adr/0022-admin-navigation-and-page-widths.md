@@ -60,10 +60,19 @@ flowchart TD
   They open with a back link naming the parent (« ← Événements ») and a title, and their own
   sections use the shared `ViewTabs`. The party edit stays a dialog (a bottom sheet on phones).
 - **Two page widths.** Each view declares its width, and the shell applies it:
-  - **dense** (lists, logs, tables: Inscrits, Logistique, Historique, Retours): full width,
-    with the list scrolling inside a box that ends on screen (« one scrollbar at a time »,
-    `useFitToViewport`);
-  - **narrow** (forms, summaries, the event editor's details): a max width of about `3xl`.
+  - **dense** (lists, logs, tables, dashboards: Inscrits, Logistique, Historique, Retours,
+    Résumé): full width, with a list scrolling inside a box that ends on screen (« one
+    scrollbar at a time », `useFitToViewport`). A dashboard's columns follow the page's width
+    (container queries), not the window's, because the sidebar takes part of it;
+  - **narrow** (forms, the event editor's details): a max width of about `3xl`.
+
+  Résumé was first planned narrow, as a summary. Reviewing #208 (October 2026) showed that its
+  cards side by side cramp the figures in `3xl` and leave the rest of a wide screen empty, so
+  it's dense.
+- **One container.** From `md` up, the sidebar and the page share one centred container
+  (`max-w-screen-2xl`), and the app header uses the same width on admin pages, so the logo
+  lines up with the sidebar and the account menu with the page's right edge. The sidebar stays
+  under the header while the page scrolls.
 - **URLs are paths with English ids:** `/admin/<section>/<view>`, and the default view has no
   segment. One pure admin routes module parses and builds them. Every older URL (`?tab=`, `?view=`,
   `?venue=`, `?location=`, the Outils views) redirects to its path with `replace`, so the

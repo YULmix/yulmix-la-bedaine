@@ -145,12 +145,12 @@ test('the views show the confirmed parties\' answers, and none of the waitlisted
   await viewTab(page, fr.logisticsViewVolunteering).click();
   const volunteering = view(page, fr.logisticsViewVolunteering);
   const choice = label => volunteering.getByRole('listitem').filter({ has: page.getByRole('heading', { name: label }) });
-  await expect(choice(fr.volunteeringCookMeal)).toContainText(fr.logisticsPartiesCount.replace('{n}', 2));
   await expect(choice(fr.volunteeringCookMeal)).toContainText(MEMBER);
   await expect(choice(fr.volunteeringCookMeal)).toContainText(ADMIN);
   await expect(choice(fr.volunteeringOther)).toContainText('Jongler au feu');
   await expect(choice(fr.volunteeringPharmacy)).toContainText(fr.volunteeringNobody);
-  await expect(volunteering.getByRole('heading', { level: 3 }).first()).toContainText(`1. ${fr.volunteeringFoodPurchase}`);
+  // In the form's order, unnumbered.
+  await expect(volunteering.getByRole('heading', { level: 3 }).first()).toHaveText(fr.volunteeringFoodPurchase);
   await screenshot(page, 'logistics-volunteering');
 
   await viewTab(page, fr.logisticsViewTransport).click();

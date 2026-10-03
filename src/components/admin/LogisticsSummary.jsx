@@ -24,7 +24,7 @@ const TypeRow = ({ icon: Icon, label, requested, capacity }) => (
         <span className="truncate">{label}</span>
       </span>
     </th>
-    <td className={cx('py-2 text-right font-data', demandTone(requested, capacity))}>
+    <td className={cx('py-2 text-center font-data', demandTone(requested, capacity))}>
       <span aria-hidden="true">{`${requested}/${capacity ?? '–'}`}</span>
       <span className="sr-only">
         {count(requested, 'logisticsRequested')}
@@ -45,17 +45,18 @@ const LogisticsSummary = ({ stats, demand, hasUnsaved }) => {
         <h3 id="logistics-summary-title" className="text-lg font-semibold text-ink">{fr.occupancyTitle}</h3>
         {hasUnsaved && <p className="text-sm text-warn">{fr.logisticsSummaryUnsaved}</p>}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-4 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label={fr.logisticsSummaryPlaced} value={placed} />
         <Stat label={fr.logisticsSummaryToPlace} value={stats.unassigned} tone={stats.unassigned ? 'warn' : 'ok'} />
         <Stat label={fr.logisticsSummaryCapacity} value={capacity} />
         <Stat label={fr.logisticsSummaryOverbooked} value={stats.overbooked.length} tone={stats.overbooked.length ? 'warn' : undefined} />
       </div>
-      <table className="mt-5 w-full text-sm">
+      {/* As wide as its content, not the card: each count stays next to its type. */}
+      <table className="mt-5 w-auto text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
-            <th scope="col" className="pb-1.5 font-semibold">{fr.logisticsSummaryTypeHeader}</th>
-            <th scope="col" className="pb-1.5 text-right font-semibold">{fr.logisticsSummaryDemandHeader}</th>
+            <th scope="col" className="pb-1.5 pr-10 font-semibold">{fr.logisticsSummaryTypeHeader}</th>
+            <th scope="col" className="w-40 pb-1.5 text-center font-semibold">{fr.logisticsSummaryDemandHeader}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { isAdminPath } from './lib/adminRoutes';
 import { LockKeyhole, UserX } from 'lucide-react';
 import Header from './components/Header';
 import EventModal from './components/EventModal';
@@ -89,6 +90,8 @@ const ProtectedRoute = ({ ready, isAuthenticated, isAdmin, adminOnly = false, ch
 };
 
 function App() {
+  // Admin pages are wider (the sidebar and the page, ADR 0022); the footer lines up with them.
+  const adminPage = isAdminPath(useLocation().pathname);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   // Soft-deleted account (#36): the database gives it no member access; the app shows why.
@@ -283,7 +286,7 @@ function App() {
       </div>
 
       <footer className="border-t border-line pb-24 md:pb-0">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-sm text-faint sm:flex-row sm:items-center sm:justify-between md:px-6">
+        <div className={`mx-auto flex ${adminPage ? 'max-w-screen-2xl' : 'max-w-6xl'} flex-col gap-3 px-4 py-6 text-sm text-faint sm:flex-row sm:items-center sm:justify-between md:px-6`}>
           <p>© {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}</p>
           <div className="flex gap-5">
             <Link to="/a-propos" className="inline-flex min-h-11 items-center hover:text-ink">{fr.about}</Link>

@@ -79,7 +79,10 @@ views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with f
 « Plus », a sheet (`Dialog`) with the rest, and the views as `ViewTabs` under the page header.
 The page header is one line, the `h1` (« Section · Vue ») and the page's actions: a section
 puts a button or a search field there with `<AdminHeaderActions>`, from anywhere in its tree.
-The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`). A drill-down (the
+The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`), inside one centred
+container (`max-w-screen-2xl`) that the header shares on admin pages. The sidebar sticks under
+the header at its measured height (`--header-height`, set by `Header.jsx`). Save bars
+(`SaveBar`) float over the page as a raised toolbar, not a pane. A drill-down (the
 event editor, a venue) still brings its own header until #210.
 
 The Logistique tab has views of its own (#179), in `/admin/logistics/<view>` (`places` by default, the
@@ -127,8 +130,10 @@ Before adding a screen, answer these in the PR description. Reviewers check them
    log, a per-topic table). A drill-down is one item's page (an event, a venue). Views are listed
    in the sidebar (desktop) and in `ViewTabs` (phone); a drill-down opens with a back link naming
    its parent, and its own sections use `ViewTabs` too. Don't build another kind of switcher.
-3. **Dense or narrow?** Lists, logs and tables are `dense`: full width, scrolling inside a box
-   fitted with `useFitToViewport`. Forms and summaries are `narrow` (max ~`3xl`). Declare it on
+3. **Dense or narrow?** Lists, logs, tables and dashboards are `dense`: full width, scrolling
+   inside a box fitted with `useFitToViewport`. Forms are `narrow` (max ~`3xl`). Cards side by
+   side switch columns with container queries (`@container`, `@4xl:`), since the sidebar takes
+   part of the window. Declare it on
    the view; the shell applies it. Don't set your own `max-w-*` on the page.
 4. **What's its URL?** `/admin/<section>/<view>` with English ids, built and parsed only by the
    admin routes module. If the screen replaces an old URL, add a redirect there.
