@@ -1,4 +1,4 @@
-// The Outils tab's « Historique des changements » (#173): one event's registrations and edits,
+// Inscrits' « Historique » view, « Historique des changements » (#173): one event's registrations and edits,
 // newest first, with their author; a CSV download and a Google Sheets copy of the same rows, one
 // per changed field. Members can't reach it; their own history still reads in French.
 import { test, expect } from '@playwright/test';
@@ -52,7 +52,7 @@ const entries = page => card(page).getByTestId('change-history-entry');
 
 test('the active event\'s history, newest first, with authors, head counts and amounts', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(card(page).getByLabel(fr.changeHistoryEventLabel)).toHaveValue(seeded.eventId);
 
   // The member's edit, their registration, then the seeded member's registration made by the admin.
@@ -71,7 +71,7 @@ test('the active event\'s history, newest first, with authors, head counts and a
 
 test('switching events shows only that event\'s entries', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
 
   await card(page).getByLabel(fr.changeHistoryEventLabel).selectOption(await ensureOtherEvent());
@@ -82,7 +82,7 @@ test('switching events shows only that event\'s entries', async ({ page }) => {
 
 test('the CSV holds only the selected event\'s rows, one per changed field', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -104,7 +104,7 @@ test('the CSV holds only the selected event\'s rows, one per changed field', asy
 test('the Google Sheets copy says so', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   await card(page).getByRole('button', { name: fr.exportCopyTSVButton }).click();
   await expect(page.getByText(fr.changeHistoryCopyToast)).toBeVisible();
@@ -116,7 +116,7 @@ test('the Google Sheets copy says so', async ({ page, context }) => {
 test('at phone width the history doesn\'t scroll the page sideways', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
@@ -143,7 +143,7 @@ test('on a laptop, a long history scrolls inside a box that ends on screen', asy
   await addEdits();
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(23);
 
   const box = await measure(page);
@@ -160,7 +160,7 @@ test('on a phone, a long history scrolls with the page, not inside a box', async
   await addEdits();
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, TEST_USERS.admin);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(entries(page)).toHaveCount(23);
 
   // Polled: a banner loading late above the list (the test-account marker) moves it down, and the
@@ -180,7 +180,7 @@ test('a member can\'t open the history; their own history reads in French', asyn
   await saveRegistrationAs(TEST_USERS.member, seeded.eventId, [person('Alice E2E'), person('Bob E2E')]);
 
   await loginAs(page, TEST_USERS.member);
-  await page.goto('/admin/tools/history');
+  await page.goto('/admin/users/history');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
   await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(0);
 

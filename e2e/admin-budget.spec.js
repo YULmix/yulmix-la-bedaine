@@ -200,8 +200,8 @@ test('a new price shows on the member pages at once, without a reload', async ({
   await expect(estimate).toHaveText(money(250));
 });
 
-test('the event editor and the tools tab no longer hold money settings', async ({ page }) => {
-  await page.goto('/admin/tools');
+test('the event editor and Inscrits no longer hold money settings', async ({ page }) => {
+  await page.goto('/admin/users');
   await expect(panel(page).getByRole('heading', { name: fr.scenarioSimulatorTitle })).toHaveCount(0);
   await page.goto('/admin/events');
   await panel(page).getByRole('button', { name: fr.edit }).click();

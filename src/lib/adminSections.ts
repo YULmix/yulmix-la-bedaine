@@ -3,13 +3,13 @@
 // it, so adding a section or a view is one entry here (and its component in the admin shell).
 // The URLs are the admin routes module's (src/lib/adminRoutes.ts); the ids are the same.
 import {
-  Banknote, BedDouble, CalendarRange, Car, ClipboardList, Download, HandHeart, History, Inbox,
-  LayoutDashboard, MapPin, MessageSquareText, Utensils, Wrench
+  Banknote, BedDouble, CalendarRange, Car, ClipboardList, HandHeart, History, Inbox,
+  LayoutDashboard, List, MapPin, MessageSquareText, Utensils
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, TOOLS_VIEW_IDS,
-  type AdminRoute, type AdminSection, type LogisticsView, type ToolsView
+  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, USERS_VIEW_IDS,
+  type AdminRoute, type AdminSection, type LogisticsView, type UsersView
 } from './adminRoutes';
 
 /**
@@ -19,7 +19,7 @@ import {
 export type PageWidth = 'dense' | 'narrow';
 
 /** What a section's marker says, computed by the admin shell from the stores. */
-export type SectionMarker = 'unsavedLogistics' | 'unsavedEvent';
+export type SectionMarker = 'unsavedLogistics' | 'unsavedEvent' | 'unresolvedFeedback';
 
 export interface AdminViewEntry<Id extends string = string> {
   id: Id;
@@ -59,10 +59,9 @@ const LOGISTICS_VIEWS: Record<LogisticsView, Omit<AdminViewEntry<LogisticsView>,
   comments: { labelKey: 'logisticsViewComments', icon: MessageSquareText, width: 'dense' }
 };
 
-const TOOLS_VIEWS: Record<ToolsView, Omit<AdminViewEntry<ToolsView>, 'id'>> = {
-  exports: { labelKey: 'toolsViewExports', icon: Download, width: 'narrow' },
-  history: { labelKey: 'toolsViewHistory', icon: History, width: 'dense' },
-  feedback: { labelKey: 'toolsViewFeedback', icon: Inbox, width: 'dense' }
+const USERS_VIEWS: Record<UsersView, Omit<AdminViewEntry<UsersView>, 'id'>> = {
+  list: { labelKey: 'usersViewList', icon: List, width: 'dense' },
+  history: { labelKey: 'usersViewHistory', icon: History, width: 'dense' }
 };
 
 const viewsOf = <Id extends string>(ids: readonly Id[], entries: Record<Id, Omit<AdminViewEntry<Id>, 'id'>>) =>
@@ -71,7 +70,10 @@ const viewsOf = <Id extends string>(ids: readonly Id[], entries: Record<Id, Omit
 const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
   // Résumé is a dashboard of cards side by side, which a narrow page cramps: dense.
   overview: { labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard, inBar: true, views: [], width: 'dense' },
-  users: { labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList, inBar: true, views: [], width: 'dense' },
+  users: {
+    labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList, inBar: true,
+    views: viewsOf(USERS_VIEW_IDS, USERS_VIEWS), viewsLabelKey: 'usersViewsLabel', width: 'dense'
+  },
   logistics: {
     labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble, inBar: true,
     views: viewsOf(LOGISTICS_VIEW_IDS, LOGISTICS_VIEWS), viewsLabelKey: 'logisticsViewsLabel', width: 'dense',
@@ -80,10 +82,8 @@ const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
   budget: { labelKey: 'adminTabBudget', shortKey: 'adminTabBudgetShort', icon: Banknote, inBar: true, views: [], width: 'narrow' },
   events: { labelKey: 'adminTabEvents', shortKey: 'adminTabEventsShort', icon: CalendarRange, inBar: false, views: [], width: 'narrow', marker: 'unsavedEvent' },
   venues: { labelKey: 'adminTabVenues', shortKey: 'adminTabVenuesShort', icon: MapPin, inBar: false, views: [], width: 'narrow' },
-  tools: {
-    labelKey: 'adminTabTools', shortKey: 'adminTabToolsShort', icon: Wrench, inBar: false,
-    views: viewsOf(TOOLS_VIEW_IDS, TOOLS_VIEWS), viewsLabelKey: 'toolsViewsLabel', width: 'narrow'
-  }
+  // The unresolved count is the marker: it is what an organiser comes to this section for.
+  feedback: { labelKey: 'adminTabFeedback', shortKey: 'adminTabFeedbackShort', icon: Inbox, inBar: false, views: [], width: 'dense', marker: 'unresolvedFeedback' }
 };
 
 /** Every section, in the routes module's order (the sidebar's and « Plus »'s). */
