@@ -79,21 +79,21 @@ describe('place changes (#188)', () => {
     changes: { places, ...extra }
   });
 
-  test('one line per attendee: « Place : Marie », old label → new label, null as « non assigné »', () => {
+  test('one line per attendee: « Place de Marie : », old label → new label, null as « non assigné »', () => {
     expect(describePlaceChanges({
       old: [at(marie, 'Grange · Lit 3'), at(luc, null)],
       new: [at(marie, 'Maison · Sofa'), at(luc, 'Grange · Lit 1')]
     })).toEqual([
-      { label: 'Place : Marie', from: 'Grange · Lit 3', to: 'Maison · Sofa' },
-      { label: 'Place : Luc', from: 'non assigné', to: 'Grange · Lit 1' }
+      { label: 'Place de Marie :', field: 'Place de Marie', from: 'Grange · Lit 3', to: 'Maison · Sofa' },
+      { label: 'Place de Luc :', field: 'Place de Luc', from: 'non assigné', to: 'Grange · Lit 1' }
     ]);
     expect(describePlaceChanges({ old: [at(marie, 'Grange · Lit 3')], new: [at(marie, null)] }))
-      .toEqual([{ label: 'Place : Marie', from: 'Grange · Lit 3', to: fr.historyPlaceUnassigned }]);
+      .toEqual([{ label: 'Place de Marie :', field: 'Place de Marie', from: 'Grange · Lit 3', to: fr.historyPlaceUnassigned }]);
   });
 
   test('a venue change says why the places were cleared', () => {
     expect(describePlaceChanges({ old: [at(marie, 'Grange · Lit 3')], new: [at(marie, null)], reason: 'venue_changed' }))
-      .toEqual([{ label: 'Place : Marie', from: 'Grange · Lit 3', to: fr.historyPlaceVenueChanged }]);
+      .toEqual([{ label: 'Place de Marie :', field: 'Place de Marie', from: 'Grange · Lit 3', to: fr.historyPlaceVenueChanged }]);
   });
 
   test('nothing, or something malformed, is no line', () => {
@@ -106,11 +106,11 @@ describe('place changes (#188)', () => {
       { old: [at(marie, 'Grange · Lit 3'), at(luc, null)], new: [at(marie, 'Maison · Sofa'), at(luc, 'Grange · Lit 1')] },
       { admin_notes: { old: null, new: 'Allergies' } }
     )], profiles);
-    expect(entry.lines.map(line => line.label)).toEqual([fr.historyFieldAdminNotes, 'Place : Marie', 'Place : Luc']);
+    expect(entry.lines.map(line => line.label)).toEqual([fr.historyFieldAdminNotes, 'Place de Marie :', 'Place de Luc :']);
     expect(historyExportRows([entry]).rows).toEqual([
       ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', fr.historyFieldAdminNotes, fr.historyEmptyValue, 'Allergies'],
-      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place : Marie', 'Grange · Lit 3', 'Maison · Sofa'],
-      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place : Luc', 'non assigné', 'Grange · Lit 1']
+      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place de Marie', 'Grange · Lit 3', 'Maison · Sofa'],
+      ['2026-10-02 12:00', 'admin@test.local', 'Marie Membre', 'Place de Luc', 'non assigné', 'Grange · Lit 1']
     ]);
   });
 });

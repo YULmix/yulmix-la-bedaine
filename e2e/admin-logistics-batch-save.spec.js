@@ -261,7 +261,9 @@ test('saved places show in the change history and its CSV, one line per attendee
 
   await page.goto('/admin/users/history');
   const history = panel(page).locator('section').filter({ has: page.getByRole('heading', { name: fr.changeHistoryTitle }) });
-  const placeLabel = (name) => fr.historyFieldPlace.replace('{name}', name);
+  const placeLabel = (name) => fr.historyFieldPlaceLine.replace('{name}', name);
+  // The CSV's « Champ »: the same, without the colon.
+  const placeField = (name) => fr.historyFieldPlace.replace('{name}', name);
   // A change line, inside an entry (both are list items).
   const placeLine = (name) => history.getByTestId('change-history-entry').getByRole('listitem').filter({ hasText: placeLabel(name) });
   await expect(placeLine(ALICE)).toHaveCount(2);
@@ -280,7 +282,7 @@ test('saved places show in the change history and its CSV, one line per attendee
   ]);
   const text = readFileSync(await download.path(), 'utf-8');
   const csvRow = (...cells) => `,${cells.map(cell => `"${cell}"`).join(',')}`;
-  expect(text).toContain(csvRow(placeLabel(ALICE), 'Chambre 1 · Lit A', 'Chambre 1 · Lit B'));
-  expect(text).toContain(csvRow(placeLabel(ALICE), fr.historyPlaceUnassigned, 'Chambre 1 · Lit A'));
-  expect(text).toContain(csvRow(placeLabel(ZOE.name), fr.historyPlaceUnassigned, 'Salon · Sofa'));
+  expect(text).toContain(csvRow(placeField(ALICE), 'Chambre 1 · Lit A', 'Chambre 1 · Lit B'));
+  expect(text).toContain(csvRow(placeField(ALICE), fr.historyPlaceUnassigned, 'Chambre 1 · Lit A'));
+  expect(text).toContain(csvRow(placeField(ZOE.name), fr.historyPlaceUnassigned, 'Salon · Sofa'));
 });
