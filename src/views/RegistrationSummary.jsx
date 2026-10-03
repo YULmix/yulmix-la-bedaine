@@ -91,6 +91,8 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
       .catch(loadError => console.error('Error loading location galleries:', loadError));
     return () => { current = false; };
   }, [sleepingKey]);
+  // What the organisers wrote to the party (#216); their private admin_notes never show here.
+  const organizersMessage = registration.message_to_participants?.trim();
   const logistics = registration.logistics || {};
   const transport = registration.transport || {};
   const volunteering = logistics.volunteering || [];
@@ -153,7 +155,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
 
         <div className="space-y-6">
           {/* What the party told us in the form; Logistique is what the organisers decided, so it
-              only shows once there is something (a place). */}
+              only shows once there is something (a place, or their message). */}
           <Card className="space-y-5 p-5 sm:p-6">
             <h3 className="text-lg font-semibold text-ink">{fr.inputSummary}</h3>
             <InfoBlock icon={Car} title={fr.transport}>
@@ -193,24 +195,31 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
               </InfoBlock>
             )}
           </Card>
-          {sleeping.length > 0 && (
+          {(sleeping.length > 0 || organizersMessage) && (
             <Card className="space-y-5 p-5 sm:p-6">
               <h3 className="text-lg font-semibold text-ink">{fr.logisticsSummary}</h3>
-              <InfoBlock icon={BedDouble} title={fr.sleepingSummaryTitle}>
-                <ul className="space-y-3">
-                  {sleeping.map(location => (
-                    <li key={location.locationId} className="flex items-start gap-3">
-                      <GalleryButton images={locationGalleries.get(location.locationId)} name={location.name} size="sm" />
-                      <div className="min-w-0">
-                        <p className="font-semibold">{location.name}</p>
-                        <p className="text-sm text-muted">
-                          {location.sleepers.map(sleeper => `${sleeper.name} · ${sleeper.place}`).join(', ')}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </InfoBlock>
+              {sleeping.length > 0 && (
+                <InfoBlock icon={BedDouble} title={fr.sleepingSummaryTitle}>
+                  <ul className="space-y-3">
+                    {sleeping.map(location => (
+                      <li key={location.locationId} className="flex items-start gap-3">
+                        <GalleryButton images={locationGalleries.get(location.locationId)} name={location.name} size="sm" />
+                        <div className="min-w-0">
+                          <p className="font-semibold">{location.name}</p>
+                          <p className="text-sm text-muted">
+                            {location.sleepers.map(sleeper => `${sleeper.name} · ${sleeper.place}`).join(', ')}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </InfoBlock>
+              )}
+              {organizersMessage && (
+                <InfoBlock icon={MessageSquareText} title={fr.messageFromOrganizers}>
+                  <p className="whitespace-pre-line [overflow-wrap:anywhere]">{organizersMessage}</p>
+                </InfoBlock>
+              )}
             </Card>
           )}
         </div>
