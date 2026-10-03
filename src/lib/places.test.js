@@ -125,7 +125,9 @@ describe('sleepingByLocation', () => {
 });
 
 describe('byBedPriority (#216)', () => {
-  const party = (id, reasons, extra = {}) => ({ id, status: 'registered', attendees: reasons.map(bed_reason => ({ bed_reason })), ...extra });
+  const party = (id, reasons, extra = {}) => ({
+    id, status: 'registered', attendees: reasons.map(bed_reason => ({ sleeping_preference: 'bed', bed_reason })), ...extra
+  });
   const ids = parties => byBedPriority(parties).map(p => p.id);
 
   test('health first, then children, then the rest', () => {
@@ -143,6 +145,12 @@ describe('byBedPriority (#216)', () => {
       party('cancelled', ['health'], { status: 'cancelled' }),
       party('waitlisted', ['health'], { is_waitlisted: true })
     ])).toEqual(['waitlisted', 'rest', 'cancelled']);
+  });
+
+  test('a reason counts only for someone who asked for a bed: a camper with « health » ranks with the rest', () => {
+    const camper = { id: 'camper', status: 'registered', attendees: [{ sleeping_preference: 'camping', bed_reason: 'health' }] };
+    const sofa = { id: 'sofa', status: 'registered', attendees: [{ sleeping_preference: 'sofa', bed_reason: 'children' }] };
+    expect(ids([party('rest', []), camper, sofa, party('kids', ['children'])])).toEqual(['kids', 'rest', 'camper', 'sofa']);
   });
 
   test('keeps the original order within each group, and leaves its input alone', () => {

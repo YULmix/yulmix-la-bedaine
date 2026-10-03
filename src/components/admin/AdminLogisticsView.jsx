@@ -174,7 +174,7 @@ const PlacesView = ({
                     <MessageSquareText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-neon" strokeWidth={1.75} />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-muted">{fr.messageToOrganizers}</p>
-                      <p className="whitespace-pre-line text-sm text-ink [overflow-wrap:anywhere]">{party.message_to_organizers}</p>
+                      <p className="whitespace-pre-line text-sm text-ink [overflow-wrap:anywhere]">{organizersMessage}</p>
                     </div>
                   </div>
                 )}

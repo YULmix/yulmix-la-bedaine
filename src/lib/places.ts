@@ -182,18 +182,25 @@ export const sleepingByLocation = (
 
 // Who gets a bed first (#216): parties where someone asked for a bed for health reasons, then
 // for young children (and nobody for health), then everyone else. Bed reasons are per attendee
-// (bed_reason); a cancelled party's don't count. Waitlisted parties follow the same rule.
+// (bed_reason) and count only for someone who asked for a bed: the form keeps a stale reason after
+// a switch to another preference. A cancelled party's don't count. Waitlisted parties follow the
+// same rule.
 const BED_PRIORITY_REASONS = ['health', 'children'];
 
-const bedPriorityOf = (party: { status?: string | null; attendees?: Array<{ bed_reason?: string | null }> | null }): number => {
+type PriorityAttendee = { sleeping_preference?: string | null; bed_reason?: string | null };
+type PriorityParty = { status?: string | null; attendees?: PriorityAttendee[] | null };
+
+const bedPriorityOf = (party: PriorityParty): number => {
   if (!isActiveRegistration(party)) return BED_PRIORITY_REASONS.length;
-  const reasons = new Set((party.attendees || []).map(attendee => attendee.bed_reason));
+  const reasons = new Set((party.attendees || [])
+    .filter(attendee => attendee.sleeping_preference === 'bed')
+    .map(attendee => attendee.bed_reason));
   const rank = BED_PRIORITY_REASONS.findIndex(reason => reasons.has(reason));
   return rank === -1 ? BED_PRIORITY_REASONS.length : rank;
 };
 
 /** The parties in bed priority order (health, children, the rest), keeping their order within each. */
-export const byBedPriority = <P extends { status?: string | null; attendees?: Array<{ bed_reason?: string | null }> | null }>(
+export const byBedPriority = <P extends PriorityParty>(
   parties: P[] | null | undefined
 ): P[] => (parties || [])
   .map((party, index) => ({ party, index, rank: bedPriorityOf(party) }))
