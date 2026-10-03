@@ -2319,3 +2319,171 @@ describe('🛏️ event_places, venue_layout and set_place_override (#193)', () 
     }
   });
 });
+
+// #188: save_logistics() and a venue change log place assignments in registration_edits, as
+// changes.places = { old, new } with the labels of the time; the admin authors them.
+describe('📜 place assignment history (#188)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000001881';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+
+  let memberClient;
+  let adminAuthClient;
+  let venueId; // a fresh venue per test: venues are never deleted
+  let places; // "<location> · <place>" → id
+  let memberParty;
+  let adminParty;
+  let who; // attendee name → id
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const saveLogistics = (changes) => adminAuthClient.rpc('save_logistics', { p_changes: changes });
+  const savedAll = async (changes) => expect(await saveLogistics(changes)).toMatchObject({ data: [], error: null });
+  // The party's history rows that log places, oldest first.
+  const placeRows = async (partyId, client = adminAuthClient) => (await ok(client.from('registration_edits')
+    .select('edited_by, edited_at, changes').eq('registration_id', partyId).order('edited_at')))
+    .filter(row => row.changes && 'places' in row.changes);
+  const entry = (name, label) => ({
+    attendee_id: who[name], attendee_name: name, place_id: label ? places[label] : null, label: label ?? null
+  });
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+    // Un-archive (allowed by SQL) so the event can go on today's venue.
+    await ok(adminAuthClient.from('events').upsert({
+      id: EVENT_ID, theme: 'Place History', status: 'ACTIVE', event_start_date: startsIn(60), selling_price_whole_event: 100
+    }));
+    venueId = (await ok(adminAuthClient.from('venues').insert({ name: 'La Ferme' }).select('id').single())).id;
+    await ok(adminAuthClient.from('events').update({ venue_id: venueId }).eq('id', EVENT_ID));
+    const locations = await ok(adminAuthClient.from('locations').insert([
+      { venue_id: venueId, name: 'Grange' }, { venue_id: venueId, name: 'Maison' }
+    ]).select('id, name'));
+    const locationId = Object.fromEntries(locations.map(row => [row.name, row.id]));
+    const rows = await ok(adminAuthClient.from('places').insert([
+      { location_id: locationId.Grange, label: 'Lit 3', type: 'bed', capacity: 2 },
+      { location_id: locationId.Grange, label: 'Lit 4', type: 'bed', capacity: 1 },
+      { location_id: locationId.Maison, label: 'Sofa', type: 'sofa', capacity: 1 }
+    ]).select('id, label, location:locations(name)'));
+    places = Object.fromEntries(rows.map(row => [`${row.location.name} · ${row.label}`, row.id]));
+    memberParty = await saveOk(memberClient, EVENT_ID, [person('Ann'), person('Bob')]);
+    adminParty = await saveOk(adminAuthClient, EVENT_ID, [person('Zed')]);
+    const attendees = await ok(adminAuthClient.from('attendees').select('id, name').in('party_id', [memberParty.id, adminParty.id]));
+    who = Object.fromEntries(attendees.map(row => [row.name, row.id]));
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+    await adminAuthClient.from('events').update({ venue_id: null, status: 'DRAFT' }).eq('id', EVENT_ID);
+  });
+
+  test('an assign, a move and an unassign each log the attendees whose place changed, with labels', async () => {
+    await savedAll([{ party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'], [who.Bob]: places['Grange · Lit 3'] } }]);
+    // Bob is sent again, unchanged: only Ann is logged.
+    await savedAll([{ party_id: memberParty.id, places: { [who.Ann]: places['Maison · Sofa'], [who.Bob]: places['Grange · Lit 3'] } }]);
+    await savedAll([{ party_id: memberParty.id, places: { [who.Ann]: null } }]);
+    // Nothing changes: nothing is logged.
+    await savedAll([{ party_id: memberParty.id, places: { [who.Bob]: places['Grange · Lit 3'] } }]);
+
+    const rows = await placeRows(memberParty.id);
+    expect(rows.map(row => row.changes)).toEqual([
+      { places: { old: [entry('Ann', null), entry('Bob', null)], new: [entry('Ann', 'Grange · Lit 3'), entry('Bob', 'Grange · Lit 3')] } },
+      { places: { old: [entry('Ann', 'Grange · Lit 3')], new: [entry('Ann', 'Maison · Sofa')] } },
+      { places: { old: [entry('Ann', 'Maison · Sofa')], new: [entry('Ann', null)] } }
+    ]);
+    expect(rows.every(row => row.edited_by === ADMIN_ID)).toBe(true);
+
+    // The label is the one of the time: a later rename doesn't rewrite the history.
+    await ok(adminAuthClient.from('places').update({ label: 'Grand lit' }).eq('id', places['Grange · Lit 3']));
+    expect((await placeRows(memberParty.id))[0].changes.places.new[1].label).toBe('Grange · Lit 3');
+  });
+
+  test('a batch logs only the parties it saved', async () => {
+    await ok(adminAuthClient.rpc('set_place_override', {
+      p_event_id: EVENT_ID, p_place_id: places['Grange · Lit 4'], p_is_excluded: true, p_capacity: null
+    }));
+    const { data: failed, error } = await saveLogistics([
+      { party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'] } },
+      { party_id: adminParty.id, admin_notes: 'Refusé', places: { [who.Zed]: places['Grange · Lit 4'] } }
+    ]);
+    expect(error).toBeNull();
+    expect(failed).toMatchObject([{ party_id: adminParty.id, message: 'place_assignment_place_excluded' }]);
+
+    expect((await placeRows(memberParty.id)).map(row => row.changes))
+      .toEqual([{ places: { old: [entry('Ann', null)], new: [entry('Ann', 'Grange · Lit 3')] } }]);
+    const adminRows = await ok(adminAuthClient.from('registration_edits').select('changes').eq('registration_id', adminParty.id));
+    expect(adminRows.map(row => Object.keys(row.changes))).toEqual([['created']]);
+  });
+
+  test('notes, message and places of one save are one row', async () => {
+    await savedAll([{
+      party_id: memberParty.id, admin_notes: 'Allergies', message_to_participants: 'Bienvenue',
+      places: { [who.Bob]: places['Maison · Sofa'] }
+    }]);
+    // A text sent unchanged: the places still get their row, alone.
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies', places: { [who.Bob]: null } }]);
+
+    const rows = await ok(adminAuthClient.from('registration_edits').select('changes, edited_by')
+      .eq('registration_id', memberParty.id).order('edited_at'));
+    expect(rows.slice(1)).toEqual([
+      {
+        edited_by: ADMIN_ID,
+        changes: {
+          admin_notes: { old: null, new: 'Allergies' },
+          message_to_participants: { old: null, new: 'Bienvenue' },
+          places: { old: [entry('Bob', null)], new: [entry('Bob', 'Maison · Sofa')] }
+        }
+      },
+      { edited_by: ADMIN_ID, changes: { places: { old: [entry('Bob', 'Maison · Sofa')], new: [entry('Bob', null)] } } }
+    ]);
+  });
+
+  test('a venue change logs one row per party it clears, with the reason', async () => {
+    await savedAll([
+      { party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'], [who.Bob]: places['Maison · Sofa'] } },
+      { party_id: adminParty.id, places: { [who.Zed]: places['Grange · Lit 3'] } }
+    ]);
+    const otherVenue = (await ok(adminAuthClient.from('venues').insert({ name: 'Ailleurs' }).select('id').single())).id;
+    await ok(adminAuthClient.from('events').update({ venue_id: otherVenue }).eq('id', EVENT_ID));
+
+    const [, memberCleared] = await placeRows(memberParty.id);
+    expect(memberCleared).toMatchObject({ edited_by: ADMIN_ID });
+    expect(memberCleared.changes).toEqual({ places: {
+      old: [entry('Ann', 'Grange · Lit 3'), entry('Bob', 'Maison · Sofa')],
+      new: [entry('Ann', null), entry('Bob', null)],
+      reason: 'venue_changed'
+    } });
+    const adminRows = await placeRows(adminParty.id);
+    expect(adminRows).toHaveLength(2);
+    expect(adminRows[1].changes.places).toEqual({ old: [entry('Zed', 'Grange · Lit 3')], new: [entry('Zed', null)], reason: 'venue_changed' });
+  });
+
+  test('archiving, a cancellation and a removed attendee log no place change', async () => {
+    await savedAll([{ party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'], [who.Bob]: places['Grange · Lit 3'] } }]);
+    await savedAll([{ party_id: adminParty.id, places: { [who.Zed]: places['Maison · Sofa'] } }]);
+
+    await saveOk(memberClient, EVENT_ID, [{ ...person('Ann'), id: who.Ann }]); // Bob leaves
+    await ok(adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', adminParty.id));
+    await ok(adminAuthClient.from('events').update({ status: 'ARCHIVED' }).eq('id', EVENT_ID));
+
+    expect(await placeRows(memberParty.id)).toHaveLength(1);
+    expect(await placeRows(adminParty.id)).toHaveLength(1);
+    // Ann still has her place, on the archived copy.
+    expect((await ok(adminAuthClient.from('attendee_places').select('bed_label').eq('attendee_id', who.Ann)))
+      .map(row => row.bed_label)).toEqual(['Grange · Lit 3']);
+  });
+
+  test("the member doesn't read the admin's place rows", async () => {
+    await savedAll([{ party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'] } }]);
+    expect(await placeRows(memberParty.id)).toHaveLength(1);
+    expect(await placeRows(memberParty.id, memberClient)).toEqual([]);
+    // The member still reads the rows they authored.
+    expect((await ok(memberClient.from('registration_edits').select('changes').eq('registration_id', memberParty.id)))
+      .map(row => Object.keys(row.changes))).toEqual([['created']]);
+  });
+});
