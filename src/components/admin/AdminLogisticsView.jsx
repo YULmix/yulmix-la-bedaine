@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BedDouble, CircleAlert, TriangleAlert } from 'lucide-react';
+import { BedDouble, CircleAlert, MessageSquareText, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
-import { placeOccupancy, placeOptions } from '../../lib/places';
+import { byBedPriority, placeOccupancy, placeOptions } from '../../lib/places';
 import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
 import { VENUE_GALLERY_KINDS, fetchVenueGallery } from '../../lib/galleries';
 import GalleryButton from '../Gallery';
@@ -23,9 +23,12 @@ const FILTERS = [
   { id: 'unassigned', labelKey: 'filterUnassigned', test: hasUnassigned }
 ];
 
-// Per-attendee sleeping places (#114) and private admin notes. Unsaved edits live in the parent
-// (`logisticsChanges`, see lib/logisticsDraft.js) so they survive switching admin tabs and
-// Logistique views, and are all saved at once from the bar at the bottom (#150);
+// Per-attendee sleeping places (#114), the organisers' private notes and their message to the
+// party's participants (#216, shown to the member). Parties come in bed priority order (health,
+// then young children, then the rest, #216), each with what it wrote to the organisers.
+// Unsaved edits live in the logistics store (`logisticsChanges`, see lib/logisticsDraft.js) so
+// they survive switching admin tabs and Logistique views, and are all saved at once from the bar
+// at the bottom (#150);
 // `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
 // the event places module (`available`, #193); with none, there is nothing to assign until they're defined (Événements tab).
 // The venue's assignments gallery (#177) is in the page header's actions.
@@ -39,6 +42,7 @@ const PlacesView = ({
   saving,
   onPlaceChange,
   onAdminNotesChange,
+  onParticipantMessageChange,
   onSave,
   onDiscard,
   onOpenUserProfile
@@ -46,7 +50,8 @@ const PlacesView = ({
   const [filter, setFilter] = useState('all');
   const counts = useMemo(() => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])), [parties]);
   const activeFilter = FILTERS.find(f => f.id === filter) || FILTERS[0];
-  const visible = parties.filter(activeFilter.test);
+  const prioritized = useMemo(() => byBedPriority(parties), [parties]);
+  const visible = prioritized.filter(activeFilter.test);
   const occupancy = useMemo(() => placeOccupancy(parties, logisticsChanges), [parties, logisticsChanges]);
   const placesById = useMemo(() => new Map(places.map(place => [place.id, place])), [places]);
   const placeStats = useMemo(() => computePlaceStats(parties, places, logisticsChanges), [parties, places, logisticsChanges]);
@@ -87,6 +92,8 @@ const PlacesView = ({
           const hasChanges = !!logisticsChanges[party.id];
           const saveError = hasChanges && logisticsErrors[party.id];
           const notesId = `admin-notes-${party.id}`;
+          const messageId = `participant-message-${party.id}`;
+          const organizersMessage = party.message_to_organizers?.trim();
 
           return (
             <li key={party.id}>
@@ -162,6 +169,16 @@ const PlacesView = ({
                   })}
                 </ul>
 
+                {organizersMessage && (
+                  <div className="mt-4 flex gap-2 rounded-control border border-line p-3">
+                    <MessageSquareText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-neon" strokeWidth={1.75} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-muted">{fr.messageToOrganizers}</p>
+                      <p className="whitespace-pre-line text-sm text-ink [overflow-wrap:anywhere]">{organizersMessage}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4">
                   <label htmlFor={notesId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableAdminNotes}</label>
                   <Textarea
@@ -170,6 +187,17 @@ const PlacesView = ({
                     onChange={(e) => onAdminNotesChange(party, e.target.value)}
                     rows={2}
                     placeholder={fr.adminNotesPlaceholder}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label htmlFor={messageId} className="mb-1.5 block text-sm font-semibold text-muted">{fr.logisticsTableParticipantMessage}</label>
+                  <Textarea
+                    id={messageId}
+                    value={changes.participantMessage !== undefined ? changes.participantMessage : (party.message_to_participants || '')}
+                    onChange={(e) => onParticipantMessageChange(party, e.target.value)}
+                    rows={2}
+                    placeholder={fr.participantMessagePlaceholder}
                   />
                 </div>
 
