@@ -9,6 +9,9 @@ import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
 
+// The specs share the single active e2e event, so they run one at a time.
+test.describe.configure({ mode: 'serial' });
+
 let seeded;
 test.beforeEach(async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty();
