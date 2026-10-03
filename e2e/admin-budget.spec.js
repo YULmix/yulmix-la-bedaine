@@ -2,11 +2,12 @@
 // event_budgets table, and the simulator whose "apply" sets the base price and main-event ratio.
 // That price applies to new registrations only: existing ones keep the price they locked (#117).
 import { test, expect } from '@playwright/test';
-import { adminMain } from './support/admin.js';
+import { adminMain, eventRow } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
   E2E_ATTENDEES,
+  E2E_EVENT_THEME,
   createParty,
   deleteBudget,
   deleteParty,
@@ -204,7 +205,7 @@ test('the event editor and Inscrits no longer hold money settings', async ({ pag
   await page.goto('/admin/users');
   await expect(panel(page).getByRole('heading', { name: fr.scenarioSimulatorTitle })).toHaveCount(0);
   await page.goto('/admin/events');
-  await panel(page).getByRole('button', { name: fr.edit }).click();
+  await eventRow(page, E2E_EVENT_THEME).getByRole('button', { name: fr.edit }).click();
   // The editor nests its own section tabpanel, so look page-wide.
   await expect(page.getByLabel(fr.eventTitle)).toBeVisible();
   await expect(page.getByLabel(fr.eventSellingPriceLabel)).toHaveCount(0);

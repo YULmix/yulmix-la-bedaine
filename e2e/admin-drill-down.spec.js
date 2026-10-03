@@ -3,9 +3,10 @@
 // navigation, and fit a phone. Geometry is asserted, not just visibility: boxes that overlap or a
 // page that scrolls sideways pass a visibility check.
 import { test, expect } from '@playwright/test';
-import { adminMain, backLink, moreButton, sectionLink } from './support/admin.js';
+import { adminMain, eventRow, backLink, moreButton, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  E2E_EVENT_THEME,
   deleteLocations,
   getEventVenue,
   seedActiveEventWithMemberParty,
@@ -102,7 +103,7 @@ test('on a phone the event editor opens with its back link, title and tabs, with
 test('the back link goes to the parent, and the browser Back agrees', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/admin/events');
-  await adminMain(page).getByRole('button', { name: fr.edit }).click();
+  await eventRow(page, E2E_EVENT_THEME).getByRole('button', { name: fr.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/events/${seeded.eventId}$`));
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/events$/);

@@ -282,6 +282,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /admin-drill-down\.spec\.js/,
       dependencies: ['galleries']
+    },
+    {
+      // Creates events (#111) next to the shared active event it reseeds, so it runs after
+      // admin-drill-down, on its own. Sets its own viewports.
+      name: 'admin-event-create',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-event-create\.spec\.js/,
+      dependencies: ['admin-drill-down']
     }
   ],
   webServer: {

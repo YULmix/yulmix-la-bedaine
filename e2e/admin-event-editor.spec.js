@@ -2,9 +2,9 @@
 // survives the app re-rendering (it used to remount the whole admin page, e.g. when the browser tab
 // regained focus), a trip to another admin tab, and a reload.
 import { test, expect } from '@playwright/test';
-import { adminMain, backLink, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
+import { adminMain, eventRow, backLink, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
-import { getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
+import { E2E_EVENT_THEME, getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
@@ -23,7 +23,7 @@ test.afterEach(async () => {
 
 const openEditor = async (page) => {
   await page.goto('/admin/events');
-  await adminMain(page).getByRole('button', { name: fr.edit }).click();
+  await eventRow(page, E2E_EVENT_THEME).getByRole('button', { name: fr.edit }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/events/${seeded.eventId}$`));
   // The editor keeps Événements current: in the sidebar, or « Plus » on a phone.
   const current = page.viewportSize().width < 768 ? moreButton(page) : sectionLink(page, fr.adminTabEvents);
@@ -50,7 +50,7 @@ test('on a phone, an unsaved event draft marks « Plus » and Événements in it
   await expect(moreSheet(page).getByRole('link', { name: fr.adminTabEvents }).getByLabel(fr.unsavedTag)).toBeVisible();
   await screenshot(page, 'phone-more-draft');
   await moreSheet(page).getByRole('link', { name: fr.adminTabEvents }).click();
-  await adminMain(page).getByRole('button', { name: fr.edit }).click();
+  await eventRow(page, E2E_EVENT_THEME).getByRole('button', { name: fr.edit }).click();
   await expect(page.getByLabel(fr.eventTitle)).toHaveValue('Soirée mousse');
 });
 
@@ -80,7 +80,7 @@ test('an unsaved edit survives an app re-render, the browser tab refocusing, ano
   // brings them back.
   await openSection(page, fr.adminTabEvents);
   await expect(adminMain(page).getByText(fr.unsavedTag)).toBeVisible();
-  await adminMain(page).getByRole('button', { name: fr.edit }).click();
+  await eventRow(page, E2E_EVENT_THEME).getByRole('button', { name: fr.edit }).click();
   await expect(page.getByLabel(fr.eventTitle)).toHaveValue('Soirée mousse');
 
   await page.reload();

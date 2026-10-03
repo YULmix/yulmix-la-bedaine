@@ -33,3 +33,6 @@ export async function openSection(page, name) {
 
 /** The back link a detail page opens with (#210): « ← Événements », « ← Sites », « ← {venue} ». */
 export const backLink = (page, parentName) => page.getByRole('link', { name: fr.adminBackTo.replace('{name}', parentName) });
+
+/** An event's row in the Événements list: events other than the active one have actions too (#111), so « Modifier » is looked for in a row. */
+export const eventRow = (page, theme) => adminMain(page).getByRole('listitem').filter({ has: page.getByText(theme, { exact: true }) });

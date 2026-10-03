@@ -70,7 +70,7 @@ const LinksEditor = ({ links, errors = {}, onChange }) => {
   );
 };
 
-const DetailsForm = ({ value, onChange, errors }) => {
+const DetailsForm = ({ value, onChange, errors, creating }) => {
   const text = field => ({ value: value(field) ?? '', onChange: e => onChange(field, e.target.value) });
   // Shown and typed in the event time zone (#149); a draft already holds the input's text.
   const dateTime = field => ({ value: dateInputValue(value(field)), onChange: e => onChange(field, e.target.value) });
@@ -94,8 +94,8 @@ const DetailsForm = ({ value, onChange, errors }) => {
 
       <EditorCard id="event-calendar" title={fr.eventFieldsetCalendar}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={fr.eventStartDateLabel} hint={fr.eventTimeZoneHint}>
-            {({ id, describedBy }) => <Input id={id} type="datetime-local" aria-describedby={describedBy} {...dateTime('event_start_date')} />}
+          <Field label={fr.eventStartDateLabel} hint={fr.eventTimeZoneHint} error={errors.event_start_date && fr.eventStartDateRequired}>
+            {({ id, describedBy, invalid }) => <Input id={id} type="datetime-local" aria-describedby={describedBy} invalid={invalid} {...dateTime('event_start_date')} />}
           </Field>
           <Field label={fr.eventRegStartDateLabel} hint={fr.eventTimeZoneHint} error={fieldError('reg_start_date', errors)}>
             {({ id, describedBy, invalid }) => <Input id={id} type="datetime-local" aria-describedby={describedBy} invalid={invalid} {...dateTime('reg_start_date')} />}
@@ -104,7 +104,8 @@ const DetailsForm = ({ value, onChange, errors }) => {
           {numberField('x_reg_close_weeks', 'eventRegCloseWeeksLabel')}
           {numberField('max_attendees', 'eventMaxAttendeesLabel')}
         </div>
-        <Toggle label={fr.eventRegOpenLabel} checked={!!value('is_reg_open')} onChange={checked => onChange('is_reg_open', checked)} />
+        {/* A new event is created with registrations closed; opening them is for once it exists. */}
+        {!creating && <Toggle label={fr.eventRegOpenLabel} checked={!!value('is_reg_open')} onChange={checked => onChange('is_reg_open', checked)} />}
       </EditorCard>
 
       <EditorCard id="event-members" title={fr.eventFieldsetMembers}>
@@ -116,10 +117,12 @@ const DetailsForm = ({ value, onChange, errors }) => {
   );
 };
 
-// The event editor: a page in the Événements tab (?event=<id>&section=…), not a dialog, so it has
+// The event editor: a page in the Événements tab (/admin/events/<id>), not a dialog, so it has
 // room for the sleeping plan and survives reloads, Back and admin-tab switches. The descriptive
 // fields are a draft held by AdminView (and sessionStorage) until Save; the sleeping plan saves as
 // it's edited, on its own section so the two save models never share a screen.
+// With no `event` it is the form for a new one (#111, /admin/events/new): the same details form,
+// but no status, no Couchage (it needs an event) and « Créer » instead of « Enregistrer ».
 const EventEditor = ({
   event,
   section,
@@ -135,10 +138,34 @@ const EventEditor = ({
   onDiscard,
   backTo
 }) => {
-  const value = field => (field in changes ? changes[field] : event[field]);
-  const status = EVENT_STATUS[event.status] || EVENT_STATUS.DRAFT;
-  const dates = formatEventDates(event);
+  const creating = !event;
+  const value = field => (field in changes ? changes[field] : event?.[field]);
+  const status = EVENT_STATUS[event?.status] || EVENT_STATUS.DRAFT;
+  const dates = event && formatEventDates(event);
   const invalid = Object.keys(errors).length > 0;
+
+  const details = (
+    <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
+      <nav aria-label={fr.eventEditorJumpLabel} className="hidden lg:block">
+        <ul className="sticky top-20 space-y-1">
+          {CARDS.map(card => (
+            <li key={card.id}>
+              <button type="button" onClick={() => document.getElementById(card.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="flex min-h-11 w-full items-center rounded-control px-3 text-left text-sm text-muted transition duration-150 hover:bg-raised hover:text-ink">
+                {fr[card.labelKey]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="max-w-3xl space-y-6">
+        {restored && <Notice tone="info">{fr.eventEditorRestored}</Notice>}
+        <DetailsForm value={value} onChange={onChange} errors={errors} creating={creating} />
+        <SaveBar dirtyCount={dirtyCount} invalid={invalid} saving={saving} onSave={onSave} onDiscard={onDiscard}
+          creating={creating} hint={fr.eventNewHint} saveLabel={creating ? fr.eventCreate : undefined} />
+      </div>
+    </div>
+  );
 
   return (
     <section className="space-y-5 md:space-y-6" aria-labelledby="event-editor-title">
@@ -146,17 +173,17 @@ const EventEditor = ({
         backTo={backTo}
         backLabel={fr.adminTabEvents}
         titleId="event-editor-title"
-        title={value('theme') || fr.eventTitle}
+        title={creating ? fr.eventNew : value('theme') || fr.eventTitle}
         tags={(
           <>
-            <Tag tone={status.tone}>{fr[status.key]}</Tag>
+            {!creating && <Tag tone={status.tone}>{fr[status.key]}</Tag>}
             {dirtyCount > 0 && <Tag tone="warn">{fr.unsavedTag}</Tag>}
           </>
         )}
         meta={dates && <p className="font-data text-xs text-faint">{dates}</p>}
       />
 
-      <ViewTabs
+      {!creating && <ViewTabs
         views={SECTIONS.map(({ id, labelKey, icon }) => ({
           id,
           label: fr[labelKey],
@@ -167,33 +194,13 @@ const EventEditor = ({
         onChange={onSectionChange}
         label={fr.eventEditorSectionsLabel}
         idPrefix="event-section"
-      />
+      />}
 
-      <ViewPanel idPrefix="event-section" value={section}>
-        {section === 'sleeping' ? (
-          <EventVenuePlan event={event} onVenueChange={onVenueChange} />
-        ) : (
-          <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
-            <nav aria-label={fr.eventEditorJumpLabel} className="hidden lg:block">
-              <ul className="sticky top-20 space-y-1">
-                {CARDS.map(card => (
-                  <li key={card.id}>
-                    <button type="button" onClick={() => document.getElementById(card.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                      className="flex min-h-11 w-full items-center rounded-control px-3 text-left text-sm text-muted transition duration-150 hover:bg-raised hover:text-ink">
-                      {fr[card.labelKey]}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            <div className="max-w-3xl space-y-6">
-              {restored && <Notice tone="info">{fr.eventEditorRestored}</Notice>}
-              <DetailsForm value={value} onChange={onChange} errors={errors} />
-              <SaveBar dirtyCount={dirtyCount} invalid={invalid} saving={saving} onSave={onSave} onDiscard={onDiscard} />
-            </div>
-          </div>
-        )}
-      </ViewPanel>
+      {creating ? details : (
+        <ViewPanel idPrefix="event-section" value={section}>
+          {section === 'sleeping' ? <EventVenuePlan event={event} onVenueChange={onVenueChange} /> : details}
+        </ViewPanel>
+      )}
     </section>
   );
 };

@@ -6,7 +6,7 @@
 //   /admin/overview · /admin/budget · /admin/feedback
 //   /admin/users[/<view>]                            view: list (default), history
 //   /admin/logistics[/<view>]                        view: places (default), food, …
-//   /admin/events · /admin/events/<eventId>[?section=sleeping]
+//   /admin/events · /admin/events/<eventId>[?section=sleeping] · /admin/events/new (#111)
 //   /admin/venues[/<venueId>[/<locationId>]]
 //
 // The query-param URLs that came before (/admin?tab=…&view=…&venue=…&location=…, and a bare
@@ -29,6 +29,11 @@ export type UsersView = (typeof USERS_VIEW_IDS)[number];
 
 export const EDITOR_SECTIONS = ['details', 'sleeping'] as const;
 export type EditorSection = (typeof EDITOR_SECTIONS)[number];
+
+// The id the event editor has in its URL while the event doesn't exist yet (#111). Never an
+// event's id (those are uuids). A new event has only its details: there is no Couchage to open
+// before it is saved, so its editor section is always the first.
+export const NEW_EVENT_ID = 'new';
 
 export type AdminRoute =
   | { section: 'overview' | 'budget' | 'feedback' }
@@ -82,7 +87,7 @@ const routeOf = (section: AdminSection, rest: Array<string | null>, search: URLS
     case 'events': return {
       section,
       eventId: rest[0] ?? null,
-      editorSection: rest[0] ? oneOf(EDITOR_SECTIONS, search.get('section'), EDITOR_SECTIONS[0]) : EDITOR_SECTIONS[0]
+      editorSection: rest[0] && rest[0] !== NEW_EVENT_ID ? oneOf(EDITOR_SECTIONS, search.get('section'), EDITOR_SECTIONS[0]) : EDITOR_SECTIONS[0]
     };
     case 'venues': return { section, venueId: rest[0] ?? null, locationId: rest[0] ? rest[1] ?? null : null };
     default: return { section };
@@ -109,7 +114,7 @@ export const adminHref = (route: AdminRoute): string => {
     case 'events': {
       if (!route.eventId) return path(route.section);
       const href = path(route.section, route.eventId);
-      return route.editorSection === EDITOR_SECTIONS[0] ? href : `${href}?section=${route.editorSection}`;
+      return route.editorSection === EDITOR_SECTIONS[0] || route.eventId === NEW_EVENT_ID ? href : `${href}?section=${route.editorSection}`;
     }
     case 'venues': return path(route.section, route.venueId, route.venueId ? route.locationId : null);
     default: return path(route.section);
