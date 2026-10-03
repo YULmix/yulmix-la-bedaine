@@ -104,3 +104,12 @@ export const describeChanges = (changes) => {
       to: formatValue(field, data.new)
     }));
 };
+
+/**
+ * The edits the member's history lists: not those that only log places (#188), which it would
+ * show as empty entries (an admin's own party, or a venue change).
+ */
+export const memberHistoryEdits = (edits) => (edits || []).filter(edit => {
+  const keys = edit?.changes && typeof edit.changes === 'object' ? Object.keys(edit.changes) : [];
+  return !(keys.length > 0 && keys.every(key => key === 'places'));
+});
