@@ -63,14 +63,14 @@ Sizes, as a blunt signal of where the complexity is:
 | `src/views/RegistrationSummary.jsx` | 244 |
 | `src/lib/pricingEngine.ts` | 210 |
 
-`AdminView` is moving to a shell (#195): Résumé and Inscrits are self-contained sections in
-`src/components/admin/sections/` reading the stores; the other tabs' state, fetching and write
-handlers are still in `AdminView`, each tab a component in `src/components/admin/`
-(`AdminLogisticsView`, `AdminBudget`, `AdminEvents`, `AdminTools`). The active tab is the URL's first segment
+`AdminView` is moving to a shell (#195): Résumé, Inscrits, Logistique and Budget are
+self-contained sections in `src/components/admin/sections/` reading the stores; Événements, Sites
+and Outils' state, fetching and write handlers are still in `AdminView` (`AdminEvents`,
+`AdminVenues`, `AdminTools` in `src/components/admin/`). The active tab is the URL's first segment
 (`/admin/<tab>`, `overview` by default), so tabs are deep-linkable. Every admin URL is parsed and
 built by `src/lib/adminRoutes.ts` (`parseAdminLocation`, `adminHref`, `adminRedirect`), which
 also owns the tab and view ids; components never format one themselves.
-Because the Logistique draft lives in `AdminView` (or, for a section, in a store), unsaved
+Because the drafts live in stores (or, for the event editor, still in `AdminView`), unsaved
 edits survive a tab switch. On phones the
 tab list is a fixed bottom bar; from `md` up it's a row of pills.
 
@@ -169,9 +169,21 @@ Reloading parties never invalidates the event places. `updatePaymentStatus(party
 and reloads. Profiles (the admin flag, a member's history across editions, who is signed in) are
 plain functions in `src/lib/profiles.ts`.
 
+The **budget** (`src/lib/budget.ts`, #195): an event's `event_budgets` row and the Budget
+editor's draft, per event, through `useBudget(eventId)`; Résumé and Budget read the same entry.
+`saveBudget` cleans the lines, writes, and drops the draft; a refusal throws the French message
+and keeps it.
+
+The **Logistique draft** (`src/lib/logistics.ts`, #150, #195): the unsaved places and notes per
+event (the shape is `logisticsDraft.js`'s), the per-party refusal messages and the saving flag,
+through `useLogistics(eventId)`. `saveLogistics(eventId)` sends one `save_logistics()`, reloads
+the parties (never the event places), clears what was saved and keeps what was refused. The admin
+shell reads `useUnsavedLogistics()` for its leave warnings and the tab's unsaved marker.
+
 Admin sections that own their data live in `src/components/admin/sections/`: they take no data
 props, read the stores, own their dialogs, and show `SectionStatus` (skeleton, or the error with
-« Réessayer ») and `NoActiveEvent` themselves. Résumé and Inscrits are there so far.
+« Réessayer ») and `NoActiveEvent` themselves. Résumé, Inscrits, Logistique and Budget are there
+so far.
 
 Parties (registrations) are read and written only through the party module, `src/lib/parties.ts`
 (#197), never with `supabase.from('user_parties')` in a component. Its functions log the raw error
@@ -184,8 +196,9 @@ Otherwise ownership is:
   `otherEvents` from the events store. Passed down as props.
 - **`HomeView`** — the current user's registration for the active event, and whether the form is in
   edit mode.
-- **`AdminView`** — budget, feedback and the drafts, fetched on mount (until #195 moves them to
-  stores). Events and parties come from their stores; it reloads the events on mount.
+- **`AdminView`** — the feedback and the event editor's draft (until #195's last PR moves them to
+  stores), the leave warnings, the navigation. Everything else comes from the stores; it reloads
+  the events on mount.
 - **`RegistrationForm`** — the entire attendee array and all party-level fields as local state,
   hydrated from `userRegistration` on mount.
 

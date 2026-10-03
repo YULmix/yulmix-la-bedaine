@@ -4,22 +4,21 @@ import { Banknote, CalendarRange, ClipboardList, BedDouble, Download, History, I
 import { supabase } from '../lib/supabase';
 import { ADMIN_SECTIONS, TOOLS_VIEW_IDS, adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation } from '../lib/adminRoutes';
 import fr from '../locales/fr.json';
-import AdminLogisticsView from '../components/admin/AdminLogisticsView';
-import AdminBudget from '../components/admin/AdminBudget';
 import { AdminEventList } from '../components/admin/AdminEvents';
 import { AdminVenues } from '../components/admin/AdminVenues';
 import EventEditor from '../components/admin/EventEditor';
 import { ChangeHistory, DataExport, FeedbackInbox } from '../components/admin/AdminTools';
-import UserProfileDialog from '../components/admin/UserProfileDialog';
 import OverviewSection from '../components/admin/sections/OverviewSection';
 import UsersSection from '../components/admin/sections/UsersSection';
+import LogisticsSection from '../components/admin/sections/LogisticsSection';
+import BudgetSection from '../components/admin/sections/BudgetSection';
 import NoActiveEvent from '../components/admin/sections/NoActiveEvent';
-import SectionStatus from '../components/admin/sections/SectionStatus';
 import { Button, ConfirmDialog, EmptyState, Notice, Skeleton, ViewPanel, ViewTabs, cx } from '../components/ui';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../lib/dataExport';
-import { refreshAdminParties, useAdminParties } from '../lib/adminParties';
+import { useAdminParties } from '../lib/adminParties';
+import { useUnsavedLogistics } from '../lib/logistics';
 import { useEventPlaces } from '../lib/eventPlaces';
-import { countChanges, draftAfterSave, logisticsPayload, setNotesChange, setPlaceChange } from '../lib/logisticsDraft';
+import { useBudget } from '../lib/budget';
 import { activateEvent, applyPricing, archiveEvent, refreshEvents, saveEventChanges, useEvents } from '../lib/events';
 import { appError, dbErrorMessage } from '../lib/dbErrors';
 import { dirtyFields, loadStoredDraft, storeDraft, validateDraft } from '../lib/eventDraft';
@@ -71,9 +70,14 @@ const AdminView = ({ isAdmin }) => {
   // The events and the active one come from the store the member pages read too (src/lib/events.ts,
   // #195): a change made here shows there without a reload (#192).
   const { events, activeEvent: activeEventState } = useEvents();
-  // The active event's parties, for the sections not yet on their own (Logistique, Budget, the
-  // exports), from the store Résumé and Inscrits read (src/lib/adminParties.ts, #195).
-  const { parties, activeParties, loading: partiesLoading, error: partiesError } = useAdminParties(activeEventState?.id);
+  // The active event's parties, for the exports (until #209 moves them into Inscrits), from the
+  // store the sections read (src/lib/adminParties.ts, #195).
+  const { activeParties } = useAdminParties(activeEventState?.id);
+  // The shell keeps the active event's other shared caches subscribed, so moving between sections
+  // (and in and out of the event editor) never reloads them: a cache reloads when a screen
+  // subscribes while nobody was.
+  useEventPlaces(activeEventState?.id);
+  useBudget(activeEventState?.id);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Unsaved edits to the event open in the editor: { eventId, changes, restored }. Kept here (and in
@@ -81,41 +85,24 @@ const AdminView = ({ isAdmin }) => {
   const [eventDraft, setEventDraft] = useState(null);
   const [savingEvent, setSavingEvent] = useState(false);
   const { addToast } = useToasts(1699);
-  // The member whose profile Logistique opened.
-  const [userProfileModal, setUserProfileModal] = useState(null);
-  // The Logistique tab's unsaved places and notes (lib/logisticsDraft.js), why the last save
-  // refused a party ({ [partyId]: French message }), and whether a save is running (#150).
-  const [logisticsChanges, setLogisticsChanges] = useState({});
-  const [logisticsErrors, setLogisticsErrors] = useState({});
-  const [savingLogistics, setSavingLogistics] = useState(false);
-  // The active event's admin-only budget (event_budgets row, null if never saved) and its unsaved
-  // edits, kept here so they survive switching tabs.
-  const [budget, setBudget] = useState(null);
-  const [budgetDraft, setBudgetDraft] = useState(null);
-  const [savingBudget, setSavingBudget] = useState(false);
   const [feedbackItems, setFeedbackItems] = useState([]);
   const [showResolvedFeedback, setShowResolvedFeedback] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Fetch the events, the active event's budget and the feedback.
+  // Fetch the events and the feedback.
   useEffect(() => {
     if (!isAdmin) return;
     fetchAllData();
   }, [isAdmin]);
 
-  // The active event's sleeping places as it uses them (#113, #193), for the Logistique tab's
-  // picker: shared with the event editor, so its changes show here.
-  const { available: places } = useEventPlaces(activeEventState?.id);
-
   const fetchAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // The events again, fresh for the admin; then the active event's data.
-      const { activeEvent: activeEv, error: eventsError } = await refreshEvents();
+      // The events again, fresh for the admin; then the feedback.
+      const { error: eventsError } = await refreshEvents();
       if (eventsError) throw appError(eventsError);
-      if (activeEv) await fetchBudget(activeEv.id);
       await fetchFeedback();
     } catch (err) {
       console.error('Error fetching admin data:', err);
@@ -150,59 +137,6 @@ const AdminView = ({ isAdmin }) => {
     } catch (err) {
       console.error('Error resolving feedback:', err);
       addToast(dbErrorMessage(err, fr.error), 'error');
-    }
-  };
-
-  const fetchBudget = async (eventId) => {
-    const { data, error: budgetError } = await supabase
-      .from('event_budgets')
-      .select('*')
-      .eq('event_id', eventId)
-      .maybeSingle();
-    if (budgetError) throw budgetError;
-    setBudget(data);
-    // A draft belongs to one event: drop it if another event became the active one.
-    setBudgetDraft(prev => (prev?.eventId === eventId ? prev : null));
-  };
-
-  // Lines and contingency go to event_budgets; the database checks them and computes the total.
-  const saveBudget = async (lines, contingency) => {
-    setSavingBudget(true);
-    try {
-      const { data, error: saveError } = await supabase
-        .from('event_budgets')
-        .upsert({
-          event_id: activeEventState.id,
-          lines: lines.map(line => ({
-            category: line.category,
-            description: (line.description || '').trim(),
-            amount: Math.max(Number(line.amount) || 0, 0)
-          })),
-          contingency_pct: Math.min(Math.max(Number(contingency) || 0, 0), 100)
-        })
-        .select()
-        .single();
-      if (saveError) throw saveError;
-      setBudget(data);
-      setBudgetDraft(null);
-      addToast(fr.budgetSavedToast, 'success');
-    } catch (err) {
-      console.error('Error saving budget:', err);
-      addToast(fr.saveError, 'error');
-    } finally {
-      setSavingBudget(false);
-    }
-  };
-
-  // New base price and main-event ratio. Existing registrations keep the price they locked (#117);
-  // only those made while the event had no price get it.
-  const handleApplyPricing = async (pricing) => {
-    try {
-      await applyPricing(activeEventState.id, pricing);
-      addToast(fr.pricingAppliedToast, 'success');
-      await Promise.all([fetchAllData(), refreshAdminParties(activeEventState.id)]);
-    } catch (err) {
-      addToast(err.message, 'error');
     }
   };
 
@@ -250,10 +184,10 @@ const AdminView = ({ isAdmin }) => {
   }, [eventDraft]);
 
   // Closing or reloading the browser tab with unsaved edits asks first. (The event editor's would
-  // be restored from sessionStorage on a reload, but not in a new tab; the Logistique tab's live
-  // only here.)
+  // be restored from sessionStorage on a reload, but not in a new tab; Logistique's live only in
+  // its store, src/lib/logistics.ts.)
   const hasUnsavedEvent = !!eventDraft && events.some(event => event.id === eventDraft.eventId && dirtyFields(event, eventDraft.changes).length > 0);
-  const unsavedLogistics = countChanges(logisticsChanges);
+  const unsavedLogistics = useUnsavedLogistics();
   useEffect(() => {
     if (!hasUnsavedEvent && !unsavedLogistics) return;
     const warn = (event) => { event.preventDefault(); };
@@ -261,8 +195,9 @@ const AdminView = ({ isAdmin }) => {
     return () => window.removeEventListener('beforeunload', warn);
   }, [hasUnsavedEvent, unsavedLogistics]);
 
-  // Leaving the admin pages in the app drops the Logistique draft with this component, so it asks
-  // too (#150). Moving between admin tabs keeps the draft and doesn't ask.
+  // Leaving the admin pages in the app asks too (#150): the Logistique draft stays in its store, but
+  // nothing outside the admin shows or saves it, and a reload loses it. Moving between admin tabs
+  // doesn't ask.
   const leaveBlocker = useBlocker(({ nextLocation }) => unsavedLogistics > 0 && !isAdminPath(nextLocation.pathname));
 
   const handleEventFieldChange = (field, value) => {
@@ -282,47 +217,6 @@ const AdminView = ({ isAdmin }) => {
       addToast(err.message, 'error');
     } finally {
       setSavingEvent(false);
-    }
-  };
-
-  const closeUserProfile = () => setUserProfileModal(null);
-
-  // Logistics updates: edits stay a draft until the one Save (#150).
-  const handleAdminNotesChange = (party, value) => setLogisticsChanges(prev => setNotesChange(prev, party, value));
-
-  // placeId: a place id, or null to unassign.
-  const handlePlaceChange = (party, attendeeId, placeId) => setLogisticsChanges(prev => setPlaceChange(prev, party, attendeeId, placeId));
-
-  const discardLogisticsChanges = () => {
-    setLogisticsChanges({});
-    setLogisticsErrors({});
-  };
-
-  // One call, each party saved entirely or not at all (save_logistics). Refused parties keep their
-  // draft and show why; the others are cleared.
-  const saveLogisticsChanges = async () => {
-    const sent = logisticsChanges;
-    if (!Object.keys(sent).length) return;
-    setSavingLogistics(true);
-    try {
-      const { data: failures, error } = await supabase.rpc('save_logistics', { p_changes: logisticsPayload(sent) });
-      if (error) throw error;
-
-      await refreshAdminParties(activeEventState.id);
-      setLogisticsChanges(current => draftAfterSave(current, sent, failures.map(failure => failure.party_id)));
-      setLogisticsErrors(Object.fromEntries(failures.map(failure => [failure.party_id, dbErrorMessage(failure, fr.saveError)])));
-
-      if (!failures.length) {
-        addToast(fr.logisticsAllSavedToast, 'success');
-      } else {
-        const names = failures.map(failure => parties.find(p => p.id === failure.party_id)?.profiles?.full_name || fr.defaultUserFallback);
-        addToast(fr.logisticsSomeFailedToast.replace('{n}', failures.length).replace('{names}', names.join(', ')), 'error');
-      }
-    } catch (error) {
-      console.error('Error saving logistics:', error);
-      addToast(dbErrorMessage(error, fr.saveError), 'error');
-    } finally {
-      setSavingLogistics(false);
     }
   };
 
@@ -385,6 +279,9 @@ const AdminView = ({ isAdmin }) => {
   const renderPanel = () => {
     // Sections that load their own data (#195): no wait on the rest.
     if (activeTab === 'users') return <UsersSection />;
+    if (activeTab === 'overview') return <OverviewSection />;
+    if (activeTab === 'logistics') return <LogisticsSection view={logisticsView} />;
+    if (activeTab === 'budget') return <BudgetSection />;
     if (loading) {
       return (
         <div aria-busy="true" className="space-y-4">
@@ -490,45 +387,6 @@ const AdminView = ({ isAdmin }) => {
         </div>
       );
     }
-    if (activeTab === 'overview') return <OverviewSection budget={budget} />;
-    if (!activeEventState) return <NoActiveEvent />;
-    if (partiesLoading || partiesError) {
-      return <SectionStatus loading={partiesLoading} error={partiesError} onRetry={() => refreshAdminParties(activeEventState.id)} />;
-    }
-    if (activeTab === 'logistics') {
-      return (
-        <AdminLogisticsView
-          view={logisticsView}
-          venue={activeEventState?.venue}
-          onViewChange={view => go({ section: 'logistics', view })}
-          parties={activeParties}
-          places={places}
-          logisticsChanges={logisticsChanges}
-          logisticsErrors={logisticsErrors}
-          unsavedCount={unsavedLogistics}
-          saving={savingLogistics}
-          onPlaceChange={handlePlaceChange}
-          onAdminNotesChange={handleAdminNotesChange}
-          onSave={saveLogisticsChanges}
-          onDiscard={discardLogisticsChanges}
-          onOpenUserProfile={setUserProfileModal}
-        />
-      );
-    }
-    if (activeTab === 'budget') {
-      return (
-        <AdminBudget
-          event={activeEventState}
-          budget={budget}
-          draft={budgetDraft}
-          parties={activeParties}
-          onDraftChange={draft => setBudgetDraft({ ...draft, eventId: activeEventState.id })}
-          onSaveBudget={saveBudget}
-          savingBudget={savingBudget}
-          onApplyPricing={handleApplyPricing}
-        />
-      );
-    }
     return null;
   };
 
@@ -585,7 +443,6 @@ const AdminView = ({ isAdmin }) => {
         {renderPanel()}
       </div>
 
-      <UserProfileDialog profile={userProfileModal} onClose={closeUserProfile} />
 
       <ConfirmDialog
         open={leaveBlocker.state === 'blocked'}
