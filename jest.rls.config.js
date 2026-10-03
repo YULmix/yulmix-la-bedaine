@@ -18,6 +18,7 @@ try {
     process.env.VITE_SUPABASE_URL = env.API_URL;
     process.env.VITE_SUPABASE_ANON_KEY = env.ANON_KEY;
     process.env.SUPABASE_SERVICE_ROLE_KEY = env.SERVICE_ROLE_KEY;
+    if (env.DB_URL) process.env.SUPABASE_DB_URL = env.DB_URL;
   }
 } catch {
   // No local Supabase running, or no CLI: fall back to .env.test.

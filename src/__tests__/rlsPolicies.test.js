@@ -1243,8 +1243,36 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
 
   // #202: two real connections with explicit transactions (PostgREST can't hold one open).
   // The second statement must wait for the first transaction, then see its commit and be refused.
-  test('a concurrent assignment and exclusion of one place serialise: the second to commit is refused', async () => {
+  test('two concurrent assignments to one place do not block each other', async () => {
     const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    const bed = await addPlace(await addLocation('Chambre 12'), 'Lit A');
+    await adminAuthClient.from('places').update({ capacity: 2 }).eq('id', bed);
+    const sql = 'insert into public.place_assignments (attendee_id, place_id) values ($1, $2)';
+    const a = new pg.Client({ connectionString: dbUrl });
+    const b = new pg.Client({ connectionString: dbUrl });
+    await Promise.all([a.connect(), b.connect()]);
+    try {
+      await a.query('begin');
+      await a.query(sql, [ann.id, bed]);
+      await b.query('begin');
+      // Would hang (and time the test out) if assignments took an exclusive lock.
+      await b.query(sql, [bob.id, bed]);
+      await a.query('commit');
+      await b.query('commit');
+    } finally {
+      await a.end();
+      await b.end();
+    }
+    const { data } = await adminAuthClient.from('place_assignments').select('attendee_id').eq('place_id', bed);
+    expect(data).toHaveLength(2);
+  });
+
+  test('a concurrent assignment and exclusion of one place serialise: the second to commit is refused', async () => {
+    // Superuser connections (they bypass RLS): the triggers are what's under test. Local only.
+    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
     const [ann, bob] = await attendeesOf(memberParty.id);
     const locationId = await addLocation('Chambre 11');
     const bed = await addPlace(locationId, 'Lit A');

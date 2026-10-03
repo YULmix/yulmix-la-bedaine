@@ -49,9 +49,10 @@ BEGIN
         RAISE EXCEPTION USING MESSAGE = 'place_assignment_wrong_event', ERRCODE = 'check_violation';
     END IF;
 
-    -- Serialise with enforce_place_override on this (event, place); each statement below then
-    -- reads a fresh snapshot, so a committed exclusion is visible.
-    PERFORM pg_advisory_xact_lock(hashtext(v_party.event_id::text), hashtext(NEW.place_id::text));
+    -- Shared: assignments to one place (a bed holds several people) don't block each other, but
+    -- they serialise with enforce_place_override's exclusive lock on this (event, place). Each
+    -- statement below then reads a fresh snapshot, so a committed exclusion is visible.
+    PERFORM pg_advisory_xact_lock_shared(hashtext(v_party.event_id::text), hashtext(NEW.place_id::text));
 
     IF EXISTS (SELECT 1 FROM public.event_place_overrides o
                WHERE o.event_id = v_party.event_id AND o.place_id = NEW.place_id AND o.is_excluded) THEN
@@ -76,7 +77,7 @@ BEGIN
     END IF;
 
     IF NEW.is_excluded THEN
-        -- Same lock as enforce_place_assignment.
+        -- Exclusive, on the same key as enforce_place_assignment's shared lock.
         PERFORM pg_advisory_xact_lock(hashtext(NEW.event_id::text), hashtext(NEW.place_id::text));
 
         IF EXISTS (
