@@ -233,8 +233,8 @@ export const toSavePayload = (form: RegistrationFormState): SavePayload => ({
     sleeping_preference: attendee.sleepingPreference,
     sleeping_preference_other: attendee.sleepingPreferenceOther,
     dietary_needs: attendee.dietaryNeeds,
-    bed_reason: attendee.bedReason,
-    bed_reason_other: attendee.bedReasonOther,
+    bed_reason: attendee.sleepingPreference === 'bed' ? attendee.bedReason : '',
+    bed_reason_other: attendee.sleepingPreference === 'bed' ? attendee.bedReasonOther : '',
     dietary_other: attendee.dietaryNeeds.includes('other') ? attendee.dietaryOther.trim() : ''
   })),
   party: {
@@ -286,8 +286,15 @@ const withAgeRule = (attendee: FormAttendee): FormAttendee => {
   return attendee.participation === 'After-Party' ? { ...attendee, participation: 'Whole' } : attendee;
 };
 
+// A bed reason only exists while the preference is « Lit » (#228): any other pick clears it.
+const withBedReasonRule = <C extends { sleepingPreference?: string }>(changes: C): C => (
+  changes.sleepingPreference === undefined || changes.sleepingPreference === 'bed'
+    ? changes
+    : { ...changes, bedReason: '', bedReasonOther: '' }
+);
+
 const changeAttendee = (attendee: FormAttendee, changes: Partial<AttendeeFields>): FormAttendee => {
-  const changed = { ...attendee, ...withDietaryRules(changes, attendee.dietaryNeeds) };
+  const changed = { ...attendee, ...withDietaryRules(withBedReasonRule(changes), attendee.dietaryNeeds) };
   // On every age pick, the same one again included: a Kid saved on the whole event (possible
   // before the rule) re-picked as Kid goes to the after-party.
   return 'type' in changes ? withAgeRule(changed) : changed;
@@ -323,7 +330,7 @@ const apply = (form: RegistrationFormState, action: RegistrationAction): Registr
     case 'attendeeChanged':
       return { ...form, attendees: form.attendees.map(attendee => (attendee.id === action.id ? changeAttendee(attendee, action.changes) : attendee)) };
     case 'groupStayChanged': {
-      const changes = withDietaryRules(action.changes, form.attendees[0].dietaryNeeds);
+      const changes = withDietaryRules(withBedReasonRule(action.changes), form.attendees[0].dietaryNeeds);
       return { ...form, attendees: form.attendees.map(attendee => ({ ...attendee, ...changes })) };
     }
     case 'attendeeAdded':
