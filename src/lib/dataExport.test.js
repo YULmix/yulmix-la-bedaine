@@ -2,6 +2,7 @@ import fr from '../locales/fr.json';
 import {
   CSV_BOM,
   attendeeExportRows,
+  downloadFile,
   exportFileName,
   partyExportRows,
   toCsv,
@@ -148,4 +149,30 @@ describe('toTsv', () => {
 
 test('exportFileName says which export', () => {
   expect(exportFileName('participants', 'Jungle', new Date('2026-09-30T12:00:00Z'))).toBe('participants_Jungle_2026-09-30.csv');
+});
+
+describe('downloadFile', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('downloads the content as is, BOM included, then cleans up', async () => {
+    let blob;
+    URL.createObjectURL = jest.fn(b => { blob = b; return 'blob:x'; });
+    URL.revokeObjectURL = jest.fn();
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+      expect(this.download).toBe('a.csv');
+      expect(this.href).toBe('blob:x');
+    });
+    const content = toCsv({ headers: ['é'], rows: [['1']] });
+    downloadFile('a.csv', content);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(blob.type).toBe('text/csv;charset=utf-8;');
+    const bytes = new Uint8Array(await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsArrayBuffer(blob);
+    }));
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x');
+    expect(document.querySelector('a[download]')).toBeNull();
+  });
 });

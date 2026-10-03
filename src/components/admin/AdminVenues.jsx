@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, ArchiveRestore, ArrowLeft, MapPin, Pencil, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, MapPin, Pencil, Plus } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
 import { venueTotals } from '../../lib/places';
-import { Button, Dialog, EmptyState, Field, Input, Notice, Skeleton, Tag, Toggle } from '../ui';
+import { Button, Dialog, EmptyState, Field, Input, Notice, Skeleton, Tag, Toggle, cx } from '../ui';
 import { VenuePlan } from './EventLocations';
 import { AdminHeaderActions } from './AdminNav';
+import DrillDownHeader from './DrillDownHeader';
+import { adminHref } from '../../lib/adminRoutes';
 
 // The events held at a venue: on it, or on one of its frozen copies (an archived edition, #148).
 // Those still to come (not archived) are whose occupants the venue page shows.
@@ -169,15 +171,12 @@ const VenuePage = ({ venueId, events, locationId, onLocationChange, onOpen, onBa
   }, [venueId]);
   useEffect(() => { load(); }, [load]);
 
-  const back = (
-    <Button variant="ghost" size="sm" onClick={onBack} className="-ml-3">
-      <ArrowLeft aria-hidden="true" className="size-4" />{fr.venuesBack}
-    </Button>
-  );
+  const venuesHref = adminHref({ section: 'venues' });
+  const back = <DrillDownHeader backTo={venuesHref} backLabel={fr.adminTabVenues} title={venue?.name} titleId="venue-page-title" />;
 
   if (venue === undefined) return <Skeleton className="h-64 rounded-card" />;
   if (venue === null) {
-    return <EmptyState icon={MapPin} title={fr.venueNotFound} action={<Button variant="secondary" onClick={onBack}>{fr.venuesBack}</Button>} />;
+    return <EmptyState icon={MapPin} title={fr.venueNotFound} action={<Button variant="secondary" onClick={onBack}>{fr.adminTabVenues}</Button>} />;
   }
 
   // A frozen copy (reached from an archived event) is shown for what it is, not edited.
@@ -209,17 +208,22 @@ const VenuePage = ({ venueId, events, locationId, onLocationChange, onOpen, onBa
 
   return (
     <section className="space-y-6" aria-labelledby="venue-page-title">
-      <div className="space-y-3">
-        {back}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 id="venue-page-title" className="min-w-0 text-display-md font-display text-ink [overflow-wrap:anywhere]">{venue.name}</h2>
-          {venue.archived_at && <Tag>{fr.venueArchivedTag}</Tag>}
-          <Button variant="ghost" size="sm" onClick={toggleArchived} loading={archiving} className="sm:ml-auto">
-            {venue.archived_at
-              ? <><ArchiveRestore aria-hidden="true" className="size-4" />{fr.venueRestore}</>
-              : <><Archive aria-hidden="true" className="size-4" />{fr.venueArchive}</>}
-          </Button>
-        </div>
+      {/* A location's own page (a phone) has its own header, in VenuePlan: the venue's is for the venue. */}
+      <div className={cx('space-y-3', locationId && 'max-lg:hidden')}>
+        <DrillDownHeader
+          backTo={venuesHref}
+          backLabel={fr.adminTabVenues}
+          titleId="venue-page-title"
+          title={venue.name}
+          tags={venue.archived_at && <Tag>{fr.venueArchivedTag}</Tag>}
+          actions={(
+            <Button variant="ghost" size="sm" onClick={toggleArchived} loading={archiving} className="sm:ml-auto">
+              {venue.archived_at
+                ? <><ArchiveRestore aria-hidden="true" className="size-4" />{fr.venueRestore}</>
+                : <><Archive aria-hidden="true" className="size-4" />{fr.venueArchive}</>}
+            </Button>
+          )}
+        />
         <EventNames events={held} />
         {venue.archived_at && <Notice tone="info">{fr.venueArchivedHint}</Notice>}
       </div>

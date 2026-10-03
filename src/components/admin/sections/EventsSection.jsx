@@ -31,7 +31,7 @@ const EventsSection = ({ eventId, editorSection }) => {
   if (eventId && !editingEvent) {
     return (
       <EmptyState icon={CalendarRange} title={fr.eventEditorNotFound}
-        action={<Button variant="secondary" onClick={backToEvents}>{fr.eventEditorBack}</Button>} />
+        action={<Button variant="secondary" onClick={backToEvents}>{fr.adminTabEvents}</Button>} />
     );
   }
 
@@ -61,7 +61,7 @@ const EventsSection = ({ eventId, editorSection }) => {
         onChange={(field, value) => setEventDraftField(editingEvent.id, field, value)}
         onSave={handleSave}
         onDiscard={() => discardEventDraft(editingEvent.id)}
-        onBack={backToEvents}
+        backTo={adminHref({ section: 'events' })}
       />
     );
   }
