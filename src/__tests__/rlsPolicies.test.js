@@ -18,6 +18,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import 'dotenv/config';
 
 // Days counted in Toronto, the zone event dates are read in (#149): 'YYYY-MM-DD', today + n.
@@ -1238,6 +1239,60 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
     const { data: place } = await adminAuthClient.from('places').select('capacity').eq('id', sofa).single();
     expect(place.capacity).toBe(1);
     expect((await memberClient.from('event_place_overrides').select('place_id')).data).toEqual([]);
+  });
+
+  // #202: two real connections with explicit transactions (PostgREST can't hold one open).
+  // The second statement must wait for the first transaction, then see its commit and be refused.
+  test('a concurrent assignment and exclusion of one place serialise: the second to commit is refused', async () => {
+    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    const locationId = await addLocation('Chambre 11');
+    const bed = await addPlace(locationId, 'Lit A');
+    const other = await addPlace(locationId, 'Lit B');
+    const insertAssignment = 'insert into public.place_assignments (attendee_id, place_id) values ($1, $2)';
+    const insertExclusion = 'insert into public.event_place_overrides (event_id, place_id, is_excluded) values ($1, $2, true)';
+
+    const a = new pg.Client({ connectionString: dbUrl });
+    const b = new pg.Client({ connectionString: dbUrl });
+    await Promise.all([a.connect(), b.connect()]);
+    // Settles to 'pending' if `promise` is still waiting after the grace period.
+    const state = (promise) => Promise.race([
+      promise.then(() => 'done', () => 'done'),
+      new Promise(resolve => setTimeout(() => resolve('pending'), 800))
+    ]);
+    try {
+      // 1. An assignment is open and uncommitted; the exclusion waits, then is refused.
+      await a.query('begin');
+      await a.query(insertAssignment, [ann.id, bed]);
+      await b.query('begin');
+      const exclusion = b.query(insertExclusion, [EVENT_ID, bed]);
+      const exclusionResult = exclusion.then(() => null, error => error);
+      expect(await state(exclusion)).toBe('pending');
+      await a.query('commit');
+      expect((await exclusionResult)?.message).toBe('place_exclusion_occupied');
+      await b.query('rollback');
+
+      // 2. An exclusion is open and uncommitted; the assignment waits, then is refused.
+      await a.query('begin');
+      await a.query(insertExclusion, [EVENT_ID, other]);
+      await b.query('begin');
+      const assignment = b.query(insertAssignment, [bob.id, other]);
+      const assignmentResult = assignment.then(() => null, error => error);
+      expect(await state(assignment)).toBe('pending');
+      await a.query('commit');
+      expect((await assignmentResult)?.message).toBe('place_assignment_place_excluded');
+      await b.query('rollback');
+    } finally {
+      await a.end();
+      await b.end();
+    }
+
+    // Never "excluded and still held".
+    const { data: held } = await adminAuthClient.from('place_assignments').select('place_id').in('place_id', [bed, other]);
+    const { data: excluded } = await adminAuthClient.from('event_place_overrides')
+      .select('place_id').eq('event_id', EVENT_ID).eq('is_excluded', true).in('place_id', [bed, other]);
+    expect(held).toEqual([{ place_id: bed }]);
+    expect(excluded).toEqual([{ place_id: other }]);
   });
 
   test('create_event_venue: admins only, one venue per event however often it is called', async () => {
