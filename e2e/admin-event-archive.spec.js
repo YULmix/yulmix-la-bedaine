@@ -1,6 +1,7 @@
 // Archiving the active event (Événements tab) asks first (#22): cancelling leaves it untouched,
 // confirming archives it. Archiving is one-way in the app, and the dialog says so.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { E2E_EVENT_THEME, getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -21,7 +22,7 @@ test.afterEach(async () => {
 
 const openArchiveDialog = async (page) => {
   await page.goto('/admin/events');
-  await page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton }).click();
+  await adminMain(page).getByRole('button', { name: fr.archiveEventButton }).click();
   const dialog = page.getByRole('dialog', { name: fr.archiveEventConfirmTitle });
   await expect(dialog).toContainText(fr.archiveEventConfirm.replace('{theme}', E2E_EVENT_THEME));
   return dialog;
@@ -33,7 +34,7 @@ test('cancelling the archive confirmation leaves the event active', async ({ pag
   await expect(dialog).toHaveCount(0);
 
   expect(await getEvent(seeded.eventId)).toMatchObject({ status: 'ACTIVE', is_active: true });
-  await expect(page.getByRole('tabpanel').getByRole('button', { name: fr.archiveEventButton })).toBeVisible();
+  await expect(adminMain(page).getByRole('button', { name: fr.archiveEventButton })).toBeVisible();
 });
 
 test('confirming archives the event, with no way to reactivate it', async ({ page }) => {
@@ -42,7 +43,7 @@ test('confirming archives the event, with no way to reactivate it', async ({ pag
   await expect(page.getByText(fr.eventArchivedToast.replace('{theme}', E2E_EVENT_THEME))).toBeVisible();
 
   await expect.poll(() => getEvent(seeded.eventId)).toMatchObject({ status: 'ARCHIVED', is_active: false });
-  const row = page.getByRole('tabpanel').getByRole('listitem').filter({ has: page.getByText(E2E_EVENT_THEME, { exact: true }) });
+  const row = adminMain(page).getByRole('listitem').filter({ has: page.getByText(E2E_EVENT_THEME, { exact: true }) });
   await expect(row.getByRole('button', { name: fr.activateEventButton })).toHaveCount(0);
   await expect(row.getByRole('button', { name: fr.archiveEventButton })).toHaveCount(0);
 });

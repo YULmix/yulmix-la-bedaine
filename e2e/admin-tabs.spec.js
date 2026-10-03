@@ -1,5 +1,6 @@
-// Admin sub-navigation tabs (issues #29, #83): /admin/<tab>, overview | users | logistics | budget |
-// events | venues | tools (#196, ADR 0022). Older ?tab= links redirect to their path.
+// The admin navigation (#29, #83, #208): /admin/<section>, overview | users | logistics | budget |
+// events | venues | tools (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
+// on phones. Older ?tab= links redirect to their path.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
@@ -12,6 +13,7 @@ import {
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { pickPlace, placeOption, placePickers } from './support/placePicker.js';
+import { adminMain, adminNav, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
 import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
@@ -19,9 +21,14 @@ const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta
 const OVERVIEW_TAB = fr.adminTabOverview;
 const USERS_TAB = fr.adminTabUsers;
 const LOGISTICS_TAB = fr.adminTabLogistics;
-const USERS_HEADING = fr.adminUsersManagementTitle;
-const LOGISTICS_HEADING = fr.logisticsViewTitle;
-const TAB_COUNT = 7;
+// The page titles (h1): the section, and the view after a dot.
+const USERS_HEADING = fr.adminTabUsers;
+const LOGISTICS_HEADING = `${fr.adminTabLogistics} · ${fr.logisticsViewTitle}`;
+const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, exact: true });
+const SECTION_COUNT = 7;
+// The phone bar's sections (ADR 0022); the others are under « Plus ».
+const BAR_SECTIONS = [fr.adminTabOverview, fr.adminTabUsers, fr.adminTabLogistics, fr.adminTabBudget];
+const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTools];
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in
@@ -42,10 +49,8 @@ test.afterAll(async () => {
   }
 });
 
-const tab = (page, name) => page.getByRole('tab', { name, exact: true });
-// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
-const panel = (page) => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
-const tabBar = (page) => page.getByRole('tablist', { name: fr.adminTabsAriaLabel });
+const tab = (page, name) => sectionLink(page, name);
+const panel = (page) => adminMain(page);
 const bedInputs = (page) => placePickers(panel(page));
 // Modals are native <dialog>s, labelled by their title.
 const modal = (page, title) => page.getByRole('dialog', { name: title });
@@ -53,33 +58,33 @@ const closeModal = (dialog) => dialog.getByRole('button', { name: fr.close, exac
 
 async function openAdmin(page, path = '') {
   await page.goto('/admin' + path);
-  await expect(tabBar(page)).toBeVisible();
+  await expect(adminNav(page)).toBeVisible();
 }
 
 async function expectOverviewTabActive(page) {
-  await expect(tab(page, OVERVIEW_TAB)).toHaveAttribute('aria-selected', 'true');
-  await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'false');
+  await expect(tab(page, OVERVIEW_TAB)).toHaveAttribute('aria-current', /page|true/);
+  await expect(tab(page, USERS_TAB)).not.toHaveAttribute('aria-current', /.+/);
   await expect(panel(page)).toHaveCount(1);
   await expect(panel(page).getByText(fr.kpiPeople, { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: USERS_HEADING })).toHaveCount(0);
+  await expect(pageTitle(page, USERS_HEADING)).toHaveCount(0);
 }
 
 async function expectUsersTabActive(page) {
-  await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'true');
-  await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'false');
+  await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-current', /page|true/);
+  await expect(tab(page, LOGISTICS_TAB)).not.toHaveAttribute('aria-current', /.+/);
   await expect(panel(page)).toHaveCount(1);
-  await expect(panel(page).getByRole('heading', { name: USERS_HEADING })).toBeVisible();
+  await expect(pageTitle(page, USERS_HEADING)).toBeVisible();
   // Only the active panel is rendered: nothing from logistics is in the DOM.
-  await expect(page.getByRole('heading', { name: LOGISTICS_HEADING })).toHaveCount(0);
+  await expect(pageTitle(page, LOGISTICS_HEADING)).toHaveCount(0);
   await expect(page.getByRole('combobox')).toHaveCount(0);
 }
 
 async function expectLogisticsTabActive(page) {
-  await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'true');
-  await expect(tab(page, USERS_TAB)).toHaveAttribute('aria-selected', 'false');
+  await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-current', /page|true/);
+  await expect(tab(page, USERS_TAB)).not.toHaveAttribute('aria-current', /.+/);
   await expect(panel(page)).toHaveCount(1);
-  await expect(panel(page).getByRole('heading', { name: LOGISTICS_HEADING })).toBeVisible();
-  await expect(page.getByRole('heading', { name: USERS_HEADING })).toHaveCount(0);
+  await expect(pageTitle(page, LOGISTICS_HEADING)).toBeVisible();
+  await expect(pageTitle(page, USERS_HEADING)).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(bedInputs(page)).toHaveCount(E2E_ATTENDEES.length);
 }
@@ -112,20 +117,17 @@ async function expectWithinViewportWidth(page, locator) {
   expect(box.x + box.width, 'control overflows viewport right').toBeLessThanOrEqual(width);
 }
 
+// The phone bar: four sections and « Plus », side by side, each a 44 px target, none off-screen.
 async function expectMobileTabBarUsable(page) {
-  const tablist = tabBar(page);
-  // All tabs fit without scrolling the tab bar itself (it's the fixed bottom bar on phones).
-  const { scrollWidth, clientWidth } = await tablist.evaluate((el) => ({
-    scrollWidth: el.scrollWidth,
-    clientWidth: el.clientWidth
-  }));
-  expect(scrollWidth, 'tab bar needs horizontal scrolling').toBeLessThanOrEqual(clientWidth);
-  const tabs = tablist.getByRole('tab');
-  await expect(tabs).toHaveCount(TAB_COUNT);
-  for (let i = 0; i < TAB_COUNT; i++) {
-    await expectWithinViewportWidth(page, tabs.nth(i));
-    const box = await tabs.nth(i).boundingBox();
-    expect(box.height, `tab ${i} is shorter than a 44px touch target`).toBeGreaterThanOrEqual(44);
+  const bar = adminNav(page);
+  const { scrollWidth, clientWidth } = await bar.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
+  expect(scrollWidth, 'the bar needs horizontal scrolling').toBeLessThanOrEqual(clientWidth);
+  await expect(bar.getByRole('link')).toHaveCount(BAR_SECTIONS.length);
+  const items = [...BAR_SECTIONS.map(name => sectionLink(page, name)), moreButton(page)];
+  for (const item of items) {
+    await expectWithinViewportWidth(page, item);
+    const box = await item.boundingBox();
+    expect(box.height, 'a bar item is shorter than a 44px touch target').toBeGreaterThanOrEqual(44);
   }
 }
 
@@ -143,7 +145,8 @@ test.describe('admin tabs', () => {
 
   test('no tab param or an unknown one shows the overview tab', async ({ page }) => {
     await openAdmin(page);
-    await expect(tabBar(page).getByRole('tab')).toHaveCount(TAB_COUNT);
+    // The sidebar lists every section (and only the current one's views).
+    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT);
     await expectOverviewTabActive(page);
     await expect(page).toHaveURL(/\/admin\/overview$/);
 
@@ -156,8 +159,8 @@ test.describe('admin tabs', () => {
     await openAdmin(page, '/users');
     await page.goto('/admin?tab=logistics&view=food');
     await expect(page).toHaveURL(/\/admin\/logistics\/food$/);
-    await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: fr.logisticsViewFood })).toHaveAttribute('aria-selected', 'true');
+    await expect(tab(page, LOGISTICS_TAB)).toHaveAttribute('aria-current', /page|true/);
+    await expect(adminNav(page).getByRole('link', { name: fr.logisticsViewFood })).toHaveAttribute('aria-current', 'page');
 
     await page.goBack();
     await expect(page).toHaveURL(/\/admin\/users$/);
@@ -189,11 +192,11 @@ test.describe('admin tabs', () => {
   test('clicking tabs switches panels and syncs the URL', async ({ page }) => {
     await openAdmin(page);
 
-    await tab(page, LOGISTICS_TAB).click();
+    await openSection(page, LOGISTICS_TAB);
     await expect(page).toHaveURL(/\/admin\/logistics$/);
     await expectLogisticsTabActive(page);
 
-    await tab(page, USERS_TAB).click();
+    await openSection(page, USERS_TAB);
     await expect(page).toHaveURL(/\/admin\/users$/);
     await expectUsersTabActive(page);
   });
@@ -215,7 +218,7 @@ test.describe('admin tabs', () => {
 
   test('browser back/forward switch tabs', async ({ page }) => {
     await openAdmin(page, '/users');
-    await tab(page, LOGISTICS_TAB).click();
+    await openSection(page, LOGISTICS_TAB);
     await expectLogisticsTabActive(page);
 
     await page.goBack();
@@ -231,7 +234,7 @@ test.describe('admin tabs', () => {
     await openAdmin(page, '/users');
     await expectProfileModalWorks(page);
 
-    await tab(page, LOGISTICS_TAB).click();
+    await openSection(page, LOGISTICS_TAB);
     await expectLogisticsTabActive(page);
     await expectProfileModalWorks(page);
   });
@@ -291,7 +294,7 @@ test.describe('admin tabs', () => {
     await shot(page, 'mobile-modal-edit');
     await closeModal(edit);
 
-    await tab(page, LOGISTICS_TAB).click();
+    await openSection(page, LOGISTICS_TAB);
     await expectLogisticsTabActive(page);
     await expectMobileTabBarUsable(page);
     await expectNoHorizontalOverflow(page);
@@ -324,9 +327,9 @@ test.describe('admin tabs', () => {
     await panel(page).locator('textarea').fill('Note non sauvegardée');
     await expect(saveButton).toBeEnabled();
 
-    await tab(page, USERS_TAB).click();
+    await openSection(page, USERS_TAB);
     await expectUsersTabActive(page);
-    await tab(page, LOGISTICS_TAB).click();
+    await openSection(page, LOGISTICS_TAB);
     await expectLogisticsTabActive(page);
 
     await expect(bedInputs(page).first()).toHaveValue('Chambre 1 · Lit A');
@@ -362,10 +365,79 @@ test.describe('admin tabs', () => {
   });
 });
 
-test('member visiting /admin/logistics is blocked and sees no tabs', async ({ page }) => {
+test('member visiting /admin/logistics is blocked and sees no admin navigation', async ({ page }) => {
   await loginAs(page, TEST_USERS.member);
   await page.goto('/admin/logistics');
   await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
+  await expect(adminNav(page)).toHaveCount(0);
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByRole('combobox')).toHaveCount(0);
+});
+
+// The navigation shell (#208): the layout ADR 0022 decided.
+test.describe('admin navigation shell', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page, TEST_USERS.admin);
+  });
+
+  test('phone: four sections and « Plus » in the bar, every section within two taps', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openAdmin(page, '/overview');
+    await expectMobileTabBarUsable(page);
+    await expectNoHorizontalOverflow(page);
+
+    for (const name of BAR_SECTIONS) {
+      await sectionLink(page, name).click();
+      await expect(sectionLink(page, name)).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('heading', { level: 1 })).toContainText(name);
+      await expectNoHorizontalOverflow(page);
+    }
+    for (const name of MORE_SECTIONS) {
+      await moreButton(page).click();
+      const sheet = moreSheet(page);
+      await expect(sheet).toBeVisible();
+      await expect(sheet.getByRole('link')).toHaveCount(MORE_SECTIONS.length);
+      await sheet.getByRole('link', { name }).click();
+      await expect(sheet).toHaveCount(0);
+      // The section is behind « Plus », so « Plus » is the bar's current item.
+      await expect(moreButton(page)).toHaveAttribute('aria-current', 'true');
+      await expect(page.getByRole('heading', { level: 1 })).toContainText(name);
+      await expectNoHorizontalOverflow(page);
+    }
+    await shot(page, 'phone-more-section');
+
+    // The sheet is a native dialog: Escape closes it and focus goes back to « Plus ».
+    await moreButton(page).click();
+    await expect(moreSheet(page)).toBeVisible();
+    await shot(page, 'phone-more-open');
+    await page.keyboard.press('Escape');
+    await expect(moreSheet(page)).toHaveCount(0);
+    await expect(moreButton(page)).toBeFocused();
+  });
+
+  // ADR 0022: on 1280×800 the content starts at about 160 px or less, under the app header and
+  // the page's one header line (#190 measured the change history at 533 px).
+  test('desktop: a sidebar with the current section\'s views, and the content starts high', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // Measured as in production: the app header's own 64 px (h-16) and what's under it. The
+    // header here also holds the test-account banner, which production doesn't have.
+    const fromHeader = async (locator) => 64 + (await locator.boundingBox()).y - (await page.locator('#main').boundingBox()).y;
+
+    await openAdmin(page, '/users');
+    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT);
+    await expect(page.getByRole('tablist', { name: fr.adminTabsAriaLabel })).toHaveCount(0);
+    const filters = adminMain(page).getByRole('group', { name: fr.filterLabel });
+    await expect(filters).toBeVisible();
+    expect(await fromHeader(filters), 'Inscrits starts low').toBeLessThanOrEqual(160);
+    await shot(page, 'desktop-users');
+
+    await openAdmin(page, '/tools/history');
+    await expect(adminNav(page).getByRole('link', { name: fr.toolsViewHistory })).toHaveAttribute('aria-current', 'page');
+    // No view tabs on desktop: the sidebar lists the views.
+    await expect(page.getByRole('tablist', { name: fr.toolsViewsLabel })).toBeHidden();
+    const history = page.getByRole('tabpanel', { name: fr.toolsViewHistory });
+    await expect(history).toBeVisible();
+    expect(await fromHeader(history), 'the change history starts low').toBeLessThanOrEqual(160);
+    await shot(page, 'desktop-history');
+  });
 });

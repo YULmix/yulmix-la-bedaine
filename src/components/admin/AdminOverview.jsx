@@ -66,7 +66,6 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
 
   return (
     <div className="space-y-6">
-      <h2 className="sr-only">{fr.adminTabOverview}</h2>
 
       <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
       {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}

@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import fr from '../../../locales/fr.json';
-import { adminHref } from '../../../lib/adminRoutes';
 import { useEvents } from '../../../lib/events';
 import { refreshAdminParties, useAdminParties } from '../../../lib/adminParties';
 import { useEventPlaces } from '../../../lib/eventPlaces';
@@ -16,7 +14,6 @@ import SectionStatus from './SectionStatus';
 // lives in the logistics store (one Save, #150), so it survives switching sections; the admin
 // shell asks it before letting anyone leave the admin with unsaved edits.
 const LogisticsSection = ({ view }) => {
-  const navigate = useNavigate();
   const { activeEvent } = useEvents();
   const eventId = activeEvent?.id;
   const { parties, activeParties, loading, error } = useAdminParties(eventId);
@@ -48,7 +45,6 @@ const LogisticsSection = ({ view }) => {
       <AdminLogisticsView
         view={view}
         venue={activeEvent.venue}
-        onViewChange={next => navigate(adminHref({ section: 'logistics', view: next }))}
         parties={activeParties}
         places={places}
         logisticsChanges={changes}

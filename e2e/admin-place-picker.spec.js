@@ -1,6 +1,7 @@
 // Assigning sleeping places from the Logistique tab (#114): a searchable dropdown of the event's
 // places, preference-matching ones first, full ones last and still pickable with a warning.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
@@ -45,8 +46,8 @@ test.afterEach(async () => {
   extraPartyId = null;
 });
 
-// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
-const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+// The current admin page (the shell's main).
+const panel = page => adminMain(page);
 const pickerIn = (scope, name) => scope.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 const picker = (page, name) => pickerIn(panel(page), name);
 // The party card holding the attendee called `name` (the one with the notes, not the row).

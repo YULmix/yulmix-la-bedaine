@@ -12,7 +12,8 @@ switcher. Every view is either dense or narrow, and the URLs are paths.**
 **Status: accepted** (October 2026), decided in the design pass
 [#191](https://github.com/YULmix/yulmix-la-bedaine/issues/191). It is implemented by #196 (routes),
 #195 (one module per section), #208 (shell), #209 (dissolve Outils), #210 (drill-down pages) and
-#211 (member pages). Until those land, the code still has the old tab bar.
+#211 (member pages). The shell (#208) is in: the registry is `src/lib/adminSections.ts`, the
+navigation `src/components/admin/AdminNav.jsx`.
 
 ```mermaid
 flowchart TD

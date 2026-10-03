@@ -1,26 +1,19 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Download, History, Inbox } from 'lucide-react';
+import { History } from 'lucide-react';
 import fr from '../../../locales/fr.json';
-import { TOOLS_VIEW_IDS, adminHref } from '../../../lib/adminRoutes';
 import { refreshEvents, useEvents } from '../../../lib/events';
 import { refreshAdminParties, useAdminParties } from '../../../lib/adminParties';
 import { refreshFeedback, resolveFeedback, useFeedback } from '../../../lib/feedback';
 import { EXPORTS, exportFileName, toCsv, toTsv } from '../../../lib/dataExport';
 import { useToasts } from '../../../hooks/useToasts';
 import { ChangeHistory, DataExport, FeedbackInbox } from '../AdminTools';
-import { EmptyState, ViewPanel, ViewTabs } from '../../ui';
+import { EmptyState } from '../../ui';
 import NoActiveEvent from './NoActiveEvent';
 import SectionStatus from './SectionStatus';
 
 // The Outils views (/admin/tools/<view>), one job each, so the change history (#173) can have the
-// screen to itself; the first is the default. #209 dissolves Outils into Inscrits and Retours.
-const TOOLS_VIEW_DISPLAY = {
-  exports: { labelKey: 'toolsViewExports', icon: Download },
-  history: { labelKey: 'toolsViewHistory', icon: History },
-  feedback: { labelKey: 'toolsViewFeedback', icon: Inbox }
-};
-const TOOLS_VIEWS = TOOLS_VIEW_IDS.map(id => ({ id, ...TOOLS_VIEW_DISPLAY[id] }));
+// screen to itself; the admin shell switches between them (src/lib/adminSections.ts). #209
+// dissolves Outils into Inscrits and Retours.
 
 // Data export (#178): both formats are built from the same rows (src/lib/dataExport.js), of the
 // active event's active parties.
@@ -94,21 +87,9 @@ const FeedbackView = ({ addToast }) => {
 const VIEW_COMPONENTS = { exports: ExportsView, history: HistoryView, feedback: FeedbackView };
 
 const ToolsSection = ({ view }) => {
-  const navigate = useNavigate();
   const { addToast } = useToasts(1699);
   const View = VIEW_COMPONENTS[view] || ExportsView;
-  return (
-    <div className="space-y-6">
-      <ViewTabs
-        views={TOOLS_VIEWS.map(({ id, labelKey, icon }) => ({ id, label: fr[labelKey], icon }))}
-        value={view}
-        onChange={next => navigate(adminHref({ section: 'tools', view: next }))}
-        label={fr.toolsViewsLabel}
-        idPrefix="tools-view"
-      />
-      <ViewPanel idPrefix="tools-view" value={view}><View addToast={addToast} /></ViewPanel>
-    </div>
-  );
+  return <View addToast={addToast} />;
 };
 
 export default ToolsSection;

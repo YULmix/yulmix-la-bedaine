@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pencil, Search, UsersRound } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import {
@@ -11,6 +11,8 @@ import { formatCurrency } from '../../lib/format';
 import { amountOwedOf } from '../../lib/adminStats';
 import { initials, plural } from '../../lib/eventDisplay';
 import { Button, EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
+import { useFitToViewport } from '../../hooks/useFitToViewport';
+import { AdminHeaderActions } from './AdminNav';
 
 // A cancelled party owes nothing and counts for nothing (no refunds, #101): every filter but
 // "Annulées" leaves it out, and that pill only shows while there is one.
@@ -51,7 +53,8 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
 );
 
 // Registered parties: who they are, what they owe, whether they paid. Payment and admin changes
-// go through the parent, which confirms before writing.
+// go through the parent, which confirms before writing. The search is in the page header; the
+// list scrolls in a box that ends on screen (a dense page, ADR 0022).
 const AdminUserManagement = ({
   parties,
   currentUserId,
@@ -62,6 +65,7 @@ const AdminUserManagement = ({
 }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const listRef = useRef(null);
 
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
@@ -80,12 +84,12 @@ const AdminUserManagement = ({
         .some(value => value?.toLowerCase().includes(needle));
     });
   }, [parties, query, filter, counts]);
+  useFitToViewport(listRef, { reserve: 24, deps: [visible] });
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <h2 className="text-xl font-semibold text-ink">{fr.adminUsersManagementTitle}</h2>
-        <div className="relative md:w-80">
+      <AdminHeaderActions>
+        <div className="relative w-full sm:w-72">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-faint" />
           <Input
             type="search"
@@ -96,7 +100,7 @@ const AdminUserManagement = ({
             className="pl-10"
           />
         </div>
-      </div>
+      </AdminHeaderActions>
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
@@ -113,7 +117,7 @@ const AdminUserManagement = ({
             <span>{fr.adminTableHeader}</span>
             <span className="sr-only">{fr.actionsTableHeader}</span>
           </div>
-          <ul className="divide-y divide-line">
+          <ul ref={listRef} className="divide-y divide-line overflow-y-auto overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
               const isSelf = profile.id === currentUserId;

@@ -6,14 +6,14 @@ import { dietaryBreakdown, partyComments, transportRows, volunteersByChoice } fr
 import { formatDateTime } from '../../lib/format';
 import { Card, EmptyState, Tag } from '../ui';
 
-// The Logistique tab's read-only views of what parties answered in the form (#179). They list
+// Logistique's read-only views of what parties answered in the form (#179). They list
 // confirmed parties only (lib/adminStats.js); members change their answers by editing their
 // registration.
 
-const ViewHeader = ({ title, description }) => (
+// The view's title is the page header's (the admin shell's).
+const ViewHeader = ({ description }) => (
   <div>
-    <h2 className="text-xl font-semibold text-ink">{title}</h2>
-    <p className="mt-2 max-w-prose text-muted">{description}</p>
+    <p className="max-w-prose text-muted">{description}</p>
     <p className="mt-1 max-w-prose text-sm text-faint">{fr.logisticsConfirmedOnly}</p>
   </div>
 );
@@ -24,7 +24,7 @@ export const FoodView = ({ parties }) => {
   const needs = useMemo(() => dietaryBreakdown(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewFood} description={fr.foodViewDescription} />
+      <ViewHeader description={fr.foodViewDescription} />
       {needs.length === 0 ? <EmptyState icon={Utensils} title={fr.foodViewEmpty} /> : (
         <>
           <Card className="p-4 sm:p-5">
@@ -68,7 +68,7 @@ export const VolunteeringView = ({ parties }) => {
   const choices = useMemo(() => volunteersByChoice(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewVolunteering} description={fr.volunteeringViewDescription} />
+      <ViewHeader description={fr.volunteeringViewDescription} />
       <ol className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {choices.map(({ choice, parties: volunteers }, index) => (
           <li key={choice}>
@@ -105,7 +105,7 @@ export const TransportView = ({ parties }) => {
   const orDash = value => value || fr.emptyValue;
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewTransport} description={fr.transportViewDescription} />
+      <ViewHeader description={fr.transportViewDescription} />
       {rows.length === 0 ? <EmptyState icon={Car} title={fr.transportViewEmpty} /> : (
         <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map(row => (
@@ -159,7 +159,7 @@ export const CommentsView = ({ parties }) => {
   const { music, messages } = useMemo(() => partyComments(parties), [parties]);
   return (
     <section className="space-y-4">
-      <ViewHeader title={fr.logisticsViewComments} description={fr.commentsViewDescription} />
+      <ViewHeader description={fr.commentsViewDescription} />
       <div className="grid gap-4 xl:grid-cols-2">
         <CommentList icon={Music} title={fr.musicRequests} items={music} empty={fr.commentsMusicEmpty} />
         <CommentList icon={MessageSquareText} title={fr.messageToOrganizers} items={messages} empty={fr.commentsMessagesEmpty} />
@@ -168,4 +168,3 @@ export const CommentsView = ({ parties }) => {
   );
 };
 
-export const FORM_VIEW_ICONS = { food: Utensils, volunteering: HandHeart, transport: Car, comments: MessageSquareText };

@@ -2,6 +2,7 @@
 // Save and Discard; a party the database refuses keeps its draft and says why; leaving with
 // pending edits asks first; members can't use the save.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
@@ -47,8 +48,8 @@ test.afterEach(async () => {
   extraPartyId = null;
 });
 
-// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
-const panel = page => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+// The current admin page (the shell's main).
+const panel = page => adminMain(page);
 const pickerIn = (scope, name) => scope.getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${name}` });
 const picker = (page, name) => pickerIn(panel(page), name);
 // The party card holding the attendee called `name` (the one with the notes, not the row).
@@ -144,9 +145,9 @@ test('leaving the admin pages with pending edits asks first; switching tabs or l
 
   await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit A');
   // Another admin tab keeps the draft without asking.
-  await page.getByRole('tab', { name: fr.adminTabUsers, exact: true }).click();
+  await openSection(page, fr.adminTabUsers);
   await expect(leaveDialog).toHaveCount(0);
-  await page.getByRole('tab', { name: fr.adminTabLogistics, exact: true }).click();
+  await openSection(page, fr.adminTabLogistics);
   await expect(picker(page, ALICE)).toHaveValue('Chambre 1 · Lit A');
 
   // Leaving asks; staying keeps everything.

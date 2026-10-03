@@ -1,6 +1,7 @@
 // Galleries (#177): admins edit the venue's two galleries and each location's on the venue's page
 // of the Sites tab; members and admins view them through the same thumbnail button and carousel.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { readFileSync } from 'node:fs';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
@@ -48,7 +49,7 @@ const screenshot = async (page, name) => {
 
 const openVenuePage = async (page) => {
   await page.goto(`/admin/venues/${venue.id}`);
-  const section = page.getByRole('tabpanel', { name: fr.adminTabVenues });
+  const section = adminMain(page);
   await expect(section.getByText(fr.sleepingAutosave)).toBeVisible();
   return section;
 };

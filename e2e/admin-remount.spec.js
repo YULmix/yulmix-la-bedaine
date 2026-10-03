@@ -2,6 +2,7 @@
 // inside App, so every App render (e.g. Supabase's auth event when the browser tab regains focus)
 // remounted the whole admin page and dropped whatever wasn't saved.
 import { test, expect } from '@playwright/test';
+import { sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -36,5 +37,5 @@ test('an unsaved admin note survives an app re-render and the tab regaining focu
   });
 
   await expect(note).toHaveValue('Arrive tard vendredi');
-  await expect(page.getByRole('tab', { name: fr.adminTabLogistics }).getByLabel(fr.unsavedTag)).toBeVisible();
+  await expect(sectionLink(page, fr.adminTabLogistics).getByLabel(fr.unsavedTag)).toBeVisible();
 });

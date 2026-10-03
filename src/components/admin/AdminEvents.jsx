@@ -14,7 +14,6 @@ export const EVENT_STATUS = {
 // Editing opens the event editor page (EventEditor); an event with an unsaved draft says so.
 export const AdminEventList = ({ events, draftEventIds = [], onActivate, onArchive, onEdit }) => (
   <section className="space-y-4">
-    <h2 className="text-xl font-semibold text-ink">{fr.adminEventsManagementTitle}</h2>
     {events.length === 0 ? (
       <EmptyState icon={CalendarPlus} title={fr.noEventsYet} />
     ) : (

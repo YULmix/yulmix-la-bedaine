@@ -2,6 +2,7 @@
 // nothing. It stays out of the totals, "Tous" and logistics, and shows only under an "Annulées"
 // pill that exists only while there is one.
 import { test, expect } from '@playwright/test';
+import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
@@ -35,8 +36,8 @@ test.afterEach(async () => {
   seeded = null;
 });
 
-// The admin tab's panel; the Logistique tab nests its views' own tabpanel inside (#179).
-const panel = (page) => page.locator('[role="tabpanel"][id^="admin-tabpanel-"]');
+// The current admin page (the shell's main).
+const panel = (page) => adminMain(page);
 const pill = (page, label) => panel(page).getByRole('group', { name: fr.filterLabel }).getByRole('button', { name: label });
 // A <Stat>'s value is the paragraph right after its label.
 const kpi = (page, label) => panel(page).getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
