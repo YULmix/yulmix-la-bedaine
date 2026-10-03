@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, BedDouble, Check, ChevronRight, Copy, Images, MapPin, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, BedDouble, Check, ChevronRight, Copy, Images, MapPin, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { dbErrorMessage } from '../../lib/dbErrors';
@@ -11,6 +11,8 @@ import { VENUE_GALLERY_KINDS, copyGalleryImages, fetchLocationGalleries, removeU
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
 import GalleryEditor from './GalleryEditor';
+import DrillDownHeader from './DrillDownHeader';
+import { adminHref } from '../../lib/adminRoutes';
 import { formatCoordinates, parseCoordinates } from '../../lib/venue';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, Input, Notice, Select, Skeleton, Stat, Stepper, cx } from '../ui';
 
@@ -204,7 +206,6 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
   const [locations, setLocations] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [blocked, setBlocked] = useState(null);
-  const pane = useRef(null);
   const loadRef = useRef(null);
   // A failed write reloads, so the screen goes back to what the database holds; a successful one
   // reaches every event at this venue (#193).
@@ -235,11 +236,10 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
 
   useEffect(() => { load(); }, [load]);
 
-  // Below lg the location replaces the list; bring it to the top instead of leaving the admin
-  // scrolled past the totals.
+  // Below lg the location replaces the list and is a page of its own: open it at its header.
   const openedId = locations?.some(location => location.id === locationId) ? locationId : null;
   useEffect(() => {
-    if (openedId && window.matchMedia('(max-width: 1023.98px)').matches) pane.current?.scrollIntoView({ block: 'start' });
+    if (openedId && window.matchMedia('(max-width: 1023.98px)').matches) window.scrollTo({ top: 0 });
   }, [openedId]);
 
   // A structural write (add, move, delete) then reloads, for the rows the database made.
@@ -384,14 +384,21 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
 
   return (
     <div className="space-y-5">
+      {venue && explicit && (
+        <DrillDownHeader className="lg:hidden" backTo={adminHref({ section: 'venues', venueId, locationId: null })}
+          backLabel={venue.name} titleId="location-page-title" title={selected.name} />
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="max-w-prose text-muted">{fr.locationsHint}</p>
+        <p className={cx('max-w-prose text-muted', explicit && 'max-lg:hidden')}>{fr.locationsHint}</p>
         <SaveStatus status={save.status} />
       </div>
       {save.error && <Notice tone="bad" role="alert">{save.error}</Notice>}
 
-      {venue && <VenueCard venue={venue} onUpdate={patchVenue} />}
-      {venue && <VenueGalleries venueId={venue.id} />}
+      {/* On a phone a location is a page of its own: the venue's cards stay on the venue's. */}
+      <div className={cx('space-y-5', explicit && 'max-lg:hidden')}>
+        {venue && <VenueCard venue={venue} onUpdate={patchVenue} />}
+        {venue && <VenueGalleries venueId={venue.id} />}
+      </div>
 
       {locations.length === 0 ? (
         <Card>
@@ -420,11 +427,8 @@ export const VenuePlan = ({ venueId, locationId, onLocationChange, onVenueChange
               className={cx('lg:sticky lg:top-20', explicit && 'hidden lg:block')}
             />
 
-            <Card as="section" aria-label={selected.name} key={selected.id} ref={pane}
+            <Card as="section" aria-label={selected.name} key={selected.id}
               className={cx('scroll-mt-20 space-y-5 p-4 sm:p-6', !explicit && 'hidden lg:block')}>
-              <Button variant="ghost" size="sm" onClick={() => onLocationChange(null)} className="-ml-2 lg:hidden">
-                <ArrowLeft aria-hidden="true" className="size-4" />{fr.locationsBackToList}
-              </Button>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={fr.locationNameLabel}>

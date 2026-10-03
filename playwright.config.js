@@ -57,7 +57,7 @@ export default defineConfig({
       // active event and the seeded member's registration, so in parallel they see each other's
       // parties and throwaway members (#170).
       workers: 1,
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -274,6 +274,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /galleries\.spec\.js/,
       dependencies: ['member-carpool-board']
+    },
+    {
+      // The admin detail pages' header and geometry (#210) reseed the same shared active event and
+      // give its venue locations, so it runs after galleries, on its own. Sets its own viewports.
+      name: 'admin-drill-down',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-drill-down\.spec\.js/,
+      dependencies: ['galleries']
     }
   ],
   webServer: {
