@@ -79,7 +79,6 @@ export const createEventsStore = (client: Client) => {
     const alreadyActive = snapshot.events.find(other => other.is_active);
     if (alreadyActive && alreadyActive.id !== event.id) throw appError(fr.eventAlreadyActiveError);
     const { error } = await client.from('events').update({ is_active: true, status: 'ACTIVE' }).eq('id', event.id);
-    if (error && (error as { code?: string }).code === '23505') throw appError(fr.eventAlreadyActiveError);
     if (error) throw failure('Error activating event', error, fr.eventActivationError);
     await refresh();
   };

@@ -105,6 +105,13 @@ export const attendeePrice = (attendee: PricedAttendee, basePrice: number, ratio
 };
 
 /**
+ * What a party owes before any payment: the sum of its attendees' rounded prices (#120). The
+ * registration form's live estimate, and what simulateEventPricing charges an unpaid party.
+ */
+export const partyPrice = (attendees: PricedAttendee[], basePrice: number, ratios: PriceRatios = DEFAULT_PRICE_RATIOS): number =>
+  attendees.reduce((sum, attendee) => sum + attendeePrice(attendee, basePrice, ratios), 0);
+
+/**
  * Round amount UP to the nearest multiple of 10 CAD
  * @param {number} amount - Amount in CAD
  * @returns {number} Rounded amount
@@ -143,9 +150,7 @@ export const simulateEventPricing = <P extends { attendees: PricedAttendee[]; is
   const parties = attendeeParties.map(party => {
     totalShares += totalPriceShares(party.attendees, ratios);
     // Grandfathering: a paid party keeps the amount it paid.
-    const partyTotal = party.is_paid
-      ? (party.historical_owed || 0)
-      : party.attendees.reduce((sum, attendee) => sum + attendeePrice(attendee, basePrice, ratios), 0);
+    const partyTotal = party.is_paid ? (party.historical_owed || 0) : partyPrice(party.attendees, basePrice, ratios);
     calculated_amount_owed += partyTotal;
     return { ...party, party_total: partyTotal };
   });
