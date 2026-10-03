@@ -9,6 +9,9 @@ import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
 
+// The specs share the single active e2e event, so they run one at a time.
+test.describe.configure({ mode: 'serial' });
+
 let seeded;
 test.beforeEach(async ({ page }) => {
   seeded = await seedActiveEventWithMemberParty();
@@ -37,5 +40,18 @@ test('an unsaved admin note survives an app re-render and the tab regaining focu
   });
 
   await expect(note).toHaveValue('Arrive tard vendredi');
+  await expect(sectionLink(page, fr.adminTabLogistics).getByLabel(fr.unsavedTag)).toBeVisible();
+});
+
+test('an unsaved message to participants survives an app re-render too, and counts as unsaved (#216)', async ({ page }) => {
+  await page.goto('/admin/logistics');
+  const message = page.getByRole('tabpanel', { name: fr.logisticsViewTitle }).getByLabel(fr.logisticsTableParticipantMessage).first();
+  await message.fill('Bienvenue au chalet');
+  await expect(page.getByText(fr.eventEditorUnsaved.replace('{n}', 1))).toBeVisible();
+
+  await page.getByRole('contentinfo').getByRole('button', { name: fr.reportProblem }).click();
+  await page.keyboard.press('Escape');
+
+  await expect(message).toHaveValue('Bienvenue au chalet');
   await expect(sectionLink(page, fr.adminTabLogistics).getByLabel(fr.unsavedTag)).toBeVisible();
 });

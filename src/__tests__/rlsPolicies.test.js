@@ -701,7 +701,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   let adminAuthClient;
 
   const partyRow = async () => (await adminAuthClient.from('user_parties')
-    .select('payment_status, admin_notes, calculated_amount_owed, status, attendees(id, name, place:attendee_places(bed_label))')
+    .select('payment_status, admin_notes, message_to_participants, calculated_amount_owed, status, attendees(id, name, place:attendee_places(bed_label))')
     .eq('id', ADMIN_FIELDS_PARTY_ID)
     .order('position', { referencedTable: 'attendees' })
     .single()).data;
@@ -816,6 +816,64 @@ describe('🛡️ admin-only registration fields (#94)', () => {
       attendee('Ann', { id: idOf(seeded, 'Ann') }), attendee('Rob', { id: idOf(seeded, 'Bob') })
     ]);
     expect(bedsOf(await partyRow())).toEqual([['Ann', 'Ch · B1'], ['Rob', 'Ch · B2']]);
+  });
+
+  // #216: the organisers' message to the party is admin-only to write too, readable by its member.
+  test('a member cannot set the message to participants: null on insert, the stored one on update (#216)', async () => {
+    const { error } = await memberClient.from('user_parties').insert({
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, message_to_participants: 'hax'
+    });
+    expect(error).toBeNull();
+    expect((await partyRow()).message_to_participants).toBeNull();
+
+    const failed = await adminAuthClient.rpc('save_logistics', {
+      p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, message_to_participants: 'Bienvenue' }]
+    });
+    expect(failed).toMatchObject({ data: [], error: null });
+
+    const { error: updateError } = await memberClient.from('user_parties')
+      .update({ message_to_participants: 'hax', admin_notes: 'hax' }).eq('id', ADMIN_FIELDS_PARTY_ID);
+    expect(updateError).toBeNull();
+    const row = await partyRow();
+    expect(row.message_to_participants).toBe('Bienvenue');
+    expect(row.admin_notes).toBeNull();
+
+    const { data: own } = await memberClient.from('user_parties').select('message_to_participants').eq('id', ADMIN_FIELDS_PARTY_ID).single();
+    expect(own.message_to_participants).toBe('Bienvenue');
+  });
+
+  test('save_logistics: an absent key keeps a text, a present one replaces it; one history entry per save (#216)', async () => {
+    await seedAdminManagedParty();
+    const saveTexts = async (texts) => {
+      const result = await adminAuthClient.rpc('save_logistics', { p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, ...texts }] });
+      expect(result).toMatchObject({ data: [], error: null });
+    };
+    await saveTexts({ message_to_participants: 'Bienvenue' });
+    let row = await partyRow();
+    expect([row.admin_notes, row.message_to_participants]).toEqual(['secret', 'Bienvenue']);
+    await saveTexts({ admin_notes: 'Note 2' });
+    row = await partyRow();
+    expect([row.admin_notes, row.message_to_participants]).toEqual(['Note 2', 'Bienvenue']);
+    await saveTexts({ admin_notes: 'Note 3', message_to_participants: '' });
+    row = await partyRow();
+    expect([row.admin_notes, row.message_to_participants]).toEqual(['Note 3', '']);
+
+    const { data: edits } = await adminAuthClient.from('registration_edits')
+      .select('changes').eq('registration_id', ADMIN_FIELDS_PARTY_ID).order('edited_at');
+    expect(edits.slice(-3).map(edit => edit.changes)).toEqual([
+      { message_to_participants: { old: null, new: 'Bienvenue' } },
+      { admin_notes: { old: 'secret', new: 'Note 2' } },
+      { admin_notes: { old: 'Note 2', new: 'Note 3' }, message_to_participants: { old: 'Bienvenue', new: '' } }
+    ]);
+  });
+
+  test('a member cannot write the message through save_logistics either (#216)', async () => {
+    await seedAdminManagedParty();
+    const { error } = await memberClient.rpc('save_logistics', {
+      p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, message_to_participants: 'hax' }]
+    });
+    expect(error?.message).toBe('admin_only');
+    expect((await partyRow()).message_to_participants).toBeNull();
   });
 
   test('re-registering over their own cancelled paid party keeps it paid (#35)', async () => {

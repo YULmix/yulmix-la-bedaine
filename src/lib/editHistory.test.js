@@ -35,3 +35,13 @@ test('a waitlisted creation says so instead of the status (#173)', () => {
   });
   expect(line.to).toBe(`${fr.countPersonOne.replace('{count}', 1)} · ${fr.filterWaitlist} · ${formatCurrency(0)}`);
 });
+
+test('the message to participants has its own label, apart from the private notes (#216)', () => {
+  expect(describeChanges({
+    admin_notes: { old: null, new: 'Privé' },
+    message_to_participants: { old: null, new: 'Bienvenue' }
+  })).toEqual([
+    { label: fr.historyFieldAdminNotes, from: fr.historyEmptyValue, to: 'Privé' },
+    { label: fr.historyFieldMessageToParticipants, from: fr.historyEmptyValue, to: 'Bienvenue' }
+  ]);
+});
