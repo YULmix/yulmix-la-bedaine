@@ -162,8 +162,12 @@ test('on a phone, a long history scrolls with the page, not inside a box', async
   await page.goto('/admin/tools/history');
   await expect(entries(page)).toHaveCount(23);
 
-  const box = await measure(page);
-  expect(box.scrollHeight).toBe(box.clientHeight);
+  // Polled: a banner loading late above the list (the test-account marker) moves it down, and the
+  // box is re-fitted then.
+  await expect.poll(async () => {
+    const box = await measure(page);
+    return box.scrollHeight - box.clientHeight;
+  }).toBe(0);
   await entries(page).last().scrollIntoViewIfNeeded();
   await expect(entries(page).last()).toBeInViewport();
 });

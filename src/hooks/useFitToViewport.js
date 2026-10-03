@@ -5,8 +5,9 @@ import { useLayoutEffect } from 'react';
 // ([data-bottom-bar], the admin tabs on phones). An inner scroll that runs past the bottom of the
 // screen means two scrollbars fighting over the wheel; this keeps it to one. Where that would
 // leave less than `min` px (a phone, under the controls above the list), the element isn't capped
-// at all: no inner scroll, the page scrolls instead, still one scrollbar. Recomputed on resize and
-// when `deps` change (e.g. once the list has loaded).
+// at all: no inner scroll, the page scrolls instead, still one scrollbar. Recomputed on resize,
+// when `deps` change (e.g. once the list has loaded), and when the page's layout changes (a banner
+// or a header settling above the element moves it down after the first measure).
 export const useFitToViewport = (ref, { reserve = 0, min = 256, deps = [] } = {}) => {
   useLayoutEffect(() => {
     const element = ref.current;
@@ -23,6 +24,13 @@ export const useFitToViewport = (ref, { reserve = 0, min = 256, deps = [] } = {}
     };
     fit();
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    // fit() only depends on where the element starts, so its own change of height re-fits to the
+    // same value and the observer settles.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    observer?.observe(document.body);
+    return () => {
+      window.removeEventListener('resize', fit);
+      observer?.disconnect();
+    };
   }, deps);
 };
