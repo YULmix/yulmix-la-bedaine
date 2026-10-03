@@ -270,6 +270,40 @@ describe('registrationReducer', () => {
     });
   });
 
+  describe('a bed reason only goes with « Lit » (#228)', () => {
+    const empty = a => [a.bedReason, a.bedReasonOther];
+
+    test.each(['camping', 'sofa'])('one attendee switching to %s loses it; back to bed leaves it empty', (preference) => {
+      let form = registrationReducer(two(), { type: 'changed', changes: { sameForEveryone: false } });
+      form = registrationReducer(form, { type: 'attendeeChanged', id: 'b', changes: { sleepingPreference: 'bed', bedReason: 'other', bedReasonOther: 'Dos' } });
+      form = registrationReducer(form, { type: 'attendeeChanged', id: 'b', changes: { sleepingPreference: preference } });
+      expect(empty(form.attendees[1])).toEqual(['', '']);
+      form = registrationReducer(form, { type: 'attendeeChanged', id: 'b', changes: { sleepingPreference: 'bed' } });
+      expect(empty(form.attendees[1])).toEqual(['', '']);
+    });
+
+    test.each(['camping', 'sofa'])('the group switching to %s loses it; back to bed leaves it empty', (preference) => {
+      let form = registrationReducer(two(), { type: 'groupStayChanged', changes: { sleepingPreference: 'bed', bedReason: 'health' } });
+      form = registrationReducer(form, { type: 'groupStayChanged', changes: { sleepingPreference: preference } });
+      expect(form.attendees.map(empty)).toEqual([['', ''], ['', '']]);
+      form = registrationReducer(form, { type: 'groupStayChanged', changes: { sleepingPreference: 'bed' } });
+      expect(form.attendees.map(empty)).toEqual([['', ''], ['', '']]);
+    });
+
+    test('with « same for everyone », the first attendee switching clears everyone', () => {
+      let form = registrationReducer(two(), { type: 'attendeeChanged', id: 'attendee-1', changes: { sleepingPreference: 'bed', bedReason: 'comfort' } });
+      expect(form.attendees.map(a => a.bedReason)).toEqual(['comfort', 'comfort']);
+      form = registrationReducer(form, { type: 'attendeeChanged', id: 'attendee-1', changes: { sleepingPreference: 'camping' } });
+      expect(form.attendees.map(empty)).toEqual([['', ''], ['', '']]);
+    });
+
+    test('toSavePayload never sends a reason for a non-bed attendee', () => {
+      const form = fromParty(null, travelRange);
+      form.attendees[0] = { ...form.attendees[0], name: 'A', sleepingPreference: 'camping', bedReason: 'health', bedReasonOther: 'x' };
+      expect(toSavePayload(form).attendees[0]).toMatchObject({ bed_reason: '', bed_reason_other: '' });
+    });
+  });
+
   describe('« same for everyone »', () => {
     test('everyone gets the first attendee\'s sleeping and food choices, a new attendee too', () => {
       let form = registrationReducer(fromParty(null, travelRange), { type: 'attendeeChanged', id: 'attendee-1', changes: { sleepingPreference: 'camping', dietaryNeeds: ['vegan'] } });
