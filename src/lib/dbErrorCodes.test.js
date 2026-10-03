@@ -27,10 +27,10 @@ const countParams = (args) => {
 /** Matches the argument list, which may contain one level of nested parentheses (numeric(10,2)). */
 const ARGS = '((?:[^()]|\\([^()]*\\))*)';
 const CREATE_RE = new RegExp(
-  `create\\s+(?:or\\s+replace\\s+)?function\\s+(?:"?public"?\\.)?"?(\\w+)"?\\s*\\(${ARGS}\\)`, 'gi'
+  `create\\s+(?:or\\s+replace\\s+)?function\\s+(?:"?(\\w+)"?\\.)?"?(\\w+)"?\\s*\\(${ARGS}\\)`, 'gi'
 );
 const DROP_RE = /drop\s+function\s+(?:if\s+exists\s+)?([^;]+);/gi;
-const DROP_ONE_RE = new RegExp(`(?:"?\\w+"?\\.)?"?(\\w+)"?\\s*\\(${ARGS}\\)`, 'g');
+const DROP_ONE_RE = new RegExp(`(?:"?(\\w+)"?\\.)?"?(\\w+)"?\\s*\\(${ARGS}\\)`, 'g');
 
 /** Current function definitions: signature -> { file, body }. */
 export const currentFunctions = (dir = MIGRATIONS_DIR) => {
@@ -50,11 +50,11 @@ export const currentFunctions = (dir = MIGRATIONS_DIR) => {
         const closeAt = sql.indexOf(open[0], open.index + open[0].length);
         body = sql.slice(open.index + open[0].length, closeAt === -1 ? undefined : closeAt);
       }
-      events.push({ at: m.index, kind: 'create', key: `${m[1].toLowerCase()}/${countParams(m[2])}`, body });
+      events.push({ at: m.index, kind: 'create', key: `${(m[1] ?? 'public').toLowerCase()}.${m[2].toLowerCase()}/${countParams(m[3])}`, body });
     }
     for (const m of sql.matchAll(DROP_RE)) {
       for (const one of m[1].matchAll(DROP_ONE_RE)) {
-        events.push({ at: m.index, kind: 'drop', key: `${one[1].toLowerCase()}/${countParams(one[2])}` });
+        events.push({ at: m.index, kind: 'drop', key: `${(one[1] ?? 'public').toLowerCase()}.${one[2].toLowerCase()}/${countParams(one[3])}` });
       }
     }
     events.sort((a, b) => a.at - b.at);
