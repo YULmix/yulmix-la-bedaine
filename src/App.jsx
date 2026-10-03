@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { isAdminPath } from './lib/adminRoutes';
 import { LockKeyhole, UserX } from 'lucide-react';
 import Header from './components/Header';
+import { pageWidthClass } from './lib/pageWidth';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
 import ResolutionBanner from './components/ResolutionBanner';
@@ -43,12 +44,15 @@ const ShellSkeleton = () => (
   </div>
 );
 
-const PageMain = ({ children, wide = false }) => (
-  <main className={`mx-auto w-full flex-1 px-4 pb-16 pt-6 md:px-6 ${wide ? 'max-w-7xl' : 'max-w-6xl'}`}>{children}</main>
+// A member page: the header's clamped canvas, and the page's width inside it (src/lib/pageWidth.ts).
+const PageMain = ({ children, width = 'narrow' }) => (
+  <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 md:px-6">
+    <div className={`mx-auto ${pageWidthClass(width)}`}>{children}</div>
+  </main>
 );
 
 const SignedOutHome = () => (
-  <PageMain>
+  <PageMain width="dense">
     <section className="relative isolate flex min-h-[70dvh] flex-col justify-end overflow-hidden rounded-card border border-line p-6 sm:p-10 animate-rise">
       <img src="/bedaine-disco.webp" alt="" aria-hidden="true" className="absolute inset-0 -z-20 size-full object-cover" />
       <img src="/bedaine-mural.webp" alt="" aria-hidden="true" className="absolute inset-x-0 top-0 -z-20 h-1/2 w-full object-cover opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
@@ -262,7 +266,7 @@ function App() {
           {/* The board says itself when it isn't for this member (#180). */}
           <Route path="/carpool" element={
             <ProtectedRoute {...guard}>
-              <PageMain>
+              <PageMain width="dense">
                 <CarpoolView />
               </PageMain>
             </ProtectedRoute>

@@ -11,12 +11,9 @@ import {
   ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, TOOLS_VIEW_IDS,
   type AdminRoute, type AdminSection, type LogisticsView, type ToolsView
 } from './adminRoutes';
+import type { PageWidth } from './pageWidth';
 
-/**
- * How wide a page is: `dense` (lists, logs, tables) is full width, its list scrolling in a box
- * fitted to the viewport; `narrow` (forms, summaries) has a max width of about 3xl.
- */
-export type PageWidth = 'dense' | 'narrow';
+export type { PageWidth };
 
 /** What a section's marker says, computed by the admin shell from the stores. */
 export type SectionMarker = 'unsavedLogistics' | 'unsavedEvent';
