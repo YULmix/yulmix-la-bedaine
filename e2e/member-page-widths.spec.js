@@ -43,3 +43,15 @@ test('the narrow pages are clamped and centred at 2560px, the carpool board fill
   }
   expect((await box('/carpool')).width).toBeGreaterThan(768);
 });
+
+test('the signed-out home is narrow too: clamped and centred at 2560px, no horizontal scroll at 390px', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1000 });
+  await page.goto('/');
+  await page.locator('main > div').first().waitFor();
+  const b = await page.locator('main > div').first().boundingBox();
+  expect(b.width).toBeLessThanOrEqual(768);
+  expect(Math.abs(b.x + b.width / 2 - 1280)).toBeLessThan(2);
+  await page.setViewportSize({ width: 390, height: 800 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

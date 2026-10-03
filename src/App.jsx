@@ -52,7 +52,7 @@ const PageMain = ({ children, width = 'narrow' }) => (
 );
 
 const SignedOutHome = () => (
-  <PageMain width="dense">
+  <PageMain>
     <section className="relative isolate flex min-h-[70dvh] flex-col justify-end overflow-hidden rounded-card border border-line p-6 sm:p-10 animate-rise">
       <img src="/bedaine-disco.webp" alt="" aria-hidden="true" className="absolute inset-0 -z-20 size-full object-cover" />
       <img src="/bedaine-mural.webp" alt="" aria-hidden="true" className="absolute inset-x-0 top-0 -z-20 h-1/2 w-full object-cover opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
