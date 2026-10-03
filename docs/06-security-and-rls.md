@@ -18,9 +18,9 @@ enforced.
 - No email/password, no magic links. There is no account-creation form to secure.
 - On first sign-in, `handle_new_user` (AFTER INSERT on `auth.users`) creates the `profiles` row and
   sets `is_admin` only for the root-admin email.
-- `RegistrationForm` self-heals a missing profile by upserting it before saving a registration
-  (`src/components/RegistrationForm.jsx:255`) — a workaround for the race between the trigger and the
-  first write.
+  It runs in the same transaction as the auth user's insert, so there is no window in which a
+  signed-in member has no profile. The registration form used to upsert a missing profile before
+  saving; that « self-heal » was dead code and is gone (#194).
 
 ## Roles
 

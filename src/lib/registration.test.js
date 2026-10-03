@@ -310,6 +310,17 @@ describe('registrationReducer', () => {
       expect(ageOf(kid, 'Teenager')).toMatchObject({ type: 'Teenager', participation: 'Whole' });
     });
 
+    test('re-picking Kid for a Kid on the whole event moves them to the after-party', () => {
+      const kid = fromParty({ attendees: [{ id: 'a1', name: 'Sam', type: 'Kid', participation: 'Whole' }] });
+      const repicked = registrationReducer(kid, { type: 'attendeeChanged', id: 'a1', changes: { type: 'Kid' } });
+      expect(repicked.attendees[0]).toMatchObject({ type: 'Kid', participation: 'After-Party' });
+    });
+
+    test('re-picking the same age otherwise changes nothing', () => {
+      const main = registrationReducer(fromParty(null, travelRange), { type: 'attendeeChanged', id: 'attendee-1', changes: { participation: 'Main' } });
+      expect(ageOf(main, 'Adult')).toMatchObject({ type: 'Adult', participation: 'Main' });
+    });
+
     test('between Adult and Teenager the tier stays', () => {
       const main = registrationReducer(fromParty(null, travelRange), { type: 'attendeeChanged', id: 'attendee-1', changes: { participation: 'Main' } });
       expect(ageOf(main, 'Teenager')).toMatchObject({ type: 'Teenager', participation: 'Main' });

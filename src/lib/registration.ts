@@ -256,7 +256,7 @@ export type AttendeeFields = Omit<FormAttendee, 'id' | 'isSaved'>;
 export type RegistrationAction =
   /** A party-level field, or several. A new transport type resets what goes with it. */
   | { type: 'changed'; changes: Partial<PartyFields> }
-  /** One attendee's fields. A new age resets the tier that no longer applies. */
+  /** One attendee's fields. An age pick resets the tier that no longer applies. */
   | { type: 'attendeeChanged'; id: string; changes: Partial<AttendeeFields> }
   /** Sleeping and food choices for the whole group (« mêmes choix pour tout le monde »). */
   | { type: 'groupStayChanged'; changes: Partial<Pick<FormAttendee, typeof LOGISTICS_FIELDS[number]>> }
@@ -288,7 +288,9 @@ const withAgeRule = (attendee: FormAttendee): FormAttendee => {
 
 const changeAttendee = (attendee: FormAttendee, changes: Partial<AttendeeFields>): FormAttendee => {
   const changed = { ...attendee, ...withDietaryRules(changes, attendee.dietaryNeeds) };
-  return 'type' in changes && changes.type !== attendee.type ? withAgeRule(changed) : changed;
+  // On every age pick, the same one again included: a Kid saved on the whole event (possible
+  // before the rule) re-picked as Kid goes to the after-party.
+  return 'type' in changes ? withAgeRule(changed) : changed;
 };
 
 // Offering a lift counts the seats offered; needing one, the seats needed (#179), which starts

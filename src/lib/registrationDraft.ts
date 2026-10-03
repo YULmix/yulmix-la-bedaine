@@ -3,19 +3,6 @@
 // sessionStorage helpers at the bottom (registrationDraft.test.js).
 import { fromParty, type RegistrationFormState, type SavedRegistration } from './registration';
 
-// The form's model moved to registration.ts (#194). Re-exported, under its old names, for the form
-// until it's rewired onto the module (#194, PR 2); then these go.
-export {
-  DEPARTURE_PLACE_MAX_LENGTH,
-  LOGISTICS_FIELDS,
-  departureFsaInvalid,
-  fromParty as formStateOf,
-  newAttendee,
-  sameChoice,
-  transportOf
-} from './registration';
-export type { FormAttendee, RegistrationFormState, SavedRegistration, TravelRange } from './registration';
-
 /** What is kept in sessionStorage: the form, and the saved registration it was taken over. */
 export interface RegistrationDraft {
   form: RegistrationFormState;
