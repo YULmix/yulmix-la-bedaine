@@ -22,7 +22,7 @@ const OVERVIEW_TAB = fr.adminTabOverview;
 const USERS_TAB = fr.adminTabUsers;
 const LOGISTICS_TAB = fr.adminTabLogistics;
 // The page titles (h1): the section, and the view after a dot.
-const USERS_HEADING = fr.adminTabUsers;
+const USERS_HEADING = `${fr.adminTabUsers} · ${fr.usersViewList}`;
 const LOGISTICS_HEADING = `${fr.adminTabLogistics} · ${fr.logisticsViewTitle}`;
 const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, exact: true });
 const SECTION_COUNT = 7;

@@ -98,6 +98,8 @@ export const AdminBottomBar = ({ page, markers }) => {
   const moreRef = useRef(null);
   const moreActive = MORE_SECTIONS.some(section => section.id === page.section.id);
   const moreMarked = MORE_SECTIONS.some(section => markers[section.id]);
+  // « Plus » says « Non enregistré » when unsaved work is behind it, and otherwise only that there is something to deal with.
+  const moreUnsaved = MORE_SECTIONS.some(section => markers[section.id] === true);
   const closeMore = () => {
     setMoreOpen(false);
     // The native dialog gives focus back to what opened it; say so for the link that closed it.
@@ -127,7 +129,7 @@ export const AdminBottomBar = ({ page, markers }) => {
           aria-current={moreActive ? 'true' : undefined} className={barItemClass(moreActive)}>
           <Ellipsis aria-hidden="true" className="size-5" strokeWidth={1.75} />
           <span>{fr.adminMore}</span>
-          {moreMarked && <Marker value label={fr.adminMoreMarked} className="absolute right-[calc(50%-1.25rem)] top-2" />}
+          {moreMarked && <Marker value label={moreUnsaved ? fr.unsavedTag : fr.adminMoreMarked} className="absolute right-[calc(50%-1.25rem)] top-2" />}
         </button>
       </nav>
 
