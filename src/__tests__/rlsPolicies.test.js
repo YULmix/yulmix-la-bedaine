@@ -1006,6 +1006,241 @@ describe('👥 capacity and waitlist see every party (#118)', () => {
   });
 });
 
+// #247: changing an event's capacity re-runs the waiting list, like a cancellation does.
+describe('⏫ capacity change promotes the waiting list (#247)', () => {
+  jest.setTimeout(60000);
+
+  const RAISE_EVENT_ID = 'a0000000-a000-a000-a000-a00000000247';
+  const createdUserIds = [];
+  let adminAuthClient;
+  let parties; // { holder, big, small1, small2 }, registered in this order
+
+  const people = n => Array.from({ length: n }, () => ({ type: 'Adult', participation: 'Whole' }));
+  const setCapacity = async (max) => {
+    const { error } = await adminAuthClient.from('events').update({ max_attendees: max }).eq('id', RAISE_EVENT_ID);
+    if (error) throw error;
+  };
+  const waitlistState = async () => {
+    const { data } = await adminAuthClient.from('user_parties').select('id, is_waitlisted').eq('event_id', RAISE_EVENT_ID);
+    const byId = Object.fromEntries(data.map(row => [row.id, row.is_waitlisted]));
+    return Object.fromEntries(Object.entries(parties).map(([name, id]) => [name, byId[id]]));
+  };
+  const newUser = async (label) => {
+    const { data, error } = await adminClient.auth.admin.createUser({
+      email: `cap247-${label}-${Date.now()}@test.local`, password: 'password123', email_confirm: true
+    });
+    if (error) throw error;
+    createdUserIds.push(data.user.id);
+    return data.user.id;
+  };
+  const newParty = async (label, size) => (await saveOk(adminAuthClient, RAISE_EVENT_ID, people(size), { userId: await newUser(label) })).id;
+
+  beforeAll(async () => {
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: RAISE_EVENT_ID, theme: 'Capacity Raise Test', status: 'ACTIVE', max_attendees: 1
+    });
+    if (error) throw error;
+    // Capacity 1: the holder fills it, the three others queue in order (sizes 2, 1, 1).
+    parties = {};
+    parties.holder = await newParty('holder', 1);
+    parties.big = await newParty('big', 2);
+    parties.small1 = await newParty('small1', 1);
+    parties.small2 = await newParty('small2', 1);
+  });
+
+  beforeEach(async () => {
+    // Back to the starting point: everyone but the holder waitlisted, capacity 1.
+    await setCapacity(1);
+    for (const name of ['big', 'small1', 'small2']) {
+      const { error } = await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).eq('id', parties[name]);
+      if (error) throw error;
+    }
+  });
+
+  afterAll(async () => {
+    for (const id of createdUserIds) {
+      await adminAuthClient.from('user_parties').delete().eq('user_id', id);
+      await adminClient.auth.admin.deleteUser(id);
+    }
+    await adminAuthClient.from('events').delete().eq('id', RAISE_EVENT_ID);
+  });
+
+  test('starts with the holder in and everyone else waitlisted', async () => {
+    expect(await waitlistState()).toEqual({ holder: false, big: true, small1: true, small2: true });
+  });
+
+  test('raising the capacity promotes oldest first, while the parties fit', async () => {
+    await setCapacity(4); // 3 free places: big (2) then small1 (1); small2 does not fit
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: true });
+  });
+
+  test('a party that straddles the new capacity stays, and nobody behind it jumps the queue', async () => {
+    await setCapacity(2); // 1 free place: big (2) does not fit, small1 would but is behind it
+    expect(await waitlistState()).toEqual({ holder: false, big: true, small1: true, small2: true });
+  });
+
+  test('capacity null or 0 (no limit) promotes every waitlisted party', async () => {
+    await setCapacity(null);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await setCapacity(1);
+    await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).in('id', [parties.big, parties.small1, parties.small2]);
+    await setCapacity(0);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+  });
+
+  test('a cancelled waitlisted party is not promoted', async () => {
+    await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', parties.big);
+    await setCapacity(10);
+    const { data } = await adminAuthClient.from('user_parties').select('is_waitlisted').eq('id', parties.big).single();
+    expect(data.is_waitlisted).toBe(true);
+    await adminAuthClient.from('user_parties').update({ status: 'registered' }).eq('id', parties.big);
+  });
+
+  test('lowering the capacity, or saving it unchanged, moves nobody', async () => {
+    await setCapacity(10);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await setCapacity(1);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).eq('id', parties.small2);
+    await setCapacity(1); // unchanged: no trigger
+    expect((await waitlistState()).small2).toBe(true);
+  });
+
+  // Two real superuser connections with explicit transactions (PostgREST can't hold one open).
+  const DB_URL = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+  const connect = async () => {
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(DB_URL).hostname);
+    const client = new pg.Client({ connectionString: DB_URL });
+    await client.connect();
+    return client;
+  };
+  // Settles to 'pending' if `promise` is still waiting after the grace period.
+  const state = (promise) => Promise.race([
+    promise.then(() => 'done', () => 'done'),
+    new Promise(resolve => setTimeout(() => resolve('pending'), 800))
+  ]);
+  const ADMIN_CLAIMS = JSON.stringify({ sub: '00000000-0000-0000-0000-000000000002', role: 'authenticated' });
+
+  test('a registration waiting on the lock of a capacity raise reads the NEW capacity', async () => {
+    const racerUser = await newUser('racer');
+    const a = await connect();
+    const b = await connect();
+    try {
+      await a.query('begin');
+      await a.query('update public.events set max_attendees = 6 where id = $1', [RAISE_EVENT_ID]); // holds the event lock
+      await b.query('begin');
+      await b.query("select set_config('request.jwt.claims', $1, true)", [ADMIN_CLAIMS]);
+      await b.query('set local role authenticated');
+      const save = b.query(
+        "select (public.save_registration($1, $2::jsonb, '{}'::jsonb, $3)).id",
+        [RAISE_EVENT_ID, JSON.stringify([{ name: 'Racer', type: 'Adult', participation: 'Whole' }]), racerUser]
+      );
+      const saveResult = save.then(r => r.rows[0].id);
+      expect(await state(save)).toBe('pending'); // waiting for the lock, not computing from the old capacity
+      await a.query('commit');
+      const racerId = await saveResult;
+      await b.query('commit');
+      // 6 places: holder 1 + big 2 + small1 1 + small2 1 = 5, plus the racer. Nobody waits with a free place.
+      const { data } = await adminAuthClient.from('user_parties').select('id, is_waitlisted').eq('event_id', RAISE_EVENT_ID);
+      expect(data).toHaveLength(5);
+      expect(data.filter(row => row.is_waitlisted)).toEqual([]);
+      expect(racerId).toBeTruthy();
+      await adminAuthClient.from('user_parties').delete().eq('id', racerId); // keep the headcount of the next tests
+    } finally {
+      await a.end();
+      await b.end();
+    }
+  });
+
+  test('a cancellation racing a capacity raise: no deadlock, never over capacity', async () => {
+    const a = await connect();
+    const b = await connect();
+    try {
+      await a.query('begin');
+      await a.query('update public.events set max_attendees = 5 where id = $1', [RAISE_EVENT_ID]);
+      await b.query('begin');
+      const cancel = b.query("update public.user_parties set status = 'cancelled' where id = $1", [parties.holder]);
+      const cancelResult = cancel.then(() => null, error => error);
+      expect(await state(cancel)).toBe('pending');
+      await a.query('commit');
+      expect(await cancelResult).toBeNull();
+      await b.query('commit');
+      const { rows } = await a.query(
+        "select private.event_headcount($1) as heads, (select max_attendees from public.events where id = $1) as max", [RAISE_EVENT_ID]
+      );
+      expect(Number(rows[0].heads)).toBeLessThanOrEqual(rows[0].max);
+      expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+      await a.query("update public.user_parties set status = 'registered' where id = $1", [parties.holder]);
+    } finally {
+      await a.end();
+      await b.end();
+    }
+  });
+
+  test('a waitlisted party whose attendees were removed (size 0) is promoted without error', async () => {
+    const db = await connect();
+    try {
+      await db.query('update public.attendees set deleted_at = now() where party_id = $1', [parties.big]);
+      await setCapacity(2); // 1 free place: the emptied big (size 0) is promoted, then small1 takes it
+      expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: true });
+      await db.query('update public.attendees set deleted_at = null where party_id = $1', [parties.big]);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test('a promoted party gets its promotion email requested, and keeps its places', async () => {
+    const db = await connect();
+    try {
+      await db.query('begin');
+      await db.query("insert into private.settings (key, value) values ('email_function_url', 'http://127.0.0.1:9/send') on conflict (key) do update set value = excluded.value");
+      const queued = async () => Number((await db.query(
+        "select count(*) from net.http_request_queue where body = convert_to(jsonb_build_object('party_id', $1::uuid)::text, 'utf8')", [parties.big]
+      )).rows[0].count);
+      const before = await queued();
+      const placesBefore = (await db.query('select count(*) from public.place_assignments pa join public.attendees a on a.id = pa.attendee_id where a.party_id = $1', [parties.big])).rows[0].count;
+      await db.query('update public.events set max_attendees = 4 where id = $1', [RAISE_EVENT_ID]);
+      expect(await queued()).toBe(before + 1);
+      const placesAfter = (await db.query('select count(*) from public.place_assignments pa join public.attendees a on a.id = pa.attendee_id where a.party_id = $1', [parties.big])).rows[0].count;
+      expect(placesAfter).toBe(placesBefore);
+      await db.query('rollback');
+    } finally {
+      await db.end();
+    }
+  });
+
+  test('anon and authenticated cannot call the trigger functions or the private one', async () => {
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    const db = await connect();
+    try {
+      for (const fn of ['public.promote_waitlisted_on_capacity_change()', 'public.promote_waitlisted_parties()', 'private.promote_waitlisted_for_event(uuid)']) {
+        for (const role of ['anon', 'authenticated']) {
+          const { rows } = await db.query('select has_function_privilege($1, $2, $3) as ok', [role, fn, 'EXECUTE']);
+          expect([fn, role, rows[0].ok]).toEqual([fn, role, false]);
+        }
+      }
+    } finally {
+      await db.end();
+    }
+    for (const client of [anon, adminAuthClient]) {
+      for (const name of ['promote_waitlisted_on_capacity_change', 'promote_waitlisted_parties', 'promote_waitlisted_for_event']) {
+        const { error } = await client.rpc(name, { p_event_id: RAISE_EVENT_ID });
+        expect(error).not.toBeNull();
+      }
+    }
+  });
+
+  test('a member cannot change the capacity, and the waiting list does not move', async () => {
+    const member = await signIn('member@test.local');
+    const { data } = await member.from('events').update({ max_attendees: 50 }).eq('id', RAISE_EVENT_ID).select();
+    expect(data ?? []).toEqual([]);
+    const { data: event } = await adminAuthClient.from('events').select('max_attendees').eq('id', RAISE_EVENT_ID).single();
+    expect(event.max_attendees).toBe(1);
+    expect(await waitlistState()).toEqual({ holder: false, big: true, small1: true, small2: true });
+  });
+});
+
 // #126 (ADR 0018): attendees are rows of their own table, with the party's access, written only
 // through save_registration().
 describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
