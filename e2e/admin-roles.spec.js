@@ -11,6 +11,7 @@ import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ORGANISER_ID,
   deleteLocations,
+  setIsAdminFlag,
   deleteVenueGalleries,
   getEditionRole,
   getParty,
@@ -44,6 +45,7 @@ test.beforeEach(async () => {
 });
 
 test.afterEach(async () => {
+  await setIsAdminFlag(ORGANISER_ID, false);
   if (seeded) {
     await revokeEditionRoles(seeded.eventId);
     await deleteVenueGalleries(seeded.eventId);
@@ -59,6 +61,7 @@ const sectionNames = (...keys) => keys.map(key => fr[key]);
 const assignmentsGallery = page => page.getByRole('button', {
   name: fr.galleryOpen.replace('{name}', `E2E Venue · ${fr.galleryVenueAssignmentsTitle}`).replace('{count}', 1)
 });
+const picker = page => panel(page).getByRole('list', { name: fr.teamSearchLabel });
 const emailProblems = page => panel(page).getByText(fr.emailProblemsTitleOne.replace('{count}', 1));
 
 // The admin, entered from the header's « Admin » link, as a person would.
@@ -105,7 +108,7 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await expect(panel(page).getByText(fr.unpaidShort, { exact: true }).first()).toBeVisible();
   await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
-  await expect(panel(page).getByRole('checkbox', { name: fr.adminTableHeader })).toHaveCount(0);
+  await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
   // Only the list: no Historique.
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toHaveCount(0);
@@ -142,7 +145,7 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toBeVisible();
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toBeVisible();
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
-  await expect(panel(page).getByRole('checkbox', { name: fr.adminTableHeader })).toHaveCount(0);
+  await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
   await panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
   const confirm = page.getByRole('dialog', { name: fr.markPaid });
   await confirm.getByRole('button', { name: fr.markPaid }).click();
@@ -175,8 +178,11 @@ test('admin: grants, changes and removes a role in « Équipe », each in the lo
   await expect(page.getByRole('heading', { name: fr.adminTabTeam, level: 1 })).toBeVisible();
   await expect(panel(page).getByText(fr.teamMembersEmpty)).toBeVisible();
 
-  // Grant: Organisateur, found by email.
+  // Grant: Organisateur, found by email. Test Organisateur isn't registered: « Inscrits seulement » hides them until it is off.
   await panel(page).getByLabel(fr.teamAddRoleLabel).selectOption('organiser');
+  await panel(page).getByRole('searchbox', { name: fr.teamSearchLabel }).fill('organiser@test');
+  await expect(panel(page).getByText(fr.teamSearchEmpty)).toBeVisible();
+  await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
   await panel(page).getByRole('searchbox', { name: fr.teamSearchLabel }).fill('organiser@test');
   const add = panel(page).getByRole('button', {
     name: fr.teamAddFor.replace('{role}', fr.editionRoleOrganiser).replace('{name}', 'Test Organisateur')
@@ -189,7 +195,7 @@ test('admin: grants, changes and removes a role in « Équipe », each in the lo
 
   // An admin can't be given one.
   await panel(page).getByRole('searchbox', { name: fr.teamSearchLabel }).fill('admin@test');
-  await expect(panel(page).getByRole('listitem').filter({ hasText: 'Test Admin' }).getByText(fr.teamAdminTag, { exact: true })).toBeVisible();
+  await expect(picker(page).getByRole('listitem').filter({ hasText: 'Test Admin' }).getByText(fr.teamAdminTag, { exact: true })).toBeVisible();
 
   // Change: Comité.
   await roleSelect.selectOption('committee');
@@ -215,6 +221,70 @@ test('admin: grants, changes and removes a role in « Équipe », each in the lo
   await expect(log.nth(0)).toContainText(line('teamLogRemoved', { actor: 'Test Admin', role: fr.editionRoleCommittee, person: 'Test Organisateur' }));
   await expect(log.nth(1)).toContainText(line('teamLogChanged', { actor: 'Test Admin', person: 'Test Organisateur', old: fr.editionRoleOrganiser, new: fr.editionRoleCommittee }));
   await expect(log.nth(2)).toContainText(line('teamLogGranted', { actor: 'Test Admin', role: fr.editionRoleOrganiser, person: 'Test Organisateur' }));
+});
+
+test('admin: « Équipe » lists the people with their level; « Inscrits seulement » is on and filters', async ({ page }) => {
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/team');
+  // The roles help is closed, and has one entry per role.
+  const help = panel(page).locator('details');
+  await expect(help).not.toHaveAttribute('open', '');
+  await help.getByText(fr.teamHelpTitle).click();
+  for (const key of ['teamHelpAdmin', 'teamHelpOrganiser', 'teamHelpCommittee']) await expect(help.getByText(fr[key])).toBeVisible();
+
+  // Before typing: the edition's registrants, with their level. Admins are listed above the edition's roles.
+  const admins = panel(page).getByRole('list', { name: fr.teamAdminsTitle });
+  await expect(admins.getByRole('listitem').filter({ hasText: 'Test Admin' })).toBeVisible();
+  const toggle = panel(page).getByRole('switch', { name: fr.teamRegisteredOnly });
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(picker(page).getByRole('listitem').filter({ hasText: MEMBER_NAME })).toBeVisible();
+  await expect(picker(page).getByRole('listitem').filter({ hasText: 'Test Organisateur' })).toHaveCount(0);
+  // Typing narrows; off shows everyone, with their level.
+  await panel(page).getByRole('searchbox', { name: fr.teamSearchLabel }).fill('member@');
+  await expect(picker(page).getByRole('listitem')).toHaveCount(1);
+  await panel(page).getByRole('searchbox', { name: fr.teamSearchLabel }).fill('');
+  await toggle.click();
+  const organiser = picker(page).getByRole('listitem').filter({ hasText: 'Test Organisateur' });
+  await expect(organiser.getByText(fr.editionRoleOrganiser, { exact: true })).toBeVisible();
+  await expect(picker(page).getByRole('listitem').filter({ hasText: 'Test Admin' }).getByText(fr.teamAdminTag, { exact: true })).toBeVisible();
+});
+
+test('admin: grants Admin (replacing the edition role) and removes it, both in the log; one\'s own can\'t go', async ({ page }) => {
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/team');
+  await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
+  await panel(page).getByLabel(fr.teamAddRoleLabel).selectOption('admin');
+  const name = 'Test Organisateur';
+  await panel(page).getByRole('button', { name: fr.teamChangeFor.replace('{role}', fr.accessRoleAdmin).replace('{name}', name) }).click();
+  const grant = page.getByRole('dialog', { name: fr.teamAdminGrantTitle });
+  await expect(grant).toContainText(fr.teamAdminGrantConfirm.replace('{name}', name));
+  await grant.getByRole('button', { name: fr.teamAdminGrantTitle }).click();
+  await expect(page.getByText(fr.teamAdminGrantedToast.replace('{name}', name)).last()).toBeVisible();
+
+  // In Administrateurs; the edition role is gone (the database drops it).
+  const admins = panel(page).getByRole('list', { name: fr.teamAdminsTitle });
+  await expect(admins.getByRole('listitem').filter({ hasText: name })).toBeVisible();
+  await expect.poll(() => getEditionRole(seeded.eventId, ORGANISER_ID)).toBeNull();
+  await expect(panel(page).getByRole('combobox', { name: fr.teamRoleFor.replace('{name}', name) })).toHaveCount(0);
+
+  // One's own flag and the root admin's can't be removed from here.
+  const own = fr.teamAdminRemoveFor.replace('{name}', 'Test Admin');
+  await expect(panel(page).getByRole('button', { name: own })).toBeDisabled();
+  await expect(admins.getByRole('listitem').filter({ hasText: 'Test Admin' })).toContainText(fr.teamAdminRemoveSelf);
+
+  // Remove, after confirming.
+  await panel(page).getByRole('button', { name: fr.teamAdminRemoveFor.replace('{name}', name) }).click();
+  const removal = page.getByRole('dialog', { name: fr.teamAdminRemoveTitle });
+  await removal.getByRole('button', { name: fr.teamAdminRemoveTitle }).click();
+  await expect(page.getByText(fr.teamAdminRemovedToast.replace('{name}', name)).last()).toBeVisible();
+  await expect(admins.getByRole('listitem').filter({ hasText: name })).toHaveCount(0);
+
+  // The log, newest first: removed, then granted (with the role it dropped under it).
+  const log = panel(page).getByRole('list', { name: fr.teamLogTitle }).getByRole('listitem');
+  const line = (key, values) => Object.entries(values).reduce((text, [k, v]) => text.replace(`{${k}}`, v), fr[key]);
+  await expect(log.nth(0)).toContainText(line('teamLogAdminRemoved', { actor: 'Test Admin', person: name }));
+  await expect(log.nth(1)).toContainText(line('teamLogAdminGranted', { actor: 'Test Admin', person: name }));
+  await expect(log.nth(2)).toContainText(line('teamLogRemoved', { actor: 'Test Admin', role: fr.editionRoleOrganiser, person: name }));
 });
 
 test.describe('on a phone', () => {

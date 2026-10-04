@@ -53,7 +53,10 @@ flowchart LR
   remove their role. Every grant, change and removal is logged (who, to whom, which role and
   edition, when) and shown there. Granting and removing admin is logged too (#256, in
   `admin_role_log`: who, to whom, granted or removed, when), and « Équipe » shows it merged by
-  date into every edition's log.
+  date into every edition's log. The admin flag is granted and removed there too (with a
+  confirmation, never from the Inscrits list): « Équipe » lists the admins first, its picker offers
+  Comité, Organisateur and Admin to any account (the edition's registrants by default), and the
+  database still refuses one's own flag and the root admin's.
 - **The database is the authority** (ADR 0001):
   - one table of edition roles (`event_id`, `user_id`, `role` ∈ `committee` | `organiser`, unique
     per event and user), writable only by admins, with a log table filled by a trigger;

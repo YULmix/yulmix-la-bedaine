@@ -26,9 +26,9 @@ const FILTERS = [
 
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
-// Name | email | people | amount | payment | admin | edit, from lg up; a card per party below.
-// Without the admin flag and the editor (anyone but an admin, #217), the last two go.
-const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem_4.5rem_3rem]';
+// Name | email | people | amount | payment | edit, from lg up; a card per party below.
+// Without the editor (anyone but an admin, #217), the last column goes.
+const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem_3rem]';
 const READ_GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
 
 export const FilterPills = ({ filters, value, onChange, counts, label }) => (
@@ -54,22 +54,20 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   </div>
 );
 
-// Registered parties: who they are, what they owe, whether they paid. Payment and admin changes
+// Registered parties: who they are, what they owe, whether they paid. Payment changes
 // go through the parent, which confirms before writing. The search is in the page header; the
 // list scrolls in a box that ends on screen (a dense page, ADR 0022). An action whose handler is
 // missing isn't rendered: the role doesn't allow it (#217); the payment shows as a tag instead.
 const AdminUserManagement = ({
   parties,
-  currentUserId,
   onOpenUserProfile,
-  onAdminToggle,
   onPaymentToggle,
   onEditParty
 }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const listRef = useRef(null);
-  const showAdminColumns = !!(onAdminToggle || onEditParty);
+  const showAdminColumns = !!onEditParty;
   const gridColumns = showAdminColumns ? GRID_COLUMNS : READ_GRID_COLUMNS;
 
   const counts = useMemo(
@@ -119,18 +117,12 @@ const AdminUserManagement = ({
             <span>{fr.peopleColumn}</span>
             <span className="text-right">{fr.amountDue}</span>
             <span>{fr.paymentColumn}</span>
-            {showAdminColumns && (
-              <>
-                <span>{fr.adminTableHeader}</span>
-                <span className="sr-only">{fr.actionsTableHeader}</span>
-              </>
-            )}
+            {showAdminColumns && <span className="sr-only">{fr.actionsTableHeader}</span>}
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
           <ul ref={listRef} className="relative divide-y divide-line overflow-y-auto overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
-              const isSelf = profile.id === currentUserId;
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
               const isCancelled = !isActiveRegistration(party);
               const amount = isCancelled ? 0 : amountOwedOf(party);
@@ -173,19 +165,6 @@ const AdminUserManagement = ({
                       >
                         {getPaymentStatusShortLabel(party.payment_status)}
                       </button>
-                    )}
-                    {onAdminToggle && (
-                      <label className={cx('ml-auto inline-flex min-h-9 items-center gap-2 text-sm text-muted lg:ml-0', isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
-                        <input
-                          type="checkbox"
-                          checked={!!profile.is_admin}
-                          onChange={e => onAdminToggle(profile, e.target.checked)}
-                          disabled={isSelf}
-                          aria-label={fr.adminTableHeader}
-                          className="size-5 accent-[var(--color-neon)]"
-                        />
-                        <span className="lg:sr-only">{fr.adminTableHeader}</span>
-                      </label>
                     )}
                     {onEditParty && (
                       <Button

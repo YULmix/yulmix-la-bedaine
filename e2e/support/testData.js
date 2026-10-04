@@ -624,6 +624,12 @@ export async function revokeEditionRoles(eventId) {
   check(await db.from('edition_roles').delete().eq('event_id', eventId), 'revoke e2e edition roles');
 }
 
+// Puts the admin flag back (cleanup): straight on the table, with the service role.
+export async function setIsAdminFlag(userId, isAdmin) {
+  const db = await adminClient();
+  check(await db.from('profiles').update({ is_admin: isAdmin }).eq('id', userId), 'set e2e admin flag');
+}
+
 // Someone's role on the event, or null.
 export async function getEditionRole(eventId, userId) {
   const db = await adminClient();

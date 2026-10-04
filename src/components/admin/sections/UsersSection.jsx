@@ -4,7 +4,6 @@ import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
 import { refreshEvents, useEvents } from '../../../lib/events';
 import { refreshAdminParties, updatePaymentStatus, useAdminParties } from '../../../lib/adminParties';
-import { currentUserId as fetchCurrentUserId, setIsAdmin } from '../../../lib/profiles';
 import { PAYMENT_STATUS, getPaymentStatusShortLabel } from '../../../lib/registrationOptions';
 import { useToasts } from '../../../hooks/useToasts';
 import { useAdminAccess } from '../../../hooks/useAdminAccess';
@@ -21,40 +20,22 @@ import SectionStatus from './SectionStatus';
 // Inscrits (#195, #209): « Liste », the active event's parties, cancelled ones included, and
 // « Historique », the change history of an event's registrations (/admin/users/history). The
 // header's « Exporter » is on the list only: the history has its own export buttons. The list owns its dialogs: the payment confirmation, a
-// member's profile, the god-mode editor. Payment and admin changes reload the parties from the
+// member's profile, the god-mode editor. Payment changes reload the parties from the
 // shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list,
-// Organisateur also marks payments, and only an admin edits a registration or the admin flag.
+// Organisateur also marks payments, and only an admin edits a registration (the admin flag is in « Équipe »).
 const UsersList = ({ addToast }) => {
   const { role } = useAdminAccess();
   const canEdit = can(role, 'editRegistration');
   const { activeEvent } = useEvents();
   const { parties, loading, error } = useAdminParties(activeEvent?.id);
-  const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [editingParty, setEditingParty] = useState(null);
   // { party, newStatus } while the payment change waits for confirmation.
   const [pendingPayment, setPendingPayment] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Who is signed in, so the list doesn't offer to change one's own admin flag.
-  useEffect(() => {
-    let current = true;
-    fetchCurrentUserId(supabase).then(id => { if (current) setCurrentUser(id); });
-    return () => { current = false; };
-  }, []);
-
   if (!activeEvent) return <NoActiveEvent />;
   if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={() => refreshAdminParties(activeEvent.id)} />;
-
-  const handleAdminToggle = async (target, checked) => {
-    try {
-      await setIsAdmin(supabase, { profileId: target.id, isAdmin: checked, currentUser });
-      addToast((checked ? fr.adminStatusEnabledToast : fr.adminStatusDisabledToast).replace('{email}', target.email), 'success');
-      refreshAdminParties(activeEvent.id);
-    } catch (err) {
-      addToast(err.message, err.message === fr.selfAdminToggleError ? 'warning' : 'error');
-    }
-  };
 
   const confirmPaymentToggle = async () => {
     if (!pendingPayment) return;
@@ -83,9 +64,7 @@ const UsersList = ({ addToast }) => {
     <>
       <AdminUserManagement
         parties={parties}
-        currentUserId={currentUser}
         onOpenUserProfile={setProfile}
-        onAdminToggle={can(role, 'adminFlag') ? handleAdminToggle : undefined}
         onPaymentToggle={can(role, 'markPayment') ? (party, newStatus) => setPendingPayment({ party, newStatus }) : undefined}
         onEditParty={canEdit ? setEditingParty : undefined}
       />

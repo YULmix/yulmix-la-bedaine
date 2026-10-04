@@ -64,8 +64,16 @@ export const EDITION_ROLE_OPTIONS: ReadonlyArray<Option<'committee' | 'organiser
   { value: 'organiser', label: fr.editionRoleOrganiser }
 ];
 
+/** What « Équipe » can give: an edition role, or admin (every edition). */
+export const ACCESS_ROLE_OPTIONS: ReadonlyArray<Option<'committee' | 'organiser' | 'admin'>> = [
+  ...EDITION_ROLE_OPTIONS,
+  { value: 'admin', label: fr.accessRoleAdmin }
+];
+
 export const getRegistrationStatusLabel = (status: string): string => REGISTRATION_STATUS_LABELS[status] || status;
 export const getEditionRoleLabel = (role: string): string => getOptionLabel(EDITION_ROLE_OPTIONS, role, role);
+/** An edition role's label, or « Admin ». */
+export const getAccessRoleLabel = (role: string): string => getOptionLabel(ACCESS_ROLE_OPTIONS, role, role);
 export const getPaymentStatusLabel = (status: string): string => PAYMENT_STATUS_LABELS[status] || status;
 export const getPaymentStatusShortLabel = (status: string): string => PAYMENT_STATUS_SHORT_LABELS[status] || status;
 
