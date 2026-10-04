@@ -57,7 +57,7 @@ export default defineConfig({
       // active event and the seeded member's registration, so in parallel they see each other's
       // parties and throwaway members (#170).
       workers: 1,
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down|attendee-removal)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down|member-transport-none|attendee-removal)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -284,12 +284,20 @@ export default defineConfig({
       dependencies: ['galleries']
     },
     {
+      // The summary's transport line (#232) reseeds the shared active event, so it runs after
+      // admin-drill-down, alone.
+      name: 'member-transport-none',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /member-transport-none\.spec\.js/,
+      dependencies: ['admin-drill-down']
+    },
+    {
       // Removing an attendee (#237) reseeds the same shared active event, with places, so it runs
-      // after admin-drill-down, on its own.
+      // last, on its own.
       name: 'attendee-removal',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /attendee-removal\.spec\.js/,
-      dependencies: ['admin-drill-down']
+      dependencies: ['member-transport-none']
     }
   ],
   webServer: {
