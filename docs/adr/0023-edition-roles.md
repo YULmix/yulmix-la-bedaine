@@ -51,7 +51,9 @@ flowchart LR
 - **Only admins grant roles**, in a new admin-only section, « Équipe »: the people with a role on
   each edition, add someone by name or email (registered for the edition or not), change or
   remove their role. Every grant, change and removal is logged (who, to whom, which role and
-  edition, when) and shown there.
+  edition, when) and shown there. Granting and removing admin is logged too (#256, in
+  `admin_role_log`: who, to whom, granted or removed, when), and « Équipe » shows it merged by
+  date into every edition's log.
 - **The database is the authority** (ADR 0001):
   - one table of edition roles (`event_id`, `user_id`, `role` ∈ `committee` | `organiser`, unique
     per event and user), writable only by admins, with a log table filled by a trigger;
