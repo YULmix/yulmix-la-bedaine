@@ -148,6 +148,132 @@ export type Database = {
           },
         ]
       }
+      edition_role_log: {
+        Row: {
+          actor_id: string | null
+          changed_at: string
+          event_id: string
+          id: number
+          new_role: string | null
+          old_role: string | null
+          user_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          changed_at?: string
+          event_id: string
+          id?: never
+          new_role?: string | null
+          old_role?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          changed_at?: string
+          event_id?: string
+          id?: never
+          new_role?: string | null
+          old_role?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edition_role_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edition_role_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "edition_role_log_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edition_role_log_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "edition_role_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edition_role_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      edition_roles: {
+        Row: {
+          created_at: string
+          event_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          role: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edition_roles_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edition_roles_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "edition_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edition_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       email_log: {
         Row: {
           created_at: string
@@ -895,6 +1021,14 @@ export type Database = {
         Args: { new_is_admin: boolean; target_user_id: string }
         Returns: undefined
       }
+      apply_event_pricing: {
+        Args: {
+          p_event_id: string
+          p_ratio_main_whole: number
+          p_selling_price_whole_event: number
+        }
+        Returns: undefined
+      }
       attendee_by_id: {
         Args: { p_attendee_id: string }
         Returns: {
@@ -923,6 +1057,7 @@ export type Database = {
       }
       create_event_venue: { Args: { p_event_id: string }; Returns: string }
       delete_my_account: { Args: never; Returns: undefined }
+      edition_role: { Args: { p_event_id: string }; Returns: string }
       event_places: {
         Args: { p_event_id: string }
         Returns: {
@@ -939,6 +1074,10 @@ export type Database = {
         }[]
       }
       get_latest_feedback_resolution: { Args: never; Returns: string }
+      has_edition_role: {
+        Args: { p_event_id: string; p_min_role: string }
+        Returns: boolean
+      }
       is_account_active: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       move_gallery_image: {
@@ -987,6 +1126,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      set_edition_role: {
+        Args: { p_event_id: string; p_role: string; p_user_id: string }
+        Returns: undefined
+      }
+      set_payment_status: {
+        Args: { p_party_id: string; p_payment_status: string }
+        Returns: undefined
       }
       set_place_override: {
         Args: {

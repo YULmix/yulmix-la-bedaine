@@ -1010,7 +1010,8 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     const { error } = await memberClient.rpc('save_logistics', {
       p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, message_to_participants: 'hax' }]
     });
-    expect(error?.message).toBe('admin_only');
+    // #217: Organisateur and above on the party's event.
+    expect(error?.message).toBe('organiser_only');
     expect((await partyRow()).message_to_participants).toBeNull();
   });
 
@@ -1062,7 +1063,8 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     const { error: rpcError } = await memberClient.rpc('save_logistics', {
       p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, admin_notes: 'hax' }]
     });
-    expect(rpcError?.message).toBe('admin_only');
+    // #217: Organisateur and above on the party's event.
+    expect(rpcError?.message).toBe('organiser_only');
     expect((await partyRow()).admin_notes).toBe('secret');
   });
 
@@ -1551,6 +1553,18 @@ describe('🗑️ removed attendees (#237)', () => {
       const { data } = await client.from('user_parties').select('attendees(name)').eq('id', memberParty.id).single();
       expect(data.attendees).toEqual([{ name: 'Ann' }]);
     }
+  });
+
+  // #217 made save_logistics() SECURITY DEFINER: the restrictive policy no longer hides the removed
+  // attendee from it, its own deleted_at check does.
+  test('save_logistics refuses a removed attendee (#217)', async () => {
+    const [ann, bob] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+    const { data: failed, error } = await adminAuthClient.rpc('save_logistics', {
+      p_changes: [{ party_id: memberParty.id, places: { [bob.id]: null } }]
+    });
+    expect(error).toBeNull();
+    expect(failed).toEqual([expect.objectContaining({ party_id: memberParty.id, message: 'logistics_attendee_not_in_party' })]);
   });
 
   test("the amount owed, the party's size and the event's headcount ignore a removed attendee", async () => {
@@ -2836,9 +2850,10 @@ describe('🛏️ event_places, venue_layout and set_place_override (#193)', () 
     expect(byLabel.Matelas).toMatchObject({ is_excluded: false, capacity: 3 });
   });
 
-  test('only admins read event places or set overrides; anon runs none of the three', async () => {
+  test('a member reads no event places and sets no override; anon runs none of the three', async () => {
+    // #217: event places are for the edition's team (Comité and above); overrides stay admin-only.
     const memberRead = await eventPlaces(memberClient);
-    expect(memberRead.error?.message).toBe('admin_only');
+    expect(memberRead.error?.message).toBe('committee_only');
     const memberWrite = await setOverride(memberClient, ids['Lit 1'], true, null);
     expect(memberWrite.error?.message).toBe('admin_only');
     expect(await overrideRows()).toEqual([]);
@@ -2916,6 +2931,361 @@ describe('🛏️ event_places, venue_layout and set_place_override (#193)', () 
     for (const [isExcluded, capacity] of [[true, null], [false, null]]) {
       const { error } = await setOverride(adminAuthClient, places[0].place_id, isExcluded, capacity);
       expect(error?.message).toBe('event_layout_frozen');
+    }
+  });
+});
+
+describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR 0023)', () => {
+  jest.setTimeout(60000);
+
+  const EVENT_A = 'a0000000-a000-a000-a000-a00000002171';
+  const EVENT_B = 'a0000000-a000-a000-a000-a00000002172';
+  const EVENT_IDS = [EVENT_A, EVENT_B];
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+  const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
+  const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
+  // `otherCommittee` is Comité of edition B only: a role on one edition gives nothing on another.
+  const ROLES = ['member', 'committee', 'organiser', 'admin', 'otherCommittee'];
+  const only = (...allowed) => Object.fromEntries(ROLES.map(role => [role, allowed.includes(role)]));
+  const TEAM_A = only('committee', 'organiser', 'admin');
+  const ORGANISERS_A = only('organiser', 'admin');
+  const ADMIN = only('admin');
+  const NOBODY = only();
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const person = (name, extra = {}) => ({ name, type: 'Adult', participation: 'Whole', ...extra });
+
+  const clients = {};
+  const throwaway = {};
+  let admin;
+  let venueId;
+  let placeId;
+  let partyA;
+  let partyB;
+  let attendeeA;
+  let attendeeB;
+  let venueB;
+  let placeB; // at B's venue, which A doesn't use
+
+  const createUser = async (label) => {
+    const email = `rls-217-${label}-${Date.now()}@test.local`;
+    const { data, error } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (error) throw error;
+    return { id: data.user.id, email };
+  };
+
+  beforeAll(async () => {
+    admin = await signIn('admin@test.local');
+    clients.admin = admin;
+    clients.member = await signIn('member@test.local');
+    clients.committee = await signIn('committee@test.local');
+    clients.organiser = await signIn('organiser@test.local');
+    for (const label of ['registrantA', 'registrantB', 'otherCommittee']) throwaway[label] = await createUser(label);
+    clients.otherCommittee = await signIn(throwaway.otherCommittee.email);
+
+    await ok(admin.from('events').upsert([
+      { id: EVENT_A, theme: 'Roles A', status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375 },
+      { id: EVENT_B, theme: 'Roles B', status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375 }
+    ]));
+    venueId = (await ok(admin.from('venues').insert({ name: 'Roles venue' }).select('id').single())).id;
+    // Each edition at its own venue.
+    venueB = (await ok(admin.from('venues').insert({ name: 'Roles venue B' }).select('id').single())).id;
+    await ok(admin.from('events').update({ venue_id: venueId }).eq('id', EVENT_A));
+    await ok(admin.from('events').update({ venue_id: venueB }).eq('id', EVENT_B));
+    const location = await ok(admin.from('locations').insert({ venue_id: venueId, name: 'Dortoir' }).select('id').single());
+    placeId = (await ok(admin.from('places').insert({ location_id: location.id, label: 'Lit', type: 'bed', capacity: 2 }).select('id').single())).id;
+
+    partyA = (await saveOk(admin, EVENT_A, [person('Ann')], { userId: throwaway.registrantA.id })).id;
+    partyB = (await saveOk(admin, EVENT_B, [person('Bea')], { userId: throwaway.registrantB.id })).id;
+    attendeeA = (await ok(admin.from('attendees').select('id').eq('party_id', partyA).single())).id;
+    attendeeB = (await ok(admin.from('attendees').select('id').eq('party_id', partyB).single())).id;
+    const locationB = await ok(admin.from('locations').insert({ venue_id: venueB, name: 'Ailleurs' }).select('id').single());
+    placeB = (await ok(admin.from('places').insert({ location_id: locationB.id, label: 'Loin', type: 'bed', capacity: 2 }).select('id').single())).id;
+    // Each venue's assignments gallery (#177), and an email about each party (#93).
+    for (const venue of [venueId, venueB]) {
+      await ok(admin.rpc('add_gallery_image', { p_path: `rls-217/${venue}.png`, p_venue_id: venue, p_kind: 'assignments' }));
+    }
+    await ok(adminClient.from('email_log').upsert([partyA, partyB].map(party_id => ({ party_id, template: 'payment', status: 'failed' })),
+      { onConflict: 'party_id,template' }));
+    await ok(admin.from('event_budgets').upsert(EVENT_IDS.map(event_id => ({ event_id, lines: [{ category: 'Food', amount: 100 }] }))));
+    // The organisers' notes on each party (#227).
+    await ok(admin.from('party_admin_notes').upsert([partyA, partyB].map(party_id => ({ party_id, notes: 'Seeded' }))));
+
+    for (const [eventId, userId, role] of [
+      [EVENT_A, COMMITTEE_ID, 'committee'],
+      [EVENT_A, ORGANISER_ID, 'organiser'],
+      [EVENT_B, throwaway.otherCommittee.id, 'committee']
+    ]) {
+      await ok(admin.rpc('set_edition_role', { p_event_id: eventId, p_user_id: userId, p_role: role }));
+    }
+  });
+
+  afterAll(async () => {
+    await admin.from('edition_roles').delete().in('event_id', EVENT_IDS);
+    await admin.from('user_parties').delete().in('event_id', EVENT_IDS);
+    await admin.from('event_budgets').delete().in('event_id', EVENT_IDS);
+    await admin.from('galleries').delete().in('venue_id', [venueId, venueB]);
+    await admin.from('events').update({ venue_id: null, status: 'DRAFT' }).in('id', EVENT_IDS);
+    for (const user of Object.values(throwaway)) await adminClient.auth.admin.deleteUser(user.id);
+  });
+
+  test('edition_role() names each rung, per edition', async () => {
+    const roleOn = async (client, eventId) => ok(client.rpc('edition_role', { p_event_id: eventId }));
+    const onA = {};
+    const onB = {};
+    for (const role of ROLES) {
+      onA[role] = await roleOn(clients[role], EVENT_A);
+      onB[role] = await roleOn(clients[role], EVENT_B);
+    }
+    expect(onA).toEqual({ member: null, committee: 'committee', organiser: 'organiser', admin: 'admin', otherCommittee: null });
+    expect(onB).toEqual({ member: null, committee: null, organiser: null, admin: 'admin', otherCommittee: 'committee' });
+    expect((await createClient(SUPABASE_URL, ANON_KEY).rpc('edition_role', { p_event_id: EVENT_A })).error).not.toBeNull();
+  });
+
+  // Each row: what is read, the query, and who sees it.
+  const READS = [
+    ["edition A's party", c => c.from('user_parties').select('id').eq('id', partyA), TEAM_A],
+    ['its attendees', c => c.from('attendees').select('id').eq('party_id', partyA), TEAM_A],
+    ["its registrant's profile", c => c.from('profiles').select('id').eq('id', throwaway.registrantA.id), TEAM_A],
+    ['its change history', c => c.from('registration_edits').select('id').eq('registration_id', partyA), TEAM_A],
+    ['its places (event_places)', c => c.rpc('event_places', { p_event_id: EVENT_A }), TEAM_A],
+    ['its budget', c => c.from('event_budgets').select('event_id').eq('event_id', EVENT_A), ORGANISERS_A],
+    ['its role log', c => c.from('edition_role_log').select('id').eq('event_id', EVENT_A), ADMIN],
+    ["edition B's party", c => c.from('user_parties').select('id').eq('id', partyB), only('admin', 'otherCommittee')],
+    ["edition B's registrant's profile", c => c.from('profiles').select('id').eq('id', throwaway.registrantB.id), only('admin', 'otherCommittee')],
+    ["edition B's budget", c => c.from('event_budgets').select('event_id').eq('event_id', EVENT_B), ADMIN],
+    ["its party's notes (#227)", c => c.from('party_admin_notes').select('party_id').eq('party_id', partyA), TEAM_A],
+    ["its party's notes, embedded", c => c.from('user_parties').select('id, note:party_admin_notes!inner(notes)').eq('id', partyA), TEAM_A],
+    ["edition B's party's notes", c => c.from('party_admin_notes').select('party_id').eq('party_id', partyB), only('admin', 'otherCommittee')],
+    ["A's venue assignments gallery", c => c.from('galleries').select('id').eq('venue_id', venueId).eq('kind', 'assignments'), TEAM_A],
+    ['its images', c => c.from('gallery_images').select('id, gallery:galleries!inner(venue_id, kind)')
+      .eq('gallery.venue_id', venueId).eq('gallery.kind', 'assignments'), TEAM_A],
+    ["B's venue assignments gallery", c => c.from('galleries').select('id').eq('venue_id', venueB).eq('kind', 'assignments'), only('admin', 'otherCommittee')],
+    ["A's email log", c => c.from('email_log').select('id').eq('party_id', partyA), ORGANISERS_A],
+    ["B's email log", c => c.from('email_log').select('id').eq('party_id', partyB), ADMIN],
+    ["someone's role on B (their own for otherCommittee)", c => c.from('edition_roles').select('user_id').eq('event_id', EVENT_B), only('admin', 'otherCommittee')]
+  ];
+
+  test.each(READS)('reads %s', async (_label, query, expected) => {
+    const seen = {};
+    for (const role of ROLES) {
+      const { data, error } = await query(clients[role]);
+      seen[role] = !error && (data?.length ?? 0) > 0;
+    }
+    expect(seen).toEqual(expected);
+  });
+
+  // The party, with its notes (#227: in party_admin_notes) as admin_notes.
+  const partyRow = async (id = partyA) => {
+    const { note, ...row } = await ok(admin.from('user_parties').select('*, note:party_admin_notes(notes)').eq('id', id).single());
+    return { ...row, admin_notes: note?.notes ?? null };
+  };
+  const resetParty = async (id = partyA) => {
+    await ok(admin.from('user_parties').update({ payment_status: 'unpaid', music_requests: null }).eq('id', id));
+    await ok(admin.from('party_admin_notes').upsert({ party_id: id, notes: 'Seeded' }));
+  };
+  const attendeeName = async () => (await ok(admin.from('attendees').select('name').eq('id', attendeeA).single())).name;
+
+  // Each row: the write, whether it landed (read as the admin), how to undo it, and who may.
+  const WRITES = [
+    ['payment status through set_payment_status()',
+      c => c.rpc('set_payment_status', { p_party_id: partyA, p_payment_status: 'paid' }),
+      async () => (await partyRow()).payment_status === 'paid', () => resetParty(), ORGANISERS_A],
+    ['payment status by a direct update',
+      c => c.from('user_parties').update({ payment_status: 'paid' }).eq('id', partyA),
+      async () => (await partyRow()).payment_status === 'paid', () => resetParty(), ADMIN],
+    ['notes by a direct update of party_admin_notes (#227)',
+      c => c.from('party_admin_notes').update({ notes: 'direct' }).eq('party_id', partyA),
+      async () => (await partyRow()).admin_notes === 'direct', () => resetParty(), ORGANISERS_A],
+    ['notes by a direct insert into party_admin_notes',
+      async c => { await admin.from('party_admin_notes').delete().eq('party_id', partyA); return c.from('party_admin_notes').insert({ party_id: partyA, notes: 'direct' }); },
+      async () => (await partyRow()).admin_notes === 'direct', () => resetParty(), ORGANISERS_A],
+    ['notes by a direct delete from party_admin_notes',
+      async c => { await resetParty(); return c.from('party_admin_notes').delete().eq('party_id', partyA); },
+      async () => (await partyRow()).admin_notes === null, () => resetParty(), ORGANISERS_A],
+    ["edition B's notes by a direct update",
+      c => c.from('party_admin_notes').update({ notes: 'direct' }).eq('party_id', partyB),
+      async () => (await partyRow(partyB)).admin_notes === 'direct', () => resetParty(partyB), ADMIN],
+    ['any other party column by a direct update',
+      c => c.from('user_parties').update({ music_requests: 'direct' }).eq('id', partyA),
+      async () => (await partyRow()).music_requests === 'direct', () => resetParty(), ADMIN],
+    ['notes through save_logistics()',
+      c => c.rpc('save_logistics', { p_changes: [{ party_id: partyA, admin_notes: 'logistics' }] }),
+      async () => (await partyRow()).admin_notes === 'logistics', () => resetParty(), ORGANISERS_A],
+    ['a place through save_logistics()',
+      c => c.rpc('save_logistics', { p_changes: [{ party_id: partyA, places: { [attendeeA]: placeId } }] }),
+      async () => (await ok(admin.from('place_assignments').select('attendee_id').eq('attendee_id', attendeeA))).length > 0,
+      () => ok(admin.from('place_assignments').delete().eq('attendee_id', attendeeA)), ORGANISERS_A],
+    ['a place by a direct insert',
+      c => c.from('place_assignments').insert({ attendee_id: attendeeA, place_id: placeId }),
+      async () => (await ok(admin.from('place_assignments').select('attendee_id').eq('attendee_id', attendeeA))).length > 0,
+      () => ok(admin.from('place_assignments').delete().eq('attendee_id', attendeeA)), ADMIN],
+    ["edition B's notes through save_logistics()",
+      c => c.rpc('save_logistics', { p_changes: [{ party_id: partyB, admin_notes: 'logistics' }] }),
+      async () => (await partyRow(partyB)).admin_notes === 'logistics', () => resetParty(partyB), ADMIN],
+    ["edition B's payment status through set_payment_status()",
+      c => c.rpc('set_payment_status', { p_party_id: partyB, p_payment_status: 'paid' }),
+      async () => (await partyRow(partyB)).payment_status === 'paid', () => resetParty(partyB), ADMIN],
+    ['the budget',
+      c => c.from('event_budgets').upsert({ event_id: EVENT_A, lines: [{ category: 'Food', amount: 999 }] }),
+      async () => Number((await ok(admin.from('event_budgets').select('total_cost').eq('event_id', EVENT_A).single())).total_cost) === 999,
+      () => ok(admin.from('event_budgets').update({ lines: [{ category: 'Food', amount: 100 }] }).eq('event_id', EVENT_A)), ORGANISERS_A],
+    ["edition B's budget",
+      c => c.from('event_budgets').upsert({ event_id: EVENT_B, lines: [{ category: 'Food', amount: 999 }] }),
+      async () => Number((await ok(admin.from('event_budgets').select('total_cost').eq('event_id', EVENT_B).single())).total_cost) === 999,
+      () => ok(admin.from('event_budgets').update({ lines: [{ category: 'Food', amount: 100 }] }).eq('event_id', EVENT_B)), ADMIN],
+    ['the pricing through apply_event_pricing()',
+      c => c.rpc('apply_event_pricing', { p_event_id: EVENT_A, p_selling_price_whole_event: 321, p_ratio_main_whole: 0.6 }),
+      async () => Number((await ok(admin.from('events').select('selling_price_whole_event').eq('id', EVENT_A).single())).selling_price_whole_event) === 321,
+      () => ok(admin.from('events').update({ selling_price_whole_event: 100, ratio_main_whole: 0.5375 }).eq('id', EVENT_A)), ORGANISERS_A],
+    ['the pricing by a direct update of the event',
+      c => c.from('events').update({ selling_price_whole_event: 321 }).eq('id', EVENT_A),
+      async () => Number((await ok(admin.from('events').select('selling_price_whole_event').eq('id', EVENT_A).single())).selling_price_whole_event) === 321,
+      () => ok(admin.from('events').update({ selling_price_whole_event: 100 }).eq('id', EVENT_A)), ADMIN],
+    ["an image in A's venue assignments gallery",
+      c => c.rpc('add_gallery_image', { p_path: 'rls-217/extra.png', p_venue_id: venueId, p_kind: 'assignments' }),
+      async () => (await ok(admin.from('gallery_images').select('id').eq('path', 'rls-217/extra.png'))).length > 0,
+      () => ok(admin.from('gallery_images').delete().eq('path', 'rls-217/extra.png')), ADMIN],
+    ['the event',
+      c => c.from('events').update({ theme: 'Renamed' }).eq('id', EVENT_A),
+      async () => (await ok(admin.from('events').select('theme').eq('id', EVENT_A).single())).theme === 'Renamed',
+      () => ok(admin.from('events').update({ theme: 'Roles A' }).eq('id', EVENT_A)), ADMIN],
+    ['the venue',
+      c => c.from('venues').update({ name: 'Renamed' }).eq('id', venueId),
+      async () => (await ok(admin.from('venues').select('name').eq('id', venueId).single())).name === 'Renamed',
+      () => ok(admin.from('venues').update({ name: 'Roles venue' }).eq('id', venueId)), ADMIN],
+    ["someone else's registration through save_registration()",
+      c => save(c, EVENT_A, [person('Hacked', { id: attendeeA })], { userId: throwaway.registrantA.id }),
+      async () => (await attendeeName()) === 'Hacked',
+      () => saveOk(admin, EVENT_A, [person('Ann', { id: attendeeA })], { userId: throwaway.registrantA.id }), ADMIN],
+    ['an attendee by a direct update',
+      c => c.from('attendees').update({ name: 'Direct' }).eq('id', attendeeA),
+      async () => (await attendeeName()) === 'Direct', async () => {}, NOBODY],
+    ['a role through set_edition_role()',
+      c => c.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: MEMBER_ID, p_role: 'organiser' }),
+      async () => (await ok(admin.from('edition_roles').select('role').eq('event_id', EVENT_A).eq('user_id', MEMBER_ID))).length > 0,
+      () => ok(admin.from('edition_roles').delete().eq('event_id', EVENT_A).eq('user_id', MEMBER_ID)), ADMIN],
+    ['a role by a direct insert',
+      c => c.from('edition_roles').insert({ event_id: EVENT_A, user_id: MEMBER_ID, role: 'organiser' }),
+      async () => (await ok(admin.from('edition_roles').select('role').eq('event_id', EVENT_A).eq('user_id', MEMBER_ID))).length > 0,
+      () => ok(admin.from('edition_roles').delete().eq('event_id', EVENT_A).eq('user_id', MEMBER_ID)), ADMIN],
+    ["one's own role, upwards",
+      c => c.from('edition_roles').update({ role: 'organiser' }).eq('event_id', EVENT_A).eq('user_id', COMMITTEE_ID),
+      async () => (await ok(admin.from('edition_roles').select('role').eq('event_id', EVENT_A).eq('user_id', COMMITTEE_ID).single())).role === 'organiser',
+      () => ok(admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: COMMITTEE_ID, p_role: 'committee' })), ADMIN]
+  ];
+
+  test.each(WRITES)('writes %s', async (_label, attempt, landed, undo, expected) => {
+    const wrote = {};
+    for (const role of ROLES) {
+      await attempt(clients[role]);
+      wrote[role] = await landed();
+      if (wrote[role]) await undo();
+    }
+    expect(wrote).toEqual(expected);
+  });
+
+  test('the role functions refuse with their codes', async () => {
+    const savePayment = (client, partyId) => client.rpc('set_payment_status', { p_party_id: partyId, p_payment_status: 'paid' });
+    expect((await savePayment(clients.committee, partyA)).error?.message).toBe('organiser_only');
+    expect((await savePayment(clients.organiser, partyB)).error?.message).toBe('organiser_only');
+    expect((await clients.organiser.rpc('set_payment_status', { p_party_id: partyA, p_payment_status: 'refunded' })).error?.message).toBe('payment_status_invalid');
+    expect((await clients.member.rpc('save_logistics', { p_changes: [] })).error?.message).toBe('organiser_only');
+    expect((await clients.committee.rpc('save_logistics', { p_changes: [] })).error?.message).toBe('organiser_only');
+    // An organiser of A gets B's party back as not saved, with its code.
+    const [failed] = await ok(clients.organiser.rpc('save_logistics', { p_changes: [{ party_id: partyB, admin_notes: 'x' }] }));
+    expect(failed).toMatchObject({ party_id: partyB, message: 'organiser_only' });
+    expect((await clients.committee.rpc('apply_event_pricing', { p_event_id: EVENT_A, p_selling_price_whole_event: 1, p_ratio_main_whole: 0.5 })).error?.message).toBe('organiser_only');
+    expect((await clients.otherCommittee.rpc('event_places', { p_event_id: EVENT_A })).error?.message).toBe('committee_only');
+    expect((await clients.organiser.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: MEMBER_ID, p_role: 'committee' })).error?.message).toBe('admin_only');
+    expect((await admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: MEMBER_ID, p_role: 'boss' })).error?.message).toBe('edition_role_invalid');
+    expect((await admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: ADMIN_ID, p_role: 'committee' })).error?.message).toBe('edition_role_target_admin');
+  });
+
+  // save_logistics() is SECURITY DEFINER: past the role check on the party's event, only these
+  // checks keep its places payload inside that party and that edition's venue. Same for an admin.
+  test.each(['organiser', 'admin'])("save_logistics' places payload stays in its party and its edition's venue (%s)", async (role) => {
+    const client = clients[role];
+    const assignmentOf = async (attendeeId) =>
+      (await ok(admin.from('place_assignments').select('place_id').eq('attendee_id', attendeeId))).map(row => row.place_id);
+    const saveOn = async (partyId, places) => ok(client.rpc('save_logistics', { p_changes: [{ party_id: partyId, places }] }));
+    try {
+      await ok(admin.from('place_assignments').insert({ attendee_id: attendeeB, place_id: placeB }));
+
+      // B's attendee through A's party: refused, and B keeps its place.
+      expect(await saveOn(partyA, { [attendeeB]: null })).toEqual([expect.objectContaining({ party_id: partyA, message: 'logistics_attendee_not_in_party' })]);
+      expect(await saveOn(partyA, { [attendeeB]: placeId })).toEqual([expect.objectContaining({ message: 'logistics_attendee_not_in_party' })]);
+      expect(await assignmentOf(attendeeB)).toEqual([placeB]);
+
+      // A place of another venue (B's): refused.
+      expect(await saveOn(partyA, { [attendeeA]: placeB })).toEqual([expect.objectContaining({ message: 'place_assignment_wrong_event' })]);
+      expect(await assignmentOf(attendeeA)).toEqual([]);
+
+      // A cancelled party gets no place, for an admin as for an organiser.
+      await ok(admin.from('user_parties').update({ status: 'cancelled' }).eq('id', partyA));
+      expect(await saveOn(partyA, { [attendeeA]: placeId })).toEqual([expect.objectContaining({ message: 'place_assignment_party_inactive' })]);
+      expect(await assignmentOf(attendeeA)).toEqual([]);
+    } finally {
+      await ok(admin.from('place_assignments').delete().in('attendee_id', [attendeeA, attendeeB]));
+      await ok(admin.from('user_parties').update({ status: 'registered' }).eq('id', partyA));
+    }
+  });
+
+  test('an organiser saves a payment and a place; both show in the change history with their author', async () => {
+    try {
+      await ok(clients.organiser.rpc('set_payment_status', { p_party_id: partyA, p_payment_status: 'paid' }));
+      expect(await ok(clients.organiser.rpc('save_logistics', {
+        p_changes: [{ party_id: partyA, admin_notes: 'Note', places: { [attendeeA]: placeId } }]
+      }))).toEqual([]);
+      const edits = await ok(clients.organiser.from('registration_edits').select('edited_by, changes')
+        .eq('registration_id', partyA).order('edited_at', { ascending: false }).limit(2));
+      expect(edits.map(edit => edit.edited_by)).toEqual([ORGANISER_ID, ORGANISER_ID]);
+      // The place goes in the notes' entry (#188).
+      expect(edits.map(edit => Object.keys(edit.changes)).flat().sort()).toEqual(['admin_notes', 'payment_status', 'places']);
+      // The author's name is readable to the edition's team.
+      expect(await ok(clients.committee.from('profiles').select('id').eq('id', ORGANISER_ID))).toHaveLength(1);
+    } finally {
+      await ok(admin.from('place_assignments').delete().eq('attendee_id', attendeeA));
+      await resetParty();
+    }
+  });
+
+  test('every grant, change and removal is logged with its author', async () => {
+    const before = (await ok(admin.from('edition_role_log').select('id').eq('event_id', EVENT_B).eq('user_id', MEMBER_ID))).length;
+    for (const role of ['committee', 'committee', 'organiser', null]) {
+      await ok(admin.rpc('set_edition_role', { p_event_id: EVENT_B, p_user_id: MEMBER_ID, p_role: role }));
+    }
+    const log = await ok(admin.from('edition_role_log').select('actor_id, old_role, new_role')
+      .eq('event_id', EVENT_B).eq('user_id', MEMBER_ID).order('id'));
+    // Granting the role someone already has changes nothing, and logs nothing.
+    expect(log.slice(before)).toEqual([
+      { actor_id: ADMIN_ID, old_role: null, new_role: 'committee' },
+      { actor_id: ADMIN_ID, old_role: 'committee', new_role: 'organiser' },
+      { actor_id: ADMIN_ID, old_role: 'organiser', new_role: null }
+    ]);
+  });
+
+  test('becoming an admin, or deleting the account, removes the edition roles', async () => {
+    const promoted = await createUser('promoted');
+    const leaving = await createUser('leaving');
+    try {
+      for (const user of [promoted, leaving]) {
+        await ok(admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: user.id, p_role: 'organiser' }));
+      }
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: promoted.id, new_is_admin: true }));
+      const leavingClient = await signIn(leaving.email);
+      await ok(leavingClient.rpc('delete_my_account'));
+
+      const rows = await ok(admin.from('edition_roles').select('user_id').in('user_id', [promoted.id, leaving.id]));
+      expect(rows).toEqual([]);
+      const removals = await ok(admin.from('edition_role_log').select('user_id, new_role')
+        .in('user_id', [promoted.id, leaving.id]).is('new_role', null));
+      expect(removals).toHaveLength(2);
+      // A deleted account has no role left to use either.
+      expect(await ok(leavingClient.rpc('edition_role', { p_event_id: EVENT_A }))).toBeNull();
+    } finally {
+      for (const user of [promoted, leaving]) await adminClient.auth.admin.deleteUser(user.id);
     }
   });
 });

@@ -182,7 +182,8 @@ test("a member can't save logistics, even calling the database directly", async 
     return { data, message: error?.message };
   }, { partyId: seeded.partyId, attendeeId: member.attendees[0].id, placeId: places['Chambre 1 · Lit A'] });
 
-  expect(result).toEqual({ data: null, message: 'admin_only' });
+  // Organisateur and above on the party's edition (#217).
+  expect(result).toEqual({ data: null, message: 'organiser_only' });
   expect(await bedsOf(seeded.partyId)).toEqual([[ALICE, ''], [BOB, '']]);
   expect((await getParty(seeded.partyId)).admin_notes).toBeNull();
 });

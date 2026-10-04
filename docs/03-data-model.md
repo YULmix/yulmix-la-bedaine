@@ -13,8 +13,11 @@ erDiagram
   PROFILES ||--o{ USER_PARTIES : "registers"
   EVENTS ||--o{ USER_PARTIES : "receives"
   USER_PARTIES ||--o{ ATTENDEES : "has (on delete cascade)"
-  USER_PARTIES ||--o| PARTY_ADMIN_NOTES : "annotated by (admin-only, on delete cascade)"
-  EVENTS ||--o| EVENT_BUDGETS : "budgeted by (admin-only)"
+  USER_PARTIES ||--o| PARTY_ADMIN_NOTES : "annotated by (organisers, on delete cascade)"
+  EVENTS ||--o| EVENT_BUDGETS : "budgeted by (Organisateur and above)"
+  EVENTS ||--o{ EDITION_ROLES : "run by (#217)"
+  PROFILES ||--o{ EDITION_ROLES : "holds"
+  EVENTS ||--o{ EDITION_ROLE_LOG : "role changes logged"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
@@ -242,8 +245,8 @@ embeds the view one-to-one, through `place_assignments.attendee_id`'s unique for
 draft (`src/lib/logisticsDraft.js`) and saves them all with `save_logistics(p_changes)` (#150):
 `[{ party_id, places: { <attendee id>: <place id> | null }, admin_notes?, message_to_participants? }]`
 (an absent text is left as is). `admin_notes` are the organisers' private notes, stored in
-`party_admin_notes` (one row per party, none = no notes), which only admins can read or write: they
-used to be a `user_parties` column, which the member's own-row policy exposed (#227). An admin's
+`party_admin_notes` (one row per party, none = no notes), which only the edition's team reads
+(Comité and above) and only Organisateur and above writes (#217), never a member: they used to be a `user_parties` column, which the member's own-row policy exposed (#227). An admin's
 `listEventParties` embeds them and hands them to screens as `admin_notes`; the member's read
 (`fetchMyParty`, `fetchParty`) names its columns instead of `*`, so a private column added later
 isn't sent to members by default.
@@ -632,6 +635,26 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.
 5. Update this document and the ERD above.
+
+## Edition roles (#217)
+
+[ADR 0023](./adr/0023-edition-roles.md): Comité (`committee`) and Organisateur (`organiser`) are
+granted per edition; admin stays per account (`profiles.is_admin`).
+
+| Table / function | What it is |
+|---|---|
+| `edition_roles` | `(event_id, user_id)` primary key, `role` ∈ `committee`, `organiser`. Admins write it (RLS, or `set_edition_role(event, user, role \| null)`); a person reads their own rows. `trg_enforce_edition_role` refuses an admin (`edition_role_target_admin`) or a deleted account (`edition_role_target_deleted`) as the target, and a change of edition or person. Becoming an admin, or `delete_my_account()`, removes one's roles (`trg_drop_edition_roles_of_profile`); a hard-deleted profile or event cascades |
+| `edition_role_log` | One row per grant, change and removal: `event_id`, `user_id` (to whom), `actor_id` (`auth.uid()`), `old_role`, `new_role`, `changed_at`. Written by `trg_log_edition_role_change` (`SECURITY DEFINER`); admins read it. Granting the role someone already has writes nothing |
+| `edition_role(event)` | `admin` for an admin, else the caller's role on that event, else null (a deleted account has none). `SECURITY DEFINER`, stable |
+| `has_edition_role(event, min)` | Whether `edition_role(event)` is at least `min` on `committee < organiser < admin`. What the policies and functions check |
+| `set_payment_status(party, status)` | Organisateur and above on the party's event; changes `payment_status` only |
+| `apply_event_pricing(event, price, ratio)` | Organisateur and above; changes `selling_price_whole_event` and `ratio_main_whole` only |
+
+`set_payment_status()` and `save_logistics()` (both `SECURITY DEFINER`) mark the party they write
+in the transaction-local setting `bedaine.organiser_party`, which
+`protect_admin_only_party_fields` lets through, as `save_registration()` does with
+`bedaine.saving_party`. `party_admin_notes` is read by Comité and above and written by
+Organisateur and above on the party's edition (#227's « once #217 lands »).
 
 ## Account deletion (#36)
 

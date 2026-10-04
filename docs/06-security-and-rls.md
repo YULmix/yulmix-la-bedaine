@@ -28,8 +28,23 @@ enforced.
 |---|---|---|
 | Anonymous | no session | `SELECT` on ACTIVE/ARCHIVED events only |
 | Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback. A soft-deleted account (#36) keeps only read access to its own profile row |
-| Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `party_admin_notes` |
+| Comité (per edition, #217) | an `edition_roles` row with `committee`, granted by an admin | reads that edition's registrations in full (parties, attendees and their places, the registrants' profiles, the change history, the organisers' notes in `party_admin_notes`), its places (`event_places()`) and its venue's `assignments` gallery; writes nothing more than a member |
+| Organisateur (per edition) | an `edition_roles` row with `organiser` | Comité's reads, plus that edition's budget (read and write) and email log, its parties' notes (write), and through role-checking functions: payment status (`set_payment_status()`), places, notes and messages (`save_logistics()`), pricing (`apply_event_pricing()`). Not events, venues, roles, nor editing a registration |
+| Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `party_admin_notes`; the only one who grants edition roles |
 | Root admin | email = `yulmixalabedaine@gmail.com` | always admin, cannot be demoted |
+
+### `edition_role(event_id)` (#217, ADR 0023)
+
+One ladder: member < Comité < Organisateur < admin. `edition_role(event)` returns `admin`,
+`organiser`, `committee` or null for the caller; `has_edition_role(event, min)` compares it on the
+ladder. Both are `SECURITY DEFINER` and stable, so policies can call them. A role on one edition
+gives nothing on another. The row-update policy of `user_parties` is **not** opened to
+organisers, since it would let them change every column: their writes go through
+`set_payment_status()`, `save_logistics()` and `apply_event_pricing()`, which check the role on
+the row's event and mark the party they write in the transaction-local setting
+`bedaine.organiser_party`, which `protect_admin_only_party_fields` lets through.
+`src/__tests__/rlsPolicies.test.js` (« edition roles ») asserts every role × table/function
+boundary.
 
 ### `is_admin()`
 
@@ -71,18 +86,20 @@ Derived from production's schema as captured in the baseline migration
 |---|---|---|---|---|
 | `profiles` | own or admin | own (`id = auth.uid()`) or admin | own (active account) or admin — `is_admin` and `deleted_at` changes are blocked by triggers, see below | *no policy* → denied |
 | `events` | `status IN ('ACTIVE','ARCHIVED')` for everyone, DRAFT for admins | admin only | admin only | admin policy exists, but a BEFORE DELETE trigger raises unconditionally → **nobody, ever** |
-| `event_budgets` | admin only (#109; anon has no grant at all) | admin only | admin only | admin only |
+| `event_budgets` | Organisateur and above on its event (#109, #217; anon has no grant at all) | same | same | same |
+| `edition_roles` | admin, or one's own rows (#217) | admin only (or `set_edition_role()`) | admin only | admin only |
+| `edition_role_log` | admin only | *no grant*: the trigger writes it | *no grant* | *no grant* |
 | `venues` | admin, or anyone (anon included) who can read an event held there, for its address (#145) and coordinates (#180) | admin only | admin only | **nobody**: no `DELETE` grant, venues are archived |
 | `locations`, `places`, `place_assignments` | admin, or a member for their own attendees' assignments and the places and locations those hold (#113; anon has no grant at all) | admin only | admin only | admin only; an occupied place, or its location, can't be deleted (foreign key) |
 | `event_place_overrides` | admin only (#145; anon has no grant at all) | admin only | admin only | admin only |
-| `email_log` | admin only (members get a filtered summary of their own party through `my_party_emails()`, #93) | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
-| `user_parties` | own or admin (members see other parties' lifts through `carpool_board()`, #180: the board's fields only) | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
-| `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126); a restrictive policy hides [removed](./03-data-model.md#removed-attendees) attendees (`deleted_at` set) from everyone, admins included (#237) | same as the party, but only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | none from the app: `save_registration()` marks a removed attendee `deleted_at` instead (#237); only the cascade when an admin deletes the party removes rows |
+| `email_log` | admin, or Organisateur and above on the party's event (#217) (members get a filtered summary of their own party through `my_party_emails()`, #93) | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
+| `user_parties` | own, admin, or Comité and above on its event (#217) (members see other parties' lifts through `carpool_board()`, #180: the board's fields only) | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
+| `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126); a restrictive policy hides [removed](./03-data-model.md#removed-attendees) attendees (`deleted_at` set) from everyone, admins included (#237) | one's own party, or admin (#217: reading a party doesn't let one write its attendees), and only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | none from the app: `save_registration()` marks a removed attendee `deleted_at` instead (#237); only the cascade when an admin deletes the party removes rows |
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
-| `galleries`, `gallery_images` | admin; a venue's `general` gallery for whoever (signed in) can read the venue; a location's gallery for whoever can read the location (a member, where their attendees sleep); `assignments` galleries admin only (#177; anon has no grant at all) | admin only (images through `add_gallery_image()`; a 31st is refused) | admin only | admin only; a frozen copy's galleries can't change |
+| `galleries`, `gallery_images` | admin; a venue's `general` gallery for whoever (signed in) can read the venue; a location's gallery for whoever can read the location (a member, where their attendees sleep); `assignments` galleries for admins and the edition team (Comité and above) of any event held at the venue (#177, #217; anon has no grant at all) | admin only (images through `add_gallery_image()`; a 31st is refused) | admin only | admin only; a frozen copy's galleries can't change |
 | `storage.objects` in `location-photos` | anyone, by public URL (a public bucket; gallery images aren't private, #124, #177) | admin only | admin only | admin only |
-| `party_admin_notes` | admin only (#227; anon has no grant at all). A member doesn't read even their own party's notes | admin only | admin only | admin only (rows go with their party) |
-| `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
+| `party_admin_notes` | Comité and above on the party's event, admins included (#227, #217; anon has no grant at all). A member doesn't read even their own party's notes | Organisateur and above on the party's event | same | same (rows go with their party) |
+| `registration_edits` | `edited_by = auth.uid()` (active account), admin, or Comité and above on the registration's event (#217) | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
 Notes on specific choices:
 
@@ -121,18 +138,23 @@ Notes on specific choices:
   anyone's (`p_user_id`). It marks the party it is saving in a transaction-local setting
   (`bedaine.saving_party`); the attendees trigger only lets writes to that party through.
   PostgREST offers clients no way to set it (`set_config` isn't exposed).
-- **`save_logistics()` is `SECURITY INVOKER` too** (#150): the Logistique tab's one Save writes
-  every pending `place_assignments` row, `party_admin_notes` row and `message_to_participants` through it, under the caller's RLS and
-  the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
-  own subtransaction, all or nothing, and returns the parties it refused with their error code.
+- **`save_logistics()` is `SECURITY DEFINER`** since #217 (it was `SECURITY INVOKER`, #150): the
+  Logistique tab's one Save writes every pending `place_assignments` row, `party_admin_notes` row
+  and `message_to_participants` through it, under the usual triggers. It refuses up front anyone
+  who is neither admin nor Organisateur of some edition (`organiser_only`), then checks
+  Organisateur on each party's event and saves each party in its own subtransaction, all or
+  nothing, returning the parties it refused with their error code. RLS no longer applies inside
+  it, so it skips [removed](./03-data-model.md#removed-attendees) attendees itself (#237).
   It logs each saved party's place and note changes (#188, #227) in one entry, through a
   transaction-local setting (`bedaine.logistics_changes`) that `party_admin_notes`' trigger adds the
   note change to and `log_registration_edit()` merges into the message's entry (or that
   `save_logistics()` writes itself); like `bedaine.saving_party`, clients can't set it.
-- **`event_places()`, `set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193):
-  the tables' RLS and triggers decide, as for direct writes. The first two refuse non-admins up
-  front (`admin_only`): overrides are admin-only, so a member would otherwise read a merge that
-  silently lacks them. `set_place_override()` also refuses an archived event up front
+- **`set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193): the tables' RLS
+  and triggers decide, as for direct writes. `set_place_override()` refuses non-admins up front
+  (`admin_only`). `event_places()` is `SECURITY DEFINER` since #217, for Comité and above on the
+  event (`committee_only`): the team's RLS shows the places people sleep in, not the venue's
+  empty ones nor the event's overrides; it skips removed attendees itself (#237).
+  `set_place_override()` also refuses an archived event up front
   (`event_layout_frozen`), even for a write that would change nothing. `anon` can run none of them.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
