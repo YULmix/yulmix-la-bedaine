@@ -3692,3 +3692,401 @@ describe('🛏️ a bed reason only goes with « Lit » (#228)', () => {
     expect((await attendeesOf()).map(a => [a.bed_reason, a.bed_reason_other])).toEqual([['', ''], ['', '']]);
   });
 });
+
+// « Voir comme » (#265, ADR 0025): impersonation_log, the custom access token hook, and the
+// read-only trigger on every table. The impersonated sessions are real: a service-role insert in
+// impersonation_log (what the impersonate Edge Function does), then a magic link generated and
+// verified, which the hook marks. That needs the hook enabled in the running Auth server
+// (supabase/config.toml), which it reads at `supabase start`.
+describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () => {
+  jest.setTimeout(60000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000002651';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+  const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
+  const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
+  const DB_URL = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+  // Supabase Auth's own role, which calls the hook (local password: postgres).
+  const AUTH_DB_URL = (() => { const url = new URL(DB_URL); url.username = 'supabase_auth_admin'; return url.toString(); })();
+  const READ_ONLY = 'read_only_impersonation';
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const jwtClaims = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+
+  let db; // postgres
+  let authDb; // supabase_auth_admin
+  let admin;
+  let member;
+  let memberParty;
+  const sessions = []; // log ids to clean up
+
+  // Auth's REST API, overridable to run these against another Auth server than the stack's
+  // (one started with the hook enabled, when the running stack predates it).
+  const AUTH_URL = process.env.SUPABASE_AUTH_URL || `${SUPABASE_URL}/auth/v1`;
+  const authFetch = async (path, body) => {
+    const response = await fetch(`${AUTH_URL}${path}`, {
+      method: 'POST',
+      headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return { status: response.status, body: await response.json() };
+  };
+
+  // A « Voir comme » session on `email`, the way the Edge Function opens it: a log row, then a
+  // magic link generated and verified.
+  const impersonate = async (email, targetId) => {
+    const row = await ok(adminClient.from('impersonation_log').insert({ admin_id: ADMIN_ID, target_id: targetId }).select().single());
+    sessions.push(row.id);
+    const link = await ok(adminClient.auth.admin.generateLink({ type: 'magiclink', email }));
+    const verified = await authFetch('/verify', { type: 'magiclink', token_hash: link.properties.hashed_token });
+    if (verified.status !== 200) throw new Error(`verify: ${verified.status} ${JSON.stringify(verified.body)}`);
+    const session = verified.body;
+    const claims = jwtClaims(session.access_token);
+    if (claims.impersonated_by !== ADMIN_ID) {
+      throw new Error('The access token has no impersonated_by claim: is the custom access token hook enabled in the running Auth server? (supabase/config.toml, read at `supabase start`)');
+    }
+    const client = createClient(SUPABASE_URL, ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+    });
+    return { client, claims, session, row };
+  };
+  const refresh = (refreshToken) => authFetch('/token?grant_type=refresh_token', { refresh_token: refreshToken });
+
+  const hook = async (event) => (await authDb.query('select public.custom_access_token_hook($1::jsonb) as out', [event === undefined ? null : JSON.stringify(event)])).rows[0].out;
+  const pendingRow = async (targetId) => (await db.query(
+    'insert into public.impersonation_log (admin_id, target_id) values ($1, $2) returning *', [ADMIN_ID, targetId]
+  )).rows[0];
+  const logRow = async (id) => (await db.query('select * from public.impersonation_log where id = $1', [id])).rows[0];
+  const event = (method, sessionId, userId = MEMBER_ID, extra = {}) => ({
+    user_id: userId,
+    authentication_method: method,
+    claims: { aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600, iat: Math.floor(Date.now() / 1000), sub: userId,
+      email: 'member@test.local', phone: '', role: 'authenticated', aal: 'aal1', session_id: sessionId, is_anonymous: false, ...extra }
+  });
+  const randomUuid = () => crypto.randomUUID();
+
+  beforeAll(async () => {
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(DB_URL).hostname);
+    db = new pg.Client({ connectionString: DB_URL });
+    await db.connect();
+    authDb = new pg.Client({ connectionString: AUTH_DB_URL });
+    await authDb.connect();
+    admin = await signIn('admin@test.local');
+    member = await signIn('member@test.local');
+
+    await ok(admin.from('events').upsert({ id: EVENT_ID, theme: 'Voir comme', status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375 }));
+    memberParty = (await saveOk(admin, EVENT_ID, [{ name: 'Mo', type: 'Adult', participation: 'Whole' }], { userId: MEMBER_ID })).id;
+    await ok(adminClient.from('email_log').upsert({ party_id: memberParty, template: 'payment', status: 'failed' }, { onConflict: 'party_id,template' }));
+    await ok(admin.rpc('set_edition_role', { p_event_id: EVENT_ID, p_user_id: ORGANISER_ID, p_role: 'organiser' }));
+    await ok(admin.rpc('set_edition_role', { p_event_id: EVENT_ID, p_user_id: COMMITTEE_ID, p_role: 'committee' }));
+  });
+
+  afterAll(async () => {
+    await db.query('delete from public.impersonation_log where id = any($1::bigint[]) or target_id = any($2::uuid[])', [sessions, [MEMBER_ID, ORGANISER_ID]]);
+    await admin.from('edition_roles').delete().eq('event_id', EVENT_ID);
+    await admin.from('user_parties').delete().eq('event_id', EVENT_ID);
+    await admin.from('events').update({ status: 'DRAFT' }).eq('id', EVENT_ID);
+    await db.end();
+    await authDb.end();
+  });
+
+  test('every table in public and private carries the read-only trigger', async () => {
+    const { rows } = await db.query(`
+      select format('%I.%I', n.nspname, c.relname) as name
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname in ('public', 'private')
+        and c.relkind in ('r', 'p')
+        and not c.relispartition
+        and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e')
+        and not exists (
+          select 1 from pg_trigger t
+          where t.tgrelid = c.oid
+            and t.tgfoid = 'private.refuse_when_impersonating()'::regprocedure
+            and t.tgenabled <> 'D'
+            and (t.tgtype & 1) = 0   -- FOR EACH STATEMENT
+            and (t.tgtype & 2) = 2   -- BEFORE
+            and (t.tgtype & 28) = 28 -- INSERT, DELETE and UPDATE
+        )
+      order by 1`);
+    // A table listed here was added without the trigger: attach it in the same migration.
+    expect(rows.map(row => row.name)).toEqual([]);
+    const { rows: [{ count }] } = await db.query(`
+      select count(*)::int from pg_trigger where tgfoid = 'private.refuse_when_impersonating()'::regprocedure`);
+    expect(count).toBeGreaterThan(20);
+  });
+
+  // No pending row left over for the next test (one per target at a time).
+  afterEach(() => db.query('update public.impersonation_log set ended_at = now() where session_id is null and ended_at is null'));
+
+  describe('custom_access_token_hook', () => {
+    test('a Google sign-in, a password sign-in and their refreshes pass unchanged, even with a pending row', async () => {
+      const row = await pendingRow(MEMBER_ID);
+      sessions.push(row.id);
+      for (const method of ['oauth', 'password', 'token_refresh']) {
+        const input = event(method, randomUuid());
+        expect(await hook(input)).toEqual(input);
+      }
+      expect((await logRow(row.id)).session_id).toBeNull();
+    });
+
+    test('a magic-link sign-in with a fresh pending row is claimed: impersonated_by, exp capped, session_id set', async () => {
+      const row = await pendingRow(MEMBER_ID);
+      sessions.push(row.id);
+      const sessionId = randomUuid();
+      const input = event('otp', sessionId);
+      const out = await hook(input);
+      const cap = Math.floor(new Date(row.expires_at).getTime() / 1000);
+      expect(out.claims).toEqual({ ...input.claims, impersonated_by: ADMIN_ID, exp: cap });
+      expect(out.claims.exp).toBeLessThan(input.claims.exp);
+      expect((await logRow(row.id)).session_id).toBe(sessionId);
+
+      // Its refresh keeps the claim and the cap; another user's token with that session id doesn't pass.
+      const refreshed = await hook(event('token_refresh', sessionId));
+      expect(refreshed.claims).toMatchObject({ impersonated_by: ADMIN_ID, exp: cap });
+      expect(await hook(event('token_refresh', sessionId, ORGANISER_ID))).toEqual({ error: { http_code: 403, message: 'impersonation_ended' } });
+
+      // An exp already below the cap stays.
+      const early = Math.floor(Date.now() / 1000) + 60;
+      expect((await hook(event('token_refresh', sessionId, MEMBER_ID, { exp: early }))).claims.exp).toBe(early);
+    });
+
+    test('a magic-link sign-in without a fresh pending row passes unchanged', async () => {
+      const input = event('magiclink', randomUuid());
+      expect(await hook(input)).toEqual(input);
+
+      // Older than 60 s: not claimed (the guard trigger, which pins started_at, is bypassed to age it).
+      const row = await pendingRow(MEMBER_ID);
+      sessions.push(row.id);
+      await db.query('begin');
+      await db.query('alter table public.impersonation_log disable trigger trg_check_impersonation_log');
+      await db.query("update public.impersonation_log set started_at = started_at - interval '61 seconds', expires_at = expires_at - interval '61 seconds' where id = $1", [row.id]);
+      await db.query('alter table public.impersonation_log enable trigger trg_check_impersonation_log');
+      await db.query('commit');
+      const late = event('otp', randomUuid());
+      expect(await hook(late)).toEqual(late);
+      expect((await logRow(row.id)).session_id).toBeNull();
+
+      // Ended before it was claimed: not claimed either.
+      const ended = await pendingRow(MEMBER_ID);
+      sessions.push(ended.id);
+      await db.query('update public.impersonation_log set ended_at = now() where id = $1', [ended.id]);
+      const afterEnd = event('otp', randomUuid());
+      expect(await hook(afterEnd)).toEqual(afterEnd);
+    });
+
+    test('a refresh after expires_at or after ended_at is refused', async () => {
+      for (const end of [
+        "expires_at = started_at + interval '1 millisecond'",
+        'ended_at = now()'
+      ]) {
+        const row = await pendingRow(MEMBER_ID);
+        sessions.push(row.id);
+        const sessionId = randomUuid();
+        expect((await hook(event('otp', sessionId))).claims.impersonated_by).toBe(ADMIN_ID);
+        await db.query(`update public.impersonation_log set ${end} where id = $1`, [row.id]);
+        expect(await hook(event('token_refresh', sessionId))).toEqual({ error: { http_code: 403, message: 'impersonation_ended' } });
+      }
+    });
+
+    test('an impersonated_by claim from upstream is dropped, and malformed input never raises', async () => {
+      const input = event('oauth', randomUuid());
+      expect(await hook({ ...input, claims: { ...input.claims, impersonated_by: ADMIN_ID } })).toEqual(input);
+
+      for (const malformed of [
+        undefined, null, [], {}, 'x', 42, { claims: 'x' }, { claims: null }, { user_id: 42, claims: {} },
+        { user_id: 'not-a-uuid', authentication_method: 'otp', claims: { session_id: 'nope', exp: 'soon' } },
+        { user_id: MEMBER_ID, authentication_method: 'otp', claims: { session_id: randomUuid(), exp: 'soon' } },
+        { user_id: MEMBER_ID, authentication_method: null, claims: { session_id: null } }
+      ]) {
+        await expect(hook(malformed)).resolves.not.toThrow();
+      }
+    });
+
+    test('only supabase_auth_admin can run the hook', async () => {
+      for (const client of [createClient(SUPABASE_URL, ANON_KEY), member, admin, adminClient]) {
+        const { error } = await client.rpc('custom_access_token_hook', { event: event('otp', randomUuid()) });
+        expect(error).not.toBeNull();
+      }
+    });
+  });
+
+  describe('impersonation_log', () => {
+    test('admins read it; members, Comité and Organisateur read nothing', async () => {
+      const row = await pendingRow(MEMBER_ID);
+      sessions.push(row.id);
+      expect((await ok(admin.from('impersonation_log').select('id').eq('id', row.id))).length).toBe(1);
+      for (const email of ['member@test.local', 'committee@test.local', 'organiser@test.local']) {
+        const client = await signIn(email);
+        expect(await ok(client.from('impersonation_log').select('id'))).toEqual([]);
+      }
+    });
+
+    test('no one writes it from the app, admins included', async () => {
+      const row = await pendingRow(MEMBER_ID);
+      sessions.push(row.id);
+      for (const client of [member, admin]) {
+        expect((await client.from('impersonation_log').insert({ admin_id: ADMIN_ID, target_id: MEMBER_ID })).error).not.toBeNull();
+        await client.from('impersonation_log').update({ ended_at: new Date().toISOString() }).eq('id', row.id);
+        await client.from('impersonation_log').delete().eq('id', row.id);
+      }
+      expect(await logRow(row.id)).toMatchObject({ id: row.id, ended_at: null });
+    });
+
+    test('one pending row per target: a second « Voir comme » on the same member is refused until the first is claimed', async () => {
+      const insert = () => adminClient.from('impersonation_log').insert({ admin_id: ADMIN_ID, target_id: MEMBER_ID }).select().single();
+      const first = await ok(insert());
+      sessions.push(first.id);
+      expect((await insert()).error?.message).toBe('impersonation_target_pending');
+
+      // Claimed by its sign-in, it no longer blocks the next one.
+      expect((await hook(event('otp', randomUuid()))).claims.impersonated_by).toBe(ADMIN_ID);
+      const second = await ok(insert());
+      sessions.push(second.id);
+
+      // A pending row the hook can no longer claim (> 60 s) is ended by the next insert.
+      await db.query('begin');
+      await db.query('alter table public.impersonation_log disable trigger trg_check_impersonation_log');
+      await db.query("update public.impersonation_log set started_at = started_at - interval '61 seconds', expires_at = expires_at - interval '61 seconds' where id = $1", [second.id]);
+      await db.query('alter table public.impersonation_log enable trigger trg_check_impersonation_log');
+      await db.query('commit');
+      const third = await ok(insert());
+      sessions.push(third.id);
+      expect((await logRow(second.id)).ended_at).not.toBeNull();
+      expect((await logRow(third.id)).ended_at).toBeNull();
+
+      // The unique index is the backstop when the trigger is bypassed.
+      await expect(db.query('insert into public.impersonation_log (admin_id, target_id) select admin_id, target_id from public.impersonation_log where id = $1', [third.id]))
+        .rejects.toThrow('impersonation_target_pending');
+      await db.query('begin');
+      await db.query('alter table public.impersonation_log disable trigger trg_check_impersonation_log');
+      await expect(db.query('insert into public.impersonation_log (admin_id, target_id) values ($1, $2)', [ADMIN_ID, MEMBER_ID]))
+        .rejects.toThrow('impersonation_log_one_pending_per_target_idx');
+      await db.query('rollback');
+    });
+
+    test('the target is an active non-admin other than oneself, the actor an admin; a session is never extended', async () => {
+      const insert = (adminId, targetId) => adminClient.from('impersonation_log').insert({ admin_id: adminId, target_id: targetId });
+      expect((await insert(ADMIN_ID, ADMIN_ID)).error.message).toBe('impersonation_target_self');
+      expect((await insert(MEMBER_ID, ORGANISER_ID)).error.message).toBe('impersonation_actor_not_admin');
+
+      const other = await adminClient.auth.admin.createUser({ email: `rls-265-${Date.now()}@test.local`, password: 'password123', email_confirm: true });
+      const otherId = other.data.user.id;
+      try {
+        await db.query('update public.profiles set is_admin = true where id = $1', [otherId]);
+        expect((await insert(ADMIN_ID, otherId)).error.message).toBe('impersonation_target_admin');
+        await db.query('update public.profiles set is_admin = false, deleted_at = now() where id = $1', [otherId]);
+        expect((await insert(ADMIN_ID, otherId)).error.message).toBe('impersonation_target_deleted');
+      } finally {
+        await adminClient.auth.admin.deleteUser(otherId);
+      }
+
+      // The database sets the clock: whatever is sent, 30 minutes from now.
+      const row = await ok(adminClient.from('impersonation_log')
+        .insert({ admin_id: ADMIN_ID, target_id: MEMBER_ID, started_at: '2099-01-01T00:00:00Z', expires_at: '2099-01-02T00:00:00Z' }).select().single());
+      sessions.push(row.id);
+      expect(new Date(row.expires_at) - new Date(row.started_at)).toBe(30 * 60 * 1000);
+      expect(Math.abs(new Date(row.started_at) - Date.now())).toBeLessThan(60 * 1000);
+      await expect(db.query("update public.impersonation_log set expires_at = expires_at + interval '1 minute' where id = $1", [row.id]))
+        .rejects.toThrow('impersonation_log_immutable');
+      await expect(db.query('update public.impersonation_log set target_id = $2 where id = $1', [row.id, ORGANISER_ID]))
+        .rejects.toThrow('impersonation_log_immutable');
+    });
+  });
+
+  describe('an impersonated session (the hook enabled in Auth)', () => {
+    let seen;
+
+    beforeAll(async () => {
+      seen = await impersonate('member@test.local', MEMBER_ID);
+    });
+
+    test('the token carries impersonated_by and expires with the log row', async () => {
+      expect(seen.claims.sub).toBe(MEMBER_ID);
+      expect(seen.claims.exp).toBeLessThanOrEqual(Math.floor(new Date(seen.row.expires_at).getTime() / 1000));
+      expect((await logRow(seen.row.id)).session_id).toBe(seen.claims.session_id);
+    });
+
+    test('a refresh before the end keeps the claim and the cap', async () => {
+      const refreshed = await refresh(seen.session.refresh_token);
+      expect(refreshed.status).toBe(200);
+      const claims = jwtClaims(refreshed.body.access_token);
+      expect(claims).toMatchObject({ sub: MEMBER_ID, session_id: seen.claims.session_id, impersonated_by: ADMIN_ID });
+      expect(claims.exp).toBeLessThanOrEqual(Math.floor(new Date(seen.row.expires_at).getTime() / 1000));
+      seen.session = refreshed.body;
+    });
+
+    test("reads return exactly the member's own", async () => {
+      const read = async (client) => ({
+        parties: await ok(client.from('user_parties').select('id, user_id').order('id')),
+        profiles: await ok(client.from('profiles').select('id').order('id')),
+        emails: await ok(client.rpc('my_party_emails', { p_party_id: memberParty })),
+        log: await ok(client.from('impersonation_log').select('id'))
+      });
+      const asMember = await read(member);
+      const asSeen = await read(seen.client);
+      expect(asSeen).toEqual(asMember);
+      expect(asSeen.parties.map(party => party.id)).toContain(memberParty);
+      expect(new Set(asSeen.parties.map(party => party.user_id))).toEqual(new Set([MEMBER_ID]));
+      expect(asSeen.profiles).toEqual([{ id: MEMBER_ID }]);
+      expect(asSeen.emails.length).toBeGreaterThan(0);
+      expect(asSeen.log).toEqual([]);
+    });
+
+    test('every write fails with read_only_impersonation', async () => {
+      const c = seen.client;
+      const writes = {
+        profile: c.from('profiles').update({ full_name: 'Hacked' }).eq('id', MEMBER_ID),
+        party: c.from('user_parties').update({ music_requests: 'Hacked' }).eq('id', memberParty),
+        saveRegistration: save(c, EVENT_ID, [{ name: 'Mo', type: 'Adult', participation: 'Whole' }, { name: 'Extra', type: 'Adult', participation: 'Whole' }], { id: memberParty }),
+        cancel: c.from('user_parties').update({ status: 'cancelled' }).eq('id', memberParty),
+        deleteAccount: c.rpc('delete_my_account'),
+        feedback: c.from('app_feedback').insert({ user_id: MEMBER_ID, content: 'x' })
+      };
+      for (const [name, write] of Object.entries(writes)) {
+        const { error } = await write;
+        expect([name, error?.message]).toEqual([name, READ_ONLY]);
+      }
+      const party = await ok(admin.from('user_parties').select('status').eq('id', memberParty).single());
+      expect(party.status).not.toBe('cancelled');
+      expect(await ok(admin.from('attendees').select('id').eq('party_id', memberParty))).toHaveLength(1);
+      expect((await ok(admin.from('profiles').select('deleted_at, full_name').eq('id', MEMBER_ID).single())).deleted_at).toBeNull();
+    });
+
+    test('a storage upload fails too (the feedback bucket members may write)', async () => {
+      const png = () => new Blob([Buffer.from('89504e470d0a1a0a', 'hex')], { type: 'image/png' });
+      const path = `rls-265/${Date.now()}.png`;
+      const { error } = await seen.client.storage.from('feedback').upload(path, png());
+      expect(error?.message).toMatch(/row-level security/);
+      // The member's own session can (the control: same bucket, same file).
+      const own = `rls-265/${Date.now()}-own.png`;
+      expect((await member.storage.from('feedback').upload(own, png())).error).toBeNull();
+      await adminClient.storage.from('feedback').remove([path, own]);
+    });
+
+    test('the session is refused a refresh once ended, and the member keeps their own access', async () => {
+      await db.query('update public.impersonation_log set ended_at = now() where id = $1', [seen.row.id]);
+      const refused = await refresh(seen.session.refresh_token);
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(refused.body)).toContain('impersonation_ended');
+      // The member's own session is untouched and writable.
+      expect((await member.from('profiles').update({ full_name: 'Test Member' }).eq('id', MEMBER_ID)).error).toBeNull();
+    });
+  });
+
+  test('an impersonated Organisateur cannot set a payment status nor save logistics', async () => {
+    const { client } = await impersonate('organiser@test.local', ORGANISER_ID);
+    const { error } = await client.rpc('set_payment_status', { p_party_id: memberParty, p_payment_status: 'paid' });
+    expect(error?.message).toBe(READ_ONLY);
+    // save_logistics() reports each party it couldn't save, with its error, rather than raising.
+    const { data, error: logisticsError } = await client.rpc('save_logistics', {
+      p_changes: [{ party_id: memberParty, places: {}, message_to_participants: 'Bienvenue' }]
+    });
+    expect(logisticsError).toBeNull();
+    expect(data).toEqual([expect.objectContaining({ party_id: memberParty, message: READ_ONLY })]);
+    const party = await ok(admin.from('user_parties').select('payment_status, message_to_participants').eq('id', memberParty).single());
+    expect(party).toEqual({ payment_status: 'unpaid', message_to_participants: null });
+  });
+});

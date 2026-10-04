@@ -15,7 +15,8 @@ enforced.
   ([#21](https://github.com/YULmix/yulmix-la-bedaine/issues/21)): Meta refused the redirect
   because the app's domains were never registered with it. Bringing it back means registering the
   Supabase callback and app domains in the Meta app, then re-adding the menu item.
-- No email/password, no magic links. There is no account-creation form to secure.
+- No email/password, no magic links for members. There is no account-creation form to secure.
+  The one magic link is server side: « Voir comme » (below) verifies one for the member it opens.
 - On first sign-in, `handle_new_user` (AFTER INSERT on `auth.users`) creates the `profiles` row and
   sets `is_admin` only for the root-admin email.
   It runs in the same transaction as the auth user's insert, so there is no window in which a
@@ -90,6 +91,7 @@ Derived from production's schema as captured in the baseline migration
 | `edition_roles` | admin, or one's own rows (#217) | admin only (or `set_edition_role()`) | admin only | admin only |
 | `edition_role_log` | admin only | *no grant*: the trigger writes it | *no grant* | *no grant* |
 | `admin_role_log` | admin only (#256) | *no grant*: the trigger on `profiles.is_admin` writes it | *no grant* | *no grant* |
+| `impersonation_log` | admin only (#265) | *no grant* for `anon`/`authenticated`, admins included: the `impersonate` Edge Function inserts with the service role | *no grant*: the service role sets `ended_at`, `supabase_auth_admin` (the hook) sets `session_id` | *no grant* |
 | `venues` | admin, or anyone (anon included) who can read an event held there, for its address (#145) and coordinates (#180) | admin only | admin only | **nobody**: no `DELETE` grant, venues are archived |
 | `locations`, `places`, `place_assignments` | admin, or a member for their own attendees' assignments and the places and locations those hold (#113; anon has no grant at all) | admin only | admin only | admin only; an occupied place, or its location, can't be deleted (foreign key) |
 | `event_place_overrides` | admin only (#145; anon has no grant at all) | admin only | admin only | admin only |
@@ -169,6 +171,41 @@ Notes on specific choices:
   [#45](https://github.com/YULmix/yulmix-la-bedaine/issues/45)). The baseline migration's
   `GRANT ALL ON SCHEMA "public"` carried that forward from production; `service_role` keeps `ALL`,
   since it's the trusted server-side key and already bypasses RLS.
+
+## « Voir comme »: read-only impersonation (#265, ADR 0025)
+
+An admin can open the app in a member's **real** session to see exactly what that member sees
+([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md)). The database side:
+
+- **The claim.** `public.custom_access_token_hook(event)` is a Supabase Auth custom access token
+  hook, granted to `supabase_auth_admin` only. It adds `impersonated_by` (the admin's id, a
+  string) to the JWT, and caps `exp` at the session's end, only for a magic-link/OTP sign-in
+  matching an `impersonation_log` row of that member inserted in the last 60 seconds and not yet
+  claimed; the row gets the session's `session_id`. A refresh of that session keeps the claim, or
+  is refused (`impersonation_ended`) once the row's `expires_at` has passed or `ended_at` is set.
+  Every other token passes through unchanged, and an `impersonated_by` claim from anywhere else is
+  dropped. The hook never raises: on an internal error it refuses the token of a session already in
+  the log and lets any other through.
+- **Read-only.** `private.refuse_when_impersonating()` is attached `BEFORE INSERT OR UPDATE OR
+  DELETE ... FOR EACH STATEMENT` to every table in `public` and `private`, and raises
+  `read_only_impersonation` (SQLSTATE `42501`) when `auth.jwt()` carries `impersonated_by`. It fires
+  inside `SECURITY DEFINER` functions too, so none needs its own check. `save_logistics()`, which
+  saves each party in a subtransaction, returns the refusal per party instead of raising.
+  `src/__tests__/rlsPolicies.test.js` (« Voir comme ») fails when a table lacks the trigger.
+  `storage.objects` (members upload to the `feedback` bucket) gets the same refusal as three
+  RESTRICTIVE policies, « Storage: no writes from Voir comme » (insert, update, delete).
+- **Who.** `impersonation_log`'s trigger accepts only an active admin as `admin_id`, and as
+  `target_id` an existing, non-deleted, non-admin account other than the admin
+  (`impersonation_actor_not_admin`, `impersonation_target_self`, `impersonation_target_admin`,
+  `impersonation_target_deleted`, `impersonation_target_not_found`). It sets `started_at` to now and
+  `expires_at` 30 minutes later, and refuses a later change that would extend or reassign the
+  session (`impersonation_log_immutable`). A member has at most one pending (unclaimed, not ended)
+  row: a second insert is refused (`impersonation_target_pending`) unless the first is older than
+  60 seconds, in which case it is ended; a partial unique index backs this up.
+- **Not covered by the trigger:** Supabase Auth's own endpoints (`updateUser()`, a global
+  `signOut()`) write `auth.*`, not our tables. The impersonated tab must not offer them (#267).
+- The hook is enabled locally by `supabase/config.toml`; in production and Preview it is enabled in
+  the dashboard (#268).
 
 ## The gap that matters most
 

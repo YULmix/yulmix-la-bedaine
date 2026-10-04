@@ -50,6 +50,15 @@ the edition's operations (places, notes, payments, budget, pricing). Not events,
 roles, or editing a registration: those are admin.
 _Avoid_: admin (an admin is per account and has everything).
 
+**« Voir comme »** (code: impersonation, `impersonation_log`, JWT claim `impersonated_by`)
+An admin viewing the app in a member's real session, in its own tab, read-only, for 30 minutes
+([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md)). Shows exactly what that member
+(or that Comité or Organisateur) sees, since it runs their RLS; any write is refused
+(`read_only_impersonation`). Only on active non-admin accounts, never oneself. Logged for admins;
+members aren't told.
+_Avoid_: « Se connecter comme » (Preview's sign-in as a test account, a real writable session),
+impersonate in UI text, preview mode.
+
 **Root admin**
 The hardcoded `yulmixalabedaine@gmail.com` account. Always an admin, cannot be demoted. Break-glass.
 
