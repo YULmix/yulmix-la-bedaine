@@ -85,8 +85,9 @@ views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with f
 « Plus », a sheet (`Dialog`) with the rest, and the views as `ViewTabs` under the page header.
 The page header is one line, the `h1` (« Section · Vue ») and the page's actions: a section
 puts a button or a search field there with `<AdminHeaderActions>`, from anywhere in its tree.
-The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`, `pageWidthClass` in `src/lib/pageWidth.ts`, which the member pages use too), inside one centred
-container (`max-w-screen-2xl`) that the header shares on admin pages. The sidebar sticks under
+The shell wraps the page in its width (`dense`, or `narrow`: `max-w-3xl`, `pageWidthClass` in `src/lib/pageWidth.ts`, which the member pages use too), inside the app's one
+canvas (`CANVAS_CLASS` in `src/lib/pageWidth.ts`: centred, `max-w-screen-2xl`, one padding), shared by the header,
+the footer, the member pages and this shell, so the width doesn't change between them. The sidebar sits on the canvas's left edge and sticks under
 the header at its measured height (`--header-height`, set by `Header.jsx`). Save bars
 (`SaveBar`) float over the page as a raised toolbar, not a pane. A drill-down (the
 event editor, a venue) still brings its own header until #210.

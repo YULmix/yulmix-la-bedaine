@@ -13,7 +13,7 @@ import FeedbackSection from '../components/admin/sections/FeedbackSection';
 import TeamSection from '../components/admin/sections/TeamSection';
 import { AdminBottomBar, AdminHeaderActionsProvider, AdminPageHeader, AdminSidebar } from '../components/admin/AdminNav';
 import { ConfirmDialog, Notice, ViewPanel, ViewTabs } from '../components/ui';
-import { pageWidthClass } from '../lib/pageWidth';
+import { CANVAS_CLASS, pageWidthClass } from '../lib/pageWidth';
 import { refreshEvents, useEvents } from '../lib/events';
 import { useAdminParties } from '../lib/adminParties';
 import { useEventPlaces } from '../lib/eventPlaces';
@@ -107,7 +107,7 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
 
   if (!role) {
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-6">
+      <main className={`${CANVAS_CLASS} flex-1 py-8`}>
         <Notice tone="warn">{fr.adminAccessRestricted}</Notice>
       </main>
     );
@@ -125,13 +125,13 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
   const content = allowed ? <Section {...route} /> : null;
 
   return (
-    // One centred container for the sidebar and the page, as wide as the header's on admin pages
-    // (max-w-screen-2xl, src/components/Header.jsx).
+    // The app's canvas holds the sidebar and the page: the sidebar sits on its left edge, under
+    // the header's logo (CANVAS_CLASS, src/lib/pageWidth.ts).
     <AdminAccessContext.Provider value={access}>
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-1">
+      <div className={`${CANVAS_CLASS} flex flex-1`}>
         <AdminSidebar page={page} markers={markers} theme={theme} sections={sections} />
 
-        <main className="min-w-0 flex-1 px-4 pb-28 pt-4 md:pb-16 md:pl-8 md:pr-6 md:pt-5">
+        <main className="min-w-0 flex-1 pb-28 pt-4 md:pb-16 md:pl-8 md:pt-5">
           <div className={pageWidthClass(page.width)}>
             {/* A drill-down (the event editor, a venue) brings its own header and back link (#210). */}
             {!page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}

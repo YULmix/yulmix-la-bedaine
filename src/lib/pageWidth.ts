@@ -1,6 +1,9 @@
 // The two page widths (ADR 0022), shared by the admin shell and the member pages. A page sits in
-// a centred, clamped canvas (the header's: max-w-6xl for members, max-w-screen-2xl for admin);
-// the width says how much of it the page takes.
+// the app's one canvas (`CANVAS_CLASS`, used by the header, the footer, the member pages and the
+// admin shell); the width says how much of it the page takes.
+
+/** The one canvas: centred, clamped to max-w-screen-2xl, same horizontal padding everywhere. */
+export const CANVAS_CLASS = 'mx-auto w-full max-w-screen-2xl px-4 md:px-6';
 
 /**
  * How wide a page is: `dense` (lists, logs, tables) is the canvas's full width; `narrow` (forms,

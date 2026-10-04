@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { isAdminPath } from './lib/adminRoutes';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { LockKeyhole, UserX } from 'lucide-react';
 import Header from './components/Header';
-import { pageWidthClass } from './lib/pageWidth';
+import { CANVAS_CLASS, pageWidthClass } from './lib/pageWidth';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
 import ResolutionBanner from './components/ResolutionBanner';
@@ -37,7 +36,7 @@ const ShellSkeleton = () => (
   <div className="min-h-dvh bg-night" aria-busy="true">
     <span className="sr-only">{fr.loading}</span>
     <div className="h-16 border-b border-line" />
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6">
+    <div className={`${CANVAS_CLASS} space-y-6 py-6`}>
       <Skeleton className="h-72 rounded-card" />
       <Skeleton className="h-16" />
       <Skeleton className="h-56 rounded-card" />
@@ -45,9 +44,9 @@ const ShellSkeleton = () => (
   </div>
 );
 
-// A member page: the header's clamped canvas, and the page's width inside it (src/lib/pageWidth.ts).
+// A member page: the app's canvas, and the page's width inside it (src/lib/pageWidth.ts).
 const PageMain = ({ children, width = 'narrow' }) => (
-  <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 md:px-6">
+  <main className={`${CANVAS_CLASS} flex-1 pb-16 pt-6`}>
     <div className={`mx-auto ${pageWidthClass(width)}`}>{children}</div>
   </main>
 );
@@ -96,7 +95,6 @@ const ProtectedRoute = ({ ready, isAuthenticated, isAdmin, adminOnly = false, ch
 
 function App() {
   // Admin pages are wider (the sidebar and the page, ADR 0022); the footer lines up with them.
-  const adminPage = isAdminPath(useLocation().pathname);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   // The signed-in person's edition roles, by event (#217, ADR 0023).
@@ -308,7 +306,7 @@ function App() {
       </div>
 
       <footer className="border-t border-line pb-24 md:pb-0">
-        <div className={`mx-auto flex ${adminPage ? 'max-w-screen-2xl' : 'max-w-6xl'} flex-col gap-3 px-4 py-6 text-sm text-faint sm:flex-row sm:items-center sm:justify-between md:px-6`}>
+        <div className={`${CANVAS_CLASS} flex flex-col gap-3 py-6 text-sm text-faint sm:flex-row sm:items-center sm:justify-between`}>
           <p>© {new Date().getFullYear()} {fr.org}. {fr.allRightsReserved}</p>
           <div className="flex gap-5">
             <Link to="/a-propos" className="inline-flex min-h-11 items-center hover:text-ink">{fr.about}</Link>
