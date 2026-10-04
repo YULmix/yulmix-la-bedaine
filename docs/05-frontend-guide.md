@@ -375,6 +375,10 @@ fixture rows was rejected on real data).
   the ui dialog component's padding (its body has none: add `p-5 sm:p-6`, as `ExportDialog` does).
 - **Names wrap, never truncate.** A name, a group, an email, anything an organiser reads to tell
   people apart: `break-words`, not `truncate`.
+- **Pills stay on one line.** In a table, a pill never wraps: the free-text column (a name) is the one
+  that gives, and a cell with several pills stacks them. If the columns don't fit at 1440 px, merge
+  one (the « Participants » name cell carries the group under the name) rather than squeeze them.
+  With a CSS subgrid row, put the column gap on the parent grid: a gap on the subgrid pads every cell.
 - **Enum values carry their icon.** A sleeping type or a dietary need shows the app's icon beside its
   label, from the shared `src/components/accommodationIcons.js` (the registration form, the recap and
   the admin's « Participants » all import it). A new fixed list gets its icons there too.

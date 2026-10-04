@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, Info, Search, UsersRound, Utensils } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { attendeeRows, sortAttendees } from '../../lib/dataExport';
-import { plural } from '../../lib/eventDisplay';
+import { ofName, plural } from '../../lib/eventDisplay';
 import { Button, ChipGroup, Dialog, EmptyState, Tag, Toggle, cx } from '../ui';
 import { ACCOMMODATION_ICONS, DIETARY_ICONS } from '../accommodationIcons';
 import { AdminHeaderActions } from './AdminNav';
@@ -11,7 +11,7 @@ import { AdminHeaderActions } from './AdminNav';
 // The rows are the export's (attendeeRows), so the two can't drift. Values from a fixed list are
 // pills with their icon; the free-text answers open in a pop-up, from a « Détails » button only on
 // rows that have some. No scroll box of its own: the page scrolls (a nested one traps a phone's
-// swipe). From lg the rows are one grid whose columns size to their content (subgrid), so names
+// swipe). From xl the rows are one grid whose columns size to their content (subgrid), so names
 // wrap and nothing overlaps; below, each row is a card.
 const SORT_KEYS = [
   { value: 'group', label: fr.participantsSortGroup },
@@ -22,65 +22,80 @@ const SORT_DIRECTIONS = [
   { value: 'desc', label: fr.participantsSortDesc, icon: ArrowDown }
 ];
 
-const COLUMNS = { flat: 'xl:grid-cols-[repeat(8,auto)]', grouped: 'xl:grid-cols-[repeat(7,auto)]' };
-const ROW = 'xl:col-span-full xl:grid xl:grid-cols-subgrid xl:items-center xl:gap-x-4';
+// From xl the rows share one grid (subgrid; the gap is the grid's, a subgrid's own would pad every
+// cell). Pills never wrap and a cell with several (diet, status) stacks them, so each of those
+// columns is as wide as its longest pill. The first column, the name with the group under it, is
+// the one that gives: at least 11rem, up to its longest line; any width left spreads the pills.
+const COLUMNS = 'xl:grid xl:grid-cols-[minmax(11rem,max-content)_repeat(6,auto)] xl:gap-x-4';
+const ROW = 'xl:col-span-full xl:grid xl:grid-cols-subgrid xl:items-center xl:[column-gap:normal]';
+// A cell holding several pills: inline with the card's other pills below xl, stacked in the table.
+const STACK = 'contents xl:flex xl:flex-col xl:items-start xl:gap-1.5';
 
-// A pill's text wraps inside its column from lg, so the columns can stay narrow.
-const WRAP = 'xl:whitespace-normal';
+const SortButton = ({ label, active, dir, onSort }) => (
+  <button
+    type="button"
+    onClick={onSort}
+    aria-pressed={active}
+    className={cx('inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap text-left font-semibold hover:text-ink', active && 'text-ink')}
+  >
+    {label}
+    {active ? (dir === 'asc' ? <ArrowUp aria-hidden="true" className="size-4 text-neon" /> : <ArrowDown aria-hidden="true" className="size-4 text-neon" />)
+      : <ArrowUpDown aria-hidden="true" className="size-4 opacity-60" />}
+  </button>
+);
 
-const SortHeader = ({ label, active, dir, onSort }) => (
-  <span role="columnheader" aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-    <button
-      type="button"
-      onClick={onSort}
-      className="inline-flex min-h-9 items-center gap-1.5 text-left font-semibold hover:text-ink"
-    >
-      {label}
-      {active ? (dir === 'asc' ? <ArrowUp aria-hidden="true" className="size-4 text-neon" /> : <ArrowDown aria-hidden="true" className="size-4 text-neon" />)
-        : <ArrowUpDown aria-hidden="true" className="size-4 opacity-60" />}
-    </button>
+const Header = ({ children, className }) => <span role="columnheader" className={cx('whitespace-nowrap', className)}>{children}</span>;
+
+const DietPills = ({ row }) => row.dietaryValues.map((value, index) => (
+  <Tag key={value} icon={DIETARY_ICONS[value]}>{row.dietary[index]}</Tag>
+));
+
+const SleepingPill = ({ row }) => row.sleeping && <Tag icon={ACCOMMODATION_ICONS[row.sleepingValue]}>{row.sleeping}</Tag>;
+
+const groupOf = row => fr.participantsGroupOf.replace('{ofName}', ofName(row.contact));
+
+const GroupLine = ({ row, className }) => (
+  <span className={cx('flex min-w-0 items-start gap-1.5 text-sm text-faint', className)}>
+    <UsersRound aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+    <span className="min-w-0 break-words">{groupOf(row)}</span>
   </span>
 );
 
-const Header = ({ children }) => <span role="columnheader">{children}</span>;
-
-const DietPills = ({ row }) => row.dietaryValues.map((value, index) => (
-  <Tag key={value} icon={DIETARY_ICONS[value]} className={WRAP}>{row.dietary[index]}</Tag>
-));
-
-const SleepingPill = ({ row }) => row.sleeping && <Tag icon={ACCOMMODATION_ICONS[row.sleepingValue]} className={WRAP}>{row.sleeping}</Tag>;
-
+// Below xl a card: the name, its group under it and « Détails » on top, then the pills on as many
+// lines as they need. From xl the same cells are the table's columns (the pills' wrapper becomes
+// display: contents) and « Détails » is an icon at the end of the row.
 const ParticipantRow = ({ row, grouped, onDetails }) => {
   const hasDetails = !!(row.dietaryOther || row.sleepingOther);
   return (
-    <div role="row" className={cx('flex flex-col gap-2 border-b border-line px-4 py-3 last:border-b-0 xl:px-5', ROW)}>
-      <div role="cell" className="flex min-w-0 items-start justify-between gap-3 xl:contents">
-        <span data-participant-name className="min-w-0 break-words font-semibold text-ink xl:min-w-min xl:py-1">{row.name || fr.notSpecified}</span>
-        {hasDetails && (
+    <div role="row" className={cx('grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2.5 border-b border-line px-4 py-3 last:border-b-0 xl:px-5 xl:py-2.5', ROW)}>
+      <span role="cell" className="flex min-w-0 flex-col gap-0.5 self-center">
+        <span data-participant-name className="break-words font-semibold text-ink">{row.name || fr.notSpecified}</span>
+        {grouped || <GroupLine row={row} />}
+      </span>
+      <div className="col-span-full flex flex-wrap items-center gap-1.5 xl:contents">
+        <span role="cell" className="contents xl:block"><Tag>{row.type}</Tag></span>
+        <span role="cell" className="contents xl:block">{row.participation && <Tag>{row.participation}</Tag>}</span>
+        <span role="cell" className={STACK}><DietPills row={row} /></span>
+        <span role="cell" className="contents xl:block"><SleepingPill row={row} /></span>
+        <span role="cell" className={STACK}>
+          <Tag tone={row.waitlisted ? 'warn' : 'ok'}>{row.status}</Tag>
+          {row.firstTime && <Tag tone="neon">{fr.firstTimeTag}</Tag>}
+        </span>
+      </div>
+      {hasDetails && (
+        <span role="cell" className="col-start-2 row-start-1 xl:col-start-auto xl:row-start-auto">
           <button
             type="button"
             onClick={() => onDetails(row)}
             aria-label={`${fr.participantsDetails}: ${row.name}`}
-            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-semibold text-muted hover:border-edge hover:text-ink xl:order-last"
+            title={fr.participantsDetails}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-semibold text-muted hover:border-edge hover:text-ink xl:size-9 xl:justify-center xl:px-0"
           >
             <Info aria-hidden="true" className="size-4" />
-            {fr.participantsDetails}
+            <span className="xl:sr-only">{fr.participantsDetails}</span>
           </button>
-        )}
-      </div>
-      {grouped
-        ? null
-        : <span role="cell" className="min-w-0 break-words text-sm text-faint xl:min-w-min xl:text-base xl:text-muted">{row.contact}</span>}
-      <div className="flex flex-wrap items-center gap-1.5 xl:contents">
-        <span role="cell"><Tag>{row.type}</Tag></span>
-        <span role="cell">{row.participation && <Tag className={WRAP}>{row.participation}</Tag>}</span>
-        <span role="cell" className="contents xl:flex xl:flex-wrap xl:gap-1.5"><DietPills row={row} /></span>
-        <span role="cell" className="contents xl:block"><SleepingPill row={row} /></span>
-        <span role="cell" className="contents xl:flex xl:flex-wrap xl:gap-1.5">
-          <Tag tone={row.waitlisted ? 'warn' : 'ok'}>{row.status}</Tag>
-          {row.firstTime && <Tag tone="neon" className={WRAP}>{fr.firstTimeTag}</Tag>}
         </span>
-      </div>
+      )}
     </div>
   );
 };
@@ -102,10 +117,10 @@ const Field = ({ label, children }) => (
 );
 
 const DetailsDialog = ({ row, onClose }) => (
-  <Dialog open={!!row} onClose={onClose} title={row ? fr.participantsDetailsTitle.replace('{name}', row.name || fr.notSpecified) : ''} size="sm">
+  <Dialog open={!!row} onClose={onClose} title={row ? fr.participantsDetailsTitle.replace('{ofName}', ofName(row.name || fr.notSpecified)) : ''} size="sm">
     {row && (
       <div className="space-y-6 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
-        <p className="text-sm text-muted">{fr.participantsGroupOf.replace('{name}', row.contact)}</p>
+        <GroupLine row={row} className="text-muted" />
         {row.dietaryOther && (
           <Section icon={Utensils} title={fr.participantsDietSection}>
             <div className="flex flex-wrap gap-1.5"><DietPills row={row} /></div>
@@ -124,7 +139,7 @@ const DetailsDialog = ({ row, onClose }) => (
 );
 
 const SortDialog = ({ open, sort, onChange, onClose }) => (
-  <Dialog open={open} onClose={onClose} title={fr.participantsSortLabel} size="sm">
+  <Dialog open={open} onClose={onClose} title={fr.participantsSortButton} size="sm">
     <div className="space-y-5 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
       <ChipGroup label={fr.participantsSortLabel} options={SORT_KEYS} value={sort.key} onChange={key => onChange({ ...sort, key })} />
       <ChipGroup label={fr.participantsSortDirection} options={SORT_DIRECTIONS} value={sort.dir} onChange={dir => onChange({ ...sort, dir })} />
@@ -177,22 +192,28 @@ const ParticipantsView = ({ parties }) => {
         <EmptyState icon={UsersRound} title={rows.length ? fr.participantsNone : fr.participantsEmpty} />
       ) : (
         <div role="table" aria-label={fr.participantsListLabel} className="overflow-hidden rounded-card border border-line bg-surface">
-          <div className={cx('xl:grid', grouped ? COLUMNS.grouped : COLUMNS.flat)}>
+          <div className={COLUMNS}>
             <div role="row" className={cx('hidden border-b border-line px-5 py-2 text-sm text-faint', ROW)}>
-              <SortHeader label={fr.exportAttendeeName} active={sort.key === 'name'} dir={sort.dir} onSort={() => sortBy('name')} />
-              {!grouped && <SortHeader label={fr.participantsColumnGroup} active={sort.key === 'group'} dir={sort.dir} onSort={() => sortBy('group')} />}
+              {/* The first column sorts by name, or (flat) by group: the group is the line under each name. */}
+              <span role="columnheader" aria-sort={sort.key === 'name' || !grouped ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} className="flex items-center gap-4">
+                <SortButton label={fr.exportAttendeeName} active={sort.key === 'name'} dir={sort.dir} onSort={() => sortBy('name')} />
+                {grouped || <SortButton label={fr.participantsColumnGroup} active={sort.key === 'group'} dir={sort.dir} onSort={() => sortBy('group')} />}
+              </span>
               <Header>{fr.exportAttendeeType}</Header>
               <Header>{fr.exportParticipation}</Header>
-              <Header>{fr.exportDietaryNeeds}</Header>
-              <Header>{fr.exportSleepingPref}</Header>
+              <Header>{fr.participantsDietSection}</Header>
+              <Header>{fr.participantsSleepingSection}</Header>
               <Header>{fr.exportStatus}</Header>
-              <span aria-hidden="true" />
+              <Header className="sr-only">{fr.participantsDetails}</Header>
             </div>
             {visible.map((row, index) => (
               <Fragment key={row.key}>
                 {grouped && visible[index - 1]?.partyId !== row.partyId && (
                   <div role="row" className="border-b border-line bg-raised px-4 py-2 text-sm font-semibold text-muted xl:col-span-full xl:px-5">
-                    <span role="cell" className="break-words">{fr.participantsGroupOf.replace('{name}', row.contact)}</span>
+                    <span role="cell" className="flex min-w-0 items-start gap-1.5">
+                      <UsersRound aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                      <span className="min-w-0 break-words">{groupOf(row)}</span>
+                    </span>
                   </div>
                 )}
                 <ParticipantRow row={row} grouped={grouped} onDetails={setDetails} />

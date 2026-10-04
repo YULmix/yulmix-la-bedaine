@@ -177,7 +177,7 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
   await expect(page.getByText('Pas de coriandre')).toHaveCount(0);
   await expect(page.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) })).toHaveCount(1);
   await zoe.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) }).click();
-  const dialog = page.getByRole('dialog', { name: fr.participantsDetailsTitle.replace('{name}', ZOE.name) });
+  const dialog = page.getByRole('dialog', { name: fr.participantsDetailsTitle.replace('{ofName}', `de ${ZOE.name}`) });
   await expect(dialog.getByText('Pas de coriandre')).toBeVisible();
   await dialog.getByRole('button', { name: fr.close }).first().click();
   await expect(dialog).toBeHidden();
@@ -185,16 +185,16 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
   // Sort by name, then group them: the toggle is off by default.
   const toggle = page.getByRole('switch', { name: fr.participantsGroupBy });
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
-  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button').click();
+  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button', { name: fr.exportAttendeeName, exact: true }).click();
   await expect(page.getByRole('columnheader', { name: fr.exportAttendeeName })).toHaveAttribute('aria-sort', 'ascending');
   const names = await page.getByRole('main').locator('[data-participant-name]').allTextContents();
   expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'fr')));
-  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button').click();
+  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button', { name: fr.exportAttendeeName, exact: true }).click();
   await expect(page.getByRole('columnheader', { name: fr.exportAttendeeName })).toHaveAttribute('aria-sort', 'descending');
   expect(await page.getByRole('main').locator('[data-participant-name]').allTextContents()).toEqual([...names].reverse());
   await toggle.click();
   // One header per party: the member's, the admin's and the waitlisted one's.
-  await expect(page.getByText(/^Groupe de /)).toHaveCount(3);
+  await expect(page.getByText(/^Groupe d(e |')/)).toHaveCount(3);
 });
 
 test('« Participants » is for Comité and up, not members; usable on a phone', async ({ page }) => {

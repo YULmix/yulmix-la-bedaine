@@ -87,7 +87,7 @@ const AdminUserManagement = ({
   return (
     <section className="space-y-4">
       <AdminHeaderActions>
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-80">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-faint" />
           <Input
             type="search"
