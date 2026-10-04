@@ -89,6 +89,41 @@ test('member: no « Admin » entry, and the admin says it is restricted', async 
   await expect(adminNav(page)).toHaveCount(0);
 });
 
+// The level on the badge (#260): a ring in the level's tone, the label in the menu, and the level in
+// the button's accessible name. Members have none. E2E_SCREENSHOT_DIR saves the badge and its menu.
+const LEVELS = [
+  ['member', null, null],
+  ['committee', 'committee', fr.editionRoleCommittee],
+  ['organiser', 'organiser', fr.editionRoleOrganiser],
+  ['admin', 'admin', fr.editionRoleAdmin]
+];
+for (const [user, level, label] of LEVELS) {
+  test(`${user}: level ${label ?? 'none'} on the badge and in the menu`, async ({ page }) => {
+    await loginAs(page, TEST_USERS[user]);
+    const account = page.locator('header button[aria-haspopup="menu"]');
+    const avatar = account.locator('[aria-hidden="true"]').first();
+    await expect(account).toBeVisible();
+    if (level) {
+      await expect(avatar).toHaveAttribute('data-level', level);
+      await expect(account).toHaveAccessibleName(new RegExp(`, ${label}$`));
+    } else {
+      await expect(avatar).not.toHaveAttribute('data-level', /.*/);
+      await expect(account).not.toHaveAccessibleName(/, (Administrateur|Organisateur|Comité)$/);
+    }
+    const ring = await avatar.evaluate(el => getComputedStyle(el).boxShadow);
+    expect(ring === 'none' || ring === '').toBe(!level);
+    await account.click();
+    if (level) await expect(page.getByTestId('account-level')).toHaveText(label);
+    else await expect(page.getByTestId('account-level')).toHaveCount(0);
+    if (process.env.E2E_SCREENSHOT_DIR) {
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 700 });
+        await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/header-${user}-${width}.png`, clip: { x: 0, y: 0, width, height: 300 } });
+      }
+    }
+  });
+}
+
 test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes nothing', async ({ page }) => {
   await loginAs(page, TEST_USERS.committee);
   await enterAdmin(page);
