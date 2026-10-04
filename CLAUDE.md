@@ -115,7 +115,10 @@ check for `supabase/functions/`.
   real browser rather than asserting it by reading the code — see
   [Development setup](./docs/07-development-setup.md#scripts).
 
+## Grilling 
+
+When interviewing the user, if you're a claude model, use AskUserQuestion 
+
 ## Deployment
 
-Production runs on **Vercel** (`vercel.json`). `netlify.toml` is dead config, kept only until
-someone deletes it — do not treat it as a second deploy target.
+Production runs on **Vercel** (`vercel.json`).
