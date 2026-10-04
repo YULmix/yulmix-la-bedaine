@@ -37,6 +37,8 @@ export const hasRole = (role: AccessRole | null | undefined, min: AccessRole): b
 export const ACTION_ROLES = {
   /** Résumé's budget card (the budget itself is Organisateur and above). */
   budgetFigures: 'organiser',
+  /** Résumé's email problems (email_log, #93). */
+  emailProblems: 'organiser',
   /** Inscrits' « Exporter ». */
   exportData: 'organiser',
   /** Inscrits' payment toggle. */

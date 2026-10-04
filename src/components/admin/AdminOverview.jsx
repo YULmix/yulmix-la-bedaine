@@ -40,7 +40,8 @@ const TIER_LABEL_KEYS = {
 // are the event's sleeping places (the event places module's `available`, #193); without any, the bed counts stand in.
 // `showBudget` false (Comité, #217) leaves the budget card out. Without `onOpenParty`, the email
 // problems name their parties without opening them.
-const AdminOverview = ({ event, budget, showBudget = true, parties, places, onOpenParty }) => {
+// `showEmailProblems` false (Comité) leaves out the emails to follow up.
+const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
@@ -71,7 +72,7 @@ const AdminOverview = ({ event, budget, showBudget = true, parties, places, onOp
   return (
     <div className="@container space-y-6">
 
-      <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
+      {showEmailProblems && <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />}
       {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}
 
       {/* KPI strip: one ruled row, not a grid of identical cards. */}

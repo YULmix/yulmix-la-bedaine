@@ -15,7 +15,7 @@ describe('the role ladder (#217, ADR 0023)', () => {
   test('Comité only reads; Organisateur runs the edition; editing a registration and the admin flag are an admin\'s', () => {
     const allowed = role => Object.keys(ACTION_ROLES).filter(action => can(role, action)).sort();
     expect(allowed('committee')).toEqual([]);
-    expect(allowed('organiser')).toEqual(['budgetFigures', 'exportData', 'markPayment', 'saveLogistics']);
+    expect(allowed('organiser')).toEqual(['budgetFigures', 'emailProblems', 'exportData', 'markPayment', 'saveLogistics']);
     expect(allowed('admin')).toEqual(Object.keys(ACTION_ROLES).sort());
     expect(allowed(null)).toEqual([]);
   });

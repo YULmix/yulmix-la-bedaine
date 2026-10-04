@@ -40,7 +40,8 @@ const OverviewSection = () => {
 
   return (
     <>
-      <AdminOverview event={activeEvent} budget={budget.budget} showBudget={showBudget} parties={parties} places={places}
+      <AdminOverview event={activeEvent} budget={budget.budget} showBudget={showBudget}
+        showEmailProblems={can(role, 'emailProblems')} parties={parties} places={places}
         onOpenParty={canEdit ? setEditingParty : undefined} />
       {canEdit && <PartyEditDialog party={editingParty} event={activeEvent} onClose={() => setEditingParty(null)} onSaved={handleSaved} />}
     </>

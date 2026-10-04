@@ -11,11 +11,14 @@ import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ORGANISER_ID,
   deleteLocations,
+  deleteVenueGalleries,
   getEditionRole,
   getParty,
   grantEditionRoles,
   revokeEditionRoles,
   seedActiveEventWithMemberParty,
+  seedEmailLog,
+  seedGallery,
   seedPlaces,
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
@@ -35,11 +38,15 @@ test.beforeEach(async () => {
   seeded = await seedActiveEventWithMemberParty();
   await seedPlaces(seeded.eventId);
   await grantEditionRoles(seeded.eventId);
+  // The venue's assignments gallery (Comité and above) and an email to follow up (Organisateur and above).
+  await seedGallery(seeded.eventId, { kind: 'assignments' }, 1);
+  await seedEmailLog(seeded.partyId, [{ template: 'payment', status: 'failed', recipient: 'member@test.local', error: 'e2e' }]);
 });
 
 test.afterEach(async () => {
   if (seeded) {
     await revokeEditionRoles(seeded.eventId);
+    await deleteVenueGalleries(seeded.eventId);
     await deleteLocations(seeded.eventId);
     await teardownActiveEventWithMemberParty(seeded);
   }
@@ -49,6 +56,10 @@ test.afterEach(async () => {
 const panel = page => adminMain(page);
 const navLinks = page => adminNav(page).getByRole('link');
 const sectionNames = (...keys) => keys.map(key => fr[key]);
+const assignmentsGallery = page => page.getByRole('button', {
+  name: fr.galleryOpen.replace('{name}', `E2E Venue · ${fr.galleryVenueAssignmentsTitle}`).replace('{count}', 1)
+});
+const emailProblems = page => panel(page).getByText(fr.emailProblemsTitleOne.replace('{count}', 1));
 
 // The admin, entered from the header's « Admin » link, as a person would.
 async function enterAdmin(page) {
@@ -85,6 +96,8 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   // Résumé without the budget card.
   await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle })).toBeVisible();
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toHaveCount(0);
+  // Nor the emails to follow up: those are Organisateur's.
+  await expect(emailProblems(page)).toHaveCount(0);
 
   // Inscrits: the list, read-only. The payment is a tag, not a toggle.
   await page.goto('/admin/users');
@@ -103,6 +116,7 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await expect(panel(page).getByRole('combobox')).toHaveCount(0);
   await expect(panel(page).getByRole('textbox')).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: fr.save, exact: true })).toHaveCount(0);
+  await expect(assignmentsGallery(page)).toBeVisible();
   for (const view of ['logisticsViewFood', 'logisticsViewVolunteering', 'logisticsViewTransport', 'logisticsViewComments']) {
     await expect(adminNav(page).getByRole('link', { name: fr[view] })).toBeVisible();
   }
@@ -117,6 +131,11 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
   await enterAdmin(page);
   await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabUsers', 'adminTabLogistics', 'adminTabBudget'));
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toBeVisible();
+  await expect(emailProblems(page)).toBeVisible();
+  // The list names the party; opening it is the admin's god-mode editor.
+  await panel(page).getByRole('button', { name: fr.emailProblemsShow }).click();
+  await expect(panel(page).locator('#email-problems-list')).toContainText(MEMBER_NAME);
+  await expect(panel(page).getByRole('button', { name: fr.emailProblemsOpenParty })).toHaveCount(0);
 
   // Inscrits: the payment toggle and the export, but neither the editor nor the admin flag.
   await page.goto('/admin/users');
@@ -132,6 +151,7 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
 
   // Logistique: assign a place and save it.
   await page.goto('/admin/logistics');
+  await expect(assignmentsGallery(page)).toBeVisible();
   const picker = panel(page).getByRole('combobox', { name: `${fr.logisticsTableSleepingAssigned}, ${ALICE}` });
   await pickPlace(page, picker, 'Chambre 1 · Lit A');
   await panel(page).getByRole('button', { name: fr.save, exact: true }).click();
