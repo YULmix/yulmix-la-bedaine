@@ -97,7 +97,8 @@ This codebase was built mostly by prompting, and that will continue. What makes 
   `AGENTS.md`/`CLAUDE.md`/`.clinerules`; personal shell or OS setup belongs in the individual's own
   config, never in a tracked file.
 - **Verify, don't trust.** An agent will report "build passes, all tests green" because the pricing
-  script exits 0 while `npm test` is red. Run the commands.
+  script exits 0 while `npm test` is red. Run the commands. A UI change also passes the
+  [UI checklist](./05-frontend-guide.md#ui-checklist) (screenshots on the demo seed, swipe, icons).
 - **Small scopes.** "Fix the counts trigger and its callers" is a good task. "Refactor AdminView" is
   how you get a 1,364-line file rewritten in a way nobody can review.
 
