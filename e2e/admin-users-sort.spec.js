@@ -1,5 +1,5 @@
 // Inscrits « Liste » sorting (#259): by name (default), « Inscrit le » and « Modifié le », from the
-// column headers (aria-sort) or, below lg, the « Trier » sheet shared with « Participants »; the
+// column headers (aria-sort) or, below xl, the « Trier » sheet shared with « Participants »; the
 // choice is in ?tri=.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -154,7 +154,7 @@ test('« Inscrits » sorted screenshots', async ({ page }) => {
     await page.goto('/admin/users?tri=-inscription');
     await expect(rows(page).first()).toBeVisible();
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscrits-sorted-admin-${width}.png` });
-    if (width < 1024) {
+    if (width < 1280) {
       await panel(page).getByRole('button', { name: fr.participantsSortButton }).click();
       await page.waitForTimeout(500);
       await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscrits-sortmenu-admin-${width}.png` });

@@ -29,7 +29,9 @@ const FILTERS = [
 
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
-const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_6rem_7rem_8.5rem_8.5rem]';
+// The table from xl, as « Participants »: at lg (1024) the seven columns leave the name and the
+// email no room (#259 added the two dates); below xl each party is a card.
+const GRID_COLUMNS = 'xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_6rem_7rem_8.5rem_8.5rem]';
 
 const SORT_LABEL_KEYS = { name: 'logisticsTableName', registered: 'partyDetailRegisteredOn', modified: 'sortModifiedOn' };
 const SORT_OPTIONS = PARTY_SORT_KEYS.map(key => ({ value: key, label: fr[SORT_LABEL_KEYS[key]] }));
@@ -110,7 +112,7 @@ const AdminUserManagement = ({
         .some(value => value?.toLowerCase().includes(needle));
     });
   }, [parties, query, filter, counts, sort]);
-  useFitToViewport(listRef, { fromWidth: 1024, deps: [visible] });
+  useFitToViewport(listRef, { fromWidth: 1280, deps: [visible] });
 
   return (
     <section className="space-y-4">
@@ -130,8 +132,8 @@ const AdminUserManagement = ({
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
-      {/* Below lg there are no column headers: the « Trier » sheet, as in « Participants ». */}
-      <div className="flex items-center gap-3 lg:hidden">
+      {/* Below xl there are no column headers: the « Trier » sheet, as in « Participants ». */}
+      <div className="flex items-center gap-3 xl:hidden">
         <span className="text-sm text-faint">
           {fr[SORT_LABEL_KEYS[sort.key]]} · {sort.direction === 'asc' ? fr.participantsSortAsc : fr.participantsSortDesc}
         </span>
@@ -142,7 +144,7 @@ const AdminUserManagement = ({
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
       ) : (
         <div role="table" aria-label={fr.adminTabUsersShort} className="overflow-hidden rounded-card border border-line bg-surface">
-          <div role="row" className={`hidden lg:grid ${GRID_COLUMNS} lg:items-center lg:gap-4 border-b border-line px-5 py-1 text-sm font-semibold text-faint`}>
+          <div role="row" className={`hidden xl:grid ${GRID_COLUMNS} xl:items-center xl:gap-4 border-b border-line px-5 py-1 text-sm font-semibold text-faint`}>
             <SortHeader sortKey="name" sort={sort} onSort={onSort} />
             <span role="columnheader">{fr.logisticsTableEmail}</span>
             <span role="columnheader">{fr.peopleColumn}</span>
@@ -152,7 +154,7 @@ const AdminUserManagement = ({
             <SortHeader sortKey="modified" sort={sort} onSort={onSort} />
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
-          <div role="rowgroup" ref={listRef} className="relative divide-y divide-line lg:overflow-y-auto lg:overscroll-contain">
+          <div role="rowgroup" ref={listRef} className="relative divide-y divide-line xl:overflow-y-auto xl:overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
@@ -163,9 +165,9 @@ const AdminUserManagement = ({
                 <div
                   role="row"
                   key={party.id}
-                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} lg:gap-4 lg:px-5 lg:py-3`}
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} xl:gap-4 xl:px-5 xl:py-3`}
                 >
-                  <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted lg:hidden">
+                  <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted xl:hidden">
                     {initials(profile.full_name || profile.email)}
                   </span>
                   <div role="cell" className="min-w-0">
@@ -175,22 +177,22 @@ const AdminUserManagement = ({
                     >
                       {profile.full_name || fr.notSpecified}
                     </button>
-                    <p className="text-sm text-faint lg:hidden">
+                    <p className="text-sm text-faint xl:hidden">
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
                     {sort.key !== 'name' && (
-                      <p className="text-sm text-faint lg:hidden">
+                      <p className="text-sm text-faint xl:hidden">
                         {fr[SORT_LABEL_KEYS[sort.key]]} {formatDate(sort.key === 'registered' ? party.created_at : partyModifiedAt(party))}
                       </p>
                     )}
                   </div>
-                  <span role="cell" className="font-data text-base text-ink lg:hidden">{formatCurrency(amount)}</span>
+                  <span role="cell" className="font-data text-base text-ink xl:hidden">{formatCurrency(amount)}</span>
 
-                  <span role="cell" className="col-span-3 hidden break-all text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
-                  <span role="cell" className="hidden font-data text-sm text-muted lg:block">{people}</span>
-                  <span role="cell" className="hidden text-right font-data text-ink lg:block">{formatCurrency(amount)}</span>
+                  <span role="cell" className="col-span-3 hidden break-all text-sm text-muted xl:col-span-1 xl:block">{profile.email}</span>
+                  <span role="cell" className="hidden font-data text-sm text-muted xl:block">{people}</span>
+                  <span role="cell" className="hidden text-right font-data text-ink xl:block">{formatCurrency(amount)}</span>
 
-                  <div role="cell" className="col-span-3 flex items-center gap-3 lg:contents">
+                  <div role="cell" className="col-span-3 flex items-center gap-3 xl:contents">
                     {isCancelled ? (
                       <Tag className="justify-self-start">{getRegistrationStatusLabel(party.status)}</Tag>
                     ) : !onPaymentToggle ? (
@@ -205,8 +207,8 @@ const AdminUserManagement = ({
                       </button>
                     )}
                   </div>
-                  <span role="cell" className="hidden text-sm text-muted lg:block">{formatDate(party.created_at)}</span>
-                  <span role="cell" className="hidden text-sm text-muted lg:block">{party.last_edited_at ? formatDate(party.last_edited_at) : <span aria-label={fr.neverEditedMessage}>—</span>}</span>
+                  <span role="cell" className="hidden text-sm text-muted xl:block">{formatDate(party.created_at)}</span>
+                  <span role="cell" className="hidden text-sm text-muted xl:block">{party.last_edited_at ? formatDate(party.last_edited_at) : <span aria-label={fr.neverEditedMessage}>—</span>}</span>
                 </div>
               );
             })}

@@ -51,13 +51,13 @@ test('Inscrits screenshots', async ({ page }) => {
     await page.goto('/admin/users');
     await expect(page.getByRole('main').getByRole('table')).toBeVisible();
     await shot('liste', width);
-    if (width < 1024) {
+    if (width < 1280) {
       await page.getByRole('main').getByRole('button', { name: fr.participantsSortButton }).click();
       await settle();
       await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/liste-sortmenu-admin-${width}.png` });
       await page.keyboard.press('Escape');
     }
-    // Sorted by a date, the dates show (in the table from lg, under each name below).
+    // Sorted by a date, the dates show (in the table from xl, under each name below).
     await page.goto('/admin/users?tri=-modification');
     await expect(page.getByRole('main').getByRole('table')).toBeVisible();
     await shot('liste-sorted', width);
