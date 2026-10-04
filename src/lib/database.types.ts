@@ -34,6 +34,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_role_log: {
+        Row: {
+          actor_id: string | null
+          changed_at: string
+          granted: boolean
+          id: number
+          user_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          changed_at?: string
+          granted: boolean
+          id?: never
+          user_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          changed_at?: string
+          granted?: boolean
+          id?: never
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_role_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_role_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "admin_role_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_role_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       app_feedback: {
         Row: {
           content: string

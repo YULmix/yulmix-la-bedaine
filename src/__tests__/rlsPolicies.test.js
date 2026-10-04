@@ -3041,7 +3041,7 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     clients.member = await signIn('member@test.local');
     clients.committee = await signIn('committee@test.local');
     clients.organiser = await signIn('organiser@test.local');
-    for (const label of ['registrantA', 'registrantB', 'otherCommittee']) throwaway[label] = await createUser(label);
+    for (const label of ['registrantA', 'registrantB', 'otherCommittee', 'adminFlag']) throwaway[label] = await createUser(label);
     clients.otherCommittee = await signIn(throwaway.otherCommittee.email);
 
     await ok(admin.from('events').upsert([
@@ -3079,6 +3079,10 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ]) {
       await ok(admin.rpc('set_edition_role', { p_event_id: eventId, p_user_id: userId, p_role: role }));
     }
+    // An admin grant and its removal (#256), for admin_role_log to hold rows.
+    for (const flag of [true, false]) {
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: throwaway.adminFlag.id, new_is_admin: flag }));
+    }
   });
 
   afterAll(async () => {
@@ -3112,6 +3116,7 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ['its places (event_places)', c => c.rpc('event_places', { p_event_id: EVENT_A }), TEAM_A],
     ['its budget', c => c.from('event_budgets').select('event_id').eq('event_id', EVENT_A), ORGANISERS_A],
     ['its role log', c => c.from('edition_role_log').select('id').eq('event_id', EVENT_A), ADMIN],
+    ['the admin grants log (#256)', c => c.from('admin_role_log').select('id').eq('user_id', throwaway.adminFlag.id), ADMIN],
     ["edition B's party", c => c.from('user_parties').select('id').eq('id', partyB), only('admin', 'otherCommittee')],
     ["edition B's registrant's profile", c => c.from('profiles').select('id').eq('id', throwaway.registrantB.id), only('admin', 'otherCommittee')],
     ["edition B's budget", c => c.from('event_budgets').select('event_id').eq('event_id', EVENT_B), ADMIN],
@@ -3233,7 +3238,20 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ["one's own role, upwards",
       c => c.from('edition_roles').update({ role: 'organiser' }).eq('event_id', EVENT_A).eq('user_id', COMMITTEE_ID),
       async () => (await ok(admin.from('edition_roles').select('role').eq('event_id', EVENT_A).eq('user_id', COMMITTEE_ID).single())).role === 'organiser',
-      () => ok(admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: COMMITTEE_ID, p_role: 'committee' })), ADMIN]
+      () => ok(admin.rpc('set_edition_role', { p_event_id: EVENT_A, p_user_id: COMMITTEE_ID, p_role: 'committee' })), ADMIN],
+    // admin_role_log (#256): only its trigger writes it. Nothing lands, so there is nothing to undo.
+    ['the admin grants log by a direct insert',
+      c => c.from('admin_role_log').insert({ user_id: MEMBER_ID, granted: true }),
+      async () => (await ok(admin.from('admin_role_log').select('id').eq('user_id', MEMBER_ID))).length > 0,
+      async () => {}, NOBODY],
+    ['the admin grants log by a direct update',
+      c => c.from('admin_role_log').update({ granted: false }).eq('user_id', throwaway.adminFlag.id),
+      async () => !(await ok(admin.from('admin_role_log').select('granted').eq('user_id', throwaway.adminFlag.id))).some(row => row.granted),
+      async () => {}, NOBODY],
+    ['the admin grants log by a direct delete',
+      c => c.from('admin_role_log').delete().eq('user_id', throwaway.adminFlag.id),
+      async () => (await ok(admin.from('admin_role_log').select('id').eq('user_id', throwaway.adminFlag.id))).length < 2,
+      async () => {}, NOBODY]
   ];
 
   test.each(WRITES)('writes %s', async (_label, attempt, landed, undo, expected) => {
@@ -3326,6 +3344,41 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ]);
   });
 
+  // #256: admin_role_log gets one row per actual flip of is_admin, with its author.
+  test('every admin grant and removal is logged with its author, and only those', async () => {
+    const target = await createUser('flipped');
+    try {
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: target.id, new_is_admin: true }));
+      // Granting admin to an admin, or another column's update, changes nothing: no row.
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: target.id, new_is_admin: true }));
+      await ok(admin.from('profiles').update({ full_name: 'Flipped' }).eq('id', target.id));
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: target.id, new_is_admin: false }));
+      await ok(admin.rpc('admin_set_is_admin', { target_user_id: target.id, new_is_admin: false }));
+
+      const log = await ok(admin.from('admin_role_log').select('user_id, actor_id, granted, changed_at')
+        .eq('user_id', target.id).order('id'));
+      expect(log.map(({ changed_at: _at, ...row }) => row)).toEqual([
+        { user_id: target.id, actor_id: ADMIN_ID, granted: true },
+        { user_id: target.id, actor_id: ADMIN_ID, granted: false }
+      ]);
+      expect(log.every(row => row.changed_at)).toBe(true);
+      // Nobody but an admin reads it.
+      for (const role of ['member', 'committee', 'organiser']) {
+        expect(await ok(clients[role].from('admin_role_log').select('id').eq('user_id', target.id))).toEqual([]);
+      }
+    } finally {
+      await adminClient.auth.admin.deleteUser(target.id);
+    }
+  });
+
+  test("a member can't make themself admin, and nothing is logged", async () => {
+    const before = await ok(admin.from('admin_role_log').select('id').eq('user_id', MEMBER_ID));
+    await clients.member.from('profiles').update({ is_admin: true }).eq('id', MEMBER_ID);
+    const profile = await ok(admin.from('profiles').select('is_admin').eq('id', MEMBER_ID).single());
+    expect(profile.is_admin).not.toBe(true);
+    expect(await ok(admin.from('admin_role_log').select('id').eq('user_id', MEMBER_ID))).toEqual(before);
+  });
+
   test('becoming an admin, or deleting the account, removes the edition roles', async () => {
     const promoted = await createUser('promoted');
     const leaving = await createUser('leaving');
@@ -3342,6 +3395,9 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
       const removals = await ok(admin.from('edition_role_log').select('user_id, new_role')
         .in('user_id', [promoted.id, leaving.id]).is('new_role', null));
       expect(removals).toHaveLength(2);
+      // The promotion itself is one admin_role_log row (#256), next to its edition_role_log removal.
+      expect(await ok(admin.from('admin_role_log').select('actor_id, granted').eq('user_id', promoted.id)))
+        .toEqual([{ actor_id: ADMIN_ID, granted: true }]);
       // A deleted account has no role left to use either.
       expect(await ok(leavingClient.rpc('edition_role', { p_event_id: EVENT_A }))).toBeNull();
     } finally {

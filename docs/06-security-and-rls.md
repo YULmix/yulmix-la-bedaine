@@ -89,6 +89,7 @@ Derived from production's schema as captured in the baseline migration
 | `event_budgets` | Organisateur and above on its event (#109, #217; anon has no grant at all) | same | same | same |
 | `edition_roles` | admin, or one's own rows (#217) | admin only (or `set_edition_role()`) | admin only | admin only |
 | `edition_role_log` | admin only | *no grant*: the trigger writes it | *no grant* | *no grant* |
+| `admin_role_log` | admin only (#256) | *no grant*: the trigger on `profiles.is_admin` writes it | *no grant* | *no grant* |
 | `venues` | admin, or anyone (anon included) who can read an event held there, for its address (#145) and coordinates (#180) | admin only | admin only | **nobody**: no `DELETE` grant, venues are archived |
 | `locations`, `places`, `place_assignments` | admin, or a member for their own attendees' assignments and the places and locations those hold (#113; anon has no grant at all) | admin only | admin only | admin only; an occupied place, or its location, can't be deleted (foreign key) |
 | `event_place_overrides` | admin only (#145; anon has no grant at all) | admin only | admin only | admin only |
@@ -114,7 +115,8 @@ Notes on specific choices:
   `UPDATE` on `profiles`. The old `schema.sql` had a `REVOKE UPDATE (is_admin)`, but a column-level
   revoke can't narrow a table-level grant, so it did nothing. The real guards are
   `trg_prevent_self_privilege_escalation` and `trg_protect_root_admin`, and changing someone
-  else's admin flag goes through `admin_set_is_admin()`.
+  else's admin flag goes through `admin_set_is_admin()`. Every flip of the flag, by any path, is
+  logged in `admin_role_log` by `trg_log_admin_flag_change` (#256).
 - **A deleted account keeps no member access** (#36). `delete_my_account()` is the only way to
   set `profiles.deleted_at`. The `protect_profile_deleted_at` trigger keeps the stored value on any
   direct write by `authenticated`/`anon`. Every member-side policy on `profiles` (UPDATE),
