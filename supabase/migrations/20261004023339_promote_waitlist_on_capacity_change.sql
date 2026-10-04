@@ -79,6 +79,8 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.promote_waitlisted_parties() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.promote_waitlisted_on_capacity_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -92,10 +94,41 @@ END;
 $$;
 
 ALTER FUNCTION public.promote_waitlisted_on_capacity_change() OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.promote_waitlisted_on_capacity_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.promote_waitlisted_on_capacity_change() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE TRIGGER trg_promote_waitlisted_on_capacity_change
 AFTER UPDATE OF max_attendees ON public.events
 FOR EACH ROW
 WHEN (NEW.max_attendees IS DISTINCT FROM OLD.max_attendees)
 EXECUTE FUNCTION public.promote_waitlisted_on_capacity_change();
+
+-- A registration must read the capacity AFTER the per-event lock, or it can compute
+-- is_waitlisted from a capacity that a concurrent raise has just replaced (and nobody would
+-- promote it later). The lock is taken first on every path, including the unlimited one.
+-- Source: public.enforce_capacity_and_waitlist() in 20260929003000_attendees_table.sql (latest
+-- definition on origin/main); only the order of the lock and the SELECT changed.
+CREATE OR REPLACE FUNCTION public.enforce_capacity_and_waitlist()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_max_attendees INT;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext(NEW.event_id::text));
+
+    SELECT max_attendees INTO v_max_attendees
+    FROM public.events
+    WHERE id = NEW.event_id;
+
+    IF v_max_attendees IS NULL OR v_max_attendees <= 0 THEN
+        NEW.is_waitlisted := FALSE;
+        RETURN NEW;
+    END IF;
+
+    NEW.is_waitlisted := private.event_headcount(NEW.event_id, NEW.id) + private.party_size(NEW.id) > v_max_attendees;
+
+    RETURN NEW;
+END;
+$$;
