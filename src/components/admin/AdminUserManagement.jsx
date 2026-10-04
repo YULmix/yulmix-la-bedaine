@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Search, UsersRound } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, UsersRound } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import fr from '../../locales/fr.json';
 import {
   PAYMENT_STATUS,
@@ -7,7 +8,8 @@ import {
   getRegistrationStatusLabel,
   isActiveRegistration
 } from '../../lib/registrationOptions';
-import { formatCurrency } from '../../lib/format';
+import { formatCurrency, formatDate } from '../../lib/format';
+import { PARTY_SORT_KEYS, parsePartySort, partySortParam, partyModifiedAt, sortParties, toggledPartySort } from '../../lib/partySort';
 import { amountOwedOf } from '../../lib/adminStats';
 import { initials, plural } from '../../lib/eventDisplay';
 import { EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
@@ -26,7 +28,28 @@ const FILTERS = [
 
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
-const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
+const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_6rem_7rem_8.5rem_8.5rem]';
+
+const SORT_LABEL_KEYS = { name: 'logisticsTableName', registered: 'partyDetailRegisteredOn', modified: 'sortModifiedOn' };
+const ARIA_SORT = { asc: 'ascending', desc: 'descending' };
+
+// A sortable column header: a button inside a columnheader that carries aria-sort (#259).
+const SortHeader = ({ sortKey, sort, onSort, className }) => {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.direction === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <span role="columnheader" aria-sort={active ? ARIA_SORT[sort.direction] : 'none'} className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cx('inline-flex min-h-9 items-center gap-1.5 rounded-control font-semibold hover:text-ink', active ? 'text-ink' : 'text-faint')}
+      >
+        {fr[SORT_LABEL_KEYS[sortKey]]}
+        <Icon aria-hidden="true" className={cx('size-3.5', !active && 'opacity-60')} />
+      </button>
+    </span>
+  );
+};
 
 export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   <div role="group" aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
@@ -51,6 +74,39 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   </div>
 );
 
+// The phone's equivalent of the sortable headers: the same chips as Participants, plus the direction.
+const SortControl = ({ sort, onSort, onDirection }) => {
+  const DirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <div role="group" aria-label={fr.participantsSortLabel} className="flex flex-wrap items-center gap-2 lg:hidden">
+      <span className="text-sm text-faint">{fr.participantsSortLabel}</span>
+      {PARTY_SORT_KEYS.map(key => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={sort.key === key}
+          onClick={() => sort.key !== key && onSort(key)}
+          className={cx(
+            'inline-flex min-h-9 items-center rounded-full border px-3.5 text-sm font-semibold transition duration-150',
+            sort.key === key ? 'border-neon tint-neon text-ink' : 'border-line text-muted hover:border-edge hover:text-ink'
+          )}
+        >
+          {fr[SORT_LABEL_KEYS[key]]}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onDirection}
+        aria-label={sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending}
+        title={sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending}
+        className="inline-flex size-9 items-center justify-center rounded-full border border-line text-muted transition hover:border-edge hover:text-ink"
+      >
+        <DirectionIcon aria-hidden="true" className="size-4" />
+      </button>
+    </div>
+  );
+};
+
 // Registered parties: who they are, what they owe, whether they paid. A party's name opens its
 // « Inscription » (#258); editing it is from there. Payment changes go through the
 // parent, which confirms before writing. The search is in the page header; the
@@ -64,7 +120,18 @@ const AdminUserManagement = ({
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const listRef = useRef(null);
-  
+  // The sort is in the URL (?tri=), so it survives a reload and can be shared. A change replaces
+  // the entry, like the other admin view state, so Back leaves the page rather than undoing a sort.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sort = useMemo(() => parsePartySort(searchParams.get('tri')), [searchParams]);
+  const applySort = next => setSearchParams(prev => {
+    const params = new URLSearchParams(prev);
+    const value = partySortParam(next);
+    if (value) params.set('tri', value); else params.delete('tri');
+    return params;
+  }, { replace: true });
+  const onSort = key => applySort(toggledPartySort(sort, key));
+
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
     [parties]
@@ -74,14 +141,14 @@ const AdminUserManagement = ({
     const needle = query.trim().toLowerCase();
     // Falls back to "Tous" if the selected pill disappeared (its last party was re-registered).
     const activeFilter = FILTERS.find(f => f.id === filter && isShown(f, counts)) || FILTERS[0];
-    return parties.filter(party => {
+    return sortParties(parties, sort).filter(party => {
       if (!activeFilter.test(party)) return false;
       if (!needle) return true;
       const profile = party.profiles || {};
       return [profile.full_name, profile.email, ...(party.attendees || []).map(a => a.name)]
         .some(value => value?.toLowerCase().includes(needle));
     });
-  }, [parties, query, filter, counts]);
+  }, [parties, query, filter, counts, sort]);
   useFitToViewport(listRef, { fromWidth: 1024, deps: [visible] });
 
   return (
@@ -102,19 +169,23 @@ const AdminUserManagement = ({
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
+      <SortControl sort={sort} onSort={onSort} onDirection={() => applySort({ key: sort.key, direction: sort.direction === 'asc' ? 'desc' : 'asc' })} />
+
       {visible.length === 0 ? (
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
       ) : (
-        <div className="overflow-hidden rounded-card border border-line bg-surface">
-          <div className={`hidden lg:grid ${GRID_COLUMNS} lg:gap-4 border-b border-line px-5 py-3 text-sm font-semibold text-faint`}>
-            <span>{fr.logisticsTableName}</span>
-            <span>{fr.logisticsTableEmail}</span>
-            <span>{fr.peopleColumn}</span>
-            <span className="text-right">{fr.amountDue}</span>
-            <span>{fr.paymentColumn}</span>
+        <div role="table" aria-label={fr.adminTabUsersShort} className="overflow-hidden rounded-card border border-line bg-surface">
+          <div role="row" className={`hidden lg:grid ${GRID_COLUMNS} lg:items-center lg:gap-4 border-b border-line px-5 py-1 text-sm font-semibold text-faint`}>
+            <SortHeader sortKey="name" sort={sort} onSort={onSort} />
+            <span role="columnheader">{fr.logisticsTableEmail}</span>
+            <span role="columnheader">{fr.peopleColumn}</span>
+            <span role="columnheader" className="text-right">{fr.amountDue}</span>
+            <span role="columnheader">{fr.paymentColumn}</span>
+            <SortHeader sortKey="registered" sort={sort} onSort={onSort} />
+            <SortHeader sortKey="modified" sort={sort} onSort={onSort} />
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
-          <ul ref={listRef} className="relative divide-y divide-line lg:overflow-y-auto lg:overscroll-contain">
+          <div role="rowgroup" ref={listRef} className="relative divide-y divide-line lg:overflow-y-auto lg:overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
@@ -122,14 +193,15 @@ const AdminUserManagement = ({
               const amount = isCancelled ? 0 : amountOwedOf(party);
               const people = (party.attendees || []).length;
               return (
-                <li
+                <div
+                  role="row"
                   key={party.id}
                   className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} lg:gap-4 lg:px-5 lg:py-3`}
                 >
                   <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted lg:hidden">
                     {initials(profile.full_name || profile.email)}
                   </span>
-                  <div className="min-w-0">
+                  <div role="cell" className="min-w-0">
                     <button
                       onClick={() => onOpenParty(party)}
                       className="max-w-full break-words text-left font-semibold text-ink underline decoration-edge underline-offset-4 hover:decoration-neon"
@@ -139,14 +211,19 @@ const AdminUserManagement = ({
                     <p className="text-sm text-faint lg:hidden">
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
+                    {sort.key !== 'name' && (
+                      <p className="truncate text-sm text-faint lg:hidden">
+                        {fr[SORT_LABEL_KEYS[sort.key]]} {formatDate(sort.key === 'registered' ? party.created_at : partyModifiedAt(party))}
+                      </p>
+                    )}
                   </div>
-                  <span className="font-data text-base text-ink lg:hidden">{formatCurrency(amount)}</span>
+                  <span role="cell" className="font-data text-base text-ink lg:hidden">{formatCurrency(amount)}</span>
 
-                  <span className="col-span-3 hidden break-all text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
-                  <span className="hidden font-data text-sm text-muted lg:block">{people}</span>
-                  <span className="hidden text-right font-data text-ink lg:block">{formatCurrency(amount)}</span>
+                  <span role="cell" className="col-span-3 hidden break-all text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
+                  <span role="cell" className="hidden font-data text-sm text-muted lg:block">{people}</span>
+                  <span role="cell" className="hidden text-right font-data text-ink lg:block">{formatCurrency(amount)}</span>
 
-                  <div className="col-span-3 flex items-center gap-3 lg:contents">
+                  <div role="cell" className="col-span-3 flex items-center gap-3 lg:contents">
                     {isCancelled ? (
                       <Tag className="justify-self-start">{getRegistrationStatusLabel(party.status)}</Tag>
                     ) : !onPaymentToggle ? (
@@ -161,10 +238,12 @@ const AdminUserManagement = ({
                       </button>
                     )}
                   </div>
-                </li>
+                  <span role="cell" className="hidden text-sm text-muted lg:block">{formatDate(party.created_at)}</span>
+                  <span role="cell" className="hidden text-sm text-muted lg:block">{party.last_edited_at ? formatDate(party.last_edited_at) : <span aria-label={fr.neverEditedMessage}>—</span>}</span>
+                </div>
               );
             })}
-          </ul>
+          </div>
         </div>
       )}
     </section>

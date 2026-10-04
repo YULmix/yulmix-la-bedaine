@@ -67,7 +67,7 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   // "Annulées (1)": the cancelled party, tagged, with no payment toggle, its « Inscription » opens (« Modifier » from there).
   await expect(pill(page, fr.filterCancelled)).toContainText('1');
   await pill(page, fr.filterCancelled).click();
-  const list = panel(page).getByRole('listitem');
+  const list = panel(page).getByRole('rowgroup').getByRole('row');
   await expect(list).toHaveCount(1);
   await expect(list.getByRole('button', { name: cancelledMember.fullName })).toBeVisible();
   await expect(list.getByText(fr.statusCancelled, { exact: true })).toBeVisible();
