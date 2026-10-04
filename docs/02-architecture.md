@@ -36,10 +36,19 @@ flowchart TD
 ```
 
 Everything the app does is a direct, authenticated PostgREST call from the browser. There is no
-API layer, no server-side rendering, no serverless function, no cron. See
-[ADR 0001](./adr/0001-supabase-as-the-only-backend.md). The one exception is transactional
-email: a Postgres trigger calls a single Supabase Edge Function that sends through Resend
-([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), issue #12). The browser never calls it.
+API layer, no server-side rendering, no cron. See
+[ADR 0001](./adr/0001-supabase-as-the-only-backend.md). Two Supabase Edge Functions
+(`supabase/functions/`) do what the database can't:
+
+- `send-party-email`, transactional email: a Postgres trigger calls it and it sends through Resend
+  ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md), issue #12). The browser never
+  calls it.
+- `impersonate`, « Voir comme »: an admin's browser calls it to open (and end) a read-only session
+  of a member ([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md), issue #266). It mints
+  the session with the service role (magic link generated and verified server side); the database
+  still decides who may be viewed, marks the session through the custom access token hook, and
+  refuses every write made with it. Its checks are in
+  [Security](./06-security-and-rls.md#-voir-comme--read-only-impersonation-265-adr-0025).
 
 **Consequence that matters:** any rule that must not be bypassed has to live in Postgres — as a
 constraint, a trigger, an RLS policy, or a `SECURITY DEFINER` function. A check written only in

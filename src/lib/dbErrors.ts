@@ -62,7 +62,13 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   impersonation_target_deleted: () => fr.dbErrorImpersonationTargetDeleted,
   impersonation_target_not_found: () => fr.dbErrorImpersonationTargetNotFound,
   impersonation_target_pending: () => fr.dbErrorImpersonationTargetPending,
-  impersonation_log_immutable: () => fr.dbErrorImpersonationLogImmutable
+  impersonation_log_immutable: () => fr.dbErrorImpersonationLogImmutable,
+  // The impersonate Edge Function's own codes (#266): { error: '<code>' } in its responses.
+  impersonation_caller_impersonated: () => fr.dbErrorImpersonationCallerImpersonated,
+  impersonation_request_invalid: () => fr.dbErrorImpersonationRequestInvalid,
+  impersonation_session_not_found: () => fr.dbErrorImpersonationSessionNotFound,
+  impersonation_not_marked: () => fr.dbErrorImpersonationFailed,
+  impersonation_failed: () => fr.dbErrorImpersonationFailed
 };
 
 const parseDetails = (details: string | null | undefined): ErrorParams => {

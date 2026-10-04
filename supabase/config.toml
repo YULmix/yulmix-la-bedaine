@@ -379,6 +379,11 @@ allow_dynamic_registration = false
 [functions.send-party-email]
 verify_jwt = false
 
+# « Voir comme » (#266, ADR 0025): called by an admin's browser. The platform checks the JWT, and
+# the function checks it again with Auth (and refuses an impersonated one).
+[functions.impersonate]
+verify_jwt = true
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

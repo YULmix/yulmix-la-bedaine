@@ -246,7 +246,9 @@ coverage in the repo, and it is genuinely pure — no Supabase, no DOM, no I/O.
 ### `supabase/functions/*/*_test.ts` — the Edge Function unit suite
 
 Deno tests for the email logic (which emails a party is owed, fr-CA formatting, the rendered
-templates): `deno test supabase/functions/`. They need no Supabase and run in CI's build job.
+templates) and for the `impersonate` function's request handling (who may start and end a « Voir
+comme » session, against a fake gateway): `deno test supabase/functions/`. They need no Supabase
+and run in CI's build job, with `deno check supabase/functions/*/index.ts`.
 
 ### `src/__tests__/rlsPolicies.test.js` — the RLS integration suite
 
@@ -350,6 +352,57 @@ with a message saying to reset.
 Not yet wired into CI — it stays a local/agent verification tool for now, matching this repo's
 "For UI or frontend changes, start the dev server and use the feature in a browser" rule, until the
 browser-install strategy and runtime cost for CI runners are worked out.
+
+## « Voir comme » (Edge Function `impersonate`)
+
+`supabase/functions/impersonate` opens and ends a read-only session of a member for an admin
+([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md), #266; its checks are in
+[Security](./06-security-and-rls.md#-voir-comme--read-only-impersonation-265-adr-0025)).
+`handler.ts` is the request handling, `gateway.ts` the calls to PostgREST and Auth (plain
+`fetch`, no dependency), `handler_test.ts` the Deno tests.
+
+```http
+POST /functions/v1/impersonate          Authorization: Bearer <the admin's access token>
+{ "action": "start", "target_id": "<uuid>" }
+→ 200 { access_token, refresh_token, expires_at, session_id, ends_at, target: { id, full_name } }
+
+{ "action": "end", "session_id": "<uuid>", "access_token": "<the impersonated token, optional>" }
+→ 200 { ended: true, revoked: true|false }
+```
+
+`expires_at` is the token's `exp` (epoch seconds), capped by the hook; Auth's own `expires_at`
+isn't. `ends_at` is when the « Voir comme » session ends for good (the log row's `expires_at`):
+the UI's countdown reads `ends_at`, not `expires_at`. The UI always sends the impersonated
+`access_token` on end, so the session is signed out and not only refused by the hook. Errors are
+`{ "error": "<code>" }`, mapped to French in `src/lib/dbErrors.ts`.
+
+It only works with the custom access token hook enabled in Auth: otherwise every start is refused
+with `impersonation_not_marked` (the unmarked session is signed out). Locally,
+`supabase/config.toml` enables it, but Auth reads that at `supabase start` (see
+[Running the RLS tests](#running-the-rls-tests), step 4). Then `supabase functions serve` serves it,
+and a start can be tried with the seeded users:
+
+```bash
+eval "$(supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"
+TOKEN=$(curl -s "$API_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON_KEY" \
+  -d '{"email":"admin@test.local","password":"password123"}' | jq -r .access_token)
+curl -s "$API_URL/functions/v1/impersonate" -H "Authorization: Bearer $TOKEN" \
+  -d '{"action":"start","target_id":"00000000-0000-0000-0000-000000000001"}'
+```
+
+On a shared stack that can't be restarted, run a throwaway Auth with the hook instead: a
+`gotrue` container on the stack's Docker network with the stack Auth container's environment plus
+`GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED=true` and
+`GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI=pg-functions://postgres/public/custom_access_token_hook`,
+published on a spare port. It shares the database and the signing keys, so PostgREST accepts its
+tokens. Point the RLS suite at it with `SUPABASE_AUTH_URL`; the function itself takes one URL for
+both PostgREST and Auth, so run `createHandler(createGateway(...))` from a Deno script behind a
+small proxy that sends `/auth/v1/*` to that container and the rest to the stack (how #266 was
+verified).
+
+Production: CI deploys it with the other functions (`supabase functions deploy`, job **Deploy
+Edge Functions**); it needs no secret of its own. It is useless there until the hook is enabled in
+the dashboard (#268).
 
 ## Transactional email (Edge Function)
 
