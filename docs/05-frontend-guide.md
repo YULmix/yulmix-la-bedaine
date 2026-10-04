@@ -292,7 +292,7 @@ sequenceDiagram
   participant F as impersonate function
   A->>T: window.open /voir-comme/<id>
   Note over T: src/lib/supabase.ts marks the tab (sessionStorage)<br/>and builds its client on sessionStorage, own key
-  T->>T: createAdminSessionReader(): reads the admin's session
+  T->>T: reads the admin's stored session (JSON, no client)
   T->>F: start (admin's token, target id)
   F-->>T: member's session, session_id, ends_at
   T->>T: setSession on the tab's client, URL → /
@@ -303,8 +303,12 @@ sequenceDiagram
 - **Which client.** `src/lib/supabase.ts` decides once, when it loads: in a tab opened on
   `/voir-comme/…` (marked in sessionStorage, so the mark survives the URL moving on) `supabase` is
   a client with `storage: sessionStorage` and its own `storageKey`. Every module keeps importing
-  `supabase` as before and gets the member's session in that tab, the admin's everywhere else; the
-  admin's session (localStorage, the default key) is read once to start, never written by that tab.
+  `supabase` as before and gets the member's session in that tab, the admin's everywhere else. The
+  admin's session (localStorage, supabase-js's default key `ADMIN_SESSION_STORAGE_KEY`) is read as
+  plain JSON to start, never through a client: a client would refresh an expired token and could
+  rotate or wipe the admin's session in every tab (#267 review). An access token ending within a
+  minute isn't used: the tab asks the admin to come back to the app's tab (which renews it when it
+  is in front) and to « Réessayer ».
 - **The shell** (`src/components/VoirCommeTab.jsx`, wrapping `App` in `main.jsx`) starts or resumes
   the session, provides `useVoirComme()` (null in ordinary tabs), and shows a page of its own while
   starting, on a refusal (the function's code, mapped in `dbErrors.ts`, with « Réessayer »), and
@@ -318,7 +322,12 @@ sequenceDiagram
   page (closing **or reloading** the tab, typing a URL) sends `end` as a `keepalive` request on
   `pagehide` and marks the stored session as left, so a reload shows « terminée » instead of
   reusing it: in-app links keep the session, a full page load ends it. Where the request can't go
-  out, only the hook refuses the session after its 30 minutes (ADR 0025).
+  out, the row stays « En cours » until its 30 minutes are up and only the hook refuses the session
+  (ADR 0025); the next « Voir comme » on that member isn't refused (only an unclaimed row blocks
+  one, for 60 seconds). A page restored from the bfcache after leaving shows « terminée » too.
+  Known edges: a reload while « Ouverture… » starts a second session and leaves the first open,
+  unused, until it expires; a duplicated tab copies sessionStorage and shares the session (closing
+  either ends it; the other reads until its access token's `exp`, writes refused).
 - **Not offered in that tab:** « Supprimer mon compte », the Preview account switcher,
   « Voir comme… », and the « refresh the page » banner (`ResolutionBanner`). Never a global
   `signOut()` or `updateUser()`: those write Auth, which the read-only trigger doesn't cover.
