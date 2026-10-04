@@ -92,6 +92,24 @@ export const validateDraft = (event, changes = {}) => {
   return errors;
 };
 
+/** The fields a new event's draft has filled in: what was typed and left, not emptied again or never touched. */
+export const filledFields = (changes) => Object.keys(changes || {}).filter((field) => {
+  const value = normalise(field, changes[field]);
+  return !(value == null || value === false || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length));
+});
+
+/**
+ * Why a new event (#111) can't be created: what validateDraft finds, plus the two fields it can't
+ * be created without, the title and the event start (`'required'`), whether or not they were
+ * touched.
+ */
+export const validateNewEvent = (changes = {}) => {
+  const errors = validateDraft(null, changes);
+  if (isBlank(changes.theme)) errors.theme = 'required';
+  if (!instantOf(changes.event_start_date)) errors.event_start_date = 'required';
+  return errors;
+};
+
 /** The `events` update for the draft's dirty fields: numbers converted, dates as ISO instants (null when empty), links trimmed and empty rows dropped. */
 export const draftUpdate = (event, changes) => Object.fromEntries(dirtyFields(event, changes)
   .map(field => [field, normalise(field, changes[field])]));

@@ -98,6 +98,23 @@ export const createEventsStore = (client: Client) => {
   };
 
   /**
+   * Creates a draft event (#111) from the editor's changes: inactive, registrations closed,
+   * whatever the changes say. Creation never activates; that is activateEvent's. Resolves with the
+   * new event's id, once the list has it.
+   */
+  const createEvent = async (changes: Record<string, unknown>): Promise<string> => {
+    // Text fields typed and emptied again are left out, as the ones never touched are: the schema's defaults apply.
+    const values = Object.fromEntries(Object.entries(draftUpdate(null, changes)).filter(([, value]) => value !== '')) as Database['public']['Tables']['events']['Update'];
+    const theme = String(changes.theme ?? '').trim();
+    const { data, error } = await client.from('events')
+      .insert({ ...values, theme, status: 'DRAFT', is_active: false, is_reg_open: false })
+      .select('id').single();
+    if (error) throw failure('Error creating event', error, fr.eventCreateError);
+    await refresh();
+    return data.id;
+  };
+
+  /**
    * New base price and main-event ratio. Existing registrations keep the price they locked (#117);
    * only those made while the event had no price get it.
    */
@@ -106,7 +123,7 @@ export const createEventsStore = (client: Client) => {
     await refresh();
   };
 
-  return { subscribe, getSnapshot: () => snapshot, refresh, activateEvent, archiveEvent, saveEventChanges, applyPricing };
+  return { subscribe, getSnapshot: () => snapshot, refresh, activateEvent, archiveEvent, saveEventChanges, createEvent, applyPricing };
 };
 
 export type EventsStore = ReturnType<typeof createEventsStore>;
@@ -117,6 +134,7 @@ export const refreshEvents = store.refresh;
 export const activateEvent = store.activateEvent;
 export const archiveEvent = store.archiveEvent;
 export const saveEventChanges = store.saveEventChanges;
+export const createEvent = store.createEvent;
 export const applyPricing = store.applyPricing;
 
 /** The events, the active one and the others, for any screen. */

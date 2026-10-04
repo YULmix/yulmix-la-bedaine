@@ -207,6 +207,23 @@ export async function getEvent(eventId) {
   );
 }
 
+// The events with this theme (events can't be deleted, so a spec that creates one looks it up).
+export async function findEventsByTheme(theme) {
+  const db = await adminClient();
+  return check(
+    await db.from('events').select('id, theme, status, is_active, is_reg_open, event_start_date, duration_days').eq('theme', theme),
+    'find events by theme'
+  );
+}
+
+// The themes of the events the seeded member can read (a draft is not one of them).
+export async function eventThemesVisibleToMember() {
+  const db = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await db.auth.signInWithPassword(TEST_USERS.member);
+  if (error) throw new Error(`member sign-in failed: ${error.message}`);
+  return check(await db.from('events').select('theme'), 'read events as member').map(row => row.theme);
+}
+
 export async function getParty(partyId) {
   const db = await adminClient();
   return check(

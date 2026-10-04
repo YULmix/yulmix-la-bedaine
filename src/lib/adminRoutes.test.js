@@ -1,5 +1,5 @@
 import {
-  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, USERS_VIEW_IDS,
+  ADMIN_SECTIONS, LOGISTICS_VIEW_IDS, NEW_EVENT_ID, USERS_VIEW_IDS,
   adminHref, adminRedirect, adminRoute, isAdminPath, parseAdminLocation
 } from './adminRoutes';
 
@@ -20,6 +20,7 @@ describe('adminHref and parseAdminLocation', () => {
     ...USERS_VIEW_IDS.map(view => ({ section: 'users', view })),
     { section: 'events', eventId: EVENT, editorSection: 'details' },
     { section: 'events', eventId: EVENT, editorSection: 'sleeping' },
+    { section: 'events', eventId: 'new', editorSection: 'details' },
     { section: 'venues', venueId: VENUE, locationId: null },
     { section: 'venues', venueId: VENUE, locationId: LOCATION }
   ];
@@ -38,6 +39,13 @@ describe('adminHref and parseAdminLocation', () => {
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'details' })).toBe(`/admin/events/${EVENT}`);
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'sleeping' })).toBe(`/admin/events/${EVENT}?section=sleeping`);
     expect(adminHref({ section: 'venues', venueId: VENUE, locationId: LOCATION })).toBe(`/admin/venues/${VENUE}/${LOCATION}`);
+  });
+
+  test('the new event\'s editor is /admin/events/new, on its details only (#111)', () => {
+    expect(adminHref({ section: 'events', eventId: 'new', editorSection: 'details' })).toBe('/admin/events/new');
+    expect(adminHref({ section: 'events', eventId: 'new', editorSection: 'sleeping' })).toBe('/admin/events/new');
+    expect(parseAdminLocation('/admin/events/new')).toEqual({ section: 'events', eventId: NEW_EVENT_ID, editorSection: 'details' });
+    expect(parseAdminLocation('/admin/events/new', '?section=sleeping').editorSection).toBe('details');
   });
 
   test('a location without a venue is dropped', () => {
@@ -111,6 +119,7 @@ describe('adminRedirect', () => {
     expect(adminRedirect('/admin/users/')).toBe('/admin/users');
     expect(adminRedirect(`/admin/events/${EVENT}`, '?section=details')).toBe(`/admin/events/${EVENT}`);
     expect(adminRedirect('/admin/users', '?tab=logistics')).toBe('/admin/users');
+    expect(adminRedirect('/admin/events/new', '?section=sleeping')).toBe('/admin/events/new');
   });
 
   test('a canonical location stays where it is', () => {
@@ -119,6 +128,7 @@ describe('adminRedirect', () => {
     expect(adminRedirect(`/admin/events/${EVENT}`, '?section=sleeping')).toBeNull();
     expect(adminRedirect(`/admin/venues/${VENUE}/${LOCATION}`)).toBeNull();
     expect(adminRedirect('/admin/users', '?')).toBeNull();
+    expect(adminRedirect('/admin/events/new')).toBeNull();
   });
 
   test('outside the admin area there is nothing to redirect', () => {
