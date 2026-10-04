@@ -74,38 +74,33 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   </div>
 );
 
-// The phone's equivalent of the sortable headers: the same chips as Participants, plus the direction.
-const SortControl = ({ sort, onSort, onDirection }) => {
-  const DirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <div role="group" aria-label={fr.participantsSortLabel} className="flex flex-wrap items-center gap-2 lg:hidden">
-      <span className="text-sm text-faint">{fr.participantsSortLabel}</span>
-      {PARTY_SORT_KEYS.map(key => (
+// The phone's equivalent of the sortable headers: the same chips as Participants. The active chip
+// shows the direction as an arrow and reverses it when tapped, like a header.
+const SortControl = ({ sort, onSort }) => (
+  <div role="group" aria-label={fr.participantsSortLabel} className="flex items-center gap-1.5 lg:hidden">
+    <span className="shrink-0 text-sm text-faint">{fr.participantsSortLabel}</span>
+    {PARTY_SORT_KEYS.map(key => {
+      const active = sort.key === key;
+      const DirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
+      return (
         <button
           key={key}
           type="button"
-          aria-pressed={sort.key === key}
-          onClick={() => sort.key !== key && onSort(key)}
+          aria-pressed={active}
+          title={active ? (sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending) : undefined}
+          onClick={() => onSort(key)}
           className={cx(
-            'inline-flex min-h-9 items-center rounded-full border px-3.5 text-sm font-semibold transition duration-150',
-            sort.key === key ? 'border-neon tint-neon text-ink' : 'border-line text-muted hover:border-edge hover:text-ink'
+            'inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border px-2.5 text-sm font-semibold transition duration-150',
+            active ? 'border-neon tint-neon text-ink' : 'border-line text-muted hover:border-edge hover:text-ink'
           )}
         >
           {fr[SORT_LABEL_KEYS[key]]}
+          {active && <DirectionIcon aria-hidden="true" className="size-3.5" />}
         </button>
-      ))}
-      <button
-        type="button"
-        onClick={onDirection}
-        aria-label={sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending}
-        title={sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending}
-        className="inline-flex size-9 items-center justify-center rounded-full border border-line text-muted transition hover:border-edge hover:text-ink"
-      >
-        <DirectionIcon aria-hidden="true" className="size-4" />
-      </button>
-    </div>
-  );
-};
+      );
+    })}
+  </div>
+);
 
 // Registered parties: who they are, what they owe, whether they paid. A party's name opens its
 // « Inscription » (#258); editing it is from there. Payment changes go through the
@@ -169,7 +164,7 @@ const AdminUserManagement = ({
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
-      <SortControl sort={sort} onSort={onSort} onDirection={() => applySort({ key: sort.key, direction: sort.direction === 'asc' ? 'desc' : 'asc' })} />
+      <SortControl sort={sort} onSort={onSort} />
 
       {visible.length === 0 ? (
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />

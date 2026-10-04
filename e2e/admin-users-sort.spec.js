@@ -106,7 +106,7 @@ test.describe('desktop', () => {
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('chips and the direction button sort the cards', async ({ page }) => {
+  test('chips sort the cards, the active one reverses', async ({ page }) => {
     await page.goto('/admin/users');
     const group = panel(page).getByRole('group', { name: fr.participantsSortLabel });
     await expect(group.getByRole('button', { name: fr.logisticsTableName })).toHaveAttribute('aria-pressed', 'true');
@@ -114,10 +114,13 @@ test.describe('phone', () => {
     await group.getByRole('button', { name: fr.partyDetailRegisteredOn }).click();
     await expect(page).toHaveURL(/\?tri=-inscription$/);
     await expect.poll(() => mine(page)).toEqual([alpha[1], alpha[0]]);
-    await group.getByRole('button', { name: fr.sortDirectionDescending }).click();
+    await group.getByRole('button', { name: fr.partyDetailRegisteredOn }).click();
     await expect(page).toHaveURL(/\?tri=inscription$/);
     await expect.poll(() => mine(page)).toEqual(alpha);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // One line: the first and last chips sit at the same height.
+    const top = async name => (await group.getByRole('button', { name }).boundingBox()).y;
+    expect(await top(fr.logisticsTableName)).toBe(await top(fr.sortModifiedOn));
   });
 });
 
