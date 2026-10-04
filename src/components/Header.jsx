@@ -4,6 +4,8 @@ import { Car, ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Spar
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import { initials } from '../lib/eventDisplay';
+import { gravatarUrl } from '../lib/gravatar';
+import Avatar from './Avatar';
 import { dbErrorMessage } from '../lib/dbErrors';
 import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
@@ -42,6 +44,24 @@ const useMenu = () => {
 // The ring around the badge's avatar, per level (#260): theme tones, so light and dark follow.
 const LEVEL_RING = { admin: 'ring-2 ring-neon', organiser: 'ring-2 ring-info', committee: 'ring-2 ring-ok' };
 
+const AVATAR_SIZE = 32;
+
+// The signed-in user's picture (#261): the provider's (Google: user_metadata.avatar_url or
+// picture), else their Gravatar (a 404 there means none; the Avatar then shows the initials).
+const useAvatarUrl = (user) => {
+  const provided = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
+  const email = user?.email || null;
+  const [gravatar, setGravatar] = useState(null);
+  useEffect(() => {
+    setGravatar(null);
+    if (provided || !email || !globalThis.crypto?.subtle) return undefined;
+    let cancelled = false;
+    gravatarUrl(email, AVATAR_SIZE * 2).then((url) => { if (!cancelled) setGravatar(url); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [provided, email]);
+  return provided || gravatar;
+};
+
 const navLinkClass = ({ isActive }) => cx(
   'inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold transition duration-150',
   isActive ? 'text-neon' : 'text-muted hover:text-ink'
@@ -71,6 +91,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
+  const avatarUrl = useAvatarUrl(isAuthenticated ? user : null);
   const canViewCarpool = useCarpoolAccess(isAuthenticated && !isDeleted);
 
   const levelLabel = isAuthenticated && !isDeleted ? getAccessLevelLabel(level) : null;
@@ -177,8 +198,8 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
           >
             {isAuthenticated ? (
               <>
-                <span aria-hidden="true" data-level={levelLabel ? level : undefined} className={cx('grid size-8 shrink-0 place-items-center rounded-full bg-raised font-data text-xs text-neon', levelRing)}>
-                  {initials(userDisplayName)}
+                <span aria-hidden="true" data-level={levelLabel ? level : undefined} className={cx('grid size-8 shrink-0 rounded-full', levelRing)}>
+                  <Avatar src={avatarUrl} fallback={initials(userDisplayName)} className="size-8 bg-raised font-data text-xs text-neon" />
                 </span>
                 <span className="min-w-0 max-w-32 truncate sm:max-w-48">{userDisplayName}</span>
                 {levelLabel && <span className="sr-only">, {levelLabel}</span>}
