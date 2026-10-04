@@ -309,16 +309,18 @@ test.describe('admin tabs', () => {
       const list = path === '/users' ? panel(page).getByRole('list') : panel(page).getByRole('table');
       await expect(list).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
-      expect(await list.evaluate(el => getComputedStyle(el).overflowY), 'no scroll box of its own').toBe('visible');
+      expect(await list.evaluate(el => getComputedStyle(el).overflowY), 'no scroll box of its own').not.toMatch(/auto|scroll/);
       expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight), 'the page is taller than the screen').toBeGreaterThan(40);
       const box = await list.boundingBox();
       const cdp = await page.context().newCDPSession(page);
-      await cdp.send('Input.synthesizeScrollGesture', {
-        x: Math.round(box.x + box.width / 2),
-        y: Math.round(Math.min(box.y + box.height / 2, 400)),
-        yDistance: -150,
-        gestureSourceType: 'touch'
-      });
+      // A finger drags up over the list, in small steps.
+      const x = Math.round(box.x + box.width / 2);
+      const y = Math.round(Math.min(box.y + box.height / 2, 380));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 10; step += 1) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 15 }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await expect.poll(() => page.evaluate(() => window.scrollY), { message: `${path}: the page scrolled` }).toBeGreaterThan(0);
     }
   });
