@@ -3371,6 +3371,14 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     }
   });
 
+  test("a member can't make themself admin, and nothing is logged", async () => {
+    const before = await ok(admin.from('admin_role_log').select('id').eq('user_id', MEMBER_ID));
+    await clients.member.from('profiles').update({ is_admin: true }).eq('id', MEMBER_ID);
+    const profile = await ok(admin.from('profiles').select('is_admin').eq('id', MEMBER_ID).single());
+    expect(profile.is_admin).not.toBe(true);
+    expect(await ok(admin.from('admin_role_log').select('id').eq('user_id', MEMBER_ID))).toEqual(before);
+  });
+
   test('becoming an admin, or deleting the account, removes the edition roles', async () => {
     const promoted = await createUser('promoted');
     const leaving = await createUser('leaving');
@@ -3387,6 +3395,9 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
       const removals = await ok(admin.from('edition_role_log').select('user_id, new_role')
         .in('user_id', [promoted.id, leaving.id]).is('new_role', null));
       expect(removals).toHaveLength(2);
+      // The promotion itself is one admin_role_log row (#256), next to its edition_role_log removal.
+      expect(await ok(admin.from('admin_role_log').select('actor_id, granted').eq('user_id', promoted.id)))
+        .toEqual([{ actor_id: ADMIN_ID, granted: true }]);
       // A deleted account has no role left to use either.
       expect(await ok(leavingClient.rpc('edition_role', { p_event_id: EVENT_A }))).toBeNull();
     } finally {
