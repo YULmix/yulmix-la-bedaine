@@ -281,3 +281,33 @@ const EMAIL_STATUS_TONES: Record<string, string> = {
 export const getEmailTemplateLabel = (template: string): string => EMAIL_TEMPLATE_LABELS[template] || template;
 export const getEmailStatusLabel = (status: string): string => EMAIL_STATUS_LABELS[status] || status;
 export const getEmailStatusTone = (status: string): string => EMAIL_STATUS_TONES[status] || 'neutral';
+
+/** The levels of the account picker (#269), highest first. */
+export type AccountLevel = 'admin' | 'organiser' | 'committee' | 'member';
+
+/**
+ * An account's level on the active edition, highest rung wins: an admin who also holds an edition
+ * role is « Admin ». `editionRole` is their edition_roles row on the active event, if any. The
+ * same ladder as roleOn() in editionRoles.ts (#260), for someone else's account.
+ */
+export const accountLevel = (
+  profile: { is_admin?: boolean | null } | null | undefined,
+  editionRole?: string | null
+): AccountLevel => {
+  if (profile?.is_admin) return 'admin';
+  if (editionRole === 'organiser' || editionRole === 'committee') return editionRole;
+  return 'member';
+};
+
+/** « Administrateur », « Organisateur », « Comité » or « Membre », for lists of accounts. */
+export const getAccountLevelLabel = (level: AccountLevel): string =>
+  level === 'member' ? fr.accountLevelMember : (getAccessLevelLabel(level) as string);
+
+/** The level filter's chips: « Tous », then the levels highest first (short « Admin »). */
+export const ACCOUNT_LEVEL_FILTER_OPTIONS: ReadonlyArray<Option<'all' | AccountLevel>> = [
+  { value: 'all', label: fr.accountLevelAll },
+  { value: 'admin', label: fr.accountLevelAdminShort },
+  { value: 'organiser', label: fr.editionRoleOrganiser },
+  { value: 'committee', label: fr.editionRoleCommittee },
+  { value: 'member', label: fr.accountLevelMember }
+];
