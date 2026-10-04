@@ -2,7 +2,7 @@
 // reader ignores it: the member's Pass and amount owed, the admin's Inscrits list, Logistique, the
 // « Par participant » export and the carpool board. Whether the member or an admin removes them.
 import { test, expect } from '@playwright/test';
-import { adminMain } from './support/admin.js';
+import { adminMain, openPartyEditor } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   assignPlace,
@@ -106,7 +106,7 @@ test('a member removes an attendee: gone from their Pass, the admin lists, Logis
 test("an admin removes an attendee from a member's registration: the amount owed drops, and the member sees it", async ({ page, browser }) => {
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin/users');
-  await page.getByRole('button', { name: fr.editRegistrationButton }).first().click();
+  await openPartyEditor(page);
   const dialog = page.getByRole('dialog');
   await removeButton(dialog, 'Alice E2E').click();
   await dialog.getByRole('button', { name: fr.saveChangesButton }).click();

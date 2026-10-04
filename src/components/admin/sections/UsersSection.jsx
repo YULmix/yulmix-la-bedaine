@@ -10,6 +10,7 @@ import { useToasts } from '../../../hooks/useToasts';
 import { useAdminAccess } from '../../../hooks/useAdminAccess';
 import { can, organiserEditions } from '../../../lib/editionRoles';
 import AdminUserManagement from '../AdminUserManagement';
+import PartyDetailDialog from '../PartyDetailDialog';
 import PartyEditDialog from '../PartyEditDialog';
 import UserProfileDialog from '../UserProfileDialog';
 import { ChangeHistory } from '../ChangeHistory';
@@ -31,6 +32,8 @@ const UsersList = ({ addToast }) => {
   const { parties, loading, error } = useAdminParties(activeEvent?.id);
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  // The registration open read-only (by id, so it follows a refresh) and the one in the editor.
+  const [viewingId, setViewingId] = useState(null);
   const [editingParty, setEditingParty] = useState(null);
   // { party, newStatus } while the payment change waits for confirmation.
   const [pendingPayment, setPendingPayment] = useState(null);
@@ -84,10 +87,16 @@ const UsersList = ({ addToast }) => {
       <AdminUserManagement
         parties={parties}
         currentUserId={currentUser}
-        onOpenUserProfile={setProfile}
+        onOpenParty={party => setViewingId(party.id)}
         onAdminToggle={can(role, 'adminFlag') ? handleAdminToggle : undefined}
         onPaymentToggle={can(role, 'markPayment') ? (party, newStatus) => setPendingPayment({ party, newStatus }) : undefined}
-        onEditParty={canEdit ? setEditingParty : undefined}
+      />
+      <PartyDetailDialog
+        party={parties.find(party => party.id === viewingId) || null}
+        onClose={() => setViewingId(null)}
+        onViewProfile={setProfile}
+        onEdit={canEdit ? party => { setViewingId(null); setEditingParty(party); } : undefined}
+        showEmailLog={can(role, 'emailLog')}
       />
       <UserProfileDialog profile={profile} onClose={() => setProfile(null)} />
       {canEdit && <PartyEditDialog party={editingParty} event={activeEvent} onClose={() => setEditingParty(null)} onSaved={handleSaved} />}

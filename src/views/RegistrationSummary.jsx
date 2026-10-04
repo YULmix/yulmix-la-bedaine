@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, BedDouble, Car, HandHeart, History, LogOut, Music, MessageSquareText, Pencil, Utensils } from 'lucide-react';
+import { ArrowRight, BedDouble, History, LogOut, MessageSquareText, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { cancelParty } from '../lib/parties';
 import { fetchLocationGalleries } from '../lib/galleries';
@@ -8,35 +8,12 @@ import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
 import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
 import { describeChanges, memberHistoryEdits } from '../lib/editHistory';
-import { initials } from '../lib/eventDisplay';
+import { AttendeeList, InfoBlock, RegistrationInputs } from '../components/RegistrationDetails';
 import Pass from '../components/brand/Pass';
 import MyPartyEmails from '../components/MyPartyEmails';
 import GalleryButton from '../components/Gallery';
-import { Button, Card, ConfirmDialog, Tag } from '../components/ui';
-import {
-  ACCOMMODATION_OPTIONS,
-  dietaryLabelsOf,
-  departureOf,
-  VOLUNTEERING_OPTIONS,
-  getOptionLabel,
-  getTransportTypeLabel,
-  transportKindOf,
-  EDITABLE_REGISTRATION_STATUSES,
-  getAttendeeTypeLabel,
-  getParticipationSummaryLabel
-} from '../lib/registrationOptions';
-
-const InfoBlock = ({ icon: Icon, title, children }) => (
-  <div className="flex gap-3">
-    <span className="grid size-10 shrink-0 place-items-center rounded-control bg-raised text-neon">
-      <Icon aria-hidden="true" className="size-5" strokeWidth={1.75} />
-    </span>
-    <div className="min-w-0 flex-1">
-      <h4 className="text-sm font-semibold text-muted">{title}</h4>
-      <div className="mt-1 text-ink">{children}</div>
-    </div>
-  </div>
-);
+import { Button, Card, ConfirmDialog } from '../components/ui';
+import { EDITABLE_REGISTRATION_STATUSES } from '../lib/registrationOptions';
 
 // Home page, registered state: the pass (signature), then the group, logistics, requests and edit
 // history. What matters most (am I in, what do I owe) is on the pass; details follow.
@@ -98,10 +75,6 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   }, [sleepingKey]);
   // What the organisers wrote to the party (#216); their private admin_notes never show here.
   const organizersMessage = registration.message_to_participants?.trim();
-  const logistics = registration.logistics || {};
-  const transport = registration.transport || {};
-  const transportKind = transportKindOf(transport);
-  const volunteering = logistics.volunteering || [];
   const isCancellable = EDITABLE_REGISTRATION_STATUSES.includes(registration.status);
   const locked = isRegistrationLocked(event);
 
@@ -126,38 +99,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card className="min-w-0 p-5 sm:p-6">
           <h3 className="text-lg font-semibold text-ink">{fr.attendeesList}</h3>
-          <ul className="mt-4 divide-y divide-line">
-            {attendees.map((attendee, index) => (
-              <li key={index} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-raised font-data text-sm text-muted">
-                  {initials(attendee.name)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">{attendee.name}</p>
-                  <p className="text-sm text-muted">
-                    {getAttendeeTypeLabel(attendee.type)}
-                    {attendee.type !== 'Kid' && `, ${getParticipationSummaryLabel(attendee.participation).toLowerCase()}`}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {attendee.is_new_member && <Tag tone="neon">{fr.firstTimeTag}</Tag>}
-                    {attendee.sleeping_preference && (
-                      <Tag icon={BedDouble}>
-                        {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
-                        {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other ? `: ${attendee.sleeping_preference_other}` : ''}
-                      </Tag>
-                    )}
-                    {dietaryLabelsOf(attendee).map(label => <Tag key={label} icon={Utensils}>{label}</Tag>)}
-                  </div>
-                  {attendee.place && (
-                    <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 rounded-control tint-ok px-2.5 py-1 text-sm text-ok">
-                      <BedDouble aria-hidden="true" className="size-4" />
-                      {fr.confirmedAssignmentLabel} <span className="font-data">{attendee.place.bed_label}</span>
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <AttendeeList attendees={attendees} className="mt-4" />
         </Card>
 
         <div className="min-w-0 space-y-6">
@@ -165,38 +107,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
               only shows once there is something (a place, or their message). */}
           <Card className="space-y-5 p-5 sm:p-6">
             <h3 className="text-lg font-semibold text-ink">{fr.inputSummary}</h3>
-            <InfoBlock icon={Car} title={fr.transport}>
-              <p>
-                {getTransportTypeLabel(transport)}
-                {transportKind !== 'none' && transport.seats > 0 && `, ${fr.transportSeatsShort.replace('{count}', transport.seats)}`}
-              </p>
-              {transportKind !== 'none' && (transport.arrival || transport.departure || departureOf(transport)) && (
-                <p className="mt-1 text-sm text-muted">
-                  {transport.arrival && <span className="block">{fr.transportArrivalLabel} {formatDateTime(transport.arrival)}</span>}
-                  {transport.departure && <span className="block">{fr.transportDepartureLabel} {formatDateTime(transport.departure)}</span>}
-                  {departureOf(transport) && <span className="block [overflow-wrap:anywhere]">{fr.transportDeparturePlaceLabel} {departureOf(transport)}</span>}
-                </p>
-              )}
-            </InfoBlock>
-            <InfoBlock icon={HandHeart} title={fr.volunteering}>
-              {volunteering.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {volunteering.map(item => (
-                    <Tag key={item}>{item === 'other' && logistics.volunteering_other ? logistics.volunteering_other : getOptionLabel(VOLUNTEERING_OPTIONS, item, item)}</Tag>
-                  ))}
-                </div>
-              ) : <p className="text-muted">{fr.noVolunteeringSelectedMessage}</p>}
-            </InfoBlock>
-            {registration.music_requests && (
-              <InfoBlock icon={Music} title={fr.musicRequests}>
-                <p className="whitespace-pre-line [overflow-wrap:anywhere]">{registration.music_requests}</p>
-              </InfoBlock>
-            )}
-            {registration.message_to_organizers && (
-              <InfoBlock icon={MessageSquareText} title={fr.messageToOrganizers}>
-                <p className="whitespace-pre-line [overflow-wrap:anywhere]">{registration.message_to_organizers}</p>
-              </InfoBlock>
-            )}
+            <RegistrationInputs registration={registration} />
           </Card>
           {(sleeping.length > 0 || organizersMessage) && (
             <Card className="space-y-5 p-5 sm:p-6">

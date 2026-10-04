@@ -64,7 +64,7 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
   await expect(panel(page).getByRole('button', { name: cancelledMember.fullName })).toHaveCount(0);
 
-  // "Annulées (1)": the cancelled party, tagged, with no payment toggle, still editable.
+  // "Annulées (1)": the cancelled party, tagged, with no payment toggle, its « Inscription » opens (« Modifier » from there).
   await expect(pill(page, fr.filterCancelled)).toContainText('1');
   await pill(page, fr.filterCancelled).click();
   const list = panel(page).getByRole('listitem');
@@ -73,7 +73,7 @@ test('a cancelled party is left out of totals, "Tous" and logistics, and listed 
   await expect(list.getByText(fr.statusCancelled, { exact: true })).toBeVisible();
   await expect(list.getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(0);
   await expect(list.getByRole('button', { name: fr.paid, exact: true })).toHaveCount(0);
-  await expect(list.getByRole('button', { name: fr.editRegistrationButton })).toBeVisible();
+  await expect(list.getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
 
   // Logistics: only the active party.
   await page.goto('/admin/logistics');
