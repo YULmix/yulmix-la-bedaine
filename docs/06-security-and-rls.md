@@ -28,7 +28,7 @@ enforced.
 |---|---|---|
 | Anonymous | no session | `SELECT` on ACTIVE/ARCHIVED events only |
 | Authenticated member | any OAuth sign-in | own profile, own registrations, own feedback. A soft-deleted account (#36) keeps only read access to its own profile row |
-| Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `admin_notes` |
+| Admin | `profiles.is_admin = TRUE`, granted via `admin_set_is_admin` | full read/write on everything, including DRAFT events and `party_admin_notes` |
 | Root admin | email = `yulmixalabedaine@gmail.com` | always admin, cannot be demoted |
 
 ### `is_admin()`
@@ -81,6 +81,7 @@ Derived from production's schema as captured in the baseline migration
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
 | `galleries`, `gallery_images` | admin; a venue's `general` gallery for whoever (signed in) can read the venue; a location's gallery for whoever can read the location (a member, where their attendees sleep); `assignments` galleries admin only (#177; anon has no grant at all) | admin only (images through `add_gallery_image()`; a 31st is refused) | admin only | admin only; a frozen copy's galleries can't change |
 | `storage.objects` in `location-photos` | anyone, by public URL (a public bucket; gallery images aren't private, #124, #177) | admin only | admin only | admin only |
+| `party_admin_notes` | admin only (#227; anon has no grant at all). A member doesn't read even their own party's notes | admin only | admin only | admin only (rows go with their party) |
 | `registration_edits` | `edited_by = auth.uid()` (active account) or admin | `edited_by = auth.uid()` (active account) or admin | *no policy* → denied | *no policy* → denied |
 
 Notes on specific choices:
@@ -106,12 +107,14 @@ Notes on specific choices:
   [Data model](./03-data-model.md#account-deletion-36).
 - **A registration's admin-only fields are protected by a trigger, not by the policies** (#94).
   RLS only decides which rows a member may write. `trg_protect_admin_only_party_fields` ignores
-  whatever a non-admin end user sends for `payment_status`, `admin_notes` and
-  `message_to_participants` (#216): on insert they become `unpaid` and no texts, on update the stored values stay, so a paid party stays paid through a
+  whatever a non-admin end user sends for `payment_status` and
+  `message_to_participants` (#216): on insert they become `unpaid` and no message, on update the stored values stay, so a paid party stays paid through a
   member's own save (#31) or when they re-register over their cancelled row (#35). Where an
   attendee sleeps is a `place_assignments` row, which only an admin writes (#114), and
   `trg_guard_attendee_write` refuses every client write to `attendees` outside `save_registration()`
-  (#126). A place stays with its attendee (by id) through renames and reorders. `service_role` and direct connections
+  (#126). A place stays with its attendee (by id) through renames and reorders. The organisers'
+  private notes aren't on the row at all: a member reads every column of their own party, so they
+  live in the admin-only `party_admin_notes` (#227). `service_role` and direct connections
   are not restricted.
 - **`save_registration()` is `SECURITY INVOKER`** (ADR 0018): it runs with the caller's RLS on
   `user_parties` and `attendees`, so a member can only save their own registration, and an admin
@@ -119,12 +122,13 @@ Notes on specific choices:
   (`bedaine.saving_party`); the attendees trigger only lets writes to that party through.
   PostgREST offers clients no way to set it (`set_config` isn't exposed).
 - **`save_logistics()` is `SECURITY INVOKER` too** (#150): the Logistique tab's one Save writes
-  every pending `place_assignments` row, `admin_notes` and `message_to_participants` through it, under the caller's RLS and
+  every pending `place_assignments` row, `party_admin_notes` row and `message_to_participants` through it, under the caller's RLS and
   the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
   own subtransaction, all or nothing, and returns the parties it refused with their error code.
-  It logs each saved party's place changes (#188) through a transaction-local setting
-  (`bedaine.place_changes`) that `log_registration_edit()` merges into the texts' entry; like
-  `bedaine.saving_party`, clients can't set it.
+  It logs each saved party's place and note changes (#188, #227) in one entry, through a
+  transaction-local setting (`bedaine.logistics_changes`) that `party_admin_notes`' trigger adds the
+  note change to and `log_registration_edit()` merges into the message's entry (or that
+  `save_logistics()` writes itself); like `bedaine.saving_party`, clients can't set it.
 - **`event_places()`, `set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193):
   the tables' RLS and triggers decide, as for direct writes. The first two refuse non-admins up
   front (`admin_only`): overrides are admin-only, so a member would otherwise read a merge that
