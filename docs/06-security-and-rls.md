@@ -243,6 +243,12 @@ adds no rule the database doesn't already hold, and it hands over nothing the da
   off, first sign out every session listed in `impersonation_log.session_id`.
 - **Logs** carry codes and statuses only: no token, email or member data.
 
+The app (#267, [Frontend guide](./05-frontend-guide.md#-voir-comme--a-second-supabase-client-267-adr-0025))
+runs the session in its own tab on a second client (sessionStorage, its own storage key), so the
+admin's session is never overwritten. « Quitter » sends the session's own access token and signs
+out locally only; closing or reloading the tab sends `end` as a `keepalive` request. The tab offers
+no account deletion, no account switcher and no Auth writes.
+
 ## The gap that matters most
 
 **`calculated_amount_owed` is computed in the browser and written as a plain column value**
