@@ -128,11 +128,15 @@ const SERIAL_ENTRIES = [
   // The admin detail pages' header and geometry (#210) reseed the same shared active event and
   // give its venue locations, so it runs after galleries, on its own. Sets its own viewports.
   { name: 'admin-drill-down' },
-  // The summary's transport line (#232) reseeds the shared active event, so it runs last, alone.
+  // The summary's transport line (#232) reseeds the shared active event, so it runs after
+  // admin-drill-down, alone.
   { name: 'member-transport-none' },
   // Creates events (#111) next to the shared active event it reseeds, so it runs after
   // member-transport-none, on its own. Sets its own viewports.
   { name: 'admin-event-create' },
+  // Removing an attendee (#237) reseeds the same shared active event, with places, so it runs
+  // after admin-event-create, on its own.
+  { name: 'attendee-removal' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 

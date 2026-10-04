@@ -20,6 +20,7 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   logistics_changes_invalid: () => fr.dbErrorLogisticsChangesInvalid,
   place_assignment_wrong_event: () => fr.dbErrorPlaceAssignmentWrongEvent,
   place_assignment_place_excluded: () => fr.dbErrorPlaceAssignmentPlaceExcluded,
+  place_assignment_attendee_removed: () => fr.dbErrorPlaceAssignmentAttendeeRemoved,
   place_exclusion_occupied: () => fr.dbErrorPlaceExclusionOccupied,
   place_override_wrong_venue: () => fr.dbErrorPlaceOverrideWrongVenue,
   place_venue_fixed: () => fr.dbErrorPlaceVenueFixed,

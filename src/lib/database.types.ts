@@ -84,6 +84,7 @@ export type Database = {
           bed_reason: string
           bed_reason_other: string
           created_at: string
+          deleted_at: string | null
           dietary_needs: string[]
           dietary_other: string
           id: string
@@ -100,6 +101,7 @@ export type Database = {
           bed_reason?: string
           bed_reason_other?: string
           created_at?: string
+          deleted_at?: string | null
           dietary_needs?: string[]
           dietary_other?: string
           id?: string
@@ -116,6 +118,7 @@ export type Database = {
           bed_reason?: string
           bed_reason_other?: string
           created_at?: string
+          deleted_at?: string | null
           dietary_needs?: string[]
           dietary_other?: string
           id?: string
@@ -861,6 +864,15 @@ export type Database = {
       admin_set_is_admin: {
         Args: { new_is_admin: boolean; target_user_id: string }
         Returns: undefined
+      }
+      attendee_by_id: {
+        Args: { p_attendee_id: string }
+        Returns: {
+          deleted_at: string
+          id: string
+          name: string
+          party_id: string
+        }[]
       }
       can_view_carpool_board: { Args: never; Returns: boolean }
       carpool_board: {
