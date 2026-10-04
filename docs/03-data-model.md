@@ -306,7 +306,7 @@ Where an offer or a need leaves from (#181), both optional and absent with no li
 ```json
 // event_budgets.lines (admin-only, #109). Checked by a trigger, which also sets total_cost.
 [{ "category": "Chalet", "description": "Location du chalet", "amount": 1500 },
- { "category": "Food", "description": "Épicerie", "amount": 1000 }]
+ { "category": "Food", "description": "Épicerie", "amount": 1000, "paid_by_attendee_id": "<attendees.id>" }]
 // external_links — labels are free text; "Liste d'achats" is the one users look for
 [{ "label": "Liste d'achats", "url": "https://…" }]
 ```
@@ -315,6 +315,15 @@ Where an offer or a need leaves from (#181), both optional and absent with no li
 (default 20) and `total_cost`, always the sum of the lines. Admins only, for reading too: it is the
 simulation the organisers set the price from, and never feeds an amount (see
 [Pricing](./04-pricing-and-business-rules.md#the-budget-and-the-break-even-price)).
+
+A line may name who paid it, « Payé par » (#236): `paid_by_attendee_id`, an attendee id, absent or
+null for nobody (the common fund). The trigger accepts it only for an attendee of a party of the
+budget's own event, otherwise it raises `event_budget_payer_invalid`. A [removed
+attendee](#removed-attendees) still counts (`private.attendee_in_event`, `SECURITY DEFINER`, since
+RLS hides removed ones from the admin saving), so an old expense stays valid after its payer
+leaves the party. The editor resolves a payer who isn't in an active party with
+`attendee_by_id()` and marks a removed one « (retiré) ». A payer never changes `total_cost` or any
+amount owed.
 
 ## Enumerations
 

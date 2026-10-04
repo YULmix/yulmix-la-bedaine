@@ -1,7 +1,9 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, BadgeDollarSign, Calculator, ChevronDown, Plus, Receipt, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatCurrency } from '../../lib/format';
+import { resolvePayers } from '../../lib/budget';
+import { payerOptions } from '../../lib/budgetPayers';
 import {
   attendeePrice,
   calculateBreakEvenPrice,
@@ -10,6 +12,7 @@ import {
   totalPriceShares
 } from '../../lib/pricingEngine';
 import { BUDGET_CATEGORIES, PAYMENT_STATUS, TIER_OPTIONS } from '../../lib/registrationOptions';
+import PayerPicker from './PayerPicker';
 import { Button, Card, ConfirmDialog, Field, Input, Select, Stat, Tag, cx } from '../ui';
 
 // Expected-headcount groups of the simulator. Newbies are their own groups: they pay the main
@@ -103,10 +106,26 @@ const SummaryFigure = ({ label, value, tone = 'text-ink' }) => (
 
 // Budget lines and contingency. `draft` holds unsaved edits (kept by the parent, so they survive
 // switching tabs); null means "as saved".
-const BudgetEditor = ({ budget, draft, onDraftChange, onSave, saving }) => {
+const BudgetEditor = ({ budget, draft, parties, onDraftChange, onSave, saving }) => {
   const lines = draft?.lines ?? budget?.lines ?? [];
   const contingency = draft?.contingency ?? String(budget?.contingency_pct ?? 20);
   const edit = (patch) => onDraftChange({ lines, contingency, ...patch });
+  const payers = useMemo(() => payerOptions(parties), [parties]);
+  // A payer who isn't in an active party (removed from it, or its party cancelled): resolved by id.
+  const [resolved, setResolved] = useState(() => new Map());
+  const unknownKey = lines
+    .map(line => line.paid_by_attendee_id)
+    .filter(id => id && !payers.some(payer => payer.id === id) && !resolved.has(id))
+    .join(',');
+  useEffect(() => {
+    if (!unknownKey) return undefined;
+    let cancelled = false;
+    resolvePayers(unknownKey.split(',')).then((found) => {
+      if (!cancelled) setResolved(previous => new Map([...previous, ...found]));
+    });
+    return () => { cancelled = true; };
+  }, [unknownKey]);
+  const payerOf = (id) => payers.find(payer => payer.id === id) ?? resolved.get(id) ?? null;
   const editLine = (index, field, value) => edit({ lines: lines.map((line, i) => (i === index ? { ...line, [field]: value } : line)) });
 
   return (
@@ -153,6 +172,16 @@ const BudgetEditor = ({ budget, draft, onDraftChange, onSave, saving }) => {
             <Button variant="ghost" size="icon" onClick={() => edit({ lines: lines.filter((_, i) => i !== index) })} aria-label={fr.budgetLineRemove}>
               <Trash2 aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
             </Button>
+            <div className="col-span-3 row-start-3 sm:col-span-4 sm:row-start-auto sm:max-w-md">
+              <span aria-hidden="true" className="mb-1 block text-xs text-faint">{fr.budgetLinePaidBy}</span>
+              <PayerPicker
+                label={fr.budgetLinePaidBy}
+                options={payers}
+                value={line.paid_by_attendee_id ?? null}
+                selected={payerOf(line.paid_by_attendee_id)}
+                onChange={id => editLine(index, 'paid_by_attendee_id', id)}
+              />
+            </div>
           </li>
         ))}
       </ul>
@@ -357,7 +386,7 @@ const AdminBudget = ({ event, budget, draft, parties, onDraftChange, onSaveBudge
   const contingencyPct = Number(draft?.contingency ?? budget?.contingency_pct ?? 20) || 0;
   return (
     <section className="space-y-6">
-      <BudgetEditor budget={budget} draft={draft} onDraftChange={onDraftChange} onSave={onSaveBudget} saving={savingBudget} />
+      <BudgetEditor budget={budget} draft={draft} parties={parties} onDraftChange={onDraftChange} onSave={onSaveBudget} saving={savingBudget} />
       {/* Keyed on the saved price and ratio, so applying them resets the tried values. */}
       <Pricing
         key={`${event.selling_price_whole_event}-${event.ratio_main_whole}`}
