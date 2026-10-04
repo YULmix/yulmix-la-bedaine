@@ -26,6 +26,12 @@ export const formatEventDates = (event) => {
 export const plural = (count, oneKey, otherKey) =>
   (count === 1 ? fr[oneKey] : fr[otherKey]).replace('{count}', count);
 
+/**
+ * « de » before a name, elided before a vowel: "d'Absalon Guillot", "d'Émile", "de Marc". An « h »
+ * stays unelided ("de Hélier"): whether it is mute depends on the name. Fills a fr.json {ofName}.
+ */
+export const ofName = (name) => (/^[aeiouyàâäéèêëîïôöùûüÿæœ]/i.test(name || '') ? `d'${name}` : `de ${name}`);
+
 /** Headcount by age type for a stored attendees array (DB shape: type = Adult|Teenager|Kid). */
 export const countAttendeesByType = (attendees = []) => attendees.reduce(
   (acc, attendee) => {

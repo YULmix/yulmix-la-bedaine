@@ -3,9 +3,11 @@ import fr from '../locales/fr.json';
 import { formatDateTime } from '../lib/format';
 import { initials } from '../lib/eventDisplay';
 import { Tag, cx } from './ui';
+import { ACCOMMODATION_ICONS, DIETARY_ICONS } from './accommodationIcons';
 import {
   ACCOMMODATION_OPTIONS,
-  dietaryLabelsOf,
+  DIETARY_OPTIONS,
+  dietaryNeedsOf,
   departureOf,
   VOLUNTEERING_OPTIONS,
   getOptionLabel,
@@ -49,12 +51,16 @@ export const AttendeeList = ({ attendees, className }) => (
           <div className="mt-2 flex flex-wrap gap-2">
             {attendee.is_new_member && <Tag tone="neon">{fr.firstTimeTag}</Tag>}
             {attendee.sleeping_preference && (
-              <Tag icon={BedDouble}>
+              <Tag icon={ACCOMMODATION_ICONS[attendee.sleeping_preference] || BedDouble}>
                 {getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference)}
                 {attendee.sleeping_preference === 'outside_other' && attendee.sleeping_preference_other ? `: ${attendee.sleeping_preference_other}` : ''}
               </Tag>
             )}
-            {dietaryLabelsOf(attendee).map(label => <Tag key={label} icon={Utensils}>{label}</Tag>)}
+            {dietaryNeedsOf(attendee.dietary_needs).filter(value => value !== 'none').map(value => (
+              <Tag key={value} icon={DIETARY_ICONS[value] || Utensils}>
+                {value === 'other' && attendee.dietary_other ? attendee.dietary_other : getOptionLabel(DIETARY_OPTIONS, value)}
+              </Tag>
+            ))}
           </div>
           {attendee.place && (
             <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 rounded-control tint-ok px-2.5 py-1 text-sm text-ok">

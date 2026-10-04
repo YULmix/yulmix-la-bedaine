@@ -82,12 +82,12 @@ const AdminUserManagement = ({
         .some(value => value?.toLowerCase().includes(needle));
     });
   }, [parties, query, filter, counts]);
-  useFitToViewport(listRef, { deps: [visible] });
+  useFitToViewport(listRef, { fromWidth: 1024, deps: [visible] });
 
   return (
     <section className="space-y-4">
       <AdminHeaderActions>
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-80">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-faint" />
           <Input
             type="search"
@@ -114,7 +114,7 @@ const AdminUserManagement = ({
             <span>{fr.paymentColumn}</span>
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
-          <ul ref={listRef} className="relative divide-y divide-line overflow-y-auto overscroll-contain">
+          <ul ref={listRef} className="relative divide-y divide-line lg:overflow-y-auto lg:overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
@@ -132,17 +132,17 @@ const AdminUserManagement = ({
                   <div className="min-w-0">
                     <button
                       onClick={() => onOpenParty(party)}
-                      className="max-w-full truncate text-left font-semibold text-ink underline decoration-edge underline-offset-4 hover:decoration-neon"
+                      className="max-w-full break-words text-left font-semibold text-ink underline decoration-edge underline-offset-4 hover:decoration-neon"
                     >
                       {profile.full_name || fr.notSpecified}
                     </button>
-                    <p className="truncate text-sm text-faint lg:hidden">
+                    <p className="text-sm text-faint lg:hidden">
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
                   </div>
                   <span className="font-data text-base text-ink lg:hidden">{formatCurrency(amount)}</span>
 
-                  <span className="col-span-3 hidden truncate text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
+                  <span className="col-span-3 hidden break-all text-sm text-muted lg:col-span-1 lg:block">{profile.email}</span>
                   <span className="hidden font-data text-sm text-muted lg:block">{people}</span>
                   <span className="hidden text-right font-data text-ink lg:block">{formatCurrency(amount)}</span>
 
