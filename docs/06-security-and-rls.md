@@ -232,7 +232,15 @@ adds no rule the database doesn't already hold, and it hands over nothing the da
   `access_token` too, it signs that session out (`/logout?scope=local`). The read-only tab can end
   its own session with its own token (« Quitter »). Never a global sign-out: the member's own
   sessions are untouched. An access token already issued stays readable until its `exp` (at most
-  the 30 minutes), read-only.
+  the 30 minutes), read-only. A token that isn't that session's is refused before anything is
+  ended.
+- **What only the hook holds back.** Without the `access_token`, at natural expiry, or when the
+  sign-out fails, the Auth session and its refresh token stay alive in `auth.sessions`: only the
+  hook refuses their refresh (the row is ended or expired). So the UI (#267) always sends the
+  `access_token` on end, and the hook is **never disabled** in production or Preview while
+  `impersonation_log` has sessions whose refresh tokens may live: with the hook off, an old « Voir
+  comme » refresh token would come back as an ordinary member session that can write. To turn it
+  off, first sign out every session listed in `impersonation_log.session_id`.
 - **Logs** carry codes and statuses only: no token, email or member data.
 
 ## The gap that matters most

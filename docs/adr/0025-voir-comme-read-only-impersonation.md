@@ -93,6 +93,12 @@ sequenceDiagram
   an impersonated tab could still call `updateUser()` (email, password, metadata) or a global
   `signOut()`, which would sign the member out everywhere. The UI must sign out locally only and
   never offer account settings; the Edge Function and the UI issues own those limits.
+- **Ending a session leans on the hook.** No Auth endpoint deletes a session by id, so the
+  function signs a session out only with its own access token (the UI always sends it on end).
+  Otherwise, and at natural expiry, the session and its refresh token stay in `auth.sessions`,
+  refused by the hook alone. Turning the hook off would let an old « Voir comme » refresh token
+  return as an ordinary, writable member session: never disable it, or first sign out every
+  session listed in `impersonation_log`.
 - **A new table must attach the trigger** in its migration (`CREATE TRIGGER
   trg_refuse_when_impersonating BEFORE INSERT OR UPDATE OR DELETE ON ... FOR EACH STATEMENT
   EXECUTE FUNCTION private.refuse_when_impersonating()`); the catalog test fails otherwise.

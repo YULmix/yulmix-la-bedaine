@@ -371,7 +371,10 @@ POST /functions/v1/impersonate          Authorization: Bearer <the admin's acces
 ```
 
 `expires_at` is the token's `exp` (epoch seconds), capped by the hook; Auth's own `expires_at`
-isn't. Errors are `{ "error": "<code>" }`, mapped to French in `src/lib/dbErrors.ts`.
+isn't. `ends_at` is when the « Voir comme » session ends for good (the log row's `expires_at`):
+the UI's countdown reads `ends_at`, not `expires_at`. The UI always sends the impersonated
+`access_token` on end, so the session is signed out and not only refused by the hook. Errors are
+`{ "error": "<code>" }`, mapped to French in `src/lib/dbErrors.ts`.
 
 It only works with the custom access token hook enabled in Auth: otherwise every start is refused
 with `impersonation_not_marked` (the unmarked session is signed out). Locally,
