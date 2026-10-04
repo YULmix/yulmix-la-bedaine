@@ -39,6 +39,8 @@ export const ACTION_ROLES = {
   budgetFigures: 'organiser',
   /** Résumé's email problems (email_log, #93). */
   emailProblems: 'organiser',
+  /** The email log in an Inscription's dialog (email_log, ADR 0023). */
+  emailLog: 'organiser',
   /** Inscrits' « Exporter ». */
   exportData: 'organiser',
   /** Inscrits' payment toggle. */

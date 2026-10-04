@@ -2,6 +2,7 @@
 // editing a registration updates each attendee in place, adds and removes the others, and keeps
 // what an admin set on an attendee (their place, #114).
 import { test, expect } from '@playwright/test';
+import { openPartyEditor } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
@@ -77,7 +78,7 @@ test("an admin editing a member's registration keeps the beds and the member's a
 
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin/users');
-  await page.getByRole('button', { name: fr.editRegistrationButton }).first().click();
+  await openPartyEditor(page);
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('listitem')
     .filter({ has: page.getByRole('heading', { name: `${fr.participantNumberLabel}2`, exact: true }) })

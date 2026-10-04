@@ -6,7 +6,7 @@
 // E2E_SCREENSHOT_DIR=<dir> saves « Équipe » at 390 and 1440 px wide.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { adminMain, adminNav, moreButton } from './support/admin.js';
+import { adminMain, adminNav, moreButton, openPartyDetail } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ORGANISER_ID,
@@ -107,6 +107,17 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(panel(page).getByRole('checkbox', { name: fr.adminTableHeader })).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
+  // Opening a registration: read-only, with its attendees but neither « Modifier » nor the email log
+  // (email_log is Organisateur's), and no error from it.
+  const consoleErrors = [];
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  const detail = await openPartyDetail(page);
+  await expect(detail.getByText(ALICE, { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
+  await expect(detail.getByText(fr.emailLogTitle)).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+  await detail.getByRole('button', { name: fr.close, exact: true }).click();
   // Only the list: no Historique.
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toHaveCount(0);
 
@@ -143,6 +154,19 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toBeVisible();
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(panel(page).getByRole('checkbox', { name: fr.adminTableHeader })).toHaveCount(0);
+  // The registration opens read-only with the email log (the seeded failed email), never « Modifier ».
+  const detail = await openPartyDetail(page);
+  await expect(detail.getByText(fr.emailLogTitle)).toBeVisible();
+  await expect(detail.getByText('e2e', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscription-organiser-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+  }
+  await detail.getByRole('button', { name: fr.close, exact: true }).click();
   await panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
   const confirm = page.getByRole('dialog', { name: fr.markPaid });
   await confirm.getByRole('button', { name: fr.markPaid }).click();
