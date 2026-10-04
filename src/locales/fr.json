@@ -721,6 +721,7 @@
   "dbErrorLogisticsChangesInvalid": "Les modifications envoyées sont invalides.",
   "dbErrorPlaceAssignmentWrongEvent": "Cette place n'est pas sur le site de cet événement.",
   "dbErrorPlaceAssignmentPlaceExcluded": "Cette place n'est pas disponible pour cet événement.",
+  "dbErrorPlaceAssignmentAttendeeRemoved": "Cette personne a été retirée de son inscription : elle ne peut pas recevoir de place.",
   "dbErrorPlaceExclusionOccupied": "Quelqu'un de cet événement occupe cette place : déplacez d'abord les personnes qui l'occupent.",
   "dbErrorPlaceOverrideWrongVenue": "Cette place n'est pas sur le site de cet événement.",
   "dbErrorPlaceVenueFixed": "Un lieu ou une place ne peut pas changer de site.",

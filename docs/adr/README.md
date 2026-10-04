@@ -34,3 +34,4 @@ misread the original intent — that is more valuable than leaving them unchalle
 | [0021](./0021-database-errors-are-codes.md) | Database errors are English codes with JSON parameters; the app maps them to French and never shows a raw message | accepted, implemented (#102) |
 | [0022](./0022-admin-navigation-and-page-widths.md) | Admin navigation: seven flat sections (sidebar on desktop, bottom bar + « Plus » on phones), one switcher per level, two page widths, path URLs | accepted (#191); implementation in progress |
 | [0023](./0023-edition-roles.md) | Edition roles: a ladder Member < Comité < Organisateur (per edition) < Admin (per account), enforced by `edition_role(event_id)` | accepted (#217); not implemented |
+| [0024](./0024-no-hard-deletes.md) | No hard deletes: removed rows get a `deleted_at`, hidden by a restrictive policy and filtered in every definer reader; attendees (#237) first | accepted, implemented for attendees (#237); generalises 0008 |

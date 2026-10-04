@@ -116,7 +116,7 @@ sequenceDiagram
   U->>RF: Sauvegarder
   Note over RF: validate(form): go to the first issue's step
   RF->>PG: rpc save_registration(event, toSavePayload(form))
-  Note over PG: one transaction, under the caller's RLS:<br/>upsert user_parties on (user_id, event_id)<br/>update / insert / delete attendees rows by id<br/>update the party, whose triggers run:<br/>enforce_calculated_amount_owed locks the price, computes the amount<br/>enforce_capacity_and_waitlist sets is_waitlisted<br/>increment_edit_count bumps edit_count<br/>log_registration_edit writes registration_edits
+  Note over PG: one transaction, under the caller's RLS:<br/>upsert user_parties on (user_id, event_id)<br/>update / insert attendees rows by id, soft-delete the others (#237)<br/>update the party, whose triggers run:<br/>enforce_calculated_amount_owed locks the price, computes the amount<br/>enforce_capacity_and_waitlist sets is_waitlisted<br/>increment_edit_count bumps edit_count<br/>log_registration_edit writes registration_edits
   PG-->>RF: saved party
   RF->>PG: select user_parties(*, attendees(*))
   PG-->>RF: party with its attendees

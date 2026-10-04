@@ -94,7 +94,7 @@ erDiagram
   ATTENDEES {
     uuid id PK
     uuid party_id FK
-    int position "display order, unique per party"
+    int position "display order, unique among the party's live attendees"
     text name "not blank"
     text type "Adult|Teenager|Kid"
     text participation "Whole|Main|After-Party"
@@ -102,6 +102,7 @@ erDiagram
     text sleeping_preference "CHECK, '' = not answered"
     text bed_reason "CHECK"
     text_array dietary_needs "CHECK, {} = not answered"
+    timestamptz deleted_at "removed from the party (#237); NULL = live"
   }
   VENUES {
     uuid id PK
@@ -160,7 +161,7 @@ erDiagram
 
 Each person in a party is a row of `attendees` ([ADR 0018](./adr/0018-attendees-in-their-own-table.md),
 #126, which superseded the `user_parties.attendees` JSON array of ADR 0004). `position` is the
-display order (from 1, unique per party). The enumerated columns have `CHECK` constraints with the
+display order (from 1, unique among the party's live attendees). The enumerated columns have `CHECK` constraints with the
 values of `src/lib/registrationOptions.ts`; `''` means "not answered", as it did in the JSON.
 
 | Column | Values |
@@ -174,8 +175,8 @@ values of `src/lib/registrationOptions.ts`; `''` means "not answered", as it did
 **One write path.** The form saves a party and its attendees in one transaction with
 `save_registration(p_event_id, p_attendees, p_party, p_user_id)`, a `SECURITY INVOKER` function, so
 the RLS of both tables applies. It upserts the party, then updates the attendees whose `id` it is
-sent, inserts the others and deletes the ones left out, then updates the party so its triggers
-recompute what depends on the attendees. Saving registers the party (again, if it was cancelled).
+sent, inserts the others and [removes](#removed-attendees) the ones left out, then updates the party
+so its triggers recompute what depends on the attendees. Saving registers the party (again, if it was cancelled).
 An admin saves someone else's registration by passing `p_user_id`.
 
 `trg_guard_attendee_write` refuses any other write to `attendees` from a client
@@ -184,6 +185,50 @@ deletes a party. `save_registration()` marks the party it is saving in a transac
 (`bedaine.saving_party`) that PostgREST gives clients no way to set. Where an attendee sleeps is
 not an attendee column but a [place assignment](#sleeping-locations-and-places), so it stays with
 the attendee, by id, whatever the member edits.
+
+### Removed attendees
+
+Nobody is deleted from a party (#237, the first application of [ADR 0024](./adr/0024-no-hard-deletes.md)): removing someone sets their row's `deleted_at` (NULL means
+live; a timestamp, never a boolean, as `profiles.deleted_at`). The row stays, so what refers to
+the person by id (#236's « Payé par ») still resolves. `save_registration()` does it through
+`private.remove_party_attendees()`, which also deletes their place assignments, as the cascade
+used to. A removed attendee is never revived: their id in a later payload matches nothing, so
+re-adding the person inserts a new row. The change history logs a removal as before: the
+`attendees` lists, before and after, hold live attendees only. No client can write `deleted_at`,
+and nothing restores a removed attendee.
+
+**Every reader ignores removed attendees, enforced in the database, in two places:**
+
+- **Clients**, member and admin alike: a `RESTRICTIVE` `SELECT` policy on `attendees`
+  (`deleted_at IS NULL`, "Attendees: removed ones are hidden") hides them from `authenticated`.
+  Restrictive policies are ANDed with the permissive ones, so this holds whatever those say, and
+  they can be rewritten without touching it. It covers every PostgREST read and embed (the party
+  module below, so the member pages, the admin lists, Logistique and the exports), the
+  `security_invoker` view `attendee_places`, and the `SECURITY INVOKER` functions
+  (`save_registration`, `save_logistics`, `event_places`). A view in front of the table would
+  have needed every embed renamed; the policy needed none.
+- **`SECURITY DEFINER` code, triggers and the service role** bypass RLS, so each helper that counts
+  or lists a party's attendees filters `deleted_at IS NULL` itself: `private.attendees_snapshot`
+  (change history), `private.party_amount_owed` (amount owed), `private.event_headcount` and
+  `private.party_size` (capacity, waitlist, promotion), `carpool_board()` (a need's seats),
+  `private.party_places_snapshot` (the place history, #188).
+  `enforce_place_assignment` refuses a removed attendee (`place_assignment_attendee_removed`), and
+  the `send-party-email` Edge Function filters its embed (`attendees.deleted_at=is.null`). New
+  definer code reading `attendees` must do the same.
+
+The soft delete itself goes through a `SECURITY DEFINER` helper because, under the restrictive
+policy, an `UPDATE` that sets `deleted_at` would hide the row from its own writer, which Postgres
+refuses ("new row violates row-level security policy"). The helper only acts on the party
+`save_registration()` is saving (`bedaine.saving_party`).
+
+`position` is unique among the party's live attendees only (a removed one keeps theirs): the
+exclusion constraint `attendees_live_party_id_position_excl`, `WHERE (deleted_at IS NULL)`,
+deferred like the unique constraint it replaced, since `save_registration()` renumbers positions
+in one statement and a partial unique index can't be deferred.
+
+Admins resolve any attendee by id, removed or not, with `attendee_by_id(p_attendee_id)` (a
+`SECURITY DEFINER` RPC: `id`, `party_id`, `name`, `deleted_at`; `admin_only` otherwise).
+Members have no way to see a removed attendee.
 
 **Reading.** Embed them: `user_parties(*, attendees(*, place:attendee_places(place_id, bed_label)))`,
 ordered by `position`. The party module (`src/lib/parties.ts`, #197) is the only client code that
@@ -286,7 +331,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 | `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE OF status), advisory-locked per event | Yes |
 | `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE); the update that completes a new registration isn't counted | Yes |
 | `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none; `places` is written by `save_logistics()` and the venue-change trigger instead (#188, see Assigning above), and `admin_notes` by `party_admin_notes`' own trigger (`log_party_admin_notes_edit`, #227), in `save_logistics()`'s entry for the party when it's the one writing | Yes, attributed to `auth.uid()` |
-| `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's `attendees` rows and its locked price; frozen once paid (#31) | Yes |
+| `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's live `attendees` rows and its locked price; frozen once paid (#31) | Yes |
 | Headcount per tier | Not stored: counted from `attendees` where needed (`tierCountsOf()` in `src/lib/adminStats.js`) | — |
 | `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |
 | `profiles.is_admin` on signup | `handle_new_user`, true iff email is the root admin | Yes |
@@ -359,7 +404,9 @@ setting that changes nothing deletes the row.
 
 - **Capacity is advisory.** Nothing stops more people than `capacity` in a place: organisers may
   overbook on purpose, and the UI warns.
-- **Freeing places.** Removing an attendee from the party deletes their assignment (the cascade).
+- **Freeing places.** Removing an attendee from the party deletes their assignment
+  (`save_registration()`; the row is [kept, removed](#removed-attendees)), and a removed attendee
+  can't be assigned (`place_assignment_attendee_removed`).
   A party that is cancelled or becomes waitlisted loses its assignments
   (`trg_release_inactive_party_places`).
 - **Who can be assigned.** `trg_enforce_place_assignment` refuses an attendee of a cancelled or
@@ -442,8 +489,8 @@ only the member's own party, and never waitlisted a member (#118). It:
 1. Reads `max_attendees` for the event; if null or ≤ 0, clears the waitlist flag and returns.
 2. Takes `pg_advisory_xact_lock(hashtext(event_id))` so two simultaneous registrations cannot both
    pass the capacity check.
-3. Counts the `attendees` rows of all non-waitlisted, non-cancelled parties for the event,
-   excluding the row being written (`private.event_headcount`).
+3. Counts the live `attendees` rows (not [removed](#removed-attendees)) of all non-waitlisted,
+   non-cancelled parties for the event, excluding the row being written (`private.event_headcount`).
 4. Adds this party's size; if the total exceeds `max_attendees`, sets `is_waitlisted = TRUE`.
 5. Always overwrites the client's `is_waitlisted`.
 

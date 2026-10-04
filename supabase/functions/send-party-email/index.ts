@@ -83,7 +83,8 @@ async function handle(partyId: string) {
   const [party] = await rest<PartyRow[]>(
     `user_parties?id=eq.${partyId}&select=id,status,is_waitlisted,payment_status,calculated_amount_owed,` +
       'attendees(name,place:attendee_places(place_id)),events(theme,event_start_date,is_active,venue:venues(address)),profiles(email,full_name)' +
-      '&attendees.order=position.asc'
+      // Removed attendees (#237) are kept as rows; the service role reads past RLS, so filter them.
+      '&attendees.deleted_at=is.null&attendees.order=position.asc'
   );
   if (!party?.events || !party.profiles?.email) return { party_id: partyId, results: [] };
 
