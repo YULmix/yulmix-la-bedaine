@@ -240,6 +240,15 @@ draft (`src/lib/logisticsDraft.js`) and saves them all with `save_logistics(p_ch
 returns the refused ones (`[{ party_id, code, message, details }]`, `message` being the error code),
 and the tab keeps their drafts.
 
+**History of places** (#188). Each party `save_logistics` saves logs its place changes in
+`registration_edits`, in the same entry as that save's texts:
+`changes.places = { old: [...], new: [...] }`, one item per attendee whose place changed, in the
+same order in both lists: `{ attendee_id, attendee_name, place_id, label }`, `label` being
+« <location> · <place> » as it was then, `place_id` and `label` null for unassigned. A venue change
+that clears an event's places logs one entry per party it clears, with `reason: 'venue_changed'`.
+The archive freeze, a cancellation and a removed attendee log no place change. The entries are the
+admin's, so members don't read them; the member's history ignores `places` anyway.
+
 ## JSONB payload shapes
 
 Three columns carry structured data. These shapes are a contract between the form and the admin
@@ -310,7 +319,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 |---|---|---|
 | `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE OF status), advisory-locked per event | Yes |
 | `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE); the update that completes a new registration isn't counted | Yes |
-| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none | Yes, attributed to `auth.uid()` |
+| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none; `places` is written by `save_logistics()` and the venue-change trigger instead (#188, see Assigning above) | Yes, attributed to `auth.uid()` |
 | `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's live `attendees` rows and its locked price; frozen once paid (#31) | Yes |
 | Headcount per tier | Not stored: counted from `attendees` where needed (`tierCountsOf()` in `src/lib/adminStats.js`) | — |
 | `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |

@@ -101,7 +101,8 @@ Inscrits has views too, in `/admin/users/<view>` (`list` by default, `history`),
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
 old `/admin/tools/…` URLs redirect. The « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
-event selector (the active event by default).
+event selector (the active event by default). Place changes (#188) are one line per attendee
+(`describePlaceChanges()` in `src/lib/changeHistory.js`); the member's history doesn't show them.
 
 **One scrollbar at a time.** A long list that scrolls inside its own box must end on screen with
 the page at the top, or the box and the page fight over the wheel. `useFitToViewport`
