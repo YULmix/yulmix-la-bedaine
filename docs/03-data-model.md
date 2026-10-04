@@ -18,6 +18,7 @@ erDiagram
   EVENTS ||--o{ EDITION_ROLES : "run by (#217)"
   PROFILES ||--o{ EDITION_ROLES : "holds"
   EVENTS ||--o{ EDITION_ROLE_LOG : "role changes logged"
+  PROFILES ||--o{ IMPERSONATION_LOG : "viewed as (« Voir comme », #265)"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
   USER_PARTIES ||--o{ EMAIL_LOG : "emailed about"
@@ -634,7 +635,9 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
 3. If it is an enum-like value, add it to `src/lib/registrationOptions.ts` with a French label, and
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.
-5. Update this document and the ERD above.
+5. A new table attaches the « Voir comme » read-only trigger (`trg_refuse_when_impersonating`, see
+   « Voir comme » below); the RLS suite fails otherwise.
+6. Update this document and the ERD above.
 
 ## Edition roles (#217)
 
@@ -656,6 +659,17 @@ in the transaction-local setting `bedaine.organiser_party`, which
 `protect_admin_only_party_fields` lets through, as `save_registration()` does with
 `bedaine.saving_party`. `party_admin_notes` is read by Comité and above and written by
 Organisateur and above on the party's edition (#227's « once #217 lands »).
+
+## « Voir comme » (#265)
+
+[ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md): an admin opens the app in a member's
+real session, read-only, for 30 minutes.
+
+| Table / function | What it is |
+|---|---|
+| `impersonation_log` | One row per « Voir comme » session: `admin_id` (who looked), `target_id` (whom), `started_at`, `expires_at` (= `started_at` + 30 minutes, set by the database), `session_id` (the Auth session the hook tied to it, null until then; unique), `ended_at` (« Quitter »). Both ids reference `profiles` `ON DELETE SET NULL`. `trg_check_impersonation_log` (`SECURITY DEFINER`) refuses an actor who isn't an active admin and a target who is the admin, an admin, deleted or missing, sets the two times on insert, and on update lets `session_id` and `ended_at` be set once and `expires_at` only move earlier. Admins read it; the `impersonate` Edge Function inserts it and sets `ended_at` (service role); the hook sets `session_id` (`supabase_auth_admin`). Nobody writes it from the app |
+| `custom_access_token_hook(event)` | The Supabase Auth hook: adds `impersonated_by` and caps `exp` for a session claimed from a fresh row, refuses its refresh after `expires_at` or `ended_at`; every other token unchanged. `supabase_auth_admin` only |
+| `private.refuse_when_impersonating()` | Statement-level `BEFORE INSERT OR UPDATE OR DELETE` trigger (`trg_refuse_when_impersonating`) on **every** table in `public` and `private`: raises `read_only_impersonation` when the JWT carries `impersonated_by`. A new table attaches it in its migration |
 
 ## Account deletion (#36)
 
