@@ -321,6 +321,14 @@ side: each project is a link in a chain (`dependencies`), and `chromium`, which 
 files, runs one worker (#170). To run one project alone, pass `--no-deps`; never run two projects
 at once.
 
+**Adding a spec.** A spec that only reads, or makes its own data, goes in `e2e/` and runs in
+`chromium` with no config change. A spec that reseeds or mutates the shared active event needs a
+project of its own: append **one entry** (`{ name: 'my-spec' }`, with a comment saying why) at the
+end of `SERIAL_ENTRIES` in `playwright.config.js`. The chain of `dependencies` and `chromium`'s
+`testIgnore` are generated from that list, so nothing else is edited (`spec` defaults to the name,
+`device` to `'Desktop Chrome'`). Never add a hand-written project to `projects`: that is what made
+every branch conflict (#244).
+
 **When the suite fails for reasons that look unrelated, reset the local database first**
 (`supabase db reset`, always safe locally). Interrupted runs leave throwaway members and parties
 behind, and the preview seed (`scripts/preview-seed`) must never be applied locally: its trigger
