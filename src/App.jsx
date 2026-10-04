@@ -234,6 +234,7 @@ function App() {
         user={user}
         isAdmin={isAdmin}
         canOpenAdmin={!!activeRole}
+        level={activeRole}
         isDeleted={isDeleted}
         onOpenFeedback={() => setIsFeedbackOpen(true)}
       />
