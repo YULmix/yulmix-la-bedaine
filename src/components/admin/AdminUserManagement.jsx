@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Pencil, Search, UsersRound } from 'lucide-react';
+import { Search, UsersRound } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import {
   PAYMENT_STATUS,
@@ -10,7 +10,7 @@ import {
 import { formatCurrency } from '../../lib/format';
 import { amountOwedOf } from '../../lib/adminStats';
 import { initials, plural } from '../../lib/eventDisplay';
-import { Button, EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
+import { EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
 import { useFitToViewport } from '../../hooks/useFitToViewport';
 import { AdminHeaderActions } from './AdminNav';
 
@@ -26,10 +26,7 @@ const FILTERS = [
 
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
-// Name | email | people | amount | payment | edit, from lg up; a card per party below.
-// Without the editor (anyone but an admin, #217), the last column goes.
-const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem_3rem]';
-const READ_GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
+const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
 
 export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   <div role="group" aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
@@ -54,22 +51,20 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   </div>
 );
 
-// Registered parties: who they are, what they owe, whether they paid. Payment changes
-// go through the parent, which confirms before writing. The search is in the page header; the
+// Registered parties: who they are, what they owe, whether they paid. A party's name opens its
+// « Inscription » (#258); editing it is from there. Payment changes go through the
+// parent, which confirms before writing. The search is in the page header; the
 // list scrolls in a box that ends on screen (a dense page, ADR 0022). An action whose handler is
 // missing isn't rendered: the role doesn't allow it (#217); the payment shows as a tag instead.
 const AdminUserManagement = ({
   parties,
-  onOpenUserProfile,
-  onPaymentToggle,
-  onEditParty
+  onOpenParty,
+  onPaymentToggle
 }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const listRef = useRef(null);
-  const showAdminColumns = !!onEditParty;
-  const gridColumns = showAdminColumns ? GRID_COLUMNS : READ_GRID_COLUMNS;
-
+  
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
     [parties]
@@ -111,13 +106,12 @@ const AdminUserManagement = ({
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
       ) : (
         <div className="overflow-hidden rounded-card border border-line bg-surface">
-          <div className={`hidden lg:grid ${gridColumns} lg:gap-4 border-b border-line px-5 py-3 text-sm font-semibold text-faint`}>
+          <div className={`hidden lg:grid ${GRID_COLUMNS} lg:gap-4 border-b border-line px-5 py-3 text-sm font-semibold text-faint`}>
             <span>{fr.logisticsTableName}</span>
             <span>{fr.logisticsTableEmail}</span>
             <span>{fr.peopleColumn}</span>
             <span className="text-right">{fr.amountDue}</span>
             <span>{fr.paymentColumn}</span>
-            {showAdminColumns && <span className="sr-only">{fr.actionsTableHeader}</span>}
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
           <ul ref={listRef} className="relative divide-y divide-line overflow-y-auto overscroll-contain">
@@ -130,14 +124,14 @@ const AdminUserManagement = ({
               return (
                 <li
                   key={party.id}
-                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${gridColumns} lg:gap-4 lg:px-5 lg:py-3`}
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} lg:gap-4 lg:px-5 lg:py-3`}
                 >
                   <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted lg:hidden">
                     {initials(profile.full_name || profile.email)}
                   </span>
                   <div className="min-w-0">
                     <button
-                      onClick={() => onOpenUserProfile(profile)}
+                      onClick={() => onOpenParty(party)}
                       className="max-w-full truncate text-left font-semibold text-ink underline decoration-edge underline-offset-4 hover:decoration-neon"
                     >
                       {profile.full_name || fr.notSpecified}
@@ -165,17 +159,6 @@ const AdminUserManagement = ({
                       >
                         {getPaymentStatusShortLabel(party.payment_status)}
                       </button>
-                    )}
-                    {onEditParty && (
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        onClick={() => onEditParty(party)}
-                        aria-label={fr.editRegistrationButton}
-                        title={fr.editRegistrationButton}
-                      >
-                        <Pencil aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
-                      </Button>
                     )}
                   </div>
                 </li>

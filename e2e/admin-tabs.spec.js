@@ -13,7 +13,7 @@ import {
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { pickPlace, placeOption, placePickers } from './support/placePicker.js';
-import { adminMain, adminNav, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
+import { adminMain, adminNav, moreButton, moreSheet, openPartyDetail, openPartyEditor, openSection, partyDetail, sectionLink } from './support/admin.js';
 import { readFileSync } from 'node:fs';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
@@ -92,8 +92,14 @@ async function expectLogisticsTabActive(page) {
   await expect(bedInputs(page)).toHaveCount(E2E_ATTENDEES.length);
 }
 
-async function expectProfileModalWorks(page) {
-  await panel(page).getByRole('button', { name: MEMBER_NAME, exact: true }).click();
+async function expectProfileModalWorks(page, { viaDetail = false } = {}) {
+  if (viaDetail) {
+    // Inscrits: the name opens the « Inscription », whose « Voir le profil » opens the profile.
+    const detail = await openPartyDetail(page);
+    await detail.getByRole('button', { name: fr.partyDetailViewProfile }).click();
+  } else {
+    await panel(page).getByRole('button', { name: MEMBER_NAME, exact: true }).click();
+  }
   const profile = modal(page, fr.userProfileModalTitle);
   await expect(profile).toBeVisible();
   await expect(profile.getByText(fr.userProfileEventHistory)).toBeVisible();
@@ -102,6 +108,8 @@ async function expectProfileModalWorks(page) {
   await expect(page.getByText(fr.historyFetchError)).toHaveCount(0);
   await closeModal(profile);
   await expect(profile).toHaveCount(0);
+  // The profile opened over the « Inscription », which is still there underneath.
+  if (viaDetail) await closeModal(partyDetail(page));
 }
 
 async function expectNoHorizontalOverflow(page) {
@@ -182,7 +190,7 @@ test.describe('admin tabs', () => {
     await expect(panel(page).getByRole('checkbox', { name: 'Admin' })).toHaveCount(1);
     await expect(panel(page).getByRole('checkbox', { name: 'Admin' })).not.toBeChecked();
     await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(1);
-    await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(1);
+    await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   });
 
   test('payment toggle asks for confirmation and cancelling writes nothing', async ({ page }) => {
@@ -239,18 +247,36 @@ test.describe('admin tabs', () => {
 
   test('profile modal opens from both tabs', async ({ page }) => {
     await openAdmin(page, '/users');
-    await expectProfileModalWorks(page);
+    await expectProfileModalWorks(page, { viaDetail: true });
 
     await openSection(page, LOGISTICS_TAB);
     await expectLogisticsTabActive(page);
     await expectProfileModalWorks(page);
   });
 
+  test('« Inscription » is read-only; « Modifier » opens the editor, and the pencil column is gone (#258)', async ({ page }) => {
+    await openAdmin(page, '/users');
+    const detail = await openPartyDetail(page);
+    await expect(detail.getByText('member@test.local')).toBeVisible();
+    await expect(detail.getByText(fr.partyDetailRegisteredOn)).toBeVisible();
+    for (const attendee of E2E_ATTENDEES) await expect(detail.getByText(attendee.name, { exact: true })).toBeVisible();
+    // Read-only: no field, and « Modifier » is the only way on.
+    await expect(detail.locator('input, textarea, select')).toHaveCount(0);
+    await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toBeVisible();
+    if (process.env.E2E_SCREENSHOT_DIR) {
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscription-admin-${width}.png` });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+    await closeModal(detail);
+    await expect(detail).toHaveCount(0);
+  });
+
   test('god-mode edit modal opens from the users tab', async ({ page }) => {
     await openAdmin(page, '/users');
-    await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
-    const edit = modal(page, fr.adminEditRegistrationTitle);
-    await expect(edit).toBeVisible();
+    const edit = await openPartyEditor(page);
     // It's editing the seeded registration, not an empty form.
     await expect(edit.locator('input').first()).toBeVisible();
     const names = await edit.locator('input').evaluateAll((els) => els.map((el) => el.value));
@@ -261,9 +287,7 @@ test.describe('admin tabs', () => {
 
   test('a toast shows above the open edit dialog, not behind it', async ({ page }) => {
     await openAdmin(page, '/users');
-    await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
-    const edit = modal(page, fr.adminEditRegistrationTitle);
-    await expect(edit).toBeVisible();
+    const edit = await openPartyEditor(page);
     // The app-wide stack (src/lib/toasts.ts), notified the way a save inside the dialog would.
     await page.evaluate(() => import('/src/lib/toasts.ts').then(({ notify }) => notify('Toast au-dessus', 'error')));
     const toast = page.getByRole('alert').filter({ hasText: 'Toast au-dessus' });
@@ -283,20 +307,21 @@ test.describe('admin tabs', () => {
     await expectNoHorizontalOverflow(page);
     await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: MEMBER_NAME, exact: true }));
     await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }));
-    await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.editRegistrationButton }));
     await expectWithinViewportWidth(page, panel(page).getByRole('checkbox', { name: 'Admin' }));
     await shot(page, 'mobile-tab-users');
 
-    await panel(page).getByRole('button', { name: MEMBER_NAME, exact: true }).click();
+    const detail = await openPartyDetail(page);
+    await expectNoHorizontalOverflow(page);
+    await shot(page, 'mobile-modal-inscription');
+    await detail.getByRole('button', { name: fr.partyDetailViewProfile }).click();
     const profile = modal(page, fr.userProfileModalTitle);
     await expect(profile.getByText(E2E_EVENT_THEME)).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-modal-profile');
     await closeModal(profile);
+    await closeModal(detail);
 
-    await panel(page).getByRole('button', { name: fr.editRegistrationButton }).click();
-    const edit = modal(page, fr.adminEditRegistrationTitle);
-    await expect(edit).toBeVisible();
+    const edit = await openPartyEditor(page);
     await expectNoHorizontalOverflow(page);
     await shot(page, 'mobile-modal-edit');
     await closeModal(edit);

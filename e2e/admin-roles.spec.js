@@ -6,11 +6,22 @@
 // E2E_SCREENSHOT_DIR=<dir> saves « Équipe » at 390 and 1440 px wide.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { adminMain, adminNav, moreButton } from './support/admin.js';
+import { adminMain, adminNav, moreButton, openPartyDetail } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  ADMIN_ID,
+  MEMBER_ID,
   ORGANISER_ID,
   deleteLocations,
+  addParty,
+  createAccounts,
+  createThrowawayMember,
+  deleteAccounts,
+  deleteThrowawayMember,
+  ensureOtherEvent,
+  ensureRootAdmin,
+  rpcAs,
+  setEventMaxAttendees,
   setIsAdminFlag,
   deleteVenueGalleries,
   getEditionRole,
@@ -110,6 +121,17 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
+  // Opening a registration: read-only, with its attendees but neither « Modifier » nor the email log
+  // (email_log is Organisateur's), and no error from it.
+  const consoleErrors = [];
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  const detail = await openPartyDetail(page);
+  await expect(detail.getByText(ALICE, { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
+  await expect(detail.getByText(fr.emailLogTitle)).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+  await detail.getByRole('button', { name: fr.close, exact: true }).click();
   // Only the list: no Historique.
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toHaveCount(0);
 
@@ -146,6 +168,19 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
   await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toBeVisible();
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
+  // The registration opens read-only with the email log (the seeded failed email), never « Modifier ».
+  const detail = await openPartyDetail(page);
+  await expect(detail.getByText(fr.emailLogTitle)).toBeVisible();
+  await expect(detail.getByText('e2e', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscription-organiser-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+  }
+  await detail.getByRole('button', { name: fr.close, exact: true }).click();
   await panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
   const confirm = page.getByRole('dialog', { name: fr.markPaid });
   await confirm.getByRole('button', { name: fr.markPaid }).click();
@@ -249,7 +284,18 @@ test('admin: « Équipe » lists the people with their level; « Inscrits seulem
   await expect(picker(page).getByRole('listitem').filter({ hasText: 'Test Admin' }).getByText(fr.teamAdminTag, { exact: true })).toBeVisible();
 });
 
-test('admin: grants Admin (replacing the edition role) and removes it, both in the log; one\'s own can\'t go', async ({ page }) => {
+test('admin: grants Admin (replacing the edition roles) and removes it, both in the log of every edition; one\'s own can\'t go', async ({ page }) => {
+  // The same person is Organisateur on two editions: A (the active one) and B.
+  const otherId = await ensureOtherEvent();
+  await grantEditionRoles(otherId);
+  try {
+    await grantAndRemoveAdmin(page, otherId);
+  } finally {
+    await revokeEditionRoles(otherId);
+  }
+});
+
+async function grantAndRemoveAdmin(page, otherId) {
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin/team');
   await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
@@ -265,6 +311,7 @@ test('admin: grants Admin (replacing the edition role) and removes it, both in t
   const admins = panel(page).getByRole('list', { name: fr.teamAdminsTitle });
   await expect(admins.getByRole('listitem').filter({ hasText: name })).toBeVisible();
   await expect.poll(() => getEditionRole(seeded.eventId, ORGANISER_ID)).toBeNull();
+  await expect.poll(() => getEditionRole(otherId, ORGANISER_ID)).toBeNull();
   await expect(panel(page).getByRole('combobox', { name: fr.teamRoleFor.replace('{name}', name) })).toHaveCount(0);
 
   // One's own flag and the root admin's can't be removed from here.
@@ -285,6 +332,98 @@ test('admin: grants Admin (replacing the edition role) and removes it, both in t
   await expect(log.nth(0)).toContainText(line('teamLogAdminRemoved', { actor: 'Test Admin', person: name }));
   await expect(log.nth(1)).toContainText(line('teamLogAdminGranted', { actor: 'Test Admin', person: name }));
   await expect(log.nth(2)).toContainText(line('teamLogRemoved', { actor: 'Test Admin', role: fr.editionRoleOrganiser, person: name }));
+
+  // Edition B's log has the same, in the same order: its own role removal, and the admin entries.
+  await panel(page).getByRole('combobox', { name: fr.teamEditionLabel }).selectOption(otherId);
+  await expect(log.nth(0)).toContainText(line('teamLogAdminRemoved', { actor: 'Test Admin', person: name }));
+  await expect(log.nth(1)).toContainText(line('teamLogAdminGranted', { actor: 'Test Admin', person: name }));
+  await expect(log.nth(2)).toContainText(line('teamLogRemoved', { actor: 'Test Admin', role: fr.editionRoleOrganiser, person: name }));
+}
+
+// The picker's three levels of refusal, forced through the real rpc: the request is pointed at
+// someone the database protects, and the French message shows.
+test('admin: the database refuses one\'s own and the root admin\'s flag, and the toast is French', async ({ page }) => {
+  const root = await ensureRootAdmin();
+  try {
+    await loginAs(page, TEST_USERS.admin);
+    await page.goto('/admin/team');
+    await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
+    await panel(page).getByLabel(fr.teamAddRoleLabel).selectOption('admin');
+    const admins = panel(page).getByRole('list', { name: fr.teamAdminsTitle });
+    // The root admin's row can't be removed; nor one's own.
+    await expect(admins.getByRole('listitem').filter({ hasText: 'yulmixalabedaine@gmail.com' }).getByRole('button')).toBeDisabled();
+    await expect(admins.getByRole('listitem').filter({ hasText: 'yulmixalabedaine@gmail.com' })).toContainText(fr.teamAdminRemoveRoot);
+
+    for (const [targetId, message] of [[root.id, fr.dbErrorRootAdminCannotBeDemoted], [ADMIN_ID, fr.selfAdminToggleError]]) {
+      // Grant Admin to Test Organisateur, then point the removal at the protected account.
+      await picker(page).getByRole('listitem').filter({ hasText: 'Test Organisateur' }).getByRole('button').click();
+      await page.getByRole('dialog', { name: fr.teamAdminGrantTitle }).getByRole('button', { name: fr.teamAdminGrantTitle }).click();
+      await panel(page).getByRole('button', { name: fr.teamAdminRemoveFor.replace('{name}', 'Test Organisateur') }).click();
+      await page.route('**/rpc/admin_set_is_admin', async route => {
+        const body = JSON.parse(route.request().postData());
+        await route.continue({ postData: JSON.stringify({ ...body, target_user_id: targetId }) });
+      }, { times: 1 });
+      await page.getByRole('dialog', { name: fr.teamAdminRemoveTitle }).getByRole('button', { name: fr.teamAdminRemoveTitle }).click();
+      await expect(page.getByText(message).last()).toBeVisible();
+      await setIsAdminFlag(ORGANISER_ID, false);
+      await page.reload();
+      await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
+      await panel(page).getByLabel(fr.teamAddRoleLabel).selectOption('admin');
+    }
+  } finally {
+    if (root.created) await deleteAccounts([root.id]);
+  }
+});
+
+test('admin: « Inscrits seulement » keeps the waitlisted and drops the cancelled', async ({ page }) => {
+  await setEventMaxAttendees(seeded.eventId, 2);
+  const waitlisted = await createThrowawayMember('waitlisted');
+  const cancelled = await createThrowawayMember('cancelled');
+  try {
+    await addParty(waitlisted.id, seeded.eventId);
+    await addParty(cancelled.id, seeded.eventId, 'cancelled');
+    await loginAs(page, TEST_USERS.admin);
+    await page.goto('/admin/team');
+    const row = person => picker(page).getByRole('listitem').filter({ hasText: person.email });
+    await expect(row(waitlisted)).toBeVisible();
+    await expect(row(cancelled)).toHaveCount(0);
+    await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
+    await expect(row(cancelled)).toBeVisible();
+    await expect(row(waitlisted)).toBeVisible();
+  } finally {
+    await deleteThrowawayMember(waitlisted.id);
+    await deleteThrowawayMember(cancelled.id);
+  }
+});
+
+test('admin: past the cap the picker searches on the server, narrowed by « Inscrits seulement »', async ({ page }) => {
+  // The listing is answered as if there were more accounts than the cap; the typed searches are real.
+  await page.route(/\/rest\/v1\/profiles\?(?!.*\bor=).*limit=201/, route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(Array.from({ length: 201 }, (_, n) => ({ id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, full_name: `Fake ${n}`, email: `fake${n}@x`, is_admin: false })))
+  }));
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/team');
+  await expect(panel(page).getByText(fr.teamPeopleTooMany)).toBeVisible();
+  await expect(picker(page)).toHaveCount(0);
+  const search = panel(page).getByRole('searchbox', { name: fr.teamSearchLabel });
+  // Filter on: the registered member is found, the unregistered organiser isn't.
+  await search.fill('member@');
+  await expect(picker(page).getByRole('listitem').filter({ hasText: MEMBER_NAME })).toBeVisible();
+  await search.fill('organiser@');
+  await expect(panel(page).getByText(fr.teamSearchEmpty)).toBeVisible();
+  // Filter off: found.
+  await panel(page).getByRole('switch', { name: fr.teamRegisteredOnly }).click();
+  await expect(picker(page).getByRole('listitem').filter({ hasText: 'Test Organisateur' })).toBeVisible();
+});
+
+test('Comité and Organisateur: « Équipe » is out of reach, and admin_set_is_admin is refused', async ({ page }) => {
+  for (const user of [TEST_USERS.committee, TEST_USERS.organiser]) {
+    await loginAs(page, user);
+    await expectRedirected(page, '/admin/team');
+    const error = await rpcAs(user, 'admin_set_is_admin', { target_user_id: MEMBER_ID, new_is_admin: true });
+    expect(error?.message).toContain('admin_only');
+  }
 });
 
 test.describe('on a phone', () => {

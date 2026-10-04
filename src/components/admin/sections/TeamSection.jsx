@@ -286,7 +286,7 @@ const TeamSection = () => {
                     {person.full_name && <p className="truncate text-sm text-faint">{person.email}</p>}
                   </div>
                   <Tag tone="info">{fr.teamAdminTag}</Tag>
-                  <Button variant="secondary" size="icon" disabled={!!reason}
+                  <Button variant="secondary" size="icon" disabled={!!reason || !currentUser}
                     onClick={() => setPendingAdmin({ person, grant: false })}
                     aria-label={fr.teamAdminRemoveFor.replace('{name}', name)} title={reason || fr.teamAdminRemoveFor.replace('{name}', name)}>
                     <UserMinus aria-hidden="true" className="size-4.5" strokeWidth={1.75} />

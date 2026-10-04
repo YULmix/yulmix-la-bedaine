@@ -36,3 +36,23 @@ export const backLink = (page, parentName) => page.getByRole('link', { name: fr.
 
 /** An event's row in the Événements list: events other than the active one have actions too (#111), so « Modifier » is looked for in a row. */
 export const eventRow = (page, theme) => adminMain(page).getByRole('listitem').filter({ has: page.getByText(theme, { exact: true }) });
+
+/** The « Inscription » dialog (#258): opened from the party's name in the Inscrits list. */
+export const partyDetail = page => page.getByRole('dialog', { name: fr.partyDetailTitle });
+
+/** Opens a party's read-only « Inscription » from the Inscrits list, by the member's name. */
+export async function openPartyDetail(page, name = 'Test Member') {
+  await adminMain(page).getByRole('button', { name, exact: true }).click();
+  const dialog = partyDetail(page);
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** An admin's way into the god-mode editor: the « Inscription », then « Modifier ». */
+export async function openPartyEditor(page, name = 'Test Member') {
+  const detail = await openPartyDetail(page, name);
+  await detail.getByRole('button', { name: fr.edit, exact: true }).click();
+  const editor = page.getByRole('dialog', { name: fr.adminEditRegistrationTitle });
+  await expect(editor).toBeVisible();
+  return editor;
+}

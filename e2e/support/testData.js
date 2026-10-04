@@ -630,6 +630,55 @@ export async function setIsAdminFlag(userId, isAdmin) {
   check(await db.from('profiles').update({ is_admin: isAdmin }).eq('id', userId), 'set e2e admin flag');
 }
 
+// Room for `n` people only, so the next registration goes on the waiting list.
+export async function setEventMaxAttendees(eventId, n) {
+  const db = await adminClient();
+  check(await db.from('events').update({ max_attendees: n }).eq('id', eventId), 'set e2e event capacity');
+}
+
+// Calls an rpc as one of the seeded users, the way the app would; returns the error (or null).
+export async function rpcAs(user, fn, args) {
+  const db = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await db.auth.signInWithPassword(user);
+  if (error) throw new Error(`sign-in as ${user.email} failed: ${error.message}`);
+  return (await db.rpc(fn, args)).error;
+}
+
+// The root admin's account (handle_new_user() makes it admin), created if the local seed has none.
+// Returns { id, created }: delete it after only when created.
+export async function ensureRootAdmin() {
+  const email = 'yulmixalabedaine@gmail.com';
+  const db = await adminClient();
+  const existing = check(await db.from('profiles').select('id').eq('email', email).limit(1), 'find root admin');
+  if (existing.length) return { id: existing[0].id, created: false };
+  const { data, error } = await authAdmin().createUser({ email, password: 'password123', email_confirm: true, user_metadata: { full_name: 'Root Admin' } });
+  if (error) throw new Error(`create root admin: ${error.message}`);
+  return { id: data.user.id, created: true };
+}
+
+// Plain accounts in bulk (name `${prefix} n`), to pass the « Équipe » picker's cap; see deleteAccounts.
+export async function createAccounts(prefix, count) {
+  const ids = [];
+  for (let start = 0; start < count; start += 25) {
+    const batch = await Promise.all(Array.from({ length: Math.min(25, count - start) }, async (_, i) => {
+      const n = start + i;
+      const { data, error } = await authAdmin().createUser({
+        email: `${prefix}-${n}@test.local`, password: 'password123', email_confirm: true, user_metadata: { full_name: `${prefix} ${n}` }
+      });
+      if (error) throw new Error(`create account: ${error.message}`);
+      return data.user.id;
+    }));
+    ids.push(...batch);
+  }
+  return ids;
+}
+
+export async function deleteAccounts(ids) {
+  for (let start = 0; start < ids.length; start += 25) {
+    await Promise.all(ids.slice(start, start + 25).map(id => authAdmin().deleteUser(id)));
+  }
+}
+
 // Someone's role on the event, or null.
 export async function getEditionRole(eventId, userId) {
   const db = await adminClient();
