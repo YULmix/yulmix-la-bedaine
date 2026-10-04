@@ -1,11 +1,12 @@
 import { Fragment, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Info, Search, UsersRound, Utensils } from 'lucide-react';
+import { Info, Search, UsersRound, Utensils } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { attendeeRows, sortAttendees } from '../../lib/dataExport';
 import { ofName, plural } from '../../lib/eventDisplay';
-import { Button, ChipGroup, Dialog, EmptyState, Tag, Toggle, cx } from '../ui';
+import { Dialog, EmptyState, Tag, Toggle, cx } from '../ui';
 import { ACCOMMODATION_ICONS, DIETARY_ICONS } from '../accommodationIcons';
 import { AdminHeaderActions } from './AdminNav';
+import { SortButton, SortDialog, SortSheetButton, ariaSort } from './SortControls';
 
 // Inscrits › « Participants » (#262): one row per attendee of the non-cancelled parties, read-only.
 // The rows are the export's (attendeeRows), so the two can't drift. Values from a fixed list are
@@ -17,10 +18,6 @@ const SORT_KEYS = [
   { value: 'group', label: fr.participantsSortGroup },
   { value: 'name', label: fr.participantsSortName }
 ];
-const SORT_DIRECTIONS = [
-  { value: 'asc', label: fr.participantsSortAsc, icon: ArrowUp },
-  { value: 'desc', label: fr.participantsSortDesc, icon: ArrowDown }
-];
 
 // From xl the rows share one grid (subgrid; the gap is the grid's, a subgrid's own would pad every
 // cell). Pills never wrap and a cell with several (diet, status) stacks them, so each of those
@@ -30,19 +27,6 @@ const COLUMNS = 'xl:grid xl:grid-cols-[minmax(11rem,max-content)_repeat(6,auto)]
 const ROW = 'xl:col-span-full xl:grid xl:grid-cols-subgrid xl:items-center xl:[column-gap:normal]';
 // A cell holding several pills: inline with the card's other pills below xl, stacked in the table.
 const STACK = 'contents xl:flex xl:flex-col xl:items-start xl:gap-1.5';
-
-const SortButton = ({ label, active, dir, onSort }) => (
-  <button
-    type="button"
-    onClick={onSort}
-    aria-pressed={active}
-    className={cx('inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap text-left font-semibold hover:text-ink', active && 'text-ink')}
-  >
-    {label}
-    {active ? (dir === 'asc' ? <ArrowUp aria-hidden="true" className="size-4 text-neon" /> : <ArrowDown aria-hidden="true" className="size-4 text-neon" />)
-      : <ArrowUpDown aria-hidden="true" className="size-4 opacity-60" />}
-  </button>
-);
 
 const Header = ({ children, className }) => <span role="columnheader" className={cx('whitespace-nowrap', className)}>{children}</span>;
 
@@ -138,15 +122,6 @@ const DetailsDialog = ({ row, onClose }) => (
   </Dialog>
 );
 
-const SortDialog = ({ open, sort, onChange, onClose }) => (
-  <Dialog open={open} onClose={onClose} title={fr.participantsSortButton} size="sm">
-    <div className="space-y-5 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
-      <ChipGroup label={fr.participantsSortLabel} options={SORT_KEYS} value={sort.key} onChange={key => onChange({ ...sort, key })} />
-      <ChipGroup label={fr.participantsSortDirection} options={SORT_DIRECTIONS} value={sort.dir} onChange={dir => onChange({ ...sort, dir })} />
-    </div>
-  </Dialog>
-);
-
 const ParticipantsView = ({ parties }) => {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState({ key: 'group', dir: 'asc' });
@@ -182,9 +157,7 @@ const ParticipantsView = ({ parties }) => {
       <div className="flex items-center gap-3">
         <span className="text-sm text-faint">{plural(visible.length, 'countPersonOne', 'countPersonOther')}</span>
         {/* Phones sort from here; desktop sorts from the column headers (the name's only once grouped, so this stays for the group order). */}
-        <Button variant="secondary" size="sm" onClick={() => setSortOpen(true)} aria-haspopup="dialog" className={cx('ml-auto', !grouped && 'xl:hidden')}>
-          <ArrowUpDown aria-hidden="true" className="size-4" />{fr.participantsSortButton}
-        </Button>
+        <SortSheetButton onClick={() => setSortOpen(true)} className={cx('ml-auto', !grouped && 'xl:hidden')} />
         <Toggle checked={grouped} onChange={setGrouped} label={fr.participantsGroupBy} className={cx('gap-3', grouped || 'xl:ml-auto')} />
       </div>
 
@@ -195,7 +168,7 @@ const ParticipantsView = ({ parties }) => {
           <div className={COLUMNS}>
             <div role="row" className={cx('hidden border-b border-line px-5 py-2 text-sm text-faint', ROW)}>
               {/* The first column sorts by name, or (flat) by group: the group is the line under each name. */}
-              <span role="columnheader" aria-sort={sort.key === 'name' || !grouped ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} className="flex items-center gap-4">
+              <span role="columnheader" aria-sort={ariaSort(sort.key === 'name' || !grouped, sort.dir)} className="flex items-center gap-4">
                 <SortButton label={fr.exportAttendeeName} active={sort.key === 'name'} dir={sort.dir} onSort={() => sortBy('name')} />
                 {grouped || <SortButton label={fr.participantsColumnGroup} active={sort.key === 'group'} dir={sort.dir} onSort={() => sortBy('group')} />}
               </span>
@@ -224,7 +197,7 @@ const ParticipantsView = ({ parties }) => {
       )}
 
       <DetailsDialog row={details} onClose={() => setDetails(null)} />
-      <SortDialog open={sortOpen} sort={sort} onChange={setSort} onClose={() => setSortOpen(false)} />
+      <SortDialog open={sortOpen} keys={SORT_KEYS} sort={sort} onChange={setSort} onClose={() => setSortOpen(false)} />
     </section>
   );
 };

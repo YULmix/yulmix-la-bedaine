@@ -1,5 +1,6 @@
 // Inscrits « Liste » sorting (#259): by name (default), « Inscrit le » and « Modifié le », from the
-// column headers (aria-sort) or, on a phone, the « Trier par » chips; the choice is in ?tri=.
+// column headers (aria-sort) or, below lg, the « Trier » sheet shared with « Participants »; the
+// choice is in ?tri=.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { adminMain } from './support/admin.js';
@@ -106,21 +107,42 @@ test.describe('desktop', () => {
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('chips sort the cards, the active one reverses', async ({ page }) => {
+  test('the « Trier » sheet sorts the cards, by key and direction', async ({ page }) => {
     await page.goto('/admin/users');
-    const group = panel(page).getByRole('group', { name: fr.participantsSortLabel });
-    await expect(group.getByRole('button', { name: fr.logisticsTableName })).toHaveAttribute('aria-pressed', 'true');
+    await expect(rows(page).filter({ hasText: 'E2E sortB' })).toBeVisible();
+    await expect(panel(page).getByRole('columnheader').first()).toBeHidden(); // no table header on a phone
     const alpha = await mine(page);
-    await group.getByRole('button', { name: fr.partyDetailRegisteredOn }).click();
-    await expect(page).toHaveURL(/\?tri=-inscription$/);
-    await expect.poll(() => mine(page)).toEqual([alpha[1], alpha[0]]);
-    await group.getByRole('button', { name: fr.partyDetailRegisteredOn }).click();
+    expect(alpha).toHaveLength(2);
+    const openSheet = async () => {
+      await panel(page).getByRole('button', { name: fr.participantsSortButton }).click();
+      return page.getByRole('dialog', { name: fr.participantsSortButton });
+    };
+    let sheet = await openSheet();
+    await expect(sheet.getByRole('radio', { name: fr.logisticsTableName, exact: true })).toBeChecked();
+    await expect(sheet.getByRole('radio', { name: fr.participantsSortAsc, exact: true })).toBeChecked();
+    // The sheet applies each choice at once (the list behind it is inert while it is open). A key
+    // keeps the direction: « Inscrit le », ascending = oldest first.
+    await sheet.getByText(fr.partyDetailRegisteredOn, { exact: true }).click();
     await expect(page).toHaveURL(/\?tri=inscription$/);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
     await expect.poll(() => mine(page)).toEqual(alpha);
+    sheet = await openSheet();
+    await sheet.getByText(fr.participantsSortDesc, { exact: true }).click();
+    await expect(page).toHaveURL(/\?tri=-inscription$/);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => mine(page)).toEqual([alpha[1], alpha[0]]);
+    // Each card says the date it is sorted by.
+    await expect(rows(page).filter({ hasText: 'E2E sortB' })).toContainText(`${fr.partyDetailRegisteredOn} 1 février 2026`);
+
+    // The sheet reopens on the URL's sort, after a reload too.
+    await page.reload();
+    sheet = await openSheet();
+    await expect(sheet.getByRole('radio', { name: fr.partyDetailRegisteredOn, exact: true })).toBeChecked();
+    await expect(sheet.getByRole('radio', { name: fr.participantsSortDesc, exact: true })).toBeChecked();
+    await page.keyboard.press('Escape');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    // One line: the first and last chips sit at the same height.
-    const top = async name => (await group.getByRole('button', { name }).boundingBox()).y;
-    expect(await top(fr.logisticsTableName)).toBe(await top(fr.sortModifiedOn));
   });
 });
 
@@ -132,5 +154,11 @@ test('« Inscrits » sorted screenshots', async ({ page }) => {
     await page.goto('/admin/users?tri=-inscription');
     await expect(rows(page).first()).toBeVisible();
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscrits-sorted-admin-${width}.png` });
+    if (width < 1024) {
+      await panel(page).getByRole('button', { name: fr.participantsSortButton }).click();
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/inscrits-sortmenu-admin-${width}.png` });
+      await page.keyboard.press('Escape');
+    }
   }
 });

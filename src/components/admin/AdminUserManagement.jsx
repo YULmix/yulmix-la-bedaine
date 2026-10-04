@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, UsersRound } from 'lucide-react';
+import { Search, UsersRound } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import fr from '../../locales/fr.json';
 import {
@@ -15,6 +15,7 @@ import { initials, plural } from '../../lib/eventDisplay';
 import { EmptyState, Input, Tag, cx, tagToneClass } from '../ui';
 import { useFitToViewport } from '../../hooks/useFitToViewport';
 import { AdminHeaderActions } from './AdminNav';
+import { SortButton, SortDialog, SortSheetButton, ariaSort } from './SortControls';
 
 // A cancelled party owes nothing and counts for nothing (no refunds, #101): every filter but
 // "Annulées" leaves it out, and that pill only shows while there is one.
@@ -31,22 +32,14 @@ const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] >
 const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_6rem_7rem_8.5rem_8.5rem]';
 
 const SORT_LABEL_KEYS = { name: 'logisticsTableName', registered: 'partyDetailRegisteredOn', modified: 'sortModifiedOn' };
-const ARIA_SORT = { asc: 'ascending', desc: 'descending' };
+const SORT_OPTIONS = PARTY_SORT_KEYS.map(key => ({ value: key, label: fr[SORT_LABEL_KEYS[key]] }));
 
-// A sortable column header: a button inside a columnheader that carries aria-sort (#259).
-const SortHeader = ({ sortKey, sort, onSort, className }) => {
+// A sortable column header (#259), the same as « Participants »: aria-sort on the columnheader.
+const SortHeader = ({ sortKey, sort, onSort }) => {
   const active = sort.key === sortKey;
-  const Icon = !active ? ArrowUpDown : sort.direction === 'asc' ? ArrowUp : ArrowDown;
   return (
-    <span role="columnheader" aria-sort={active ? ARIA_SORT[sort.direction] : 'none'} className={className}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={cx('inline-flex min-h-9 items-center gap-1.5 rounded-control font-semibold hover:text-ink', active ? 'text-ink' : 'text-faint')}
-      >
-        {fr[SORT_LABEL_KEYS[sortKey]]}
-        <Icon aria-hidden="true" className={cx('size-3.5', !active && 'opacity-60')} />
-      </button>
+    <span role="columnheader" aria-sort={ariaSort(active, sort.direction)}>
+      <SortButton label={fr[SORT_LABEL_KEYS[sortKey]]} active={active} dir={sort.direction} onSort={() => onSort(sortKey)} />
     </span>
   );
 };
@@ -68,34 +61,6 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
         >
           {fr[filter.labelKey]}
           <span className="font-data text-xs text-faint">{counts[filter.id]}</span>
-        </button>
-      );
-    })}
-  </div>
-);
-
-// The phone's equivalent of the sortable headers: the same chips as Participants. The active chip
-// shows the direction as an arrow and reverses it when tapped, like a header.
-const SortControl = ({ sort, onSort }) => (
-  <div role="group" aria-label={fr.participantsSortLabel} className="flex items-center gap-1.5 lg:hidden">
-    <span className="shrink-0 text-sm text-faint">{fr.participantsSortLabel}</span>
-    {PARTY_SORT_KEYS.map(key => {
-      const active = sort.key === key;
-      const DirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
-      return (
-        <button
-          key={key}
-          type="button"
-          aria-pressed={active}
-          title={active ? (sort.direction === 'asc' ? fr.sortDirectionAscending : fr.sortDirectionDescending) : undefined}
-          onClick={() => onSort(key)}
-          className={cx(
-            'inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border px-2.5 text-sm font-semibold transition duration-150',
-            active ? 'border-neon tint-neon text-ink' : 'border-line text-muted hover:border-edge hover:text-ink'
-          )}
-        >
-          {fr[SORT_LABEL_KEYS[key]]}
-          {active && <DirectionIcon aria-hidden="true" className="size-3.5" />}
         </button>
       );
     })}
@@ -126,6 +91,7 @@ const AdminUserManagement = ({
     return params;
   }, { replace: true });
   const onSort = key => applySort(toggledPartySort(sort, key));
+  const [sortOpen, setSortOpen] = useState(false);
 
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
@@ -164,7 +130,13 @@ const AdminUserManagement = ({
 
       <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
-      <SortControl sort={sort} onSort={onSort} />
+      {/* Below lg there are no column headers: the « Trier » sheet, as in « Participants ». */}
+      <div className="flex items-center gap-3 lg:hidden">
+        <span className="text-sm text-faint">
+          {fr[SORT_LABEL_KEYS[sort.key]]} · {sort.direction === 'asc' ? fr.participantsSortAsc : fr.participantsSortDesc}
+        </span>
+        <SortSheetButton onClick={() => setSortOpen(true)} className="ml-auto" />
+      </div>
 
       {visible.length === 0 ? (
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
@@ -207,7 +179,7 @@ const AdminUserManagement = ({
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
                     {sort.key !== 'name' && (
-                      <p className="truncate text-sm text-faint lg:hidden">
+                      <p className="text-sm text-faint lg:hidden">
                         {fr[SORT_LABEL_KEYS[sort.key]]} {formatDate(sort.key === 'registered' ? party.created_at : partyModifiedAt(party))}
                       </p>
                     )}
@@ -241,6 +213,14 @@ const AdminUserManagement = ({
           </div>
         </div>
       )}
+
+      <SortDialog
+        open={sortOpen}
+        keys={SORT_OPTIONS}
+        sort={{ key: sort.key, dir: sort.direction }}
+        onChange={next => applySort({ key: next.key, direction: next.dir })}
+        onClose={() => setSortOpen(false)}
+      />
     </section>
   );
 };
