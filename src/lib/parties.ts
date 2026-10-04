@@ -9,8 +9,8 @@ import type { PaymentStatus } from './registrationOptions';
 // The party module (#197): the only code that reads or writes a registration (a user_parties row)
 // and its attendees, which live in their own table (ADR 0018). Screens receive a party with an
 // `attendees` array in display order, each attendee with its `place` (from attendee_places, or
-// null, #114). The organisers' private notes live in party_admin_notes, which only admins read
-// (#227): an admin's list carries them as `admin_notes`; a member's read never asks for them.
+// null, #114). The organisers' private notes live in party_admin_notes, which the edition team reads
+// (#227, #217): the admin list carries them as `admin_notes`; a member's read never asks for them.
 //
 // Errors: every function logs the raw error once (PostgREST errors are hard to diagnose from a
 // screenshot) and throws an appError whose message is already French: the code's text for our
