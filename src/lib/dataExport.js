@@ -124,6 +124,33 @@ export const partyExportRows = (allParties) => {
 };
 
 /**
+ * The attendees of every non-cancelled party (waitlisted included), in party then attendee order,
+ * with values as labels: the one source of « which attendees, which values » for the export and
+ * the Inscrits « Participants » view (#262). The free-text fields stay apart from the labels.
+ * @returns {Array<{ key: string, partyId: string, name: string, contact: string, type: string,
+ *   participation: string, dietary: string[], dietaryOther: string, sleeping: string,
+ *   sleepingOther: string, bed: string, status: string, waitlisted: boolean, firstTime: boolean }>}
+ */
+export const attendeeRows = (allParties) => exportedParties(allParties).flatMap(party => (party.attendees || []).map((attendee, index) => ({
+  key: attendee.id || `${party.id}-${index}`,
+  partyId: party.id,
+  name: attendee.name || '',
+  contact: contactNameOf(party),
+  type: getAttendeeTypeLabel(attendee.type),
+  participation: attendee.type === 'Kid' ? '' : getParticipationSummaryLabel(attendee.participation),
+  dietary: dietaryNeedsOf(attendee.dietary_needs)
+    .filter(value => value !== 'none')
+    .map(value => getOptionLabel(DIETARY_OPTIONS, value)),
+  dietaryOther: (attendee.dietary_other || '').trim(),
+  sleeping: getOptionLabel(ACCOMMODATION_OPTIONS, attendee.sleeping_preference, ''),
+  sleepingOther: (attendee.sleeping_preference_other || '').trim(),
+  bed: attendee.place?.bed_label || '',
+  status: statusOf(party),
+  waitlisted: !!party.is_waitlisted,
+  firstTime: !!attendee.is_new_member
+})));
+
+/**
  * « Par participant »: one row per attendee of every non-cancelled party, in party then attendee
  * order. No money, no totals.
  * @returns {{ headers: string[], rows: Array<Array<string|number>> }}
@@ -138,25 +165,41 @@ export const attendeeExportRows = (allParties) => {
     fr.exportDietaryOther,
     fr.exportSleepingPref,
     fr.exportSleepingAssigned,
-    fr.exportStatus
+    fr.exportStatus,
+    fr.firstTimeTag
   ];
 
-  const rows = exportedParties(allParties).flatMap(party => (party.attendees || []).map(attendee => [
-    attendee.name || '',
-    contactNameOf(party),
-    getAttendeeTypeLabel(attendee.type),
-    attendee.type === 'Kid' ? '' : getParticipationSummaryLabel(attendee.participation),
-    dietaryNeedsOf(attendee.dietary_needs)
-      .filter(value => value !== 'none')
-      .map(value => getOptionLabel(DIETARY_OPTIONS, value))
-      .join(', '),
-    (attendee.dietary_other || '').trim(),
-    sleepingPreferenceOf(attendee),
-    attendee.place?.bed_label || '',
-    statusOf(party)
-  ]));
+  const rows = attendeeRows(allParties).map(row => [
+    row.name,
+    row.contact,
+    row.type,
+    row.participation,
+    row.dietary.join(', '),
+    row.dietaryOther,
+    row.sleeping && row.sleepingOther ? `${row.sleeping} (${row.sleepingOther})` : row.sleeping,
+    row.bed,
+    row.status,
+    row.firstTime ? fr.exportYes : ''
+  ]);
 
   return { headers, rows };
+};
+
+/**
+ * Sorts the view's rows (a copy). By name, or by group (the contact's name, then the order
+ * entered); « grouped » keeps a party's attendees together under their contact, whatever the key:
+ * groups by contact name, inside a group by name if that is the sort, else as entered.
+ */
+export const sortAttendees = (rows, { key = 'group', grouped = false } = {}) => {
+  const collator = new Intl.Collator('fr', { sensitivity: 'base', numeric: true });
+  const indexed = rows.map((row, index) => ({ row, index }));
+  const byName = (x, y) => collator.compare(x.row.name, y.row.name) || x.index - y.index;
+  const byGroup = (x, y) => collator.compare(x.row.contact, y.row.contact) || x.index - y.index;
+  if (grouped) {
+    const inside = key === 'name' ? byName : (x, y) => x.index - y.index;
+    return indexed.sort((x, y) => collator.compare(x.row.contact, y.row.contact) || (x.row.partyId === y.row.partyId ? 0 : x.row.partyId < y.row.partyId ? -1 : 1) || inside(x, y)).map(({ row }) => row);
+  }
+  return indexed.sort(key === 'name' ? byName : byGroup).map(({ row }) => row);
 };
 
 export const PARTY_EXPORT = 'parties';

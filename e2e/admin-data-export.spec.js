@@ -1,3 +1,4 @@
+// E2E_SCREENSHOT_DIR=<dir> saves « Participants » at 390 and 1440 px wide, flat and grouped.
 // Inscrits' « Exporter » dialog (#178, #209): « Par groupe » and « Par participant », each as a CSV
 // download (BOM, quoted cells) and a Google Sheets copy (TSV, one line per row). A waitlisted
 // party is listed with its status; members are blocked.
@@ -6,6 +7,7 @@ import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
   createParty,
+  grantEditionRoles,
   createThrowawayMember,
   deleteParty,
   deleteThrowawayMember,
@@ -21,7 +23,7 @@ const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta
 // The specs share the single active e2e event, so they run one at a time.
 test.describe.configure({ mode: 'serial' });
 
-const ZOE = { name: 'Zoé Végé', type: 'Adult', participation: 'Whole', is_new_member: false, dietary_needs: ['vegan', 'other'], dietary_other: 'Pas de coriandre' };
+const ZOE = { name: 'Zoé Végé', type: 'Adult', participation: 'Whole', is_new_member: true, dietary_needs: ['vegan', 'other'], dietary_other: 'Pas de coriandre' };
 const WANDA = { name: 'Wanda Attente', type: 'Adult', participation: 'Whole', is_new_member: false, dietary_needs: ['dairy_free'] };
 
 let seeded;
@@ -101,6 +103,8 @@ test('« Par participant » CSV: one row per attendee with dietary needs, no mon
   expect(lines[0]).not.toContain(fr.exportAmountOwed);
   const zoe = lines.find(line => line.startsWith(`"${ZOE.name}"`));
   expect(zoe).toContain(`"${fr.vegan}, ${fr.otherDietary}","Pas de coriandre"`);
+  expect(lines[0]).toContain(`"${fr.firstTimeTag}"`);
+  expect(zoe.endsWith(`"${fr.exportYes}"`)).toBe(true);
   const wanda = lines.find(line => line.startsWith(`"${WANDA.name}"`));
   expect(wanda).toContain(`"${fr.dairyFree}"`);
   expect(wanda).toContain(`"${fr.filterWaitlist}"`);
@@ -150,4 +154,67 @@ test('« Exporter » is on the list, not on the history', async ({ page }) => {
   await page.goto('/admin/users/history');
   await expect(page.getByRole('heading', { name: fr.changeHistoryTitle })).toHaveCount(1);
   await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toHaveCount(0);
+});
+
+// #262: Inscrits › « Participants », one row per attendee, read-only, from Comité up.
+const participantsRow = (page, name) => page.getByRole('main').getByRole('listitem').filter({ hasText: name });
+
+test('« Participants » (Comité): pills, details pop-up only where there is free text, sort, grouping', async ({ page }) => {
+  await grantEditionRoles(seeded.eventId);
+  await loginAs(page, TEST_USERS.committee);
+  await page.goto('/admin/users');
+  await page.getByRole('navigation', { name: fr.adminTabsAriaLabel }).getByRole('link', { name: fr.usersViewParticipants }).click();
+  await expect(page).toHaveURL(/\/admin\/users\/participants$/);
+
+  // The member's party, the admin's and the waitlisted one are all here.
+  for (const name of [ZOE.name, WANDA.name]) await expect(participantsRow(page, name)).toBeVisible();
+  const zoe = participantsRow(page, ZOE.name);
+  await expect(zoe.getByText(fr.firstTimeTag, { exact: true })).toBeVisible();
+  await expect(zoe.getByText(fr.vegan, { exact: true })).toBeVisible();
+  await expect(zoe.getByText(fr.attendeeTypeAdult, { exact: true })).toBeVisible();
+  await expect(participantsRow(page, WANDA.name).getByText(fr.filterWaitlist, { exact: true })).toBeVisible();
+  await expect(participantsRow(page, WANDA.name).getByText(fr.firstTimeTag, { exact: true })).toHaveCount(0);
+  // Free text isn't inline; only Zoé has the button.
+  await expect(page.getByText('Pas de coriandre')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) })).toHaveCount(1);
+  await zoe.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) }).click();
+  const dialog = page.getByRole('dialog', { name: fr.participantsDetailsTitle.replace('{name}', ZOE.name) });
+  await expect(dialog.getByText('Pas de coriandre')).toBeVisible();
+  await dialog.getByRole('button', { name: fr.close }).first().click();
+  await expect(dialog).toBeHidden();
+
+  // Sort by name, then group them: the toggle is off by default.
+  const toggle = page.getByRole('switch', { name: fr.participantsGroupBy });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('button', { name: fr.participantsSortName, exact: true }).click();
+  const names = await page.getByRole('main').getByRole('listitem').locator('[data-participant-name]').allTextContents();
+  expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'fr')));
+  await toggle.click();
+  // One header per party: the member's, the admin's and the waitlisted one's.
+  await expect(page.getByText(/^Groupe de /)).toHaveCount(3);
+});
+
+test('« Participants » screenshots', async ({ page }) => {
+  test.skip(!process.env.E2E_SCREENSHOT_DIR, 'set E2E_SCREENSHOT_DIR');
+  await loginAs(page, TEST_USERS.admin);
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/admin/users/participants');
+    await expect(participantsRow(page, ZOE.name)).toBeVisible();
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-admin-${width}.png` });
+    await page.getByRole('switch', { name: fr.participantsGroupBy }).click();
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-grouped-admin-${width}.png` });
+  }
+});
+
+test('« Participants » is for Comité and up, not members; usable on a phone', async ({ page }) => {
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/admin/users/participants');
+  await expect(page.getByText(fr.adminOnlyAccessMessage.replace(/\.$/, ''))).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users/participants');
+  await expect(participantsRow(page, ZOE.name)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

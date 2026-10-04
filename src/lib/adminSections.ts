@@ -6,7 +6,7 @@
 // navigation shows a role only what it allows, and the shell sends it away from the rest.
 import {
   Banknote, BedDouble, CalendarRange, Car, ClipboardList, HandHeart, History, Inbox,
-  LayoutDashboard, List, MapPin, MessageSquareText, UsersRound, Utensils
+  LayoutDashboard, List, MapPin, MessageSquareText, Users, UsersRound, Utensils
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -68,6 +68,7 @@ const LOGISTICS_VIEWS: Record<LogisticsView, Omit<AdminViewEntry<LogisticsView>,
 // The change history is Organisateur's, like the exports.
 const USERS_VIEWS: Record<UsersView, Omit<AdminViewEntry<UsersView>, 'id'>> = {
   list: { labelKey: 'usersViewList', icon: List, width: 'dense', minRole: 'committee' },
+  participants: { labelKey: 'usersViewParticipants', icon: Users, width: 'dense', minRole: 'committee' },
   history: { labelKey: 'usersViewHistory', icon: History, width: 'dense', minRole: 'organiser' }
 };
 

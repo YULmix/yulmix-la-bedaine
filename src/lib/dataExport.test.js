@@ -2,6 +2,8 @@ import fr from '../locales/fr.json';
 import {
   CSV_BOM,
   attendeeExportRows,
+  attendeeRows,
+  sortAttendees,
   downloadFile,
   exportFileName,
   partyExportRows,
@@ -22,7 +24,7 @@ const parties = [
     message_to_organizers: 'Ligne 1\nLigne "2", avec virgule',
     attendees: [
       {
-        name: 'Alice', type: 'Adult', participation: 'Whole', sleeping_preference: 'bed',
+        name: 'Alice', type: 'Adult', participation: 'Whole', is_new_member: true, sleeping_preference: 'bed',
         dietary_needs: ['vegan', 'other'], dietary_other: 'Arachides',
         place: { bed_label: 'Chalet · Ch. 1' }
       },
@@ -121,6 +123,34 @@ describe('attendeeExportRows', () => {
     expect(column(table, fr.exportSleepingPref).slice(0, 2)).toEqual([fr.accommodationBed, `${fr.accommodationOutsideOther} (Van)`]);
     expect(column(table, fr.exportSleepingAssigned)).toEqual(['Chalet · Ch. 1', '', '', '']);
     expect(column(table, fr.exportStatus)[2]).toBe(fr.filterWaitlist);
+  });
+});
+
+describe('« Première Bédaine » and the participants view rows', () => {
+  test('the export has the column, « Oui » or empty', () => {
+    const table = attendeeExportRows(parties);
+    expect(table.headers.at(-1)).toBe(fr.firstTimeTag);
+    expect(column(table, fr.firstTimeTag)).toEqual([fr.exportYes, '', '', '']);
+  });
+
+  test('attendeeRows: non-cancelled attendees, labels, free text apart, waitlist flag', () => {
+    const rows = attendeeRows(parties);
+    expect(rows.map(row => row.name)).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
+    expect(rows[0]).toMatchObject({ dietary: [fr.vegan, fr.otherDietary], dietaryOther: 'Arachides', firstTime: true, waitlisted: false, sleeping: fr.accommodationBed });
+    expect(rows[1]).toMatchObject({ participation: '', sleepingOther: 'Van', dietary: [], firstTime: false });
+    expect(rows[2]).toMatchObject({ waitlisted: true, status: fr.filterWaitlist });
+  });
+
+  test('sortAttendees by name, by group, and grouped', () => {
+    const rows = attendeeRows(parties);
+    const names = options => sortAttendees(rows, options).map(row => row.name);
+    expect(names({ key: 'name' })).toEqual(['Alice', 'Bob', 'Carla', 'Léo']);
+    // Group: the contact (Alice Tremblay, Carla, bob@example.com), then the order entered.
+    expect(names({ key: 'group' })).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
+    // Grouped keeps Alice's two together whatever the sort; inside, by name only when sorting by name.
+    expect(names({ key: 'name', grouped: true })).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
+    expect(names({ key: 'group', grouped: true })).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
+    expect(rows.map(row => row.name)).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
   });
 });
 

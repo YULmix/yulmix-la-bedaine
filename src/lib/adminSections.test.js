@@ -59,10 +59,10 @@ describe('adminPage', () => {
 describe('what each role may open (#217, ADR 0023)', () => {
   const ids = role => sectionsFor(role).map(section => ({ id: section.id, views: section.views.map(view => view.id) }));
 
-  test('Comité: Résumé, the list of Inscrits and every Logistique view', () => {
+  test('Comité: Résumé, the list and participants of Inscrits and every Logistique view', () => {
     expect(ids('committee')).toEqual([
       { id: 'overview', views: [] },
-      { id: 'users', views: ['list'] },
+      { id: 'users', views: ['list', 'participants'] },
       { id: 'logistics', views: [...LOGISTICS_VIEW_IDS] }
     ]);
   });
@@ -111,6 +111,6 @@ describe('what each role may open (#217, ADR 0023)', () => {
   });
 
   test('adminPage with a role\'s sections lists only its views', () => {
-    expect(adminPage({ section: 'users', view: 'list' }, sectionsFor('committee')).section.views.map(view => view.id)).toEqual(['list']);
+    expect(adminPage({ section: 'users', view: 'list' }, sectionsFor('committee')).section.views.map(view => view.id)).toEqual(['list', 'participants']);
   });
 });

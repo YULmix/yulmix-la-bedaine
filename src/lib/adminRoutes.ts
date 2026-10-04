@@ -25,7 +25,7 @@ export const DEFAULT_ADMIN_SECTION: AdminSection = 'overview';
 // A section's views, the first being its default.
 export const LOGISTICS_VIEW_IDS = ['places', 'food', 'volunteering', 'transport', 'comments'] as const;
 export type LogisticsView = (typeof LOGISTICS_VIEW_IDS)[number];
-export const USERS_VIEW_IDS = ['list', 'history'] as const;
+export const USERS_VIEW_IDS = ['list', 'participants', 'history'] as const;
 export type UsersView = (typeof USERS_VIEW_IDS)[number];
 
 export const EDITOR_SECTIONS = ['details', 'sleeping'] as const;

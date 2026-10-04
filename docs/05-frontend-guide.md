@@ -104,9 +104,12 @@ Inscrits' « Exporter » (#178, #209), a dialog opened from the page header, bui
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Inscrits has views too, in `/admin/users/<view>` (`list` by default, `history`), switched by
+Inscrits has views too, in `/admin/users/<view>` (`list` by default, `participants`, `history`), switched by
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
-old `/admin/tools/…` URLs redirect. The « Historique des
+old `/admin/tools/…` URLs redirect. « Participants » (#262, Comité and up) is one row per attendee of the non-cancelled parties, read-only: enum
+values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
+are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
+`sortAttendees()` orders them. The « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default). Place changes (#188) are one line per attendee
 (`describePlaceChanges()` in `src/lib/changeHistory.js`); the member's history doesn't show them.

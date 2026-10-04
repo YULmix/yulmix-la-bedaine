@@ -456,8 +456,8 @@ test.describe('admin navigation shell', () => {
     const fromHeader = async (locator) => 64 + (await locator.boundingBox()).y - (await page.locator('#main').boundingBox()).y;
 
     await openAdmin(page, '/users');
-    // The sections, and Inscrits' two views under it.
-    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT + 2);
+    // The sections, and Inscrits' three views under it.
+    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT + 3);
     await expect(page.getByRole('tablist', { name: fr.adminTabsAriaLabel })).toHaveCount(0);
     const filters = adminMain(page).getByRole('group', { name: fr.filterLabel });
     await expect(filters).toBeVisible();
