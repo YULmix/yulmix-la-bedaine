@@ -1131,6 +1131,9 @@ describe('🗑️ removed attendees (#237)', () => {
       'select private.party_size($1) as size, private.event_headcount($2) as headcount', [memberParty.id, EVENT_ID]
     );
     expect(counts).toEqual({ size: 1, headcount: 2 });
+    // #188's place history snapshot, read by a SECURITY DEFINER trigger too.
+    const [{ snapshot }] = await dbQuery('select private.party_places_snapshot($1) as snapshot', [memberParty.id]);
+    expect(snapshot.map(entry => entry.attendee_name)).toEqual(['Ann']);
 
     // 3 places: Ann, then Zed and Yan fit only if Bob isn't counted.
     await adminAuthClient.from('events').update({ max_attendees: 3 }).eq('id', EVENT_ID);
