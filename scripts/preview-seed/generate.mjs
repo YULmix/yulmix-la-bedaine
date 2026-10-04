@@ -403,7 +403,10 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     // order: the capacity trigger waitlists whoever arrives once the event is full.
     out.push(`-- ${registrations.length} registrations (amounts and waitlisting computed by the database)`);
     const sorted = [...registrations].sort((a, b) => b.daysAgo - a.daysAgo);
+    // Since #246 attendees can only be written through save_registration() on behalf of the
+    // signed-in user, so each call runs with that user's JWT claims (auth.uid()) set.
     for (const r of sorted) {
+      out.push(`SELECT set_config('request.jwt.claims', ${lit(JSON.stringify({ sub: r.userId, role: 'authenticated' }))}, false);`);
       const transport = r.transportType === ''
         ? `'{"type": "", "seats": 0, "arrival": "", "departure": ""}'::jsonb`
         // Seats offered, or needed (#179: the whole party); where from (#181), when given.
@@ -419,6 +422,7 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     'music_requests', ${lit(r.music)}, 'message_to_organizers', ${lit(r.message)}),
   ${lit(r.userId)});`);
     }
+    out.push(`SELECT set_config('request.jwt.claims', '', false);`);
 
     // What happened after registering: the date it was made, the admin marking it paid, notes
     // (in their own admin-only table, #227). Set without triggers, so none of it counts as an
