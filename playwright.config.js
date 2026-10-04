@@ -143,6 +143,10 @@ const SERIAL_ENTRIES = [
   // One app canvas (#226): seeds the shared active event for the member pages, so it runs after
   // admin-roles, on its own. Sets its own viewports.
   { name: 'app-canvas' },
+  // « Voir comme » (#267): reseeds the shared active event and opens the member's read-only
+  // session through the impersonate Edge Function, so it runs after app-canvas, on its own.
+  // Sets its own viewports.
+  { name: 'voir-comme' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 
