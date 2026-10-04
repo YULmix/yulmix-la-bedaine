@@ -3,7 +3,7 @@ import { ChevronDown, History, Search, UserMinus, UsersRound } from 'lucide-reac
 import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
 import { refreshEvents, useEvents } from '../../../lib/events';
-import { ACCESS_ROLE_OPTIONS, EDITION_ROLE_OPTIONS, getAccessRoleLabel, getEditionRoleLabel } from '../../../lib/registrationOptions';
+import { ACCESS_ROLE_OPTIONS, EDITION_ROLE_OPTIONS, getAccessLevelLabel, getEditionRoleLabel } from '../../../lib/registrationOptions';
 import { currentUserId as fetchCurrentUserId, setIsAdmin } from '../../../lib/profiles';
 import {
   isRootAdmin, levelOf, listAdminRoleLog, listAdmins, listEditionRoleLog, listEditionTeam, listPeople,
@@ -35,7 +35,7 @@ const RolesHelp = () => (
       <dl className="space-y-3">
         {[['admin', 'info', 'teamHelpAdmin'], ['organiser', 'ok', 'teamHelpOrganiser'], ['committee', 'neutral', 'teamHelpCommittee']].map(([role, tone, key]) => (
           <div key={role} className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
-            <dt className="sm:w-32 sm:shrink-0"><Tag tone={tone}>{getAccessRoleLabel(role)}</Tag></dt>
+            <dt className="sm:w-32 sm:shrink-0"><Tag tone={tone}>{getAccessLevelLabel(role)}</Tag></dt>
             <dd>{fr[key]}</dd>
           </div>
         ))}
@@ -46,7 +46,7 @@ const RolesHelp = () => (
 );
 
 // The level tag: Admin, the role on the edition, or nothing.
-const LevelTag = ({ level }) => level && <Tag tone={level === 'admin' ? 'info' : level === 'organiser' ? 'ok' : 'neutral'}>{getAccessRoleLabel(level)}</Tag>;
+const LevelTag = ({ level }) => level && <Tag tone={level === 'admin' ? 'info' : level === 'organiser' ? 'ok' : 'neutral'}>{getAccessLevelLabel(level)}</Tag>;
 
 const eventOption = (event) => fr.changeHistoryEventOption
   .replace('{theme}', event.theme || fr.historyEmptyValue)
@@ -160,8 +160,8 @@ const AddPerson = ({ team, eventId, reloads, onAdd, busyId }) => {
                 <LevelTag level={level} />
                 {level !== 'admin' && level !== role && (
                   <Button variant="secondary" size="sm" loading={busyId === person.id} onClick={() => onAdd(person, role)}
-                    aria-label={(level ? fr.teamChangeFor : fr.teamAddFor).replace('{role}', getAccessRoleLabel(role)).replace('{name}', name)}>
-                    {level ? fr.teamChangeTo.replace('{role}', getAccessRoleLabel(role)) : fr.teamAdd}
+                    aria-label={(level ? fr.teamChangeFor : fr.teamAddFor).replace('{role}', getAccessLevelLabel(role)).replace('{name}', name)}>
+                    {level ? fr.teamChangeTo.replace('{role}', getAccessLevelLabel(role)) : fr.teamAdd}
                   </Button>
                 )}
               </li>
@@ -285,7 +285,7 @@ const TeamSection = () => {
                     <p className="truncate font-semibold text-ink">{name}</p>
                     {person.full_name && <p className="truncate text-sm text-faint">{person.email}</p>}
                   </div>
-                  <Tag tone="info">{fr.teamAdminTag}</Tag>
+                  <Tag tone="info">{getAccessLevelLabel('admin')}</Tag>
                   <Button variant="secondary" size="icon" disabled={!!reason || !currentUser}
                     onClick={() => setPendingAdmin({ person, grant: false })}
                     aria-label={fr.teamAdminRemoveFor.replace('{name}', name)} title={reason || fr.teamAdminRemoveFor.replace('{name}', name)}>

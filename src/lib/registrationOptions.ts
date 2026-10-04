@@ -67,13 +67,16 @@ export const EDITION_ROLE_OPTIONS: ReadonlyArray<Option<'committee' | 'organiser
 /** What « Équipe » can give: an edition role, or admin (every edition). */
 export const ACCESS_ROLE_OPTIONS: ReadonlyArray<Option<'committee' | 'organiser' | 'admin'>> = [
   ...EDITION_ROLE_OPTIONS,
-  { value: 'admin', label: fr.accessRoleAdmin }
+  { value: 'admin', label: fr.editionRoleAdmin }
 ];
 
 export const getRegistrationStatusLabel = (status: string): string => REGISTRATION_STATUS_LABELS[status] || status;
 export const getEditionRoleLabel = (role: string): string => getOptionLabel(EDITION_ROLE_OPTIONS, role, role);
-/** An edition role's label, or « Admin ». */
-export const getAccessRoleLabel = (role: string): string => getOptionLabel(ACCESS_ROLE_OPTIONS, role, role);
+
+// The signed-in user's level on the active event (#260): the edition role, or 'admin' for an
+// admin's account (roleOn in editionRoles.ts). Plain members have none.
+export const getAccessLevelLabel = (level: string | null | undefined): string | null =>
+  !level ? null : level === 'admin' ? fr.editionRoleAdmin : getEditionRoleLabel(level);
 export const getPaymentStatusLabel = (status: string): string => PAYMENT_STATUS_LABELS[status] || status;
 export const getPaymentStatusShortLabel = (status: string): string => PAYMENT_STATUS_SHORT_LABELS[status] || status;
 

@@ -9,6 +9,7 @@ import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
 import { ADMIN_ROOT } from '../lib/adminRoutes';
+import { getAccessLevelLabel } from '../lib/registrationOptions';
 import { CANVAS_CLASS } from '../lib/pageWidth';
 
 // Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
@@ -38,14 +39,18 @@ const useMenu = () => {
   return { open, setOpen, ref };
 };
 
+// The ring around the badge's avatar, per level (#260): theme tones, so light and dark follow.
+const LEVEL_RING = { admin: 'ring-2 ring-neon', organiser: 'ring-2 ring-info', committee: 'ring-2 ring-ok' };
+
 const navLinkClass = ({ isActive }) => cx(
   'inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold transition duration-150',
   isActive ? 'text-neon' : 'text-muted hover:text-ink'
 );
 
 // `canOpenAdmin`: an admin, or someone with a role on the active event (#217); `isAdmin` is the
-// account's own flag.
-const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdmin = isAdmin, isDeleted = false, onOpenFeedback }) => {
+// account's own flag. `level`: their role on the active event ('admin' | 'organiser' | 'committee'
+// | null), shown as a ring on the avatar and a label in the menu (#260).
+const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdmin = isAdmin, level = null, isDeleted = false, onOpenFeedback }) => {
   const menu = useMenu();
   // The header's height, as --header-height on the root, for what sticks under it (the admin
   // sidebar): 4rem, plus the test-account banner on previews.
@@ -67,6 +72,9 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
   const [deleteError, setDeleteError] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const canViewCarpool = useCarpoolAccess(isAuthenticated && !isDeleted);
+
+  const levelLabel = isAuthenticated && !isDeleted ? getAccessLevelLabel(level) : null;
+  const levelRing = levelLabel ? LEVEL_RING[level] : null;
 
   const userDisplayName = user
     ? (user.user_metadata?.full_name || user.email || fr.profile)
@@ -169,10 +177,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
           >
             {isAuthenticated ? (
               <>
-                <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-raised font-data text-xs text-neon">
+                <span aria-hidden="true" data-level={levelLabel ? level : undefined} className={cx('grid size-8 shrink-0 place-items-center rounded-full bg-raised font-data text-xs text-neon', levelRing)}>
                   {initials(userDisplayName)}
                 </span>
                 <span className="min-w-0 max-w-32 truncate sm:max-w-48">{userDisplayName}</span>
+                {levelLabel && <span className="sr-only">, {levelLabel}</span>}
                 <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-faint" />
               </>
             ) : fr.signIn}
@@ -191,6 +200,12 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
                 </>
               ) : (
                 <>
+                  {levelLabel && (
+                    <div className="px-3 pb-2 pt-1">
+                      <p className="truncate text-sm font-semibold text-ink">{userDisplayName}</p>
+                      <p data-testid="account-level" className="text-xs text-muted">{levelLabel}</p>
+                    </div>
+                  )}
                   {!isDeleted && canOpenAdmin && (
                     <button role="menuitem" onClick={() => go(ADMIN_ROOT)} className={MENU_ITEM}>
                       <ShieldCheck aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
