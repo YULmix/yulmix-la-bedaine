@@ -125,6 +125,26 @@ describe('writes reload the list, for every screen', () => {
     expect(queries).toHaveLength(2);
   });
 
+  test('createEvent inserts an inactive, registration-closed draft whatever the changes say, then reloads', async () => {
+    const { client, queries } = mockClient([{ data: { id: 'new-id' }, error: null }]);
+    const id = await createEventsStore(client).createEvent({
+      theme: '  Soirée  ', event_start_date: '2027-03-05T20:00', max_attendees: '40', description: '', is_active: true, is_reg_open: true, status: 'ACTIVE'
+    });
+    expect(id).toBe('new-id');
+    const [[values]] = calledWith(queries[0], 'insert');
+    expect(values).toMatchObject({ theme: 'Soirée', max_attendees: 40, status: 'DRAFT', is_active: false, is_reg_open: false });
+    expect(values.event_start_date).toMatch(/^2027-03-0[56]T/);
+    // Untouched and emptied fields are left to the schema's defaults.
+    expect(values).not.toHaveProperty('description');
+    expect(queries).toHaveLength(2);
+  });
+
+  test('createEvent: a refusal throws the French message and reloads nothing', async () => {
+    const { client, queries } = mockClient([{ data: null, error: { message: 'new row violates row-level security policy', code: '42501' } }]);
+    await expect(createEventsStore(client).createEvent({ theme: 'x' })).rejects.toThrow(/^(?!.*row-level)/);
+    expect(queries).toHaveLength(1);
+  });
+
   test('applyPricing writes the pricing, then reloads', async () => {
     const { client, queries } = mockClient([{ data: null, error: null }]);
     await createEventsStore(client).applyPricing('e', { selling_price_whole_event: 300 });

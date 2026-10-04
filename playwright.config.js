@@ -57,7 +57,7 @@ export default defineConfig({
       // active event and the seeded member's registration, so in parallel they see each other's
       // parties and throwaway members (#170).
       workers: 1,
-      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down|member-transport-none)\.spec\.js/
+      testIgnore: /(member-(cancellation|pass|account-deletion)|email-log|admin-cancelled-parties|admin-budget|attendee-price-rounding|attendees-edit|admin-locations|admin-place-picker|admin-occupancy|member-prefill-name|admin-remount|admin-event-editor|admin-venues|admin-event-venue|member-arrival-default|member-registration-confirmation|admin-logistics-batch-save|member-dietary|member-registration-draft|admin-event-archive|admin-logistics-views|admin-data-export|member-departure-place|member-carpool-board|galleries|admin-drill-down|member-transport-none|admin-event-create)\.spec\.js/
     },
     {
       // Admin screens must work on a phone. Runs after `chromium` (not alongside it) because
@@ -289,6 +289,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /member-transport-none\.spec\.js/,
       dependencies: ['admin-drill-down']
+    },
+    {
+      // Creates events (#111) next to the shared active event it reseeds, so it runs after
+      // member-transport-none, on its own. Sets its own viewports.
+      name: 'admin-event-create',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-event-create\.spec\.js/,
+      dependencies: ['member-transport-none']
     }
   ],
   webServer: {

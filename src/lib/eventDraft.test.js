@@ -1,4 +1,4 @@
-import { dateInputValue, dirtyFields, draftUpdate, validateDraft } from './eventDraft.js';
+import { dateInputValue, dirtyFields, draftUpdate, validateDraft, validateNewEvent } from './eventDraft.js';
 
 const event = {
   theme: 'Disco',
@@ -112,5 +112,19 @@ describe('date and time fields', () => {
   test('registration must open before the event starts, to the minute', () => {
     expect(validateDraft(timed, { reg_start_date: '2026-07-10T17:59' })).toEqual({});
     expect(validateDraft(timed, { reg_start_date: '2026-07-10T18:00' })).toEqual({ reg_start_date: 'order' });
+  });
+});
+
+describe('validateNewEvent (#111)', () => {
+  test('a new event needs a title and an event start, touched or not', () => {
+    expect(validateNewEvent({})).toEqual({ theme: 'required', event_start_date: 'required' });
+    expect(validateNewEvent({ theme: '  ', event_start_date: '2027-03-05T20:00' })).toEqual({ theme: 'required' });
+    expect(validateNewEvent({ theme: 'Soirée', event_start_date: '' })).toEqual({ event_start_date: 'required' });
+    expect(validateNewEvent({ theme: 'Soirée', event_start_date: '2027-03-05T20:00' })).toEqual({});
+  });
+
+  test('still checks what was typed', () => {
+    expect(validateNewEvent({ theme: 'Soirée', event_start_date: '2027-03-05T20:00', max_attendees: '0', reg_start_date: '2027-04-01T10:00' }))
+      .toEqual({ max_attendees: 'min', reg_start_date: 'order' });
   });
 });

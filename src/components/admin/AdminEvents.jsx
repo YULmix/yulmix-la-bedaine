@@ -11,7 +11,8 @@ export const EVENT_STATUS = {
 
 // Event list with lifecycle actions (activate / archive / edit). The only-one-active rule lives
 // in the database (only_one_active_event); the UI checks first and reports the constraint error.
-// Editing opens the event editor page (EventEditor); an event with an unsaved draft says so.
+// Editing opens the event editor page (EventEditor), for a draft as for the active event; an event
+// with an unsaved draft says so.
 export const AdminEventList = ({ events, draftEventIds = [], onActivate, onArchive, onEdit }) => (
   <section className="space-y-4">
     {events.length === 0 ? (
@@ -39,7 +40,7 @@ export const AdminEventList = ({ events, draftEventIds = [], onActivate, onArchi
                     <Power aria-hidden="true" className="size-4" />{fr.activateEventButton}
                   </Button>
                 )}
-                {event.is_active && (
+                {event.status !== 'ARCHIVED' && (
                   <Button size="sm" variant="secondary" onClick={() => onEdit(event)}>
                     <Pencil aria-hidden="true" className="size-4" />{fr.edit}
                   </Button>

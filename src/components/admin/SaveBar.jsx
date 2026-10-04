@@ -7,7 +7,10 @@ import { Button, cx } from '../ui';
 // toolbar, not a pane: the raised colour and a deep shadow set it apart from the cards it passes
 // over, and from sm up it only takes the room it needs, on the right. The outer strip lets clicks
 // through to the page beside it. The buttons keep their size and stay on the status line.
-const SaveBar = ({ dirtyCount, invalid = false, saving, onSave, onDiscard }) => (
+// `creating` is for a record that doesn't exist yet (#111): nothing is "saved" before it is, so it
+// shows `hint` instead of the saved state, says `saveLabel`, and can always be submitted (the
+// form says what is missing).
+const SaveBar = ({ dirtyCount, invalid = false, saving, onSave, onDiscard, creating = false, hint, saveLabel }) => (
   <div className="pointer-events-none sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 flex justify-end md:bottom-6">
     <div className={cx(
       'pointer-events-auto flex w-full items-center gap-2 rounded-card border bg-raised py-2 pr-2 pl-4 shadow-pop sm:w-auto sm:max-w-full sm:gap-4 sm:pl-5',
@@ -21,7 +24,9 @@ const SaveBar = ({ dirtyCount, invalid = false, saving, onSave, onDiscard }) => 
               <span className="whitespace-nowrap sm:hidden">{fr.saveBarPendingShort.replace('{n}', dirtyCount)}</span>
               <span className="hidden sm:inline">{fr.eventEditorUnsaved.replace('{n}', dirtyCount)}</span>
             </>
-            : <><Check aria-hidden="true" className="size-4 shrink-0" strokeWidth={2} />{fr.eventEditorAllSaved}</>}
+            : creating
+              ? <span>{hint}</span>
+              : <><Check aria-hidden="true" className="size-4 shrink-0" strokeWidth={2} />{fr.eventEditorAllSaved}</>}
       </p>
       <div className="flex shrink-0 gap-1 sm:gap-2">
         {dirtyCount > 0 && (
@@ -31,9 +36,9 @@ const SaveBar = ({ dirtyCount, invalid = false, saving, onSave, onDiscard }) => 
           </Button>
         )}
         {/* Short on purpose; the spinner says it's saving. */}
-        <Button onClick={onSave} disabled={!dirtyCount || invalid} loading={saving} className="px-4">
+        <Button onClick={onSave} disabled={(!dirtyCount && !creating) || invalid} loading={saving} className="px-4">
           {!saving && <Save aria-hidden="true" className="hidden size-4.5 sm:block" strokeWidth={1.75} />}
-          {fr.save}
+          {saveLabel ?? fr.save}
         </Button>
       </div>
     </div>
