@@ -1,4 +1,3 @@
-// E2E_SCREENSHOT_DIR=<dir> saves « Participants » at 390 and 1440 px wide, flat and grouped.
 // Inscrits' « Exporter » dialog (#178, #209): « Par groupe » and « Par participant », each as a CSV
 // download (BOM, quoted cells) and a Google Sheets copy (TSV, one line per row). A waitlisted
 // party is listed with its status; members are blocked.
@@ -196,37 +195,6 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
   await toggle.click();
   // One header per party: the member's, the admin's and the waitlisted one's.
   await expect(page.getByText(/^Groupe de /)).toHaveCount(3);
-});
-
-test('« Participants » screenshots', async ({ page }) => {
-  test.skip(!process.env.E2E_SCREENSHOT_DIR, 'set E2E_SCREENSHOT_DIR');
-  const shot = (name, width) => page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-admin-${width}.png`, fullPage: true });
-  const settle = () => page.waitForTimeout(500); // the switch's and the dialogs' animation
-  await loginAs(page, TEST_USERS.admin);
-  for (const [width, height] of [[390, 844], [768, 1024], [1024, 800], [1440, 900], [2560, 1200]]) {
-    await page.setViewportSize({ width, height });
-    await page.goto('/admin/users/participants');
-    await expect(page.getByRole('main').locator('[data-participant-name]').first()).toBeVisible();
-    await shot('participants', width);
-    const details = page.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) }).first();
-    await details.click();
-    await settle();
-    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-details-admin-${width}.png` });
-    await page.keyboard.press('Escape');
-    if (width < 1024) {
-      await page.getByRole('button', { name: fr.participantsSortButton }).click();
-      await settle();
-      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-sortmenu-admin-${width}.png` });
-      await page.keyboard.press('Escape');
-    }
-    await page.getByRole('switch', { name: fr.participantsGroupBy }).click();
-    await expect(page.getByRole('switch', { name: fr.participantsGroupBy })).toHaveAttribute('aria-checked', 'true');
-    await settle();
-    await shot('participants-grouped', width);
-    await page.goto('/admin/users');
-    await expect(page.getByRole('main').getByRole('list').first()).toBeVisible();
-    await shot('liste', width);
-  }
 });
 
 test('« Participants » is for Comité and up, not members; usable on a phone', async ({ page }) => {
