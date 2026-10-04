@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import fr from '../locales/fr.json';
 import type { Database } from './database.types';
@@ -70,5 +70,14 @@ const store = createFeedbackStore(supabase);
 export const refreshFeedback = store.refresh;
 export const resolveFeedback = store.resolve;
 
-/** The feedback items and the unresolved count. */
-export const useFeedback = (): FeedbackSnapshot => useSyncExternalStore(store.subscribe, store.getSnapshot);
+const NOTHING: FeedbackSnapshot = Object.freeze(snapshotOf([], false, null)) as FeedbackSnapshot;
+const noSubscription = () => () => {};
+
+/**
+ * The feedback items and the unresolved count. With `enabled` false (someone who isn't an admin,
+ * #217), nothing loads: no items, not loading.
+ */
+export const useFeedback = (enabled = true): FeedbackSnapshot => {
+  const getSnapshot = useCallback(() => (enabled ? store.getSnapshot() : NOTHING), [enabled]);
+  return useSyncExternalStore(enabled ? store.subscribe : noSubscription, getSnapshot);
+};

@@ -3,7 +3,7 @@
 // Components parse the location with parseAdminLocation() and build links with adminHref(), and
 // never format an admin URL themselves.
 //
-//   /admin/overview · /admin/budget · /admin/feedback
+//   /admin/overview · /admin/budget · /admin/feedback · /admin/team
 //   /admin/users[/<view>]                            view: list (default), history
 //   /admin/logistics[/<view>]                        view: places (default), food, …
 //   /admin/events · /admin/events/<eventId>[?section=sleeping] · /admin/events/new (#111)
@@ -17,7 +17,8 @@
 
 export const ADMIN_ROOT = '/admin';
 
-export const ADMIN_SECTIONS = ['overview', 'users', 'logistics', 'budget', 'events', 'venues', 'feedback'] as const;
+// « Équipe » (team, #217) sits before Retours: Retours stays last, as ADR 0022 decided.
+export const ADMIN_SECTIONS = ['overview', 'users', 'logistics', 'budget', 'events', 'venues', 'team', 'feedback'] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 export const DEFAULT_ADMIN_SECTION: AdminSection = 'overview';
 
@@ -36,7 +37,7 @@ export type EditorSection = (typeof EDITOR_SECTIONS)[number];
 export const NEW_EVENT_ID = 'new';
 
 export type AdminRoute =
-  | { section: 'overview' | 'budget' | 'feedback' }
+  | { section: 'overview' | 'budget' | 'feedback' | 'team' }
   | { section: 'users'; view: UsersView }
   | { section: 'logistics'; view: LogisticsView }
   | { section: 'events'; eventId: string | null; editorSection: EditorSection }

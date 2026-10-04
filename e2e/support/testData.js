@@ -14,6 +14,8 @@ import { TEST_USERS } from './auth.js';
 
 export const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
 export const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+export const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
+export const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
 export const E2E_EVENT_THEME = 'E2E Admin Tabs Event';
 export const E2E_ATTENDEES = [
   { name: 'Alice E2E', type: 'Adult', participation: 'Whole', is_new_member: false },
@@ -605,6 +607,31 @@ export async function resetFeedback(contents = []) {
   if (contents.length) {
     check(await db.from('app_feedback').insert(contents.map(content => ({ user_id: ADMIN_ID, content }))), 'seed feedback');
   }
+}
+
+// Edition roles (#217, ADR 0023): the seeded committee@ and organiser@test.local get their role on
+// the event, as an admin grants it in « Équipe ».
+export async function grantEditionRoles(eventId) {
+  const db = await adminClient();
+  for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
+    check(await db.rpc('set_edition_role', { p_event_id: eventId, p_user_id: userId, p_role: role }), 'grant e2e edition role');
+  }
+}
+
+// Removes every edition role on the event.
+export async function revokeEditionRoles(eventId) {
+  const db = await adminClient();
+  check(await db.from('edition_roles').delete().eq('event_id', eventId), 'revoke e2e edition roles');
+}
+
+// Someone's role on the event, or null.
+export async function getEditionRole(eventId, userId) {
+  const db = await adminClient();
+  const row = check(
+    await db.from('edition_roles').select('role').eq('event_id', eventId).eq('user_id', userId).maybeSingle(),
+    'read e2e edition role'
+  );
+  return row?.role ?? null;
 }
 
 // #236: a party's attendees ({ id, name }, live ones), in order.

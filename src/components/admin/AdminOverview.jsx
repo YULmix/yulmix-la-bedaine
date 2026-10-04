@@ -38,7 +38,10 @@ const TIER_LABEL_KEYS = {
 
 // `budget` is the event's admin-only event_budgets row, or null when none was saved yet. `places`
 // are the event's sleeping places (the event places module's `available`, #193); without any, the bed counts stand in.
-const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
+// `showBudget` false (Comité, #217) leaves the budget card out. Without `onOpenParty`, the email
+// problems name their parties without opening them.
+// `showEmailProblems` false (Comité) leaves out the emails to follow up.
+const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
@@ -69,7 +72,7 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
   return (
     <div className="@container space-y-6">
 
-      <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />
+      {showEmailProblems && <EmailProblems eventId={event?.id} parties={parties} onOpenParty={onOpenParty} />}
       {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}
 
       {/* KPI strip: one ruled row, not a grid of identical cards. */}
@@ -88,42 +91,44 @@ const AdminOverview = ({ event, budget, parties, places, onOpenParty }) => {
         </div>
       </Card>
 
-      <div className="grid gap-6 @4xl:grid-cols-[3fr_2fr]">
-        <Card className="space-y-6 p-5 sm:p-6">
-          <h3 className="text-lg font-semibold text-ink">{fr.budgetTitle}</h3>
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
-            <Stat label={fr.budgetTotalAmountDue} value={formatCurrency(stats.totalDue)} />
-            <Stat label={fr.budgetAmountReceived} value={formatCurrency(stats.received)} tone="ok" />
-            <Stat label={fr.budgetAmountToReceive} value={formatCurrency(stats.outstanding)} tone={stats.outstanding > 0 ? 'warn' : undefined} />
-          </div>
-          <div>
-            <div className="flex h-3 overflow-hidden rounded-full" role="img" aria-label={fr.budgetBarLabel.replace('{percent}', Math.round(receivedShare * 100))}>
-              <span className="bg-ok" style={{ width: `${receivedShare * 100}%` }} />
-              <span className="flex-1 bg-warn/70" />
-            </div>
-            <p className="mt-2 text-sm text-faint">{fr.budgetBarLabel.replace('{percent}', Math.round(receivedShare * 100))}</p>
-          </div>
-          <dl className="grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-muted">{fr.budgetTotalCost}</dt>
-              <dd className="font-data text-lg text-ink">{totalCost ? formatCurrency(totalCost) : fr.notSpecified}</dd>
+      <div className={showBudget ? 'grid gap-6 @4xl:grid-cols-[3fr_2fr]' : 'grid gap-6'}>
+        {showBudget && (
+          <Card className="space-y-6 p-5 sm:p-6">
+            <h3 className="text-lg font-semibold text-ink">{fr.budgetTitle}</h3>
+            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+              <Stat label={fr.budgetTotalAmountDue} value={formatCurrency(stats.totalDue)} />
+              <Stat label={fr.budgetAmountReceived} value={formatCurrency(stats.received)} tone="ok" />
+              <Stat label={fr.budgetAmountToReceive} value={formatCurrency(stats.outstanding)} tone={stats.outstanding > 0 ? 'warn' : undefined} />
             </div>
             <div>
-              <dt className="text-sm text-muted">{fr.budgetMargin}</dt>
-              <dd className={`font-data text-lg ${margin === null ? 'text-faint' : margin >= 0 ? 'text-ok' : 'text-bad'}`}>
-                {margin === null ? fr.notSpecified : formatCurrency(margin)}
-              </dd>
+              <div className="flex h-3 overflow-hidden rounded-full" role="img" aria-label={fr.budgetBarLabel.replace('{percent}', Math.round(receivedShare * 100))}>
+                <span className="bg-ok" style={{ width: `${receivedShare * 100}%` }} />
+                <span className="flex-1 bg-warn/70" />
+              </div>
+              <p className="mt-2 text-sm text-faint">{fr.budgetBarLabel.replace('{percent}', Math.round(receivedShare * 100))}</p>
             </div>
-            <div>
-              <dt className="text-sm text-muted">{fr.breakEvenPriceLabel}</dt>
-              <dd className="font-data text-lg text-ink">{breakEvenPrice ? formatCurrency(breakEvenPrice) : fr.notSpecified}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted">{fr.eventSellingPriceLabel}</dt>
-              <dd className="font-data text-lg text-ink">{event?.selling_price_whole_event ? formatCurrency(event.selling_price_whole_event) : fr.notSpecified}</dd>
-            </div>
-          </dl>
-        </Card>
+            <dl className="grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
+              <div>
+                <dt className="text-sm text-muted">{fr.budgetTotalCost}</dt>
+                <dd className="font-data text-lg text-ink">{totalCost ? formatCurrency(totalCost) : fr.notSpecified}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted">{fr.budgetMargin}</dt>
+                <dd className={`font-data text-lg ${margin === null ? 'text-faint' : margin >= 0 ? 'text-ok' : 'text-bad'}`}>
+                  {margin === null ? fr.notSpecified : formatCurrency(margin)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted">{fr.breakEvenPriceLabel}</dt>
+                <dd className="font-data text-lg text-ink">{breakEvenPrice ? formatCurrency(breakEvenPrice) : fr.notSpecified}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted">{fr.eventSellingPriceLabel}</dt>
+                <dd className="font-data text-lg text-ink">{event?.selling_price_whole_event ? formatCurrency(event.selling_price_whole_event) : fr.notSpecified}</dd>
+              </div>
+            </dl>
+          </Card>
+        )}
 
         <Card className="p-5 sm:p-6">
           <h3 className="text-lg font-semibold text-ink">{fr.costVsPriceTitle}</h3>

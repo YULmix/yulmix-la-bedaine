@@ -58,7 +58,14 @@ const PAYMENT_STATUS_SHORT_LABELS: Record<string, string> = {
   [PAYMENT_STATUS.UNPAID]: fr.unpaidShort
 };
 
+// edition_roles.role (#217, ADR 0023): the per-edition roles, lowest first.
+export const EDITION_ROLE_OPTIONS: ReadonlyArray<Option<'committee' | 'organiser'>> = [
+  { value: 'committee', label: fr.editionRoleCommittee },
+  { value: 'organiser', label: fr.editionRoleOrganiser }
+];
+
 export const getRegistrationStatusLabel = (status: string): string => REGISTRATION_STATUS_LABELS[status] || status;
+export const getEditionRoleLabel = (role: string): string => getOptionLabel(EDITION_ROLE_OPTIONS, role, role);
 export const getPaymentStatusLabel = (status: string): string => PAYMENT_STATUS_LABELS[status] || status;
 export const getPaymentStatusShortLabel = (status: string): string => PAYMENT_STATUS_SHORT_LABELS[status] || status;
 

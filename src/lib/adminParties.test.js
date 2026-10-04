@@ -45,6 +45,11 @@ const fakeClient = (rows = {}) => {
     });
     return builder;
   });
+  // set_payment_status() (#217) answers like an update, and is recorded with them.
+  client.rpc = jest.fn(async (name, args) => {
+    client.updates.push({ rpc: name, args });
+    return { data: null, error: client.writeError };
+  });
   client.channel = jest.fn((name) => {
     const channel = { name, handlers: [] };
     channel.on = jest.fn((type, filter, handler) => { channel.handlers.push({ filter, handler }); return channel; });
@@ -209,7 +214,7 @@ describe('admin parties store (#195)', () => {
 
     await store.updatePaymentStatus(party('a'), 'paid');
 
-    expect(client.updates).toEqual([{ values: { payment_status: 'paid' }, filters: [['id', 'a']] }]);
+    expect(client.updates).toEqual([{ rpc: 'set_payment_status', args: { p_party_id: 'a', p_payment_status: 'paid' } }]);
     expect(store.getSnapshot(EVENT).parties[0].payment_status).toBe('paid');
   });
 

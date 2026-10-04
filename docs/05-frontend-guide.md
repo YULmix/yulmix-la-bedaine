@@ -73,7 +73,13 @@ also owns the tab and view ids; components never format one themselves.
 Because the drafts live in stores, unsaved edits survive a tab switch.
 
 The navigation (#208) renders from the section registry, `src/lib/adminSections.ts`: each
-section's labels, icon, views, page width, marker, and whether it has a slot in the phone bar.
+section's labels, icon, views, page width, marker, whether it has a slot in the phone bar, and
+the lowest role that may open it and each of its views (`minRole`, #217,
+[ADR 0023](./adr/0023-edition-roles.md)). App reads the person's role on the active event
+(admin, or their edition role, `src/lib/editionRoles.ts`); the shell shows only
+`sectionsFor(role)`, sends a URL the role may not open to its first section (`roleRedirect`,
+with `replace`), and gives the sections `useAdminAccess()`, whose `can(role, action)` decides
+which actions are rendered at all (the payment toggle, the god-mode edit, Logistique's Save…).
 `src/components/admin/AdminNav.jsx` draws it: from `md` up a sidebar with the current section's
 views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with four sections and
 « Plus », a sheet (`Dialog`) with the rest, and the views as `ViewTabs` under the page header.
@@ -140,7 +146,7 @@ Before adding a screen, answer these in the PR description. Reviewers check them
 4. **What's its URL?** `/admin/<section>/<view>` with English ids, built and parsed only by the
    admin routes module. If the screen replaces an old URL, add a redirect there.
 5. **A new section?** Add it to the section registry (`src/lib/adminSections.ts`): id, label
-   keys (full and short), icon, views, width, marker; then its id to the admin routes module and
+   keys (full and short), icon, views, width, marker, `minRole`; then its id to the admin routes module and
    its component to `SECTION_COMPONENTS` in `src/views/AdminView.jsx`. It appears in the
    sidebar and under « Plus » on phones. Putting it in the phone bar (4 slots: Résumé, Inscrits, Logistique, Budget) is a separate decision that
    needs an organiser's approval.

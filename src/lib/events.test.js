@@ -24,7 +24,9 @@ const mockClient = (results, fallback = { data: [], error: null }) => {
     queries.push({ table, calls });
     return builder;
   };
-  return { client: { from: jest.fn(query) }, queries };
+  // An rpc answers from the same queue.
+  const rpc = jest.fn(async () => (results.length ? results.shift() : fallback));
+  return { client: { from: jest.fn(query), rpc }, queries };
 };
 const calledWith = (query, method) => query.calls.filter(([name]) => name === method).map(([, ...args]) => args);
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -145,11 +147,12 @@ describe('writes reload the list, for every screen', () => {
     expect(queries).toHaveLength(1);
   });
 
-  test('applyPricing writes the pricing, then reloads', async () => {
+  test('applyPricing writes the pricing through apply_event_pricing() (#217), then reloads', async () => {
     const { client, queries } = mockClient([{ data: null, error: null }]);
-    await createEventsStore(client).applyPricing('e', { selling_price_whole_event: 300 });
-    expect(calledWith(queries[0], 'update')).toEqual([[{ selling_price_whole_event: 300 }]]);
-    expect(queries).toHaveLength(2);
+    await createEventsStore(client).applyPricing('e', { selling_price_whole_event: 300, ratio_main_whole: 0.6 });
+    expect(client.rpc).toHaveBeenCalledWith('apply_event_pricing', { p_event_id: 'e', p_selling_price_whole_event: 300, p_ratio_main_whole: 0.6 });
+    expect(queries).toHaveLength(1);
+    expect(queries[0].table).toBe('events');
   });
 
   test.each([
@@ -161,6 +164,6 @@ describe('writes reload the list, for every screen', () => {
     const { client } = mockClient([{ data: null, error: { message: 'permission denied', code: '42501' } }]);
     const store = createEventsStore(client);
     await expect(call(store)).rejects.toThrow(message);
-    expect(client.from).toHaveBeenCalledTimes(1);
+    expect(client.from.mock.calls.length + client.rpc.mock.calls.length).toBe(1);
   });
 });

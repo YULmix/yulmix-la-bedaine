@@ -69,7 +69,7 @@ const EmailProblems = ({ eventId, parties, onOpenParty }) => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                   <Tag tone={getEmailStatusTone(row.status)}>{getEmailStatusLabel(row.status)}</Tag>
-                  {party && (
+                  {party && onOpenParty && (
                     <Button variant="secondary" size="sm" onClick={() => onOpenParty(party)}>
                       {fr.emailProblemsOpenParty}
                     </Button>

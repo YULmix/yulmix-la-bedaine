@@ -5,6 +5,8 @@ import { refreshAdminParties, useAdminParties } from '../../../lib/adminParties'
 import { useEventPlaces } from '../../../lib/eventPlaces';
 import { discardLogistics, saveLogistics, setLogisticsMessage, setLogisticsNotes, setLogisticsPlace, useLogistics } from '../../../lib/logistics';
 import { useToasts } from '../../../hooks/useToasts';
+import { useAdminAccess } from '../../../hooks/useAdminAccess';
+import { can } from '../../../lib/editionRoles';
 import AdminLogisticsView from '../AdminLogisticsView';
 import UserProfileDialog from '../UserProfileDialog';
 import NoActiveEvent from './NoActiveEvent';
@@ -13,7 +15,10 @@ import SectionStatus from './SectionStatus';
 // Logistique (#195): what organisers plan with, for the active event. The places, notes and messages draft
 // lives in the logistics store (one Save, #150), so it survives switching sections; the admin
 // shell asks it before letting anyone leave the admin with unsaved edits.
+// Comité reads it all; assigning places and writing the notes and messages is Organisateur's and
+// above (#217, ADR 0023).
 const LogisticsSection = ({ view }) => {
+  const { role } = useAdminAccess();
   const { activeEvent } = useEvents();
   const eventId = activeEvent?.id;
   const { parties, activeParties, loading, error } = useAdminParties(eventId);
@@ -44,6 +49,7 @@ const LogisticsSection = ({ view }) => {
     <>
       <AdminLogisticsView
         view={view}
+        readOnly={!can(role, 'saveLogistics')}
         venue={activeEvent.venue}
         parties={activeParties}
         places={places}

@@ -7,8 +7,10 @@ ladder of four roles, each including the one below: Member, Comité and Organisa
 edition), and Admin (per account). The database enforces it through one function,
 `edition_role(event_id)`.**
 
-**Status: accepted** (October 2026), decided in a design session on #217. Implementation is
-blocked by #208 (the section registry) and #195 (sections that read their own stores).
+**Status: accepted** (October 2026), decided in a design session on #217, and implemented by
+#217: migration `20261004124226_edition_roles.sql` (PR #250), the section registry's `minRole`
+(`src/lib/adminSections.ts`), `src/lib/editionRoles.ts`, and « Équipe »
+(`src/components/admin/sections/TeamSection.jsx`).
 
 ```mermaid
 flowchart LR

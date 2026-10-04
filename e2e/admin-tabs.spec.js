@@ -1,5 +1,5 @@
 // The admin navigation (#29, #83, #208): /admin/<section>, overview | users | logistics | budget |
-// events | venues | feedback (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
+// events | venues | team | feedback (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
 // on phones. Older ?tab= links redirect to their path.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
@@ -25,10 +25,10 @@ const LOGISTICS_TAB = fr.adminTabLogistics;
 const USERS_HEADING = `${fr.adminTabUsers} · ${fr.usersViewList}`;
 const LOGISTICS_HEADING = `${fr.adminTabLogistics} · ${fr.logisticsViewTitle}`;
 const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, exact: true });
-const SECTION_COUNT = 7;
+const SECTION_COUNT = 8;
 // The phone bar's sections (ADR 0022); the others are under « Plus ».
 const BAR_SECTIONS = [fr.adminTabOverview, fr.adminTabUsers, fr.adminTabLogistics, fr.adminTabBudget];
-const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabFeedback];
+const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTeam, fr.adminTabFeedback];
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in
