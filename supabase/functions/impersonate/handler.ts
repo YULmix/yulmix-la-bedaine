@@ -10,9 +10,11 @@
 // POST { action: 'start', target_id }  as an admin, with the admin's own (not impersonated) JWT
 //   → 200 { access_token, refresh_token, expires_at, session_id, ends_at, target: { id, full_name } }
 //   expires_at is the access token's exp (epoch seconds), capped by the hook at the log row's
-//   expires_at; ends_at is that row's expires_at: the session can't outlive it.
+//   expires_at; ends_at is that row's expires_at: the session can't outlive it (a countdown
+//   reads ends_at).
 // POST { action: 'end', session_id, access_token? }  as the admin who started it: sets ended_at,
-//   then signs out that session only (local scope) when given its access token. Or with the
+//   then signs out that session only (local scope) when given its access token, which the UI
+//   always sends (without it only the hook refuses the session's refresh). Or with the
 //   impersonated JWT itself (the read-only tab's « Quitter »): ends that session.
 //   → 200 { ended: true, revoked }
 // Errors: { error: '<code>' }, codes mapped to French in src/lib/dbErrors.ts.
@@ -205,20 +207,26 @@ export function createHandler(gateway: Gateway, log: (message: string) => void =
     if (!(await gateway.isAdmin(token))) throw new Refusal('impersonation_actor_not_admin', 403);
     const row = await gateway.readLogBySession(requested);
     if (!row || row.admin_id !== callerId) throw new Refusal('impersonation_session_not_found', 404);
-    if (row.ended_at === null) await gateway.endLog(row.id);
 
-    // Ending the row already makes the hook refuse every refresh. With the session's own access
-    // token, also sign that session out (scope local: the member's other sessions are untouched).
-    // The token must belong to that session; an expired one can't sign anything out, which is fine.
-    let revoked = false;
-    const sessionToken = body.access_token;
-    if (typeof sessionToken === 'string' && sessionToken !== '') {
+    // The session's own access token, when given, must belong to that session: checked before
+    // anything is written, so a refused request ends nothing.
+    const sessionToken = typeof body.access_token === 'string' && body.access_token !== '' ? body.access_token : null;
+    if (body.access_token !== undefined && body.access_token !== null && sessionToken === null) {
+      throw new Refusal('impersonation_request_invalid', 400);
+    }
+    if (sessionToken !== null) {
       const sessionClaims = decodeClaims(sessionToken);
       if (sessionClaims?.session_id !== requested || sessionClaims?.impersonated_by !== callerId) {
         throw new Refusal('impersonation_request_invalid', 400);
       }
-      revoked = await gateway.signOut(sessionToken);
     }
+
+    // Ending the row makes the hook refuse every refresh. With the session's own access token,
+    // also sign that session out (scope local: the member's other sessions are untouched); an
+    // expired one can't sign anything out. Without it, the Auth session and its refresh token
+    // live on, refused by the hook only: the UI always sends it (#267).
+    if (row.ended_at === null) await gateway.endLog(row.id);
+    const revoked = sessionToken !== null && await gateway.signOut(sessionToken);
     return json({ ended: true, revoked });
   }
 

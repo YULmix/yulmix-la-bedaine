@@ -202,10 +202,14 @@ Deno.test('end: another admin, a member or an unknown session is refused; a fore
   assert.deepEqual((await run(fake, post(otherAdmin, { action: 'end', session_id: SESSION }))).body, { error: 'impersonation_session_not_found' });
   assert.deepEqual((await run(fake, post(memberToken, { action: 'end', session_id: SESSION }))).body, { error: 'impersonation_actor_not_admin' });
   assert.equal((await run(fake, post(adminToken, { action: 'end', session_id: '55555555-5555-5555-5555-555555555555' }))).status, 404);
-  // A token that isn't that session's: refused, nothing signed out.
-  const res = await run(fake, post(adminToken, { action: 'end', session_id: SESSION, access_token: memberToken }));
-  assert.deepEqual([res.status, res.body.error], [400, 'impersonation_request_invalid']);
+  // A token that isn't that session's: refused, nothing signed out, and the row isn't ended.
+  for (const accessToken of [memberToken, 42]) {
+    const res = await run(fake, post(adminToken, { action: 'end', session_id: SESSION, access_token: accessToken }));
+    assert.deepEqual([res.status, res.body.error], [400, 'impersonation_request_invalid']);
+  }
   assert.deepEqual(fake.signedOut, []);
+  assert.equal(fake.log[0].ended_at, null);
+  assert.ok(!fake.calls.some(call => call.startsWith('endLog')));
 });
 
 Deno.test('end: the impersonated tab ends its own session (« Quitter »), and only its own', async () => {
