@@ -3,7 +3,7 @@
 // inserts a draft (inactive, registrations closed) and opens it. Creation never touches the active
 // event.
 import { test, expect } from '@playwright/test';
-import { adminMain, backLink, eventRow, openSection } from './support/admin.js';
+import { adminMain, backLink, eventRow, moreButton, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_EVENT_THEME,
@@ -224,3 +224,31 @@ test('on a desktop, the action sits at the right of the Événements header, and
   await expect(page.getByRole('dialog', { name: fr.eventCreateConfirmTitle })).toBeVisible();
   await screenshot(page, 'event-create-confirm-1440');
 });
+
+// The new event's draft is flagged like any event's: on Événements in the sidebar (on « Plus » on a
+// phone), and it clears once the event is created. An empty form isn't unsaved.
+for (const [name, width, height] of [['desktop', 1440, 900], ['phone', 390, 844]]) {
+  test(`on a ${name}, a new event with something typed marks Événements as unsaved until it is created`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    const marked = () => (name === 'phone'
+      ? moreButton(page).getByLabel(fr.unsavedTag)
+      : sectionLink(page, fr.adminTabEvents).getByLabel(fr.unsavedTag));
+    const theme = uniqueTheme();
+
+    await page.goto('/admin/events/new');
+    await expect(page.getByLabel(fr.eventTitle)).toBeVisible();
+    await expect(marked()).toHaveCount(0);
+
+    await page.getByLabel(fr.eventTitle).fill(theme);
+    await expect(marked()).toBeVisible();
+    await openSection(page, fr.adminTabOverview);
+    await expect(marked()).toBeVisible();
+
+    await page.goto('/admin/events/new');
+    await fillNewEvent(page, theme);
+    await page.getByRole('button', { name: fr.eventCreate }).click();
+    await page.getByRole('dialog', { name: fr.eventCreateConfirmTitle }).getByRole('button', { name: fr.eventCreate }).click();
+    await expect(page).toHaveURL(/\/admin\/events\/(?!new$)[0-9a-f-]{36}$/);
+    await expect(marked()).toHaveCount(0);
+  });
+}

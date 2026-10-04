@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { createEvent, saveEventChanges } from './events';
 import { NEW_EVENT_ID } from './adminRoutes';
 import type { AppEvent } from './events';
-import { dirtyFields, loadStoredDraft, storeDraft } from './eventDraft';
+import { dirtyFields, filledFields, loadStoredDraft, storeDraft } from './eventDraft';
 
 // The event editor's unsaved edits (#195), per event: the changes as typed, whether they were
 // restored from sessionStorage (a reload, a closed tab…), and whether a save is running. Mirrored
@@ -113,10 +113,17 @@ export const createEventDraftStore = ({ save, create, load, persist }: Options) 
     }
   };
 
-  /** The events, among `events`, whose draft differs from what is saved. */
-  const unsavedEventIds = (events: AppEvent[]): string[] => events
-    .filter(event => entries.has(event.id) && dirtyFields(event, entries.get(event.id)!.changes).length > 0)
-    .map(event => event.id);
+  /**
+   * The events, among `events`, whose draft differs from what is saved, and NEW_EVENT_ID while the
+   * event being created has something typed (an empty new form isn't unsaved).
+   */
+  const unsavedEventIds = (events: AppEvent[]): string[] => {
+    const ids = events
+      .filter(event => entries.has(event.id) && dirtyFields(event, entries.get(event.id)!.changes).length > 0)
+      .map(event => event.id);
+    const added = entries.get(NEW_EVENT_ID);
+    return added && filledFields(added.changes).length > 0 ? [...ids, NEW_EVENT_ID] : ids;
+  };
 
   return { subscribe, getSnapshot, setField, discard, save: saveDraft, create: createFromDraft, unsavedEventIds };
 };

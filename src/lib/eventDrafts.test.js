@@ -77,13 +77,23 @@ describe('event draft store (#195)', () => {
     expect(store.getSnapshot(EVENT.id)).toMatchObject({ changes: { theme: 'Disco 2' }, saving: false });
   });
 
-  test('the event being created has its own draft, apart from every event and from the unsaved list', () => {
+  test('the event being created has its own draft, apart from every event\'s', () => {
     const { store } = setup();
     store.setField(NEW_EVENT_ID, 'theme', 'Nouvelle');
     store.setField(EVENT.id, 'theme', 'Disco 2');
     expect(store.getSnapshot(NEW_EVENT_ID).changes).toEqual({ theme: 'Nouvelle' });
     expect(store.getSnapshot(EVENT.id).changes).toEqual({ theme: 'Disco 2' });
-    expect(store.unsavedEventIds([EVENT, OTHER])).toEqual([EVENT.id]);
+    expect(store.unsavedEventIds([EVENT, OTHER])).toEqual([EVENT.id, NEW_EVENT_ID]);
+  });
+
+  test('an empty new event is not unsaved, and neither is one whose fields were typed then cleared', () => {
+    const { store } = setup();
+    expect(store.unsavedEventIds([EVENT])).toEqual([]);
+    store.setField(NEW_EVENT_ID, 'theme', 'N');
+    store.setField(NEW_EVENT_ID, 'description', '');
+    expect(store.unsavedEventIds([EVENT])).toEqual([NEW_EVENT_ID]);
+    store.setField(NEW_EVENT_ID, 'theme', '  ');
+    expect(store.unsavedEventIds([EVENT])).toEqual([]);
   });
 
   test('create sends the new event\'s draft, resolves with the id and empties it; a refusal keeps it', async () => {

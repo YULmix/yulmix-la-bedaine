@@ -5,7 +5,7 @@ import fr from '../../../locales/fr.json';
 import { NEW_EVENT_ID, adminHref } from '../../../lib/adminRoutes';
 import { activateEvent, archiveEvent, refreshEvents, useEvents } from '../../../lib/events';
 import { createEventFromDraft, discardEventDraft, saveEventDraft, setEventDraftField, useEventDraft, useUnsavedEventIds } from '../../../lib/eventDrafts';
-import { dirtyFields, validateDraft, validateNewEvent } from '../../../lib/eventDraft';
+import { dirtyFields, filledFields, validateDraft, validateNewEvent } from '../../../lib/eventDraft';
 import { useToasts } from '../../../hooks/useToasts';
 import { AdminEventList } from '../AdminEvents';
 import { AdminHeaderActions } from '../AdminNav';
@@ -72,9 +72,9 @@ const EventsSection = ({ eventId, editorSection }) => {
           event={null}
           section="details"
           changes={draft.changes}
-          dirtyCount={Object.keys(draft.changes).length}
+          dirtyCount={filledFields(draft.changes).length}
           errors={errors}
-          restored={draft.restored && Object.keys(draft.changes).length > 0}
+          restored={draft.restored && filledFields(draft.changes).length > 0}
           saving={draft.saving}
           onChange={(field, value) => setEventDraftField(NEW_EVENT_ID, field, value)}
           onSave={handleCreate}

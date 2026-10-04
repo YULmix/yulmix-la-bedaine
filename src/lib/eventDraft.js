@@ -92,6 +92,12 @@ export const validateDraft = (event, changes = {}) => {
   return errors;
 };
 
+/** The fields a new event's draft has filled in: what was typed and left, not emptied again or never touched. */
+export const filledFields = (changes) => Object.keys(changes || {}).filter((field) => {
+  const value = normalise(field, changes[field]);
+  return !(value == null || value === false || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length));
+});
+
 /**
  * Why a new event (#111) can't be created: what validateDraft finds, plus the two fields it can't
  * be created without, the title and the event start (`'required'`), whether or not they were
