@@ -478,6 +478,39 @@ export type Database = {
           },
         ]
       }
+      party_admin_notes: {
+        Row: {
+          notes: string | null
+          party_id: string
+          updated_at: string
+        }
+        Insert: {
+          notes?: string | null
+          party_id: string
+          updated_at?: string
+        }
+        Update: {
+          notes?: string | null
+          party_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "party_admin_notes_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: true
+            referencedRelation: "user_event_history"
+            referencedColumns: ["party_id"]
+          },
+          {
+            foreignKeyName: "party_admin_notes_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: true
+            referencedRelation: "user_parties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       place_assignments: {
         Row: {
           attendee_id: string
@@ -634,7 +667,6 @@ export type Database = {
       }
       user_parties: {
         Row: {
-          admin_notes: string | null
           calculated_amount_owed: number | null
           confirmation_message: string | null
           created_at: string | null
@@ -655,7 +687,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          admin_notes?: string | null
           calculated_amount_owed?: number | null
           confirmation_message?: string | null
           created_at?: string | null
@@ -676,7 +707,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          admin_notes?: string | null
           calculated_amount_owed?: number | null
           confirmation_message?: string | null
           created_at?: string | null
@@ -932,7 +962,6 @@ export type Database = {
           p_user_id?: string
         }
         Returns: {
-          admin_notes: string | null
           calculated_amount_owed: number | null
           confirmation_message: string | null
           created_at: string | null

@@ -419,20 +419,29 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
   ${lit(r.userId)});`);
     }
 
-    // What happened after registering: the date it was made, the admin marking it paid, notes.
-    // Set without triggers, so none of it counts as an edit or changes the amount owed.
+    // What happened after registering: the date it was made, the admin marking it paid, notes
+    // (in their own admin-only table, #227). Set without triggers, so none of it counts as an
+    // edit, logs history or changes the amount owed.
     out.push(`
+CREATE TEMP TABLE seed_after_registering (user_id uuid, event_id uuid, days_ago int, payment_status text, admin_notes text);
+INSERT INTO seed_after_registering VALUES
+${sorted.map((r) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${r.daysAgo}, ${lit(r.paymentStatus)}, ${lit(r.adminNotes)})`).join(',\n')};
 ALTER TABLE public.user_parties DISABLE TRIGGER USER;
 UPDATE public.user_parties p
 SET created_at = now() - make_interval(days => v.days_ago),
     last_edited_at = now() - make_interval(days => v.days_ago),
-    payment_status = v.payment_status,
-    admin_notes = v.admin_notes
-FROM (VALUES
-${sorted.map((r) => `  (${lit(r.userId)}::uuid, ${lit(r.event.id)}::uuid, ${r.daysAgo}, ${lit(r.paymentStatus)}, ${lit(r.adminNotes)})`).join(',\n')}
-) AS v(user_id, event_id, days_ago, payment_status, admin_notes)
+    payment_status = v.payment_status
+FROM seed_after_registering v
 WHERE p.user_id = v.user_id AND p.event_id = v.event_id;
-ALTER TABLE public.user_parties ENABLE TRIGGER USER;`);
+ALTER TABLE public.user_parties ENABLE TRIGGER USER;
+ALTER TABLE public.party_admin_notes DISABLE TRIGGER USER;
+INSERT INTO public.party_admin_notes (party_id, notes)
+SELECT p.id, v.admin_notes
+FROM seed_after_registering v
+JOIN public.user_parties p ON p.user_id = v.user_id AND p.event_id = v.event_id
+WHERE COALESCE(v.admin_notes, '') <> '';
+ALTER TABLE public.party_admin_notes ENABLE TRIGGER USER;
+DROP TABLE seed_after_registering;`);
 
     // Sleeping places (#113): every venue has ROOMS rooms with a double bed, and a yard for tents.
     // Admins put some paid attendees who asked for a bed in a room (#114).

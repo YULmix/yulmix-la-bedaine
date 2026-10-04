@@ -226,15 +226,17 @@ export async function eventThemesVisibleToMember() {
 
 export async function getParty(partyId) {
   const db = await adminClient();
-  return check(
+  const { note, ...party } = check(
     await db
       .from('user_parties')
-      .select('attendees(*, place:attendee_places(place_id, bed_label)), transport, admin_notes, message_to_participants, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
+      .select('attendees(*, place:attendee_places(place_id, bed_label)), transport, note:party_admin_notes(notes), message_to_participants, payment_status, status, calculated_amount_owed, locked_selling_price_whole_event, locked_ratio_main_whole')
       .eq('id', partyId)
       .order('position', { referencedTable: 'attendees' })
       .single(),
     'read e2e party'
   );
+  // The organisers' notes live in their own table (#227); the specs read them as before.
+  return { ...party, admin_notes: note?.notes ?? null };
 }
 
 // A registration for someone other than the seeded member (e.g. the admin's own), made now. The
@@ -273,10 +275,16 @@ export async function setVenueCoordinates(eventId, lat, lng) {
 }
 
 // Sets party-wide form answers (logistics, transport, music_requests, message_to_organizers) of a
-// registration, as if its member had saved them.
-export async function setPartyAnswers(partyId, answers) {
+// registration, as if its member had saved them. admin_notes, if given, goes to the organisers'
+// notes table (#227).
+export async function setPartyAnswers(partyId, { admin_notes: notes, ...answers }) {
   const db = await adminClient();
-  check(await db.from('user_parties').update(answers).eq('id', partyId), 'set e2e party answers');
+  if (Object.keys(answers).length) {
+    check(await db.from('user_parties').update(answers).eq('id', partyId), 'set e2e party answers');
+  }
+  if (notes !== undefined) {
+    check(await db.from('party_admin_notes').upsert({ party_id: partyId, notes }), 'set e2e party notes');
+  }
 }
 
 // Whether the database put a registration on the waiting list.

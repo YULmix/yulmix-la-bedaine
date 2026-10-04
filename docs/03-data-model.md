@@ -13,6 +13,7 @@ erDiagram
   PROFILES ||--o{ USER_PARTIES : "registers"
   EVENTS ||--o{ USER_PARTIES : "receives"
   USER_PARTIES ||--o{ ATTENDEES : "has (on delete cascade)"
+  USER_PARTIES ||--o| PARTY_ADMIN_NOTES : "annotated by (admin-only, on delete cascade)"
   EVENTS ||--o| EVENT_BUDGETS : "budgeted by (admin-only)"
   PROFILES ||--o{ APP_FEEDBACK : "submits"
   USER_PARTIES ||--o{ REGISTRATION_EDITS : "audited by"
@@ -80,11 +81,15 @@ erDiagram
     numeric locked_ratio_main_whole "ratio when registered (#117)"
     text payment_status "unpaid|paid"
     bool is_waitlisted "trigger-computed"
-    text admin_notes "organisers only"
     text message_to_participants "organisers write, member reads (#216)"
     timestamptz last_edited_at
     int edit_count
     timestamptz created_at
+  }
+  PARTY_ADMIN_NOTES {
+    uuid party_id PK "FK user_parties, on delete cascade"
+    text notes "organisers' private notes (#227)"
+    timestamptz updated_at
   }
   ATTENDEES {
     uuid id PK
@@ -236,7 +241,12 @@ embeds the view one-to-one, through `place_assignments.attendee_id`'s unique for
 **Assigning.** The Logistique tab keeps places, admin notes and the message to participants as a
 draft (`src/lib/logisticsDraft.js`) and saves them all with `save_logistics(p_changes)` (#150):
 `[{ party_id, places: { <attendee id>: <place id> | null }, admin_notes?, message_to_participants? }]`
-(an absent text is left as is). `admin_notes` are the organisers' private notes;
+(an absent text is left as is). `admin_notes` are the organisers' private notes, stored in
+`party_admin_notes` (one row per party, none = no notes), which only admins can read or write: they
+used to be a `user_parties` column, which the member's own-row policy exposed (#227). An admin's
+`listEventParties` embeds them and hands them to screens as `admin_notes`; the member's read
+(`fetchMyParty`, `fetchParty`) names its columns instead of `*`, so a private column added later
+isn't sent to members by default.
 `message_to_participants` (#216) is shown to the party's member in their « Logistique » card. Each party is saved entirely or not at all; the function
 returns the refused ones (`[{ party_id, code, message, details }]`, `message` being the error code),
 and the tab keeps their drafts.
@@ -320,7 +330,7 @@ Postgres `CHECK` constraints, not Postgres enum types — so adding a value mean
 |---|---|---|
 | `is_waitlisted` | `enforce_capacity_and_waitlist` (BEFORE INSERT/UPDATE OF status), advisory-locked per event | Yes |
 | `edit_count`, `last_edited_at` | `increment_edit_count` (BEFORE UPDATE); the update that completes a new registration isn't counted | Yes |
-| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none; `places` is written by `save_logistics()` and the venue-change trigger instead (#188, see Assigning above) | Yes, attributed to `auth.uid()` |
+| `registration_edits` rows | `log_registration_edit` (AFTER UPDATE), field-by-field diff; `attendees` holds the party's attendees before and after a `save_registration()`, as JSON arrays. The update that completes a new registration writes one `created` entry instead (#173): `{ created: { old: null, new: { attendees, status, is_waitlisted, calculated_amount_owed } } }`; registrations older than that have none; `places` is written by `save_logistics()` and the venue-change trigger instead (#188, see Assigning above), and `admin_notes` by `party_admin_notes`' own trigger (`log_party_admin_notes_edit`, #227), in `save_logistics()`'s entry for the party when it's the one writing | Yes, attributed to `auth.uid()` |
 | `calculated_amount_owed` | `enforce_calculated_amount_owed` (BEFORE INSERT/UPDATE), from the party's live `attendees` rows and its locked price; frozen once paid (#31) | Yes |
 | Headcount per tier | Not stored: counted from `attendees` where needed (`tierCountsOf()` in `src/lib/adminStats.js`) | — |
 | `locked_selling_price_whole_event`, `locked_ratio_main_whole` | `enforce_calculated_amount_owed`: the event's values on insert (or on re-registering after a cancellation), the stored ones on update; locked when the event first gets a price if it had none (#117) | Yes |
@@ -607,7 +617,8 @@ production on 2026-09-18 (`supabase/legacy/fix_views_security.sql`).
    with `supabase db reset`. It reaches production when its PR merges (CI runs `supabase db push`);
    see [Development setup → Database migrations](./07-development-setup.md#database-migrations).
 2. If it is user-visible, add an RLS consideration: does the new column leak anything a member
-   should not see? `admin_notes` is the precedent for organiser-only data.
+   should not see? A member reads every column of their own row, so organiser-only data goes in its
+   own admin-only table, as `party_admin_notes` does (#227), not in a column of a member-readable one.
 3. If it is an enum-like value, add it to `src/lib/registrationOptions.ts` with a French label, and
    the label to `src/locales/fr.json`. Never render the raw value.
 4. If it is derived, prefer a trigger over client computation — the browser is not trusted.

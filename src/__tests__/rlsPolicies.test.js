@@ -686,7 +686,8 @@ describe('🚪 member self-cancellation (#35)', () => {
 });
 
 // #94: payment_status, admin_notes and where attendees sleep are admin-only. A member's
-// party-level values are ignored (not refused); only an admin writes place_assignments (#114), and
+// party-level values are ignored (not refused); the notes live in party_admin_notes, which members
+// can neither read nor write (#227); only an admin writes place_assignments (#114), and
 // a place stays with its attendee (by id, ADR 0018) whatever the member edits.
 describe('🛡️ admin-only registration fields (#94)', () => {
   jest.setTimeout(30000);
@@ -700,11 +701,15 @@ describe('🛡️ admin-only registration fields (#94)', () => {
   let memberClient;
   let adminAuthClient;
 
-  const partyRow = async () => (await adminAuthClient.from('user_parties')
-    .select('payment_status, admin_notes, message_to_participants, calculated_amount_owed, status, attendees(id, name, place:attendee_places(bed_label))')
-    .eq('id', ADMIN_FIELDS_PARTY_ID)
-    .order('position', { referencedTable: 'attendees' })
-    .single()).data;
+  const partyRow = async () => {
+    const { data } = await adminAuthClient.from('user_parties')
+      .select('payment_status, message_to_participants, calculated_amount_owed, status, attendees(id, name, place:attendee_places(bed_label)), note:party_admin_notes(notes)')
+      .eq('id', ADMIN_FIELDS_PARTY_ID)
+      .order('position', { referencedTable: 'attendees' })
+      .single();
+    const { note, ...row } = data;
+    return { ...row, admin_notes: note?.notes ?? null };
+  };
   const bedsOf = (row) => row.attendees.map(a => [a.name, a.place?.bed_label ?? '']);
   const idOf = (row, name) => row.attendees.find(a => a.name === name).id;
   let placeIds; // label → id of the event's places, in the location "Ch"
@@ -718,8 +723,11 @@ describe('🛡️ admin-only registration fields (#94)', () => {
       if (error) throw error;
     }
     const { error } = await adminAuthClient.from('user_parties')
-      .update({ payment_status: 'paid', admin_notes: 'secret' }).eq('id', ADMIN_FIELDS_PARTY_ID);
+      .update({ payment_status: 'paid' }).eq('id', ADMIN_FIELDS_PARTY_ID);
     if (error) throw error;
+    const { error: notesError } = await adminAuthClient.from('party_admin_notes')
+      .insert({ party_id: ADMIN_FIELDS_PARTY_ID, notes: 'secret' });
+    if (notesError) throw notesError;
     return partyRow();
   };
 
@@ -752,9 +760,11 @@ describe('🛡️ admin-only registration fields (#94)', () => {
 
   test('a member creating a party cannot set payment, notes or beds', async () => {
     const { error } = await memberClient.from('user_parties').insert({
-      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, payment_status: 'paid', admin_notes: 'hax'
+      id: ADMIN_FIELDS_PARTY_ID, user_id: MEMBER_ID, event_id: ADMIN_FIELDS_EVENT_ID, payment_status: 'paid'
     });
     expect(error).toBeNull();
+    const { error: notesError } = await memberClient.from('party_admin_notes').insert({ party_id: ADMIN_FIELDS_PARTY_ID, notes: 'hax' });
+    expect(notesError?.code).toBe('42501');
     await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann', { place_id: placeIds.B1 })]);
     const row = await partyRow();
     expect(row.payment_status).toBe('unpaid');
@@ -766,7 +776,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     await saveOk(memberClient, ADMIN_FIELDS_EVENT_ID, [attendee('Ann')], { id: ADMIN_FIELDS_PARTY_ID });
     const annId = idOf(await partyRow(), 'Ann');
     const { error } = await memberClient.from('user_parties')
-      .update({ payment_status: 'paid', admin_notes: 'hax' })
+      .update({ payment_status: 'paid' })
       .eq('id', ADMIN_FIELDS_PARTY_ID);
     expect(error).toBeNull();
     const { error: bedError } = await memberClient.from('place_assignments').insert({ attendee_id: annId, place_id: placeIds.B1 });
@@ -832,7 +842,7 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     expect(failed).toMatchObject({ data: [], error: null });
 
     const { error: updateError } = await memberClient.from('user_parties')
-      .update({ message_to_participants: 'hax', admin_notes: 'hax' }).eq('id', ADMIN_FIELDS_PARTY_ID);
+      .update({ message_to_participants: 'hax' }).eq('id', ADMIN_FIELDS_PARTY_ID);
     expect(updateError).toBeNull();
     const row = await partyRow();
     expect(row.message_to_participants).toBe('Bienvenue');
@@ -885,6 +895,65 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     expect(row.status).toBe('registered');
     expect(row.payment_status).toBe('paid');
     expect(row.admin_notes).toBe('secret');
+  });
+
+  // #227: the notes were a user_parties column, readable through the member's own-row policy.
+  test('a member reads no notes, not even their own party\'s, by any path (#227)', async () => {
+    const seeded = await seedAdminManagedParty();
+    const { data: own, error } = await memberClient.from('user_parties').select('*').eq('id', ADMIN_FIELDS_PARTY_ID).single();
+    expect(error).toBeNull();
+    expect(own).not.toHaveProperty('admin_notes');
+    expect(JSON.stringify(own)).not.toContain('secret');
+
+    const { error: columnError } = await memberClient.from('user_parties').select('admin_notes').eq('id', ADMIN_FIELDS_PARTY_ID);
+    expect(columnError).not.toBeNull();
+
+    const { data: embedded } = await memberClient.from('user_parties').select('id, note:party_admin_notes(notes)').eq('id', ADMIN_FIELDS_PARTY_ID).single();
+    expect(embedded.note).toBeNull();
+
+    const { data: notes, error: notesError } = await memberClient.from('party_admin_notes').select('*');
+    expect(notesError).toBeNull();
+    expect(notes).toEqual([]);
+
+    const { data: edits } = await memberClient.from('registration_edits').select('changes').eq('registration_id', ADMIN_FIELDS_PARTY_ID);
+    expect(JSON.stringify(edits ?? [])).not.toContain('secret');
+
+    const { data: saved, error: saveError } = await save(memberClient, ADMIN_FIELDS_EVENT_ID, seeded.attendees.map(a => attendee(a.name, { id: a.id })));
+    expect(saveError).toBeNull();
+    expect(JSON.stringify(saved)).not.toContain('secret');
+  });
+
+  test('a member cannot insert, update or delete notes (#227)', async () => {
+    await seedAdminManagedParty();
+    const { error: insertError } = await memberClient.from('party_admin_notes').upsert({ party_id: ADMIN_FIELDS_PARTY_ID, notes: 'hax' });
+    expect(insertError?.code).toBe('42501');
+    const { data: updated } = await memberClient.from('party_admin_notes').update({ notes: 'hax' }).eq('party_id', ADMIN_FIELDS_PARTY_ID).select();
+    expect(updated ?? []).toEqual([]);
+    const { data: deleted } = await memberClient.from('party_admin_notes').delete().eq('party_id', ADMIN_FIELDS_PARTY_ID).select();
+    expect(deleted ?? []).toEqual([]);
+    const { error: rpcError } = await memberClient.rpc('save_logistics', {
+      p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, admin_notes: 'hax' }]
+    });
+    expect(rpcError?.message).toBe('admin_only');
+    expect((await partyRow()).admin_notes).toBe('secret');
+  });
+
+  test('save_logistics writes the notes table: absent keeps them, empty clears them (#227)', async () => {
+    await seedAdminManagedParty();
+    const saveTexts = async (texts) => {
+      const result = await adminAuthClient.rpc('save_logistics', { p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, ...texts }] });
+      expect(result).toMatchObject({ data: [], error: null });
+    };
+    const storedNotes = async () => (await adminAuthClient.from('party_admin_notes')
+      .select('notes').eq('party_id', ADMIN_FIELDS_PARTY_ID).maybeSingle()).data?.notes;
+    await saveTexts({ message_to_participants: 'Bienvenue' });
+    expect(await storedNotes()).toBe('secret');
+    await saveTexts({ admin_notes: '' });
+    expect(await storedNotes()).toBe('');
+
+    const { data: edits } = await adminAuthClient.from('registration_edits')
+      .select('changes').eq('registration_id', ADMIN_FIELDS_PARTY_ID).order('edited_at');
+    expect(edits.at(-1).changes).toEqual({ admin_notes: { old: 'secret', new: '' } });
   });
 });
 
@@ -2517,7 +2586,7 @@ describe('📜 registration history logs creations (#173)', () => {
   test('edits are logged as before; the member reads only what they authored, the admin reads all', async () => {
     await saveOk(memberClient, HISTORY_EVENT_ID, ONE_ADULT_WHOLE, { id: HISTORY_PARTY_ID });
     await saveOk(memberClient, HISTORY_EVENT_ID, TWO_ADULTS_WHOLE);
-    const { error } = await adminAuthClient.from('user_parties').update({ admin_notes: 'Note' }).eq('id', HISTORY_PARTY_ID);
+    const { error } = await adminAuthClient.from('party_admin_notes').insert({ party_id: HISTORY_PARTY_ID, notes: 'Note' });
     expect(error).toBeNull();
 
     const all = await entriesAs(adminAuthClient);
@@ -2830,6 +2899,8 @@ describe('📜 place assignment history (#188)', () => {
     }]);
     // A text sent unchanged: the places still get their row, alone.
     await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies', places: { [who.Bob]: null } }]);
+    // Notes and places without a message: still one row (#227: the notes aren't on user_parties).
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Végé', places: { [who.Ann]: places['Grange · Lit 4'] } }]);
 
     const rows = await ok(adminAuthClient.from('registration_edits').select('changes, edited_by')
       .eq('registration_id', memberParty.id).order('edited_at'));
@@ -2842,8 +2913,69 @@ describe('📜 place assignment history (#188)', () => {
           places: { old: [entry('Bob', null)], new: [entry('Bob', 'Maison · Sofa')] }
         }
       },
-      { edited_by: ADMIN_ID, changes: { places: { old: [entry('Bob', 'Maison · Sofa')], new: [entry('Bob', null)] } } }
+      { edited_by: ADMIN_ID, changes: { places: { old: [entry('Bob', 'Maison · Sofa')], new: [entry('Bob', null)] } } },
+      {
+        edited_by: ADMIN_ID,
+        changes: {
+          admin_notes: { old: 'Allergies', new: 'Végé' },
+          places: { old: [entry('Ann', null)], new: [entry('Ann', 'Grange · Lit 4')] }
+        }
+      }
     ]);
+  });
+
+  // #227: the notes' history, with the notes in party_admin_notes.
+  const noteRows = async (partyId) => (await ok(adminAuthClient.from('registration_edits')
+    .select('changes').eq('registration_id', partyId).order('edited_at')))
+    .map(row => row.changes).filter(changes => !('created' in changes));
+  const notesOf = async (partyId) => (await ok(adminAuthClient.from('party_admin_notes')
+    .select('notes').eq('party_id', partyId).maybeSingle()))?.notes ?? null;
+
+  test('notes alone are one row; unchanged notes, or empty ones over none, are no row (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: '' }]);
+    expect(await noteRows(memberParty.id)).toEqual([]);
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies' }]);
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies' }]);
+    // The empty notes were stored, as before: they're the old value.
+    expect(await noteRows(memberParty.id)).toEqual([{ admin_notes: { old: '', new: 'Allergies' } }]);
+  });
+
+  test('a refused party rolls back its notes and their history; the next party\'s entry is its own (#227)', async () => {
+    await ok(adminAuthClient.rpc('set_place_override', {
+      p_event_id: EVENT_ID, p_place_id: places['Grange · Lit 4'], p_is_excluded: true, p_capacity: null
+    }));
+    const { data: failed, error } = await saveLogistics([
+      { party_id: adminParty.id, admin_notes: 'Refusé', places: { [who.Zed]: places['Grange · Lit 4'] } },
+      { party_id: memberParty.id, admin_notes: 'Accepté' }
+    ]);
+    expect(error).toBeNull();
+    expect(failed).toMatchObject([{ party_id: adminParty.id, message: 'place_assignment_place_excluded' }]);
+    expect(await notesOf(adminParty.id)).toBeNull();
+    expect(await noteRows(adminParty.id)).toEqual([]);
+    expect(await noteRows(memberParty.id)).toEqual([{ admin_notes: { old: null, new: 'Accepté' } }]);
+  });
+
+  test('a member reads no notes through the embed, for their own party or another\'s (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Sienne' }, { party_id: adminParty.id, admin_notes: 'Autre' }]);
+    const rows = await ok(memberClient.from('user_parties').select('id, party_admin_notes(*)').eq('event_id', EVENT_ID));
+    expect(rows).toEqual([{ id: memberParty.id, party_admin_notes: null }]);
+    const other = await ok(memberClient.from('user_parties').select('id, party_admin_notes(*)').eq('id', adminParty.id));
+    expect(other).toEqual([]);
+    expect(await ok(memberClient.from('party_admin_notes').select('*'))).toEqual([]);
+  });
+
+  test('a member\'s own save logs no notes, and they can\'t set the logistics setting (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Privé' }]);
+    const attendees = await ok(adminAuthClient.from('attendees').select('id, name').eq('party_id', memberParty.id).order('position'));
+    const { error: setError } = await memberClient.rpc('set_config', {
+      setting_name: 'bedaine.logistics_changes', new_value: JSON.stringify({ party_id: memberParty.id, changes: { admin_notes: { old: null, new: 'hax' } } }), is_local: true
+    });
+    expect(setError).not.toBeNull();
+    await saveOk(memberClient, EVENT_ID, [...attendees.map(a => ({ ...person(a.name), id: a.id })), person('Cat')]);
+    const rows = await noteRows(memberParty.id);
+    expect(rows.filter(changes => 'admin_notes' in changes)).toEqual([{ admin_notes: { old: null, new: 'Privé' } }]);
+    expect(rows.at(-1)).toHaveProperty('attendees');
+    expect(await notesOf(memberParty.id)).toBe('Privé');
   });
 
   test('a venue change logs one row per party it clears, with the reason', async () => {
