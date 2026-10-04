@@ -41,6 +41,15 @@ describe('reads', () => {
     expect(calledWith(query, 'order')).toContainEqual(ORDER_ATTENDEES);
   });
 
+  test('a member\'s party is read by named columns, never * nor the notes (#227)', async () => {
+    const { client, queries } = mockClient({ data: null, error: null });
+    await fetchMyParty(client, 'u1', 'e1');
+    const columns = calledWith(queries[0], 'select')[0][0];
+    expect(columns.split(', attendees(')[0]).not.toContain('*');
+    expect(columns).toMatch(/^id, user_id, event_id, /);
+    expect(columns).not.toMatch(/notes/);
+  });
+
   test('fetchMyParty filters by member and event; none is null', async () => {
     const { client, queries } = mockClient({ data: null, error: null });
     await expect(fetchMyParty(client, 'u1', 'e1')).resolves.toBeNull();
@@ -61,6 +70,17 @@ describe('reads', () => {
     expect(parties.map(p => p.id)).toEqual(['kept', 'history', 'cancelled-by-member']);
     expect(calledWith(queries[0], 'select')[0][0]).toMatch(/profiles!inner\(/);
     expect(calledWith(queries[0], 'order')).toEqual([['created_at', { ascending: true }], ORDER_ATTENDEES]);
+  });
+
+  test('listEventParties carries the organisers\' notes from party_admin_notes as admin_notes (#227)', async () => {
+    const rows = [
+      party('noted', { profiles: { deleted_at: null }, admin_note: { notes: 'VIP' } }),
+      party('none', { profiles: { deleted_at: null }, admin_note: null })
+    ];
+    const { client, queries } = mockClient({ data: rows, error: null });
+    const parties = await listEventParties(client, 'e1');
+    expect(parties.map(p => [p.id, p.admin_notes, 'admin_note' in p])).toEqual([['noted', 'VIP', false], ['none', null, false]]);
+    expect(calledWith(queries[0], 'select')[0][0]).toMatch(/admin_note:party_admin_notes\(notes\)/);
   });
 
   test('listPartySummaries says whether any attendee has a place', async () => {
