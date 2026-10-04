@@ -53,7 +53,15 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   edition_role_invalid: () => fr.dbErrorEditionRoleInvalid,
   edition_role_target_admin: () => fr.dbErrorEditionRoleTargetAdmin,
   edition_role_target_deleted: () => fr.dbErrorEditionRoleTargetDeleted,
-  edition_role_target_not_found: () => fr.dbErrorEditionRoleTargetNotFound
+  edition_role_target_not_found: () => fr.dbErrorEditionRoleTargetNotFound,
+  // « Voir comme » (#265, ADR 0025).
+  read_only_impersonation: () => fr.dbErrorReadOnlyImpersonation,
+  impersonation_actor_not_admin: () => fr.dbErrorImpersonationActorNotAdmin,
+  impersonation_target_self: () => fr.dbErrorImpersonationTargetSelf,
+  impersonation_target_admin: () => fr.dbErrorImpersonationTargetAdmin,
+  impersonation_target_deleted: () => fr.dbErrorImpersonationTargetDeleted,
+  impersonation_target_not_found: () => fr.dbErrorEditionRoleTargetNotFound,
+  impersonation_log_immutable: () => fr.dbErrorImpersonationLogImmutable
 };
 
 const parseDetails = (details: string | null | undefined): ErrorParams => {
