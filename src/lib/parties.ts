@@ -118,7 +118,8 @@ export interface SaveRegistrationArgs {
 /**
  * Saves a registration and its attendees in one transaction (save_registration()), then returns
  * the party with its attendees. An attendee with the `id` of an existing one updates it; one
- * without is added; existing ones left out are removed.
+ * without is added; existing ones left out are removed: their row is kept, marked `deleted_at`
+ * (#237), and no read returns it again (the database hides it).
  */
 export const saveRegistration = async (client: Client, { eventId, attendees, party = {}, userId }: SaveRegistrationArgs): Promise<Party | null> => {
   const { data, error } = await client.rpc('save_registration', {
