@@ -151,6 +151,16 @@ describe('« Première Bédaine » and the participants view rows', () => {
     expect(names({ key: 'name', grouped: true })).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
     expect(names({ key: 'group', grouped: true })).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
     expect(rows.map(row => row.name)).toEqual(['Alice', 'Léo', 'Bob', 'Carla']);
+    expect(names({ key: 'name', dir: 'desc' })).toEqual(['Léo', 'Carla', 'Bob', 'Alice']);
+    expect(names({ key: 'group', dir: 'desc' })).toEqual(['Carla', 'Bob', 'Alice', 'Léo']);
+    // Grouped, descending by group: the groups reverse, a party's attendees stay in order.
+    expect(names({ key: 'group', dir: 'desc', grouped: true })).toEqual(['Carla', 'Bob', 'Alice', 'Léo']);
+  });
+
+  test('attendeeRows carries the values the view draws icons from', () => {
+    const [alice, leo] = attendeeRows(parties);
+    expect(alice).toMatchObject({ dietaryValues: ['vegan', 'other'], sleepingValue: 'bed' });
+    expect(leo).toMatchObject({ dietaryValues: [], sleepingValue: 'outside_other' });
   });
 });
 

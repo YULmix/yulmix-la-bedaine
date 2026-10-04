@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useBlocker } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Leaf, MilkOff, Sprout, Trash2, UserPlus, Utensils, WheatOff
+  ArrowLeft, ArrowRight, Ban, CarFront, Check, Hand, Trash2, UserPlus
 } from 'lucide-react';
-import { ACCOMMODATION_ICONS } from './accommodationIcons';
+import { ACCOMMODATION_ICONS, DIETARY_ICONS } from './accommodationIcons';
 import { supabase } from '../lib/supabase';
 import { saveRegistration } from '../lib/parties';
 import { appError, dbErrorMessage } from '../lib/dbErrors';
@@ -49,7 +49,6 @@ const PRESENCE_OPTIONS = [
   { value: 'Main', label: fr.participationMainShort }
 ];
 
-const DIETARY_ICONS = { none: Ban, vegetarian: Leaf, vegan: Sprout, gluten_free: WheatOff, dairy_free: MilkOff, other: Utensils };
 const TRANSPORT_ICONS = { offer: CarFront, need: Hand };
 
 const withIcons = (options, icons) => options.map(option => ({ ...option, icon: icons[option.value] }));

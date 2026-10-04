@@ -298,6 +298,31 @@ test.describe('admin tabs', () => {
     await closeModal(edit);
   });
 
+  // #262: a swipe that starts on a list scrolls the page. A list with a scroll box of its own
+  // (overflow-y: auto, overscroll-contain) kept the swipe to itself.
+  test('mobile: swiping inside the Inscrits lists scrolls the page, there is no scroll box', async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('mobile'), 'touch only');
+    // Short enough that the party and its attendees run past the bottom, whatever the data.
+    await page.setViewportSize({ width: 412, height: 480 });
+    for (const path of ['/users', '/users/participants']) {
+      await openAdmin(page, path);
+      const list = path === '/users' ? panel(page).getByRole('list') : panel(page).getByRole('table');
+      await expect(list).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      expect(await list.evaluate(el => getComputedStyle(el).overflowY), 'no scroll box of its own').toBe('visible');
+      expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight), 'the page is taller than the screen').toBeGreaterThan(40);
+      const box = await list.boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.synthesizeScrollGesture', {
+        x: Math.round(box.x + box.width / 2),
+        y: Math.round(Math.min(box.y + box.height / 2, 400)),
+        yDistance: -150,
+        gestureSourceType: 'touch'
+      });
+      await expect.poll(() => page.evaluate(() => window.scrollY), { message: `${path}: the page scrolled` }).toBeGreaterThan(0);
+    }
+  });
+
   test('mobile: no horizontal overflow, tappable tabs, controls within the viewport', async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('mobile'), 'mobile-only layout checks');
 

@@ -155,7 +155,7 @@ export const ChangeHistory = ({ events, notify }) => {
           </p>
           <div
             ref={scrollRef}
-            className="mt-2 overflow-y-auto overscroll-contain rounded-control border border-line"
+            className="mt-2 md:overflow-y-auto md:overscroll-contain rounded-control border border-line"
             tabIndex={0}
             role="region"
             aria-label={fr.changeHistoryTitle}

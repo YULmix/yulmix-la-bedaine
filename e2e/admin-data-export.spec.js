@@ -157,7 +157,7 @@ test('« Exporter » is on the list, not on the history', async ({ page }) => {
 });
 
 // #262: Inscrits › « Participants », one row per attendee, read-only, from Comité up.
-const participantsRow = (page, name) => page.getByRole('main').getByRole('listitem').filter({ hasText: name });
+const participantsRow = (page, name) => page.getByRole('main').getByRole('row').filter({ hasText: name });
 
 test('« Participants » (Comité): pills, details pop-up only where there is free text, sort, grouping', async ({ page }) => {
   await grantEditionRoles(seeded.eventId);
@@ -186,9 +186,13 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
   // Sort by name, then group them: the toggle is off by default.
   const toggle = page.getByRole('switch', { name: fr.participantsGroupBy });
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
-  await page.getByRole('button', { name: fr.participantsSortName, exact: true }).click();
-  const names = await page.getByRole('main').getByRole('listitem').locator('[data-participant-name]').allTextContents();
+  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button').click();
+  await expect(page.getByRole('columnheader', { name: fr.exportAttendeeName })).toHaveAttribute('aria-sort', 'ascending');
+  const names = await page.getByRole('main').locator('[data-participant-name]').allTextContents();
   expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'fr')));
+  await page.getByRole('columnheader', { name: fr.exportAttendeeName }).getByRole('button').click();
+  await expect(page.getByRole('columnheader', { name: fr.exportAttendeeName })).toHaveAttribute('aria-sort', 'descending');
+  expect(await page.getByRole('main').locator('[data-participant-name]').allTextContents()).toEqual([...names].reverse());
   await toggle.click();
   // One header per party: the member's, the admin's and the waitlisted one's.
   await expect(page.getByText(/^Groupe de /)).toHaveCount(3);
@@ -196,16 +200,32 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
 
 test('« Participants » screenshots', async ({ page }) => {
   test.skip(!process.env.E2E_SCREENSHOT_DIR, 'set E2E_SCREENSHOT_DIR');
+  const shot = (name, width) => page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-admin-${width}.png`, fullPage: true });
+  const settle = () => page.waitForTimeout(500); // the switch's and the dialogs' animation
   await loginAs(page, TEST_USERS.admin);
-  for (const [width, height] of [[1440, 900], [2560, 1200], [390, 844]]) {
+  for (const [width, height] of [[390, 844], [768, 1024], [1024, 800], [1440, 900], [2560, 1200]]) {
     await page.setViewportSize({ width, height });
     await page.goto('/admin/users/participants');
-    await expect(participantsRow(page, ZOE.name)).toBeVisible();
-    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-admin-${width}.png` });
+    await expect(page.getByRole('main').locator('[data-participant-name]').first()).toBeVisible();
+    await shot('participants', width);
+    const details = page.getByRole('button', { name: new RegExp(`^${fr.participantsDetails}`) }).first();
+    await details.click();
+    await settle();
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-details-admin-${width}.png` });
+    await page.keyboard.press('Escape');
+    if (width < 1024) {
+      await page.getByRole('button', { name: fr.participantsSortButton }).click();
+      await settle();
+      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-sortmenu-admin-${width}.png` });
+      await page.keyboard.press('Escape');
+    }
     await page.getByRole('switch', { name: fr.participantsGroupBy }).click();
     await expect(page.getByRole('switch', { name: fr.participantsGroupBy })).toHaveAttribute('aria-checked', 'true');
-    await page.waitForTimeout(500); // the switch's slide
-    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-grouped-admin-${width}.png` });
+    await settle();
+    await shot('participants-grouped', width);
+    await page.goto('/admin/users');
+    await expect(page.getByRole('main').getByRole('list').first()).toBeVisible();
+    await shot('liste', width);
   }
 });
 
