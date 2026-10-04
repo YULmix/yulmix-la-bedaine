@@ -198,6 +198,16 @@ keeping the two implementations in step — the cost of having no backend of our
 
 Any `VITE_`-prefixed variable is inlined into the public bundle. Never prefix a secret with `VITE_`.
 
+## Avatars and privacy (#261)
+
+The signed-in user's header badge shows `user_metadata.avatar_url` (Google's picture) or, failing
+that, their Gravatar. For the Gravatar the browser requests
+`https://www.gravatar.com/avatar/<sha256 of the lower-cased email>`, so gravatar.com receives an
+unsalted email hash and the user's IP; Google's picture comes from googleusercontent.com. Images
+are fetched with `referrerPolicy="no-referrer"`, nothing is stored or proxied by us, and a failed
+load falls back to the initials. If a Content-Security-Policy is ever added, `img-src` must allow
+`*.googleusercontent.com` and `www.gravatar.com`.
+
 ## The `SECURITY DEFINER` view advisory (resolved)
 
 Supabase flagged `public.user_event_history` as a `SECURITY DEFINER` view: it enforced the
