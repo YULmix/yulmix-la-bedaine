@@ -187,8 +187,8 @@ test.describe('admin tabs', () => {
     await expectUsersTabActive(page);
     // One party seeded -> exactly one of each per-party control (markup is cards/grid, not a table).
     await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toHaveCount(1);
-    await expect(panel(page).getByRole('checkbox', { name: 'Admin' })).toHaveCount(1);
-    await expect(panel(page).getByRole('checkbox', { name: 'Admin' })).not.toBeChecked();
+    // The admin flag is not here any more: it is managed in « Équipe » (#257).
+    await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
     await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(1);
     await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   });
@@ -307,7 +307,6 @@ test.describe('admin tabs', () => {
     await expectNoHorizontalOverflow(page);
     await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: MEMBER_NAME, exact: true }));
     await expectWithinViewportWidth(page, panel(page).getByRole('button', { name: fr.unpaidShort, exact: true }));
-    await expectWithinViewportWidth(page, panel(page).getByRole('checkbox', { name: 'Admin' }));
     await shot(page, 'mobile-tab-users');
 
     const detail = await openPartyDetail(page);
