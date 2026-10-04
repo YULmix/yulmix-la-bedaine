@@ -526,6 +526,8 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
 
   let memberClient;
   let adminAuthClient;
+  let organiserClient;
+  let committeeClient;
   let party;
   let ann;
   let bob;
@@ -540,10 +542,13 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
   beforeAll(async () => {
     memberClient = await signIn('member@test.local');
     adminAuthClient = await signIn('admin@test.local');
+    organiserClient = await signIn('organiser@test.local');
+    committeeClient = await signIn('committee@test.local');
   });
 
   beforeEach(async () => {
     for (const id of [EVENT_ID, OTHER_EVENT_ID]) {
+      await adminAuthClient.from('edition_roles').delete().eq('event_id', id);
       await adminAuthClient.from('user_parties').delete().eq('event_id', id);
       await adminAuthClient.from('event_budgets').delete().eq('event_id', id);
       const { error } = await adminAuthClient.from('events').upsert({
@@ -555,10 +560,20 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
     [ann, bob] = await attendeesOf(party.id);
     const other = await saveOk(adminAuthClient, OTHER_EVENT_ID, [person('Zed')]);
     [outsider] = await attendeesOf(other.id);
+    // organiser@ runs EVENT_ID; committee@ is Comité there but runs OTHER_EVENT_ID (#217).
+    for (const [eventId, userId, role] of [
+      [EVENT_ID, '00000000-0000-0000-0000-000000000004', 'organiser'],
+      [EVENT_ID, '00000000-0000-0000-0000-000000000003', 'committee'],
+      [OTHER_EVENT_ID, '00000000-0000-0000-0000-000000000003', 'organiser']
+    ]) {
+      const { error } = await adminAuthClient.rpc('set_edition_role', { p_event_id: eventId, p_user_id: userId, p_role: role });
+      if (error) throw error;
+    }
   });
 
   afterAll(async () => {
     for (const id of [EVENT_ID, OTHER_EVENT_ID]) {
+      await adminAuthClient.from('edition_roles').delete().eq('event_id', id);
       await adminAuthClient.from('user_parties').delete().eq('event_id', id);
       await adminAuthClient.from('event_budgets').delete().eq('event_id', id);
     }
@@ -628,6 +643,51 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
     const { data } = await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: bob.id });
     expect(data[0]).toMatchObject({ name: 'Bob' });
     expect(data[0].deleted_at).not.toBeNull();
+  });
+
+  test('an Organisateur of the edition saves a payer, reads the picker\'s attendees and a removed payer\'s name', async () => {
+    const { error } = await organiserClient.from('event_budgets')
+      .upsert({ event_id: EVENT_ID, lines: [line({ paid_by_attendee_id: ann.id })] });
+    expect(error).toBeNull();
+    // The picker's list: the edition's parties with their attendees.
+    const { data: parties } = await organiserClient.from('user_parties')
+      .select('id, attendees(id, name)').eq('event_id', EVENT_ID);
+    expect(parties.flatMap(p => p.attendees.map(a => a.name)).sort()).toEqual(['Ann', 'Bob']);
+
+    await saveOk(memberClient, EVENT_ID, [{ ...person('Ann'), id: ann.id }], { id: party.id });
+    const { error: removed } = await organiserClient.from('event_budgets')
+      .upsert({ event_id: EVENT_ID, lines: [line({ paid_by_attendee_id: bob.id })] });
+    expect(removed).toBeNull();
+    const { data } = await organiserClient.rpc('attendee_by_id', { p_attendee_id: bob.id });
+    expect(data[0]).toMatchObject({ name: 'Bob' });
+    expect(data[0].deleted_at).not.toBeNull();
+    // An admin still resolves any attendee.
+    expect((await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: outsider.id })).data[0]).toMatchObject({ name: 'Zed' });
+  });
+
+  test('an Organisateur of another edition, Comité and members neither write the budget nor resolve names', async () => {
+    await saveLines([line({ paid_by_attendee_id: ann.id })]);
+    // committee@ is Organisateur of OTHER_EVENT_ID only; the Comité role on EVENT_ID doesn't reach the budget.
+    for (const client of [committeeClient, memberClient]) {
+      const { error } = await client.from('event_budgets')
+        .upsert({ event_id: EVENT_ID, lines: [line({ paid_by_attendee_id: ann.id })] });
+      expect(error).not.toBeNull();
+      expect((await client.from('event_budgets').select('lines').eq('event_id', EVENT_ID)).data).toEqual([]);
+      for (const id of [ann.id, bob.id, outsider.id]) {
+        if (client === committeeClient && id === outsider.id) continue; // their own edition: allowed below
+        const { data, error: rpcError } = await client.rpc('attendee_by_id', { p_attendee_id: id });
+        expect(rpcError?.message).toBe('admin_only');
+        expect(data).toBeNull();
+      }
+    }
+    // Organisateur of OTHER_EVENT_ID: its own attendee resolves, not this edition's.
+    expect((await committeeClient.rpc('attendee_by_id', { p_attendee_id: outsider.id })).data[0]).toMatchObject({ name: 'Zed' });
+    // Organisateur of EVENT_ID doesn't resolve the other edition's attendee.
+    expect((await organiserClient.rpc('attendee_by_id', { p_attendee_id: outsider.id })).error?.message).toBe('admin_only');
+    // Comité of EVENT_ID only (no other role): organiser@ is refused on OTHER_EVENT_ID's budget.
+    const { error: otherWrite } = await organiserClient.from('event_budgets')
+      .upsert({ event_id: OTHER_EVENT_ID, lines: [line({ paid_by_attendee_id: outsider.id })] });
+    expect(otherWrite).not.toBeNull();
   });
 
   test('a member can neither write the budget with a payer nor resolve a payer\'s name', async () => {
