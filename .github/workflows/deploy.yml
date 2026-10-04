@@ -140,6 +140,23 @@ jobs:
 
       - run: supabase migration list --local
 
+      # The Preview demo seed writes through the app's own functions, so a migration that changes
+      # a write path can break it without breaking anything else (#275). Load seed.sql and the
+      # generated demo data into the migrated database; psql stops at the first error.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Demo seed loads on the migrated schema
+        run: |
+          npm run db:seed:generate
+          for f in supabase/seed.sql supabase/seeds/preview.generated.sql; do
+            psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
       # src/lib/database.types.ts is generated from this schema (`npm run db:types`, #201): a
       # migration that changes a table, view or function must come with the regenerated file,
       # or typecheck would be checking the app against a schema that no longer exists.
