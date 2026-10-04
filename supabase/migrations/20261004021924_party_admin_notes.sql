@@ -76,7 +76,9 @@ DECLARE
     v_pending jsonb;
 BEGIN
     v_old := CASE WHEN TG_OP = 'UPDATE' THEN OLD.notes END;
-    IF v_old IS NOT DISTINCT FROM NEW.notes THEN
+    -- No notes and empty notes are the same: the copy above left out empty ones, so '' saved
+    -- over a missing row logs nothing, as '' over '' did.
+    IF COALESCE(v_old, '') = COALESCE(NEW.notes, '') THEN
         RETURN NULL;
     END IF;
     v_change := jsonb_build_object('admin_notes', jsonb_build_object('old', v_old, 'new', NEW.notes));

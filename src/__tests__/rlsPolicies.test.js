@@ -2521,6 +2521,60 @@ describe('📜 place assignment history (#188)', () => {
     ]);
   });
 
+  // #227: the notes' history, with the notes in party_admin_notes.
+  const noteRows = async (partyId) => (await ok(adminAuthClient.from('registration_edits')
+    .select('changes').eq('registration_id', partyId).order('edited_at')))
+    .map(row => row.changes).filter(changes => !('created' in changes));
+  const notesOf = async (partyId) => (await ok(adminAuthClient.from('party_admin_notes')
+    .select('notes').eq('party_id', partyId).maybeSingle()))?.notes ?? null;
+
+  test('notes alone are one row; unchanged notes, or empty ones over none, are no row (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: '' }]);
+    expect(await noteRows(memberParty.id)).toEqual([]);
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies' }]);
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Allergies' }]);
+    // The empty notes were stored, as before: they're the old value.
+    expect(await noteRows(memberParty.id)).toEqual([{ admin_notes: { old: '', new: 'Allergies' } }]);
+  });
+
+  test('a refused party rolls back its notes and their history; the next party\'s entry is its own (#227)', async () => {
+    await ok(adminAuthClient.rpc('set_place_override', {
+      p_event_id: EVENT_ID, p_place_id: places['Grange · Lit 4'], p_is_excluded: true, p_capacity: null
+    }));
+    const { data: failed, error } = await saveLogistics([
+      { party_id: adminParty.id, admin_notes: 'Refusé', places: { [who.Zed]: places['Grange · Lit 4'] } },
+      { party_id: memberParty.id, admin_notes: 'Accepté' }
+    ]);
+    expect(error).toBeNull();
+    expect(failed).toMatchObject([{ party_id: adminParty.id, message: 'place_assignment_place_excluded' }]);
+    expect(await notesOf(adminParty.id)).toBeNull();
+    expect(await noteRows(adminParty.id)).toEqual([]);
+    expect(await noteRows(memberParty.id)).toEqual([{ admin_notes: { old: null, new: 'Accepté' } }]);
+  });
+
+  test('a member reads no notes through the embed, for their own party or another\'s (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Sienne' }, { party_id: adminParty.id, admin_notes: 'Autre' }]);
+    const rows = await ok(memberClient.from('user_parties').select('id, party_admin_notes(*)').eq('event_id', EVENT_ID));
+    expect(rows).toEqual([{ id: memberParty.id, party_admin_notes: null }]);
+    const other = await ok(memberClient.from('user_parties').select('id, party_admin_notes(*)').eq('id', adminParty.id));
+    expect(other).toEqual([]);
+    expect(await ok(memberClient.from('party_admin_notes').select('*'))).toEqual([]);
+  });
+
+  test('a member\'s own save logs no notes, and they can\'t set the logistics setting (#227)', async () => {
+    await savedAll([{ party_id: memberParty.id, admin_notes: 'Privé' }]);
+    const attendees = await ok(adminAuthClient.from('attendees').select('id, name').eq('party_id', memberParty.id).order('position'));
+    const { error: setError } = await memberClient.rpc('set_config', {
+      setting_name: 'bedaine.logistics_changes', new_value: JSON.stringify({ party_id: memberParty.id, changes: { admin_notes: { old: null, new: 'hax' } } }), is_local: true
+    });
+    expect(setError).not.toBeNull();
+    await saveOk(memberClient, EVENT_ID, [...attendees.map(a => ({ ...person(a.name), id: a.id })), person('Cat')]);
+    const rows = await noteRows(memberParty.id);
+    expect(rows.filter(changes => 'admin_notes' in changes)).toEqual([{ admin_notes: { old: null, new: 'Privé' } }]);
+    expect(rows.at(-1)).toHaveProperty('attendees');
+    expect(await notesOf(memberParty.id)).toBe('Privé');
+  });
+
   test('a venue change logs one row per party it clears, with the reason', async () => {
     await savedAll([
       { party_id: memberParty.id, places: { [who.Ann]: places['Grange · Lit 3'], [who.Bob]: places['Maison · Sofa'] } },
