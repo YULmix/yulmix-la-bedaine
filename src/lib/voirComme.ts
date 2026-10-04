@@ -41,6 +41,28 @@ export interface StartedSession {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** How long an admin's access token must still be valid to start with it (seconds). */
+const ADMIN_TOKEN_MARGIN_S = 60;
+
+export type AdminToken = { status: 'ok'; accessToken: string } | { status: 'expired' } | { status: 'none' };
+
+/**
+ * The admin's access token from their stored session (supabase-js's JSON, read without a client):
+ * 'expired' when it ends within a minute, since refreshing it here would rotate the admin's refresh
+ * token behind their tabs' back; the admin's own tab renews it when it comes back to the front.
+ */
+export const adminTokenFrom = (stored: string | null, nowMs: number = Date.now()): AdminToken => {
+  let session: { access_token?: unknown; expires_at?: unknown } | null = null;
+  try {
+    session = stored ? JSON.parse(stored) : null;
+  } catch {
+    session = null;
+  }
+  if (!session || typeof session.access_token !== 'string' || !session.access_token) return { status: 'none' };
+  if (typeof session.expires_at !== 'number' || session.expires_at - ADMIN_TOKEN_MARGIN_S <= nowMs / 1000) return { status: 'expired' };
+  return { status: 'ok', accessToken: session.access_token };
+};
+
 /** The tab's route for a target: its id only, never a token. */
 export const voirCommeUrl = (targetId: string): string => `${VOIR_COMME_PATH}/${encodeURIComponent(targetId)}`;
 

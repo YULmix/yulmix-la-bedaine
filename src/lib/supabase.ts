@@ -58,14 +58,21 @@ export const supabase = isVoirCommeTab
   : createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * The admin's own session, read in a « Voir comme » tab to start the session (the default storage,
- * the one every ordinary tab uses). It never refreshes on its own and never signs anything out:
- * it only lends its access token to the `impersonate` call.
+ * Where the ordinary tabs keep the admin's session: supabase-js's default storage key
+ * (`sb-<first label of the API host>-auth-token`, in localStorage). A « Voir comme » tab reads it
+ * as plain JSON to start its session, and never through a client: a client would refresh an
+ * expired token and write (or, on a refused refresh, wipe) the admin's session in every tab.
  */
-export const createAdminSessionReader = () =>
-  createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { autoRefreshToken: false, detectSessionInUrl: false }
-  });
+export const ADMIN_SESSION_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
+
+/** The admin's stored session, as the ordinary tabs left it (JSON text), or null. */
+export const readAdminSessionText = (): string | null => {
+  try {
+    return window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
 
 /** The `impersonate` Edge Function's URL and the headers it needs besides the bearer token. */
 export const functionUrl = (name: string): string => `${SUPABASE_URL}/functions/v1/${name}`;

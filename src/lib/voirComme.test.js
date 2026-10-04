@@ -8,7 +8,7 @@ jest.mock('./supabase', () => ({
   functionHeaders: (token) => ({ apikey: 'anon', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' })
 }));
 import {
-  canViewAs, endVoirComme, logState, msLeft, startVoirComme, targetIdFromPath, timeLeftLabel, voirCommeUrl
+  adminTokenFrom, canViewAs, endVoirComme, logState, msLeft, startVoirComme, targetIdFromPath, timeLeftLabel, voirCommeUrl
 } from './voirComme';
 
 const ID = '00000000-0000-0000-0000-000000000001';
@@ -118,5 +118,26 @@ describe('logState', () => {
 
   test('a start that never got a session', () => {
     expect(logState({ ...row, session_id: null, ended_at: '2026-10-04T20:00:01Z' }, now)).toBe('unopened');
+  });
+});
+
+describe('adminTokenFrom: the admin\'s stored session, read without a client', () => {
+  const now = Date.parse('2026-10-04T20:00:00Z');
+  const stored = (expiresInS) => JSON.stringify({ access_token: 'admin-jwt', refresh_token: 'r', expires_at: now / 1000 + expiresInS });
+
+  test('a token valid for more than a minute is used as is', () => {
+    expect(adminTokenFrom(stored(600), now)).toEqual({ status: 'ok', accessToken: 'admin-jwt' });
+  });
+
+  test('an expired or expiring token is not refreshed here', () => {
+    expect(adminTokenFrom(stored(30), now)).toEqual({ status: 'expired' });
+    expect(adminTokenFrom(stored(-3600), now)).toEqual({ status: 'expired' });
+    expect(adminTokenFrom(JSON.stringify({ access_token: 'a' }), now)).toEqual({ status: 'expired' });
+  });
+
+  test('no session, or something unreadable, is none', () => {
+    expect(adminTokenFrom(null, now)).toEqual({ status: 'none' });
+    expect(adminTokenFrom('not json', now)).toEqual({ status: 'none' });
+    expect(adminTokenFrom(JSON.stringify({ expires_at: 1 }), now)).toEqual({ status: 'none' });
   });
 });

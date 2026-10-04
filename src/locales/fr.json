@@ -823,6 +823,7 @@
   "voirCommeStartingHint": "Une session en lecture seule, valable 30 minutes.",
   "voirCommeStartFailedTitle": "« Voir comme » n'a pas pu s'ouvrir",
   "voirCommeAdminSignedOut": "Votre session d'administrateur est introuvable dans ce navigateur. Reconnectez-vous dans l'onglet principal, puis relancez « Voir comme ».",
+  "voirCommeAdminExpired": "Votre session d'administrateur doit être renouvelée : revenez un instant sur l'onglet principal de l'app, puis cliquez « Réessayer ».",
   "voirCommeNetworkError": "Le service « Voir comme » ne répond pas. Vérifiez votre connexion et réessayez.",
   "voirCommeEndedTitle": "Session « Voir comme » terminée",
   "voirCommeEndedQuit": "Vous avez quitté la session de {name}.",

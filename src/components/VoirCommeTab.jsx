@@ -2,17 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, LogOut, RotateCw, TriangleAlert, X } from 'lucide-react';
 import fr from '../locales/fr.json';
-import { supabase, clearVoirCommeTab, createAdminSessionReader, functionHeaders, functionUrl } from '../lib/supabase';
+import { supabase, clearVoirCommeTab, functionHeaders, functionUrl, readAdminSessionText } from '../lib/supabase';
 import { appError } from '../lib/dbErrors';
 import {
-  endVoirComme, msLeft, readVoirCommeSession, startVoirComme, targetIdFromPath, timeLeftLabel, writeVoirCommeSession
+  adminTokenFrom, endVoirComme, msLeft, readVoirCommeSession, startVoirComme, targetIdFromPath, timeLeftLabel, writeVoirCommeSession
 } from '../lib/voirComme';
 import { VoirCommeContext, useVoirComme } from '../hooks/useVoirComme';
 import { CANVAS_CLASS } from '../lib/pageWidth';
 import { Button, cx } from './ui';
 
 // « Voir comme » (#267, ADR 0025): the shell of a tab opened on /voir-comme/<member id>. It reads
-// the admin's session (the ordinary tabs' storage, never written here), asks the `impersonate`
+// the admin's session (the ordinary tabs' storage, read as JSON, never written here), asks the `impersonate`
 // function for the member's read-only session, puts it in this tab's own client
 // (src/lib/supabase.ts: sessionStorage, its own key) and runs the app on it, with the banner in
 // the header. The session ends with « Quitter », after its 30 minutes, or when the tab is left;
@@ -23,10 +23,10 @@ import { Button, cx } from './ui';
 let pendingStart = null;
 
 const startSession = async (targetId) => {
-  const reader = createAdminSessionReader();
-  const { data: { session: admin } } = await reader.auth.getSession();
-  if (!admin) throw appError(fr.voirCommeAdminSignedOut);
-  const started = await startVoirComme(admin.access_token, targetId);
+  const admin = adminTokenFrom(readAdminSessionText());
+  if (admin.status === 'none') throw appError(fr.voirCommeAdminSignedOut);
+  if (admin.status === 'expired') throw appError(fr.voirCommeAdminExpired);
+  const started = await startVoirComme(admin.accessToken, targetId);
   const { error } = await supabase.auth.setSession({ access_token: started.access_token, refresh_token: started.refresh_token });
   if (error) {
     console.error('Voir comme: storing the session failed:', error.message);
@@ -237,9 +237,22 @@ const VoirCommeTab = ({ children }) => {
         // Nothing more can be done from a closing page.
       }
     };
+    // Back from the bfcache (a link left the tab, then « Précédent »): the session was ended on the
+    // way out, so the restored page says so instead of running on a dead token.
+    const onPageShow = (event) => {
+      if (!event.persisted) return;
+      const stored = readVoirCommeSession();
+      if (!stored?.left) return;
+      end('left', null, stored);
+      dropLocalSession();
+    };
     window.addEventListener('pagehide', onPageHide);
-    return () => window.removeEventListener('pagehide', onPageHide);
-  }, [active]);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [active, end]);
 
   const quit = useCallback(async () => {
     const { session, token } = live.current;
@@ -280,6 +293,7 @@ const VoirCommeTab = ({ children }) => {
         title={fr.voirCommeStartFailedTitle}
         actions={(
           <>
+            <Button variant="secondary" onClick={backToMyAccount}>{fr.voirCommeBackToMyAccount}</Button>
             <Button variant="secondary" onClick={closeTab}>{fr.voirCommeCloseTab}</Button>
             <Button onClick={() => { setState({ status: 'starting', session: null }); setAttempt(n => n + 1); }}>
               <RotateCw aria-hidden="true" className="size-4.5" strokeWidth={2} />
