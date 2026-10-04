@@ -22,8 +22,11 @@ const SORT_DIRECTIONS = [
   { value: 'desc', label: fr.participantsSortDesc, icon: ArrowDown }
 ];
 
-const COLUMNS = { flat: 'lg:grid-cols-[repeat(8,auto)]', grouped: 'lg:grid-cols-[repeat(7,auto)]' };
-const ROW = 'lg:col-span-full lg:grid lg:grid-cols-subgrid lg:items-center lg:gap-x-5';
+const COLUMNS = { flat: 'xl:grid-cols-[repeat(8,auto)]', grouped: 'xl:grid-cols-[repeat(7,auto)]' };
+const ROW = 'xl:col-span-full xl:grid xl:grid-cols-subgrid xl:items-center xl:gap-x-4';
+
+// A pill's text wraps inside its column from lg, so the columns can stay narrow.
+const WRAP = 'xl:whitespace-normal';
 
 const SortHeader = ({ label, active, dir, onSort }) => (
   <span role="columnheader" aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
@@ -42,23 +45,23 @@ const SortHeader = ({ label, active, dir, onSort }) => (
 const Header = ({ children }) => <span role="columnheader">{children}</span>;
 
 const DietPills = ({ row }) => row.dietaryValues.map((value, index) => (
-  <Tag key={value} icon={DIETARY_ICONS[value]}>{row.dietary[index]}</Tag>
+  <Tag key={value} icon={DIETARY_ICONS[value]} className={WRAP}>{row.dietary[index]}</Tag>
 ));
 
-const SleepingPill = ({ row }) => row.sleeping && <Tag icon={ACCOMMODATION_ICONS[row.sleepingValue]}>{row.sleeping}</Tag>;
+const SleepingPill = ({ row }) => row.sleeping && <Tag icon={ACCOMMODATION_ICONS[row.sleepingValue]} className={WRAP}>{row.sleeping}</Tag>;
 
 const ParticipantRow = ({ row, grouped, onDetails }) => {
   const hasDetails = !!(row.dietaryOther || row.sleepingOther);
   return (
-    <div role="row" className={cx('flex flex-col gap-2 border-b border-line px-4 py-3 last:border-b-0 lg:px-5', ROW)}>
-      <div role="cell" className="flex min-w-0 items-start justify-between gap-3 lg:contents">
-        <span data-participant-name className="min-w-0 break-words font-semibold text-ink lg:py-1">{row.name || fr.notSpecified}</span>
+    <div role="row" className={cx('flex flex-col gap-2 border-b border-line px-4 py-3 last:border-b-0 xl:px-5', ROW)}>
+      <div role="cell" className="flex min-w-0 items-start justify-between gap-3 xl:contents">
+        <span data-participant-name className="min-w-0 break-words font-semibold text-ink xl:min-w-min xl:py-1">{row.name || fr.notSpecified}</span>
         {hasDetails && (
           <button
             type="button"
             onClick={() => onDetails(row)}
             aria-label={`${fr.participantsDetails}: ${row.name}`}
-            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-semibold text-muted hover:border-edge hover:text-ink lg:order-last"
+            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-semibold text-muted hover:border-edge hover:text-ink xl:order-last"
           >
             <Info aria-hidden="true" className="size-4" />
             {fr.participantsDetails}
@@ -67,15 +70,15 @@ const ParticipantRow = ({ row, grouped, onDetails }) => {
       </div>
       {grouped
         ? null
-        : <span role="cell" className="min-w-0 break-words text-sm text-faint lg:text-base lg:text-muted">{row.contact}</span>}
-      <div className="flex flex-wrap items-center gap-1.5 lg:contents">
+        : <span role="cell" className="min-w-0 break-words text-sm text-faint xl:min-w-min xl:text-base xl:text-muted">{row.contact}</span>}
+      <div className="flex flex-wrap items-center gap-1.5 xl:contents">
         <span role="cell"><Tag>{row.type}</Tag></span>
-        <span role="cell">{row.participation && <Tag>{row.participation}</Tag>}</span>
-        <span role="cell" className="contents lg:flex lg:flex-wrap lg:gap-1.5"><DietPills row={row} /></span>
-        <span role="cell" className="contents lg:block"><SleepingPill row={row} /></span>
-        <span role="cell" className="contents lg:flex lg:flex-wrap lg:gap-1.5">
+        <span role="cell">{row.participation && <Tag className={WRAP}>{row.participation}</Tag>}</span>
+        <span role="cell" className="contents xl:flex xl:flex-wrap xl:gap-1.5"><DietPills row={row} /></span>
+        <span role="cell" className="contents xl:block"><SleepingPill row={row} /></span>
+        <span role="cell" className="contents xl:flex xl:flex-wrap xl:gap-1.5">
           <Tag tone={row.waitlisted ? 'warn' : 'ok'}>{row.status}</Tag>
-          {row.firstTime && <Tag tone="neon">{fr.firstTimeTag}</Tag>}
+          {row.firstTime && <Tag tone="neon" className={WRAP}>{fr.firstTimeTag}</Tag>}
         </span>
       </div>
     </div>
@@ -164,17 +167,17 @@ const ParticipantsView = ({ parties }) => {
       <div className="flex items-center gap-3">
         <span className="text-sm text-faint">{plural(visible.length, 'countPersonOne', 'countPersonOther')}</span>
         {/* Phones sort from here; desktop sorts from the column headers (the name's only once grouped, so this stays for the group order). */}
-        <Button variant="secondary" size="sm" onClick={() => setSortOpen(true)} aria-haspopup="dialog" className={cx('ml-auto', !grouped && 'lg:hidden')}>
+        <Button variant="secondary" size="sm" onClick={() => setSortOpen(true)} aria-haspopup="dialog" className={cx('ml-auto', !grouped && 'xl:hidden')}>
           <ArrowUpDown aria-hidden="true" className="size-4" />{fr.participantsSortButton}
         </Button>
-        <Toggle checked={grouped} onChange={setGrouped} label={fr.participantsGroupBy} className={cx('gap-3', grouped || 'lg:ml-auto')} />
+        <Toggle checked={grouped} onChange={setGrouped} label={fr.participantsGroupBy} className={cx('gap-3', grouped || 'xl:ml-auto')} />
       </div>
 
       {visible.length === 0 ? (
         <EmptyState icon={UsersRound} title={rows.length ? fr.participantsNone : fr.participantsEmpty} />
       ) : (
         <div role="table" aria-label={fr.participantsListLabel} className="overflow-hidden rounded-card border border-line bg-surface">
-          <div className={cx('lg:grid', grouped ? COLUMNS.grouped : COLUMNS.flat)}>
+          <div className={cx('xl:grid', grouped ? COLUMNS.grouped : COLUMNS.flat)}>
             <div role="row" className={cx('hidden border-b border-line px-5 py-2 text-sm text-faint', ROW)}>
               <SortHeader label={fr.exportAttendeeName} active={sort.key === 'name'} dir={sort.dir} onSort={() => sortBy('name')} />
               {!grouped && <SortHeader label={fr.participantsColumnGroup} active={sort.key === 'group'} dir={sort.dir} onSort={() => sortBy('group')} />}
@@ -188,7 +191,7 @@ const ParticipantsView = ({ parties }) => {
             {visible.map((row, index) => (
               <Fragment key={row.key}>
                 {grouped && visible[index - 1]?.partyId !== row.partyId && (
-                  <div role="row" className="border-b border-line bg-raised px-4 py-2 text-sm font-semibold text-muted lg:col-span-full lg:px-5">
+                  <div role="row" className="border-b border-line bg-raised px-4 py-2 text-sm font-semibold text-muted xl:col-span-full xl:px-5">
                     <span role="cell" className="break-words">{fr.participantsGroupOf.replace('{name}', row.contact)}</span>
                   </div>
                 )}
