@@ -29,7 +29,7 @@ project will not sustain.
    the member it registers, so it must keep loading after every migration: a check added to a
    write path (`auth.uid()`, `is_admin()`, a trigger) also applies to it, to `seed.sql`, to CI
    scripts and to service-role Edge Functions. Run `npm run db:local:demo` locally; CI's
-   « Migrations apply cleanly » job loads the seed too.
+   « Migrations apply cleanly » job loads the generated seed too.
 5. **Pricing changes come with a test.** `src/lib/pricingEngine.ts` is pure; keep it that way, and
    add a case to its test file for any rule change.
 6. **UTF-8 without BOM.** Check before committing; Windows editors add BOMs silently.

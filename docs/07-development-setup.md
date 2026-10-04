@@ -425,7 +425,7 @@ What a reset does (`scripts/preview-db.mjs`):
 The generated registrations go through `save_registration()`, which acts on behalf of
 `auth.uid()` (attendees are writable only that way, #246), so the seed sets `request.jwt.claims`
 to each registrant before the call and clears it after the loop. CI's "Migrations apply cleanly"
-job loads `seed.sql` and the generated seed on the migrated schema, so a migration that breaks
+job loads the generated seed on the migrated schema (after `seed.sql`), so a migration that breaks
 the seed fails the PR. The seed is not reapplied to Preview on merge: reseed it after a merge that
 changes migrations touching seeded tables or the seed scripts.
 
