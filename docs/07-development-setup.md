@@ -285,7 +285,8 @@ today — the honest failure, because no Supabase instance is running here. To m
    `http://127.0.0.1:59999`).
 
    With the hook enabled, the database must have the function: a database reset from a branch
-   that predates #265 makes every sign-in fail (the hook function is missing). Restart the stack from
+   that predates #265 makes every sign-in fail with a 500, "Error running hook URI:
+   pg-functions://postgres/public/custom_access_token_hook" (the function is missing). Restart the stack from
    that branch, or merge `main` into it.
 
 `supabase/tests/README.md` documents the intended workflow, in PowerShell — the project was
