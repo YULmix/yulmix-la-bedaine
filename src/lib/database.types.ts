@@ -622,6 +622,65 @@ export type Database = {
           },
         ]
       }
+      impersonation_log: {
+        Row: {
+          admin_id: string | null
+          ended_at: string | null
+          expires_at: string
+          id: number
+          session_id: string | null
+          started_at: string
+          target_id: string | null
+        }
+        Insert: {
+          admin_id?: string | null
+          ended_at?: string | null
+          expires_at?: string
+          id?: never
+          session_id?: string | null
+          started_at?: string
+          target_id?: string | null
+        }
+        Update: {
+          admin_id?: string | null
+          ended_at?: string | null
+          expires_at?: string
+          id?: never
+          session_id?: string | null
+          started_at?: string
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_log_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_log_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "impersonation_log_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_log_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           created_at: string
@@ -1109,6 +1168,7 @@ export type Database = {
         }[]
       }
       create_event_venue: { Args: { p_event_id: string }; Returns: string }
+      custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       delete_my_account: { Args: never; Returns: undefined }
       edition_role: { Args: { p_event_id: string }; Returns: string }
       event_places: {

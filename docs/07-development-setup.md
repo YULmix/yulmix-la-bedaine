@@ -276,6 +276,18 @@ today — the honest failure, because no Supabase instance is running here. To m
    fails with `PGRST301` ("None of the keys was able to decode the JWT").
 3. Seed data: each `describe` block creates the rows it needs (as the signed-in admin, since
    `service_role` can only read `events`) and deletes them afterwards.
+4. The custom access token hook (« Voir comme », #265, ADR 0025) enabled in the running Auth
+   server. `supabase/config.toml` enables it (`[auth.hook.custom_access_token]`, calling
+   `public.custom_access_token_hook`), but Auth reads that file at `supabase start`: a stack
+   started before it needs `supabase stop && supabase start`. Without it the « Voir comme »
+   sessions fail with "The access token has no impersonated_by claim". The suite can also point
+   those sessions at another Auth server with `SUPABASE_AUTH_URL` (its REST root, e.g.
+   `http://127.0.0.1:59999`).
+
+   With the hook enabled, the database must have the function: a database reset from a branch
+   that predates #265 makes every sign-in fail with a 500, "Error running hook URI:
+   pg-functions://postgres/public/custom_access_token_hook" (the function is missing). Restart the stack from
+   that branch, or merge `main` into it.
 
 `supabase/tests/README.md` documents the intended workflow, in PowerShell — the project was
 developed on Windows. The commands are shell-agnostic enough to translate.
