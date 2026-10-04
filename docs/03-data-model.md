@@ -205,7 +205,8 @@ and nothing restores a removed attendee.
 - **`SECURITY DEFINER` code, triggers and the service role** bypass RLS, so each helper that counts
   or lists a party's attendees filters `deleted_at IS NULL` itself: `private.attendees_snapshot`
   (change history), `private.party_amount_owed` (amount owed), `private.event_headcount` and
-  `private.party_size` (capacity, waitlist, promotion), `carpool_board()` (a need's seats).
+  `private.party_size` (capacity, waitlist, promotion), `carpool_board()` (a need's seats),
+  `private.party_places_snapshot` (the place history, #188).
   `enforce_place_assignment` refuses a removed attendee (`place_assignment_attendee_removed`), and
   the `send-party-email` Edge Function filters its embed (`attendees.deleted_at=is.null`). New
   definer code reading `attendees` must do the same.

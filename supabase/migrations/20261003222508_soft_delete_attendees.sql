@@ -12,7 +12,7 @@
 --   * SECURITY DEFINER code and triggers bypass RLS, so the helpers that count or list a party's
 --     attendees filter `deleted_at IS NULL` themselves: attendees_snapshot (change history),
 --     party_amount_owed (amount owed), event_headcount and party_size (capacity, waitlist,
---     promotion), carpool_board (a need's seats). enforce_place_assignment refuses a removed
+--     promotion), carpool_board (a need's seats), party_places_snapshot (#188's place history). enforce_place_assignment refuses a removed
 --     attendee. The service-role Edge Function (send-party-email) filters its embed.
 --   * Admins resolve any attendee, removed or not, by id with attendee_by_id() (SECURITY DEFINER).
 --
@@ -34,6 +34,7 @@
 --   * party_amount_owed, event_headcount, party_size: 20260929003000_attendees_table.sql
 --   * carpool_board: 20261001033841_carpool_board.sql
 --   * enforce_place_assignment: 20261003035531_place_assignment_exclusion_lock.sql
+--   * party_places_snapshot: 20261003152504_place_assignment_history.sql (#188)
 -- CREATE OR REPLACE keeps the functions' owners and grants.
 
 ALTER TABLE public.attendees ADD COLUMN deleted_at timestamptz;
@@ -312,6 +313,28 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT count(*)::integer FROM public.attendees WHERE party_id = p_party_id AND deleted_at IS NULL;
+$$;
+
+-- As in 20261003152504_place_assignment_history.sql (#188). Called from save_logistics (under
+-- RLS) and from clear_event_places_on_venue_change (SECURITY DEFINER, where RLS doesn't apply).
+CREATE OR REPLACE FUNCTION private.party_places_snapshot(p_party_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'attendee_id', a.id,
+        'attendee_name', a.name,
+        'place_id', pa.place_id,
+        'label', CASE WHEN pa.place_id IS NULL THEN NULL ELSE l.name || ' · ' || pl.label END
+    ) ORDER BY a.position), '[]'::jsonb)
+    FROM public.attendees a
+    LEFT JOIN public.place_assignments pa ON pa.attendee_id = a.id
+    LEFT JOIN public.places pl ON pl.id = pa.place_id
+    LEFT JOIN public.locations l ON l.id = pl.location_id
+    WHERE a.party_id = p_party_id
+      AND a.deleted_at IS NULL;
 $$;
 
 -- As in 20261001033841_carpool_board.sql, but a need without a seat count is its live attendees.
