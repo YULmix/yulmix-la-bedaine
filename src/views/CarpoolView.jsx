@@ -81,7 +81,7 @@ const Section = ({ title, entries, empty, icon }) => (
     {entries.length === 0 ? (
       <Card><EmptyState icon={icon} title={empty} /></Card>
     ) : (
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {entries.map(entry => <li key={entry.entry}><EntryCard entry={entry} /></li>)}
       </ul>
     )}
@@ -142,7 +142,7 @@ const CarpoolView = () => {
       ))}
 
       {!rows ? (
-        <div aria-busy="true" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div aria-busy="true" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           <span className="sr-only">{fr.loading}</span>
           <Skeleton className="h-64 rounded-card" />
           <Skeleton className="h-64 rounded-card" />

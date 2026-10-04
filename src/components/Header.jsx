@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Car, ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
@@ -8,7 +8,8 @@ import { dbErrorMessage } from '../lib/dbErrors';
 import { useCarpoolAccess } from '../hooks/useCarpoolAccess';
 import { ConfirmDialog, cx } from './ui';
 import yulmixLogo from '../assets/YULmix_App.png';
-import { ADMIN_ROOT, isAdminPath } from '../lib/adminRoutes';
+import { ADMIN_ROOT } from '../lib/adminRoutes';
+import { CANVAS_CLASS } from '../lib/pageWidth';
 
 // Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
 // false in production builds, which then drop these imports and the whole chunk.
@@ -45,7 +46,6 @@ const navLinkClass = ({ isActive }) => cx(
 // `canOpenAdmin`: an admin, or someone with a role on the active event (#217); `isAdmin` is the
 // account's own flag.
 const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdmin = isAdmin, isDeleted = false, onOpenFeedback }) => {
-  const { pathname } = useLocation();
   const menu = useMenu();
   // The header's height, as --header-height on the root, for what sticks under it (the admin
   // sidebar): 4rem, plus the test-account banner on previews.
@@ -129,9 +129,8 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
       {TestAccountMarker && isAuthenticated && (
         <Suspense fallback={null}><TestAccountMarker email={user?.email} /></Suspense>
       )}
-      {/* On admin pages the header shares the admin's container (ADMIN_WIDTH in AdminView): the
-          logo lines up with the sidebar, the account menu with the content's right edge. */}
-      <div className={cx('mx-auto flex h-16 items-center gap-2 px-4 md:px-6', isAdminPath(pathname) ? 'max-w-screen-2xl' : 'max-w-6xl')}>
+      {/* The app's canvas: the logo lines up with the page's left edge (the admin sidebar's too). */}
+      <div className={cx(CANVAS_CLASS, 'flex h-16 items-center gap-2')}>
         <Link to="/" className="mr-auto flex shrink-0 items-center gap-3 rounded-control py-2" aria-label={fr.homeLinkLabel}>
           <img src={yulmixLogo} alt="" aria-hidden="true" className="h-7 w-auto" />
           <span className="hidden whitespace-nowrap font-display text-base text-ink min-[440px]:inline sm:text-lg">{fr.brandName}</span>

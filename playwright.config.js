@@ -140,6 +140,9 @@ const SERIAL_ENTRIES = [
   // Edition roles (#217): reseeds the shared active event and grants roles on it, so it runs
   // after attendee-removal, on its own. Sets its own phone viewport.
   { name: 'admin-roles' },
+  // One app canvas (#226): seeds the shared active event for the member pages, so it runs after
+  // admin-roles, on its own. Sets its own viewports.
+  { name: 'app-canvas' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 
