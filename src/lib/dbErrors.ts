@@ -43,7 +43,16 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   event_already_active: () => fr.eventAlreadyActiveError,
   place_in_use: () => fr.placeOccupiedUnseen,
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
-    .replace('{date}', formatDate(closeDate as string | null))
+    .replace('{date}', formatDate(closeDate as string | null)),
+  // Edition roles (#217, ADR 0023).
+  committee_only: () => fr.dbErrorCommitteeOnly,
+  organiser_only: () => fr.dbErrorOrganiserOnly,
+  party_not_found: () => fr.dbErrorLogisticsPartyNotFound,
+  payment_status_invalid: () => fr.dbErrorPaymentStatusInvalid,
+  edition_role_invalid: () => fr.dbErrorEditionRoleInvalid,
+  edition_role_target_admin: () => fr.dbErrorEditionRoleTargetAdmin,
+  edition_role_target_deleted: () => fr.dbErrorEditionRoleTargetDeleted,
+  edition_role_target_not_found: () => fr.dbErrorEditionRoleTargetNotFound
 };
 
 const parseDetails = (details: string | null | undefined): ErrorParams => {
