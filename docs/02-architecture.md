@@ -163,7 +163,7 @@ protection, capacity/waitlist, amount owed and price lock, attendees written onl
 `save_registration()`, audit log.
 
 Rules enforced **only** in the browser today: the amount owed, the intent/registration phase
-windows, capacity messaging, and the "cannot edit your own admin flag" convenience check. The
+windows, capacity messaging, and the "cannot remove your own admin flag" convenience check (« Équipe »). The
 first of those should move; the others are cosmetic.
 
 ## Deployment
