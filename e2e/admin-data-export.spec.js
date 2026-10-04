@@ -197,7 +197,7 @@ test('« Participants » (Comité): pills, details pop-up only where there is fr
 test('« Participants » screenshots', async ({ page }) => {
   test.skip(!process.env.E2E_SCREENSHOT_DIR, 'set E2E_SCREENSHOT_DIR');
   await loginAs(page, TEST_USERS.admin);
-  for (const [width, height] of [[1440, 900], [390, 844]]) {
+  for (const [width, height] of [[1440, 900], [2560, 1200], [390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.goto('/admin/users/participants');
     await expect(participantsRow(page, ZOE.name)).toBeVisible();
