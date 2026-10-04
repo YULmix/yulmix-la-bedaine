@@ -1,4 +1,6 @@
 import { appError, dbErrorMessage } from './dbErrors';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import fr from '../locales/fr.json';
 
 const FALLBACK = 'fallback';
@@ -44,5 +46,13 @@ describe('dbErrorMessage', () => {
   test('tolerates missing or malformed details', () => {
     expect(dbErrorMessage({ message: 'account_deletion_locked', details: 'not json' }, FALLBACK)).not.toBe(FALLBACK);
     expect(dbErrorMessage({ message: 'account_deletion_locked' }, FALLBACK)).not.toBe(FALLBACK);
+  });
+
+  test('every code the impersonate Edge Function returns is mapped (#266)', () => {
+    const source = readFileSync(join(__dirname, '../../supabase/functions/impersonate/handler.ts'), 'utf8');
+    const codes = new Set([...source.matchAll(/(?:Refusal|refuse)\('([a-z_]+)'/g)].map(match => match[1]));
+    codes.delete('method_not_allowed'); // never reaches the app: it only sends POST
+    expect(codes.size).toBeGreaterThan(5);
+    for (const code of codes) expect([code, dbErrorMessage({ message: code }, FALLBACK)]).not.toEqual([code, FALLBACK]);
   });
 });
