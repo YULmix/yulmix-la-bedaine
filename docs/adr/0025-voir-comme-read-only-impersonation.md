@@ -34,9 +34,17 @@ side: #265 (migration `20261004183537_impersonation.sql`). The `impersonate` Edg
   Triggers fire inside `SECURITY DEFINER` functions too, so `save_registration()`,
   `save_logistics()`, `set_payment_status()`, `delete_my_account()` and the rest are covered
   without a guard of their own. The RLS suite fails when a table lacks the trigger, so a new
-  table can't silently escape it.
+  table can't silently escape it. Storage isn't one of our tables, yet members write it (uploads
+  to the `feedback` bucket): RESTRICTIVE policies on `storage.objects` refuse INSERT, UPDATE and
+  DELETE from a session carrying the claim.
 - **30 minutes, not extendable.** The database sets `started_at` and `expires_at` on insert and
   refuses pushing `expires_at` back; « Quitter » sets `ended_at`, which ends that session only.
+- **One pending row per member.** The hook claims the member's newest pending row, so two admins
+  opening « Voir comme » on the same member within the same minute could each get the other's row
+  (the log would say the wrong admin). The insert is refused (`impersonation_target_pending`, with
+  a partial unique index as the backstop) while a claimable row exists; a pending row older than
+  60 seconds, which no sign-in can claim any more, is ended by the next insert. The Edge Function
+  (#266) shows that refusal as « try again in a minute ».
 - **Admins only; targets are active non-admin accounts.** Members, Comité and Organisateur can be
   viewed; an admin, a deleted account or oneself can't (a trigger on `impersonation_log`; the Edge
   Function refuses them too). Admins already see everything, so viewing one adds a privilege path
@@ -84,8 +92,7 @@ sequenceDiagram
 - **What the trigger doesn't cover.** Supabase Auth's own API writes `auth.*`, not our tables:
   an impersonated tab could still call `updateUser()` (email, password, metadata) or a global
   `signOut()`, which would sign the member out everywhere. The UI must sign out locally only and
-  never offer account settings; the Edge Function and the UI issues own those limits. Storage
-  objects are only written by admins, so a member session can't write them anyway.
+  never offer account settings; the Edge Function and the UI issues own those limits.
 - **A new table must attach the trigger** in its migration (`CREATE TRIGGER
   trg_refuse_when_impersonating BEFORE INSERT OR UPDATE OR DELETE ON ... FOR EACH STATEMENT
   EXECUTE FUNCTION private.refuse_when_impersonating()`); the catalog test fails otherwise.

@@ -5,7 +5,9 @@
 --     supabase_auth_admin; admins read it. anon and authenticated write nothing, admins included.
 --     A trigger refuses a target who is an admin, deleted or the admin themself, and an actor who
 --     isn't an active admin; it fixes started_at to now() and expires_at to 30 minutes later, and
---     keeps both from being pushed back (a session is never extended).
+--     keeps both from being pushed back (a session is never extended). One pending row per target
+--     at a time (a pending row older than 60 s, never claimed, is ended first), so two admins
+--     opening « Voir comme » on the same member can't claim each other's row.
 --   * public.custom_access_token_hook(event): Supabase Auth calls it before issuing every access
 --     token. Only a magic-link/OTP sign-in matching a fresh pending row (< 60 s, no session yet)
 --     gets the impersonated_by claim and an exp capped at the row's expires_at; a refresh of that
@@ -16,6 +18,8 @@
 --     when the caller's JWT carries impersonated_by. A trigger fires inside SECURITY DEFINER
 --     functions too, so no function needs its own guard. src/__tests__/rlsPolicies.test.js fails
 --     when a table lacks it: a migration adding a table must attach it.
+--   * storage.objects: a RESTRICTIVE policy refuses the same writes there (members may upload to
+--     the feedback bucket).
 --
 -- No existing function, policy or trigger is redefined.
 
@@ -57,8 +61,9 @@ CREATE TABLE public.impersonation_log (
 
 -- The hook finds a refreshed session by its id, and a pending row by its target.
 CREATE UNIQUE INDEX impersonation_log_session_id_idx ON public.impersonation_log (session_id);
-CREATE INDEX impersonation_log_target_pending_idx ON public.impersonation_log (target_id, started_at DESC)
-    WHERE session_id IS NULL;
+-- One pending (unclaimed, not ended) row per target; also the index the hook's claim uses.
+CREATE UNIQUE INDEX impersonation_log_one_pending_per_target_idx ON public.impersonation_log (target_id)
+    WHERE session_id IS NULL AND ended_at IS NULL;
 CREATE INDEX impersonation_log_admin_id_idx ON public.impersonation_log (admin_id);
 CREATE INDEX impersonation_log_started_at_idx ON public.impersonation_log (started_at DESC);
 
@@ -101,6 +106,21 @@ BEGIN
         END IF;
         IF v_target.deleted_at IS NOT NULL THEN
             RAISE EXCEPTION USING MESSAGE = 'impersonation_target_deleted', ERRCODE = 'check_violation';
+        END IF;
+        -- A pending row the hook can no longer claim (> 60 s) is over; a fresh one belongs to
+        -- another « Voir comme » being opened on this member right now. (The unique index is the
+        -- backstop for two inserts racing.)
+        UPDATE public.impersonation_log
+        SET ended_at = now()
+        WHERE target_id = NEW.target_id
+          AND session_id IS NULL
+          AND ended_at IS NULL
+          AND started_at <= now() - interval '60 seconds';
+        IF EXISTS (
+            SELECT 1 FROM public.impersonation_log
+            WHERE target_id = NEW.target_id AND session_id IS NULL AND ended_at IS NULL
+        ) THEN
+            RAISE EXCEPTION USING MESSAGE = 'impersonation_target_pending', ERRCODE = 'unique_violation';
         END IF;
         -- The clock is the database's: a session starts now and lasts 30 minutes.
         NEW.started_at := now();
@@ -271,3 +291,20 @@ BEGIN
     END LOOP;
 END;
 $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Storage isn't a table of ours, but members can write it (the feedback bucket's uploads): the
+-- same refusal, as RESTRICTIVE policies ANDed with whatever policies grant writes there.
+
+CREATE POLICY "Storage: no writes from Voir comme (insert)" ON storage.objects
+    AS RESTRICTIVE FOR INSERT TO authenticated
+    WITH CHECK (NOT COALESCE(auth.jwt() ? 'impersonated_by', false));
+
+CREATE POLICY "Storage: no writes from Voir comme (update)" ON storage.objects
+    AS RESTRICTIVE FOR UPDATE TO authenticated
+    USING (NOT COALESCE(auth.jwt() ? 'impersonated_by', false))
+    WITH CHECK (NOT COALESCE(auth.jwt() ? 'impersonated_by', false));
+
+CREATE POLICY "Storage: no writes from Voir comme (delete)" ON storage.objects
+    AS RESTRICTIVE FOR DELETE TO authenticated
+    USING (NOT COALESCE(auth.jwt() ? 'impersonated_by', false));

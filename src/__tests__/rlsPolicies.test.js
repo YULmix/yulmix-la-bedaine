@@ -3818,10 +3818,10 @@ describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () =
     expect(count).toBeGreaterThan(20);
   });
 
-  describe('custom_access_token_hook', () => {
-    // No claimable row left over from a previous test.
-    beforeEach(() => db.query('update public.impersonation_log set ended_at = now() where session_id is null and ended_at is null'));
+  // No pending row left over for the next test (one per target at a time).
+  afterEach(() => db.query('update public.impersonation_log set ended_at = now() where session_id is null and ended_at is null'));
 
+  describe('custom_access_token_hook', () => {
     test('a Google sign-in, a password sign-in and their refreshes pass unchanged, even with a pending row', async () => {
       const row = await pendingRow(MEMBER_ID);
       sessions.push(row.id);
@@ -3935,6 +3935,38 @@ describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () =
       expect(await logRow(row.id)).toMatchObject({ id: row.id, ended_at: null });
     });
 
+    test('one pending row per target: a second « Voir comme » on the same member is refused until the first is claimed', async () => {
+      const insert = () => adminClient.from('impersonation_log').insert({ admin_id: ADMIN_ID, target_id: MEMBER_ID }).select().single();
+      const first = await ok(insert());
+      sessions.push(first.id);
+      expect((await insert()).error?.message).toBe('impersonation_target_pending');
+
+      // Claimed by its sign-in, it no longer blocks the next one.
+      expect((await hook(event('otp', randomUuid()))).claims.impersonated_by).toBe(ADMIN_ID);
+      const second = await ok(insert());
+      sessions.push(second.id);
+
+      // A pending row the hook can no longer claim (> 60 s) is ended by the next insert.
+      await db.query('begin');
+      await db.query('alter table public.impersonation_log disable trigger trg_check_impersonation_log');
+      await db.query("update public.impersonation_log set started_at = started_at - interval '61 seconds', expires_at = expires_at - interval '61 seconds' where id = $1", [second.id]);
+      await db.query('alter table public.impersonation_log enable trigger trg_check_impersonation_log');
+      await db.query('commit');
+      const third = await ok(insert());
+      sessions.push(third.id);
+      expect((await logRow(second.id)).ended_at).not.toBeNull();
+      expect((await logRow(third.id)).ended_at).toBeNull();
+
+      // The unique index is the backstop when the trigger is bypassed.
+      await expect(db.query('insert into public.impersonation_log (admin_id, target_id) select admin_id, target_id from public.impersonation_log where id = $1', [third.id]))
+        .rejects.toThrow('impersonation_target_pending');
+      await db.query('begin');
+      await db.query('alter table public.impersonation_log disable trigger trg_check_impersonation_log');
+      await expect(db.query('insert into public.impersonation_log (admin_id, target_id) values ($1, $2)', [ADMIN_ID, MEMBER_ID]))
+        .rejects.toThrow('impersonation_log_one_pending_per_target_idx');
+      await db.query('rollback');
+    });
+
     test('the target is an active non-admin other than oneself, the actor an admin; a session is never extended', async () => {
       const insert = (adminId, targetId) => adminClient.from('impersonation_log').insert({ admin_id: adminId, target_id: targetId });
       expect((await insert(ADMIN_ID, ADMIN_ID)).error.message).toBe('impersonation_target_self');
@@ -4021,6 +4053,17 @@ describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () =
       expect(party.status).not.toBe('cancelled');
       expect(await ok(admin.from('attendees').select('id').eq('party_id', memberParty))).toHaveLength(1);
       expect((await ok(admin.from('profiles').select('deleted_at, full_name').eq('id', MEMBER_ID).single())).deleted_at).toBeNull();
+    });
+
+    test('a storage upload fails too (the feedback bucket members may write)', async () => {
+      const png = () => new Blob([Buffer.from('89504e470d0a1a0a', 'hex')], { type: 'image/png' });
+      const path = `rls-265/${Date.now()}.png`;
+      const { error } = await seen.client.storage.from('feedback').upload(path, png());
+      expect(error?.message).toMatch(/row-level security/);
+      // The member's own session can (the control: same bucket, same file).
+      const own = `rls-265/${Date.now()}-own.png`;
+      expect((await member.storage.from('feedback').upload(own, png())).error).toBeNull();
+      await adminClient.storage.from('feedback').remove([path, own]);
     });
 
     test('the session is refused a refresh once ended, and the member keeps their own access', async () => {

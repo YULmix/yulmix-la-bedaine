@@ -60,7 +60,8 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   impersonation_target_self: () => fr.dbErrorImpersonationTargetSelf,
   impersonation_target_admin: () => fr.dbErrorImpersonationTargetAdmin,
   impersonation_target_deleted: () => fr.dbErrorImpersonationTargetDeleted,
-  impersonation_target_not_found: () => fr.dbErrorEditionRoleTargetNotFound,
+  impersonation_target_not_found: () => fr.dbErrorImpersonationTargetNotFound,
+  impersonation_target_pending: () => fr.dbErrorImpersonationTargetPending,
   impersonation_log_immutable: () => fr.dbErrorImpersonationLogImmutable
 };
 

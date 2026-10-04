@@ -192,12 +192,16 @@ An admin can open the app in a member's **real** session to see exactly what tha
   inside `SECURITY DEFINER` functions too, so none needs its own check. `save_logistics()`, which
   saves each party in a subtransaction, returns the refusal per party instead of raising.
   `src/__tests__/rlsPolicies.test.js` (« Voir comme ») fails when a table lacks the trigger.
+  `storage.objects` (members upload to the `feedback` bucket) gets the same refusal as three
+  RESTRICTIVE policies, « Storage: no writes from Voir comme » (insert, update, delete).
 - **Who.** `impersonation_log`'s trigger accepts only an active admin as `admin_id`, and as
   `target_id` an existing, non-deleted, non-admin account other than the admin
   (`impersonation_actor_not_admin`, `impersonation_target_self`, `impersonation_target_admin`,
   `impersonation_target_deleted`, `impersonation_target_not_found`). It sets `started_at` to now and
   `expires_at` 30 minutes later, and refuses a later change that would extend or reassign the
-  session (`impersonation_log_immutable`).
+  session (`impersonation_log_immutable`). A member has at most one pending (unclaimed, not ended)
+  row: a second insert is refused (`impersonation_target_pending`) unless the first is older than
+  60 seconds, in which case it is ended; a partial unique index backs this up.
 - **Not covered by the trigger:** Supabase Auth's own endpoints (`updateUser()`, a global
   `signOut()`) write `auth.*`, not our tables. The impersonated tab must not offer them (#267).
 - The hook is enabled locally by `supabase/config.toml`; in production and Preview it is enabled in
