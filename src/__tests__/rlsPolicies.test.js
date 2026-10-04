@@ -1053,6 +1053,156 @@ describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
   });
 });
 
+// #237: removing an attendee marks their row removed (deleted_at) instead of deleting it. Clients
+// never read a removed attendee, every count ignores them, and admins resolve them by id.
+describe('🗑️ removed attendees (#237)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000000237';
+  const person = (name, fields = {}) => ({ name, type: 'Adult', participation: 'Whole', ...fields });
+
+  let memberClient;
+  let adminAuthClient;
+  let memberParty;
+  let adminParty;
+
+  // What clients can't see: the rows as stored, read as the superuser (local only).
+  const dbQuery = async (sql, params = []) => {
+    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
+    const client = new pg.Client({ connectionString: dbUrl });
+    await client.connect();
+    try {
+      return (await client.query(sql, params)).rows;
+    } finally {
+      await client.end();
+    }
+  };
+  const storedAttendeesOf = (partyId) => dbQuery(
+    'select id, name, position, deleted_at from public.attendees where party_id = $1 order by created_at, position', [partyId]
+  );
+  const attendeesOf = async (client, partyId) => (await client.from('attendees')
+    .select('id, name').eq('party_id', partyId).order('position')).data;
+  const partyOf = async (partyId) => (await adminAuthClient.from('user_parties')
+    .select('calculated_amount_owed, is_waitlisted').eq('id', partyId).single()).data;
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: EVENT_ID, theme: 'Removed Attendees Test', status: 'ACTIVE', selling_price_whole_event: 100,
+      max_attendees: null, event_start_date: startsIn(60), x_reg_close_weeks: 1
+    });
+    if (error) throw error;
+    memberParty = await saveOk(memberClient, EVENT_ID, [person('Ann'), person('Bob')]);
+    adminParty = await saveOk(adminAuthClient, EVENT_ID, [person('Zed')]);
+  });
+
+  afterAll(async () => {
+    await adminAuthClient.from('user_parties').delete().eq('event_id', EVENT_ID);
+  });
+
+  test('saving without an attendee keeps their row, marked removed, and hides it from member and admin', async () => {
+    const [ann, bob] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+
+    const stored = await storedAttendeesOf(memberParty.id);
+    expect(stored.map(a => [a.id, a.deleted_at === null])).toEqual([[ann.id, true], [bob.id, false]]);
+
+    for (const client of [memberClient, adminAuthClient]) {
+      expect(await attendeesOf(client, memberParty.id)).toEqual([{ id: ann.id, name: 'Ann' }]);
+      expect((await client.from('attendees').select('id').eq('id', bob.id)).data).toEqual([]);
+      const { data } = await client.from('user_parties').select('attendees(name)').eq('id', memberParty.id).single();
+      expect(data.attendees).toEqual([{ name: 'Ann' }]);
+    }
+  });
+
+  test("the amount owed, the party's size and the event's headcount ignore a removed attendee", async () => {
+    const [ann] = await attendeesOf(memberClient, memberParty.id);
+    expect((await partyOf(memberParty.id)).calculated_amount_owed).toBe(200);
+
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+    expect((await partyOf(memberParty.id)).calculated_amount_owed).toBe(100);
+    const [counts] = await dbQuery(
+      'select private.party_size($1) as size, private.event_headcount($2) as headcount', [memberParty.id, EVENT_ID]
+    );
+    expect(counts).toEqual({ size: 1, headcount: 2 });
+
+    // 3 places: Ann, then Zed and Yan fit only if Bob isn't counted.
+    await adminAuthClient.from('events').update({ max_attendees: 3 }).eq('id', EVENT_ID);
+    const [zed] = await attendeesOf(adminAuthClient, adminParty.id);
+    const party = await saveOk(adminAuthClient, EVENT_ID, [person('Zed', { id: zed.id }), person('Yan')]);
+    expect(party.is_waitlisted).toBe(false);
+  });
+
+  test('re-adding someone creates a new row; a removed id in the payload is never revived', async () => {
+    const [ann, bob] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+
+    for (const client of [memberClient, adminAuthClient]) {
+      await saveOk(client, EVENT_ID, [person('Ann', { id: ann.id }), person('Bob', { id: bob.id })], {
+        userId: client === adminAuthClient ? memberParty.user_id : undefined
+      });
+      const live = await attendeesOf(adminAuthClient, memberParty.id);
+      expect(live.map(a => a.name)).toEqual(['Ann', 'Bob']);
+      expect(live[1].id).not.toBe(bob.id);
+      // Removed again, for the next round.
+      await saveOk(client, EVENT_ID, [person('Ann', { id: ann.id })], {
+        userId: client === adminAuthClient ? memberParty.user_id : undefined
+      });
+    }
+    const stored = await storedAttendeesOf(memberParty.id);
+    expect(stored.filter(a => a.deleted_at === null).map(a => a.id)).toEqual([ann.id]);
+    expect(stored.filter(a => a.deleted_at !== null).map(a => a.name)).toEqual(['Bob', 'Bob', 'Bob']);
+  });
+
+  test('saving an unchanged registration keeps every id and logs no attendee change', async () => {
+    const before = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, before.map(({ id, name }) => person(name, { id })));
+    expect(await attendeesOf(memberClient, memberParty.id)).toEqual(before);
+    expect((await storedAttendeesOf(memberParty.id)).every(a => a.deleted_at === null)).toBe(true);
+
+    const { data: edits } = await memberClient.from('registration_edits')
+      .select('changes').eq('registration_id', memberParty.id);
+    expect(edits.some(entry => 'attendees' in entry.changes)).toBe(false);
+  });
+
+  test('the history logs a removal with live attendees only, before and after', async () => {
+    const [ann] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id }), person('Cat')]);
+
+    const { data: edits } = await memberClient.from('registration_edits')
+      .select('changes').eq('registration_id', memberParty.id).order('edited_at');
+    const changes = edits.filter(entry => entry.changes.attendees).map(entry => entry.changes.attendees);
+    expect(changes.map(({ old, new: after }) => [old.map(a => a.name), after.map(a => a.name)])).toEqual([
+      [['Ann', 'Bob'], ['Ann']],
+      [['Ann'], ['Ann', 'Cat']]
+    ]);
+  });
+
+  test('an admin resolves a removed attendee by id; a member cannot', async () => {
+    const [ann, bob] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+
+    const { data, error } = await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: bob.id });
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({ id: bob.id, party_id: memberParty.id, name: 'Bob' });
+    expect(data[0].deleted_at).not.toBeNull();
+    expect((await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: ann.id })).data)
+      .toEqual([{ id: ann.id, party_id: memberParty.id, name: 'Ann', deleted_at: null }]);
+
+    const { data: memberData, error: memberError } = await memberClient.rpc('attendee_by_id', { p_attendee_id: bob.id });
+    expect(memberError?.message).toBe('admin_only');
+    expect(memberData).toBeNull();
+  });
+});
+
 // #113, #145: a venue's locations and places, shared by the events held there, and which place
 // each attendee holds for their event.
 describe('🛏️ venues, locations, places and assignments (#113, #145)', () => {
@@ -1190,6 +1340,21 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
 
     await saveOk(memberClient, EVENT_ID, [person('Bobby', { id: bob.id })]);
     expect(await bedsOf(memberParty.id)).toEqual([['Bobby', 'Grand salon · Canapé']]);
+  });
+
+  test("a removed attendee's place is freed, and a removed attendee can't be given one (#237)", async () => {
+    const [ann, bob] = await attendeesOf(memberParty.id);
+    const bed = await addPlace(await addLocation('Chambre 7'), 'Lit A');
+    expect((await assign(bed, bob.id)).error).toBeNull();
+
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+    expect((await adminAuthClient.from('place_assignments').select('attendee_id').eq('place_id', bed)).data).toEqual([]);
+    expect((await assign(bed, bob.id)).error?.message).toBe('place_assignment_attendee_removed');
+
+    const failed = (await adminAuthClient.rpc('save_logistics', {
+      p_changes: [{ party_id: memberParty.id, places: { [bob.id]: bed } }]
+    })).data;
+    expect(failed.map(f => f.message)).toEqual(['logistics_attendee_not_in_party']);
   });
 
   test('one place per attendee', async () => {
