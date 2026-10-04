@@ -104,6 +104,15 @@ const AddPerson = ({ team, onAdd, busyId }) => {
                   <Tag tone="info">{fr.teamAdminTag}</Tag>
                 ) : current === role ? (
                   <Tag tone="ok">{getEditionRoleLabel(current)}</Tag>
+                ) : current ? (
+                  // Already on the team with the other role: say so, and offer the change by name.
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Tag>{getEditionRoleLabel(current)}</Tag>
+                    <Button variant="secondary" size="sm" loading={busyId === person.id} onClick={() => onAdd(person, role)}
+                      aria-label={fr.teamChangeFor.replace('{role}', getEditionRoleLabel(role)).replace('{name}', name)}>
+                      {fr.teamChangeTo.replace('{role}', getEditionRoleLabel(role))}
+                    </Button>
+                  </div>
                 ) : (
                   <Button variant="secondary" size="sm" loading={busyId === person.id} onClick={() => onAdd(person, role)}
                     aria-label={fr.teamAddFor.replace('{role}', getEditionRoleLabel(role)).replace('{name}', name)}>

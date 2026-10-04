@@ -538,6 +538,8 @@
   "teamAdd": "Ajouter",
   "teamAddFor": "Donner le rôle {role} à {name}",
   "teamAdminTag": "Admin",
+  "teamChangeTo": "Changer en {role}",
+  "teamChangeFor": "Changer le rôle de {name} en {role}",
   "teamLogTitle": "Journal des rôles",
   "teamLogEmpty": "Aucun changement de rôle pour cette édition.",
   "teamLogGranted": "{actor} a donné le rôle {role} à {person}",
