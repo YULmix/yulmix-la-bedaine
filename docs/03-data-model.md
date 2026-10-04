@@ -183,7 +183,7 @@ the attendee, by id, whatever the member edits.
 
 ### Removed attendees
 
-Nobody is deleted from a party (#237): removing someone sets their row's `deleted_at` (NULL means
+Nobody is deleted from a party (#237, the first application of [ADR 0024](./adr/0024-no-hard-deletes.md)): removing someone sets their row's `deleted_at` (NULL means
 live; a timestamp, never a boolean, as `profiles.deleted_at`). The row stays, so what refers to
 the person by id (#236's « Payé par ») still resolves. `save_registration()` does it through
 `private.remove_party_attendees()`, which also deletes their place assignments, as the cascade

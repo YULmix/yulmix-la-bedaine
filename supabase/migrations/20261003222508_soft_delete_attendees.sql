@@ -12,8 +12,8 @@
 --   * SECURITY DEFINER code and triggers bypass RLS, so the helpers that count or list a party's
 --     attendees filter `deleted_at IS NULL` themselves: attendees_snapshot (change history),
 --     party_amount_owed (amount owed), event_headcount and party_size (capacity, waitlist,
---     promotion), carpool_board (a need's seats), party_places_snapshot (#188's place history). enforce_place_assignment refuses a removed
---     attendee. The service-role Edge Function (send-party-email) filters its embed.
+--     promotion), carpool_board (a need's seats), party_places_snapshot (#188's place history).
+--     enforce_place_assignment refuses a removed attendee. The service-role Edge Function (send-party-email) filters its embed.
 --   * Admins resolve any attendee, removed or not, by id with attendee_by_id() (SECURITY DEFINER).
 --
 -- save_registration() soft-deletes the attendees left out of its payload and deletes their place
@@ -51,6 +51,10 @@ ALTER TABLE public.attendees ADD CONSTRAINT attendees_live_party_id_position_exc
     EXCLUDE USING btree (party_id WITH =, "position" WITH =) WHERE (deleted_at IS NULL)
     DEFERRABLE INITIALLY DEFERRED;
 
+-- The old unique index was the only one led by party_id; the exclusion above is partial, so the
+-- ON DELETE CASCADE from user_parties (and any lookup by party) would scan without this one.
+CREATE INDEX attendees_party_id_idx ON public.attendees (party_id);
+
 -- ---------------------------------------------------------------------------------------------
 -- Clients never read a removed attendee.
 
@@ -71,6 +75,14 @@ AS $$
 BEGIN
     -- save_registration() sets this after checking the caller may write the party (RLS).
     IF current_setting('bedaine.saving_party', true) IS DISTINCT FROM p_party_id::text THEN
+        RAISE EXCEPTION USING MESSAGE = 'attendees_write_through_save_registration', ERRCODE = '42501';
+    END IF;
+
+    -- Defence in depth: the party's owner or an admin only, whatever the setting says.
+    IF NOT EXISTS (
+        SELECT 1 FROM public.user_parties
+        WHERE id = p_party_id AND (user_id = (SELECT auth.uid()) OR public.is_admin())
+    ) THEN
         RAISE EXCEPTION USING MESSAGE = 'attendees_write_through_save_registration', ERRCODE = '42501';
     END IF;
 
@@ -443,9 +455,15 @@ DECLARE
     v_party public.user_parties%ROWTYPE;
     v_event_venue uuid;
     v_place_venue uuid;
+    v_deleted_at timestamptz;
 BEGIN
-    -- A removed attendee (#237) holds no place.
-    IF EXISTS (SELECT 1 FROM public.attendees WHERE id = NEW.attendee_id AND deleted_at IS NOT NULL) THEN
+    -- A removed attendee (#237) holds no place. FOR SHARE makes a concurrent soft delete (an
+    -- UPDATE) wait for this assignment, or this wait for it, as the hard-delete foreign key did.
+    SELECT a.deleted_at INTO v_deleted_at
+    FROM public.attendees a
+    WHERE a.id = NEW.attendee_id
+    FOR SHARE;
+    IF v_deleted_at IS NOT NULL THEN
         RAISE EXCEPTION USING MESSAGE = 'place_assignment_attendee_removed', ERRCODE = 'check_violation';
     END IF;
 
