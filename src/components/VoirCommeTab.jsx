@@ -65,13 +65,13 @@ const dropLocalSession = () => supabase.auth.signOut({ scope: 'local' }).catch((
 const TabPage = ({ icon: Icon, tone = 'neon', title, children, actions, busy = false }) => (
   <div className="flex min-h-dvh flex-col bg-night text-ink">
     <main className={cx(CANVAS_CLASS, 'flex flex-1 items-center justify-center py-10')}>
-      <section aria-busy={busy || undefined} className="w-full max-w-lg rounded-card border border-line bg-surface p-6 text-center sm:p-8">
+      <section aria-busy={busy || undefined} className="w-full max-w-xl rounded-card border border-line bg-surface p-6 text-center sm:p-8">
         <span className={cx('mx-auto grid size-14 place-items-center rounded-full bg-raised', tone === 'bad' ? 'text-bad' : 'text-neon')}>
           <Icon aria-hidden="true" className={cx('size-6', busy && 'animate-pulse')} strokeWidth={1.75} />
         </span>
         <h1 className="mt-4 text-xl font-semibold text-ink">{title}</h1>
         {children && <div className="mt-2 space-y-2 text-muted">{children}</div>}
-        {actions && <div className="mt-6 flex flex-col-reverse justify-center gap-3 sm:flex-row">{actions}</div>}
+        {actions && <div className="mt-6 flex flex-col-reverse justify-center gap-3 sm:flex-row sm:flex-wrap">{actions}</div>}
       </section>
     </main>
   </div>
