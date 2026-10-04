@@ -15,7 +15,7 @@ const SORTS = [
   { id: 'name', labelKey: 'participantsSortName' }
 ];
 
-const GRID = 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_5.5rem_10rem_minmax(0,1.3fr)_minmax(0,1fr)_9rem_6.5rem]';
+const GRID = 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_5.5rem_12rem_minmax(0,1.3fr)_minmax(0,1fr)_9rem_6.5rem]';
 
 const ParticipantRow = ({ row, grouped, onDetails }) => {
   const hasDetails = !!(row.dietaryOther || row.sleepingOther);

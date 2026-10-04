@@ -203,6 +203,8 @@ test('« Participants » screenshots', async ({ page }) => {
     await expect(participantsRow(page, ZOE.name)).toBeVisible();
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-admin-${width}.png` });
     await page.getByRole('switch', { name: fr.participantsGroupBy }).click();
+    await expect(page.getByRole('switch', { name: fr.participantsGroupBy })).toHaveAttribute('aria-checked', 'true');
+    await page.waitForTimeout(500); // the switch's slide
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/participants-grouped-admin-${width}.png` });
   }
 });
