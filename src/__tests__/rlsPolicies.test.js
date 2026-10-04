@@ -575,11 +575,45 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
     expect(Number(data.total_cost)).toBe(300);
   });
 
-  test('an attendee of another event, a random uuid or a malformed value raises the payer code', async () => {
-    for (const value of [outsider.id, 'a0000000-a000-a000-a000-a00000009999', 'not-a-uuid', 42, ann.id.toUpperCase().slice(1)]) {
+  test('an attendee of another event or a random uuid raises the payer code', async () => {
+    for (const value of [outsider.id, 'a0000000-a000-a000-a000-a00000009999']) {
       const { error } = await saveLines([line({ paid_by_attendee_id: value })]);
       expect(error?.message).toBe('event_budget_payer_invalid');
     }
+  });
+
+  test('a malformed payer raises the payer code, never a cast error', async () => {
+    for (const value of [['x'], { a: 1 }, 42, true, 'not-a-uuid', '', ann.id.slice(1)]) {
+      const { error } = await saveLines([line({ paid_by_attendee_id: value })]);
+      expect(error?.message).toBe('event_budget_payer_invalid');
+      expect(error?.code).toBe('23514');
+    }
+  });
+
+  test('an uppercase uuid of an attendee of the event saves', async () => {
+    const { error } = await saveLines([line({ paid_by_attendee_id: ann.id.toUpperCase() })]);
+    expect(error).toBeNull();
+  });
+
+  test('moving a budget row to another event validates the payer against the new event', async () => {
+    await saveLines([line({ paid_by_attendee_id: ann.id })]);
+    const { error } = await adminAuthClient.from('event_budgets').update({ event_id: OTHER_EVENT_ID }).eq('event_id', EVENT_ID);
+    expect(error?.message).toBe('event_budget_payer_invalid');
+    // A payer of the new event is fine.
+    await saveLines([line({ paid_by_attendee_id: ann.id })]);
+    await adminAuthClient.from('event_budgets').update({ lines: [line({ paid_by_attendee_id: outsider.id })] }).eq('event_id', EVENT_ID)
+      .then(({ error: wrong }) => expect(wrong?.message).toBe('event_budget_payer_invalid'));
+    const { error: moved } = await adminAuthClient.from('event_budgets')
+      .update({ event_id: OTHER_EVENT_ID, lines: [line({ paid_by_attendee_id: outsider.id })] }).eq('event_id', EVENT_ID);
+    expect(moved).toBeNull();
+  });
+
+  test('a payer in a cancelled party is still accepted', async () => {
+    const { error: cancel } = await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(cancel).toBeNull();
+    expect((await saveLines([line({ paid_by_attendee_id: ann.id })])).error).toBeNull();
+    const { data } = await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: ann.id });
+    expect(data[0]).toMatchObject({ name: 'Ann', deleted_at: null });
   });
 
   test('a removed attendee stays a valid payer, and the admin resolves their name', async () => {
@@ -596,10 +630,18 @@ describe('🧾 « Payé par » on budget lines (#236)', () => {
     expect(data[0].deleted_at).not.toBeNull();
   });
 
-  test('a member still cannot write the budget with a payer', async () => {
+  test('a member can neither write the budget with a payer nor resolve a payer\'s name', async () => {
     const { error } = await memberClient.from('event_budgets')
       .upsert({ event_id: EVENT_ID, lines: [line({ paid_by_attendee_id: ann.id })] });
     expect(error).not.toBeNull();
+    await saveLines([line({ paid_by_attendee_id: ann.id })]);
+    const { data: updated } = await memberClient.from('event_budgets')
+      .update({ lines: [line()] }).eq('event_id', EVENT_ID).select();
+    expect(updated ?? []).toEqual([]);
+    expect((await adminAuthClient.from('event_budgets').select('lines').eq('event_id', EVENT_ID).single()).data.lines[0].paid_by_attendee_id).toBe(ann.id);
+    const { data, error: rpcError } = await memberClient.rpc('attendee_by_id', { p_attendee_id: ann.id });
+    expect(rpcError).not.toBeNull();
+    expect(data).toBeNull();
   });
 });
 

@@ -6,6 +6,11 @@ import { adminMain, eventRow } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
+  MEMBER_ID,
+  cancelParty,
+  getAttendees,
+  keepOnlyAttendees,
+  saveBudgetLines,
   E2E_ATTENDEES,
   E2E_EVENT_THEME,
   createParty,
@@ -256,3 +261,36 @@ for (const viewport of [{ name: 'phone', width: 390, height: 844 }, { name: 'des
     expect((await getBudget(seeded.eventId)).lines[0]).toEqual({ category: 'Other', description: 'Épicerie', amount: 120 });
   });
 }
+
+// #236: a payer who is no longer in an active party still shows, by name (resolved by id).
+test('a removed payer shows « (retiré) » and a payer in a cancelled party shows their name; both still save', async ({ page }) => {
+  const [alice, bob] = await getAttendees(seeded.partyId);
+  const extraPartyId = await createParty(seeded.eventId, ADMIN_ID, [{ name: 'Carl E2E', type: 'Adult', participation: 'Main', is_new_member: false }]);
+  try {
+    const [carl] = await getAttendees(extraPartyId);
+    await saveBudgetLines(seeded.eventId, [
+      { category: 'Food', description: 'Un', amount: 10, paid_by_attendee_id: bob.id },
+      { category: 'Food', description: 'Deux', amount: 20, paid_by_attendee_id: carl.id },
+      { category: 'Food', description: 'Trois', amount: 30, paid_by_attendee_id: alice.id }
+    ]);
+    await keepOnlyAttendees(seeded.eventId, seeded.partyId, MEMBER_ID, ['Alice E2E']);
+    await cancelParty(extraPartyId);
+
+    await page.goto('/admin/budget');
+    await expand(page, fr.budgetLinesTitle);
+    const payers = panel(page).getByRole('combobox', { name: fr.budgetLinePaidBy });
+    await expect(payers.nth(0)).toHaveValue(`Bob E2E ${fr.budgetPayerRemoved}`);
+    await expect(payers.nth(1)).toHaveValue('Carl E2E');
+    await expect(payers.nth(2)).toHaveValue('Alice E2E');
+    await page.screenshot({ path: `${process.env.HOME}/code/yulmix-la-bedaine.worktrees/screenshots/236/budget-payer-removed-admin-1280.png` });
+
+    // Change something so the budget can be saved: the removed and cancelled payers stay valid.
+    await panel(page).getByRole('spinbutton', { name: fr.budgetLineAmount }).nth(2).fill('35');
+    await panel(page).getByRole('button', { name: fr.budgetSave }).click();
+    await expect(page.getByText(fr.budgetSavedToast)).toBeVisible();
+    const lines = (await getBudget(seeded.eventId)).lines;
+    expect(lines.map(line => line.paid_by_attendee_id)).toEqual([bob.id, carl.id, alice.id]);
+  } finally {
+    await deleteParty(extraPartyId);
+  }
+});
