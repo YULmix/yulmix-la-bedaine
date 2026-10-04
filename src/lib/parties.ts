@@ -9,7 +9,8 @@ import type { PaymentStatus } from './registrationOptions';
 // The party module (#197): the only code that reads or writes a registration (a user_parties row)
 // and its attendees, which live in their own table (ADR 0018). Screens receive a party with an
 // `attendees` array in display order, each attendee with its `place` (from attendee_places, or
-// null, #114).
+// null, #114). The organisers' private notes live in party_admin_notes, which only admins read
+// (#227): an admin's list carries them as `admin_notes`; a member's read never asks for them.
 //
 // Errors: every function logs the raw error once (PostgREST errors are hard to diagnose from a
 // screenshot) and throws an appError whose message is already French: the code's text for our
@@ -30,13 +31,22 @@ export interface AttendeePlace {
 }
 export type Attendee = AttendeeRow & { place: AttendeePlace | null };
 export type Party = PartyRow & { attendees: Attendee[] };
-/** A party as the admin lists it, with its member's profile. */
+/** A party as the admin lists it, with its member's profile and the organisers' notes. */
 export type AdminParty = Party & {
   profiles: Pick<ProfileRow, 'id' | 'email' | 'full_name' | 'is_admin' | 'created_at' | 'deleted_at'>;
+  admin_notes: string | null;
 };
 
-const PARTY_WITH_ATTENDEES = '*, attendees(*, place:attendee_places(place_id, bed_label, place_label, location_id, location_name))';
-const ADMIN_PARTY = `${PARTY_WITH_ATTENDEES}, profiles!inner(id, email, full_name, is_admin, created_at, deleted_at)`;
+// Named columns, not *: a private column added to user_parties later isn't sent to members by
+// default (#227). Typed against the table, so a renamed or dropped column fails the type check.
+const PARTY_COLUMNS = [
+  'id', 'user_id', 'event_id', 'status', 'is_waitlisted', 'payment_status', 'calculated_amount_owed',
+  'locked_selling_price_whole_event', 'locked_ratio_main_whole', 'logistics', 'transport', 'music_requests',
+  'message_to_organizers', 'message_to_participants', 'confirmation_message', 'created_at', 'last_edited_at',
+  'edit_count'
+] as const satisfies ReadonlyArray<keyof PartyRow>;
+const PARTY_WITH_ATTENDEES = `${PARTY_COLUMNS.join(', ')}, attendees(*, place:attendee_places(place_id, bed_label, place_label, location_id, location_name))`;
+const ADMIN_PARTY = `${PARTY_WITH_ATTENDEES}, profiles!inner(id, email, full_name, is_admin, created_at, deleted_at), admin_note:party_admin_notes(notes)`;
 
 const failure = (context: string, error: unknown, fallback: string): Error => {
   const { message, code, details, hint } = (error ?? {}) as ErrorLike & { code?: string; hint?: string };
@@ -74,8 +84,10 @@ export const listEventParties = async (client: Client, eventId: string): Promise
     .order('created_at', { ascending: true })
     .order('position', { referencedTable: 'attendees' });
   if (error) throw failure('Error fetching parties', error, fr.loadErrorHint);
-  return ((data ?? []) as unknown as AdminParty[]).filter(party =>
-    !(party.profiles?.deleted_at && party.status === REGISTRATION_STATUS.CANCELLED));
+  type Row = Omit<AdminParty, 'admin_notes'> & { admin_note: { notes: string | null } | null };
+  return ((data ?? []) as unknown as Row[])
+    .filter(party => !(party.profiles?.deleted_at && party.status === REGISTRATION_STATUS.CANCELLED))
+    .map(({ admin_note, ...party }) => ({ ...party, admin_notes: admin_note?.notes ?? null }));
 };
 
 /** What the preview's test-account picker shows about each party of an event. */

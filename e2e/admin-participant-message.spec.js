@@ -101,12 +101,20 @@ test('the admin writes a message: unsaved until the Save, kept across sections, 
 
   // The member reads the message in their Logistique card; the private notes appear nowhere.
   const memberPage = await (await browser.newContext()).newPage();
+  // Nor in any response the member's browser receives (#227: they came with the party's row).
+  const leaks = [];
+  memberPage.on('response', async response => {
+    const body = await response.text().catch(() => '');
+    if (body.includes(SECRET_NOTE)) leaks.push(response.url());
+  });
   await loginAs(memberPage, TEST_USERS.member);
   await memberPage.goto('/');
   await expect(logisticsCard(memberPage).getByRole('heading', { name: fr.messageFromOrganizers })).toBeVisible();
   await expect(logisticsCard(memberPage)).toContainText(MESSAGE);
   await expect(memberPage.getByText(SECRET_NOTE)).toHaveCount(0);
   await expect(memberPage.locator('body')).not.toContainText(SECRET_NOTE);
+  await memberPage.waitForLoadState('networkidle');
+  expect(leaks).toEqual([]);
 });
 
 test('no message, or only spaces: the member sees no message and no notes', async ({ page }) => {
