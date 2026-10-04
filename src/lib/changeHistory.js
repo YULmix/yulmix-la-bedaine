@@ -4,7 +4,7 @@ import { eventClock } from './eventTime';
 
 // The admin « Historique des changements » (#173): an event's registration_edits, newest first,
 // as a list and as a CSV / Google Sheets export with one row per changed field. The list and the
-// exports use the same French text (describeChanges), so they always agree.
+// exports use the same French text (describeChanges, describePlaceChanges), so they always agree.
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -25,6 +25,28 @@ export const personName = (id, profilesById) => {
 };
 
 /**
+ * A changes.places (#188) as one line per attendee whose place changed, read on screen as
+ * « Place de Marie : Grange · Lit 3 → Maison · Sofa ». `field` (« Place de Marie », no colon) is
+ * what the export's « Champ » column shows. Old and new list the same attendees in the same order;
+ * a null label is « non assigné », and a venue change (reason 'venue_changed') says so.
+ * @returns {Array<{label: string, field: string, from: string, to: string}>}
+ */
+export const describePlaceChanges = (places) => {
+  if (!places || !Array.isArray(places.old) || !Array.isArray(places.new)) return [];
+  const unassigned = places.reason === 'venue_changed' ? fr.historyPlaceVenueChanged : fr.historyPlaceUnassigned;
+  return places.old.map((before, index) => {
+    const after = places.new[index] || {};
+    const name = before?.attendee_name || after.attendee_name || fr.historyEmptyValue;
+    return {
+      label: fr.historyFieldPlaceLine.replace('{name}', name),
+      field: fr.historyFieldPlace.replace('{name}', name),
+      from: before?.label || fr.historyPlaceUnassigned,
+      to: after.label || unassigned
+    };
+  });
+};
+
+/**
  * Raw registration_edits rows (with registration.user_id) as list entries:
  * { id, at, author, registrant, lines }.
  */
@@ -33,7 +55,7 @@ export const historyEntries = (edits, profilesById) => edits.map(edit => ({
   at: formatHistoryTimestamp(edit.edited_at),
   author: personName(edit.edited_by, profilesById),
   registrant: personName(edit.registration?.user_id, profilesById),
-  lines: describeChanges(edit.changes)
+  lines: [...describeChanges(edit.changes), ...describePlaceChanges(edit.changes?.places)]
 }));
 
 /**
@@ -50,7 +72,7 @@ export const historyExportRows = (entries) => ({
     fr.historyExportNewValue
   ],
   rows: entries.flatMap(entry => entry.lines.map(line => [
-    entry.at, entry.author, entry.registrant, line.label, line.from, line.to
+    entry.at, entry.author, entry.registrant, line.field ?? line.label, line.from, line.to
   ]))
 });
 

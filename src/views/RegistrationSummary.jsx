@@ -7,7 +7,7 @@ import { sleepingByLocation } from '../lib/places';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
 import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
-import { describeChanges } from '../lib/editHistory';
+import { describeChanges, memberHistoryEdits } from '../lib/editHistory';
 import { initials } from '../lib/eventDisplay';
 import Pass from '../components/brand/Pass';
 import MyPartyEmails from '../components/MyPartyEmails';
@@ -243,9 +243,9 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
             <ArrowRight aria-hidden="true" className="ml-2 inline size-4 transition group-open:rotate-90" />
           </span>
         </summary>
-        {editHistory.length > 0 ? (
+        {memberHistoryEdits(editHistory).length > 0 ? (
           <ol className="mt-4 space-y-4 border-l border-line pl-5">
-            {editHistory.map(edit => {
+            {memberHistoryEdits(editHistory).map(edit => {
               const lines = describeChanges(edit.changes);
               return (
                 <li key={edit.id} className="relative">

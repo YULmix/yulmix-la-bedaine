@@ -122,6 +122,9 @@ Notes on specific choices:
   every pending `place_assignments` row, `admin_notes` and `message_to_participants` through it, under the caller's RLS and
   the usual triggers. It refuses non-admins up front (`admin_only`), then saves each party in its
   own subtransaction, all or nothing, and returns the parties it refused with their error code.
+  It logs each saved party's place changes (#188) through a transaction-local setting
+  (`bedaine.place_changes`) that `log_registration_edit()` merges into the texts' entry; like
+  `bedaine.saving_party`, clients can't set it.
 - **`event_places()`, `set_place_override()` and `venue_layout()` are `SECURITY INVOKER`** (#193):
   the tables' RLS and triggers decide, as for direct writes. The first two refuse non-admins up
   front (`admin_only`): overrides are admin-only, so a member would otherwise read a merge that

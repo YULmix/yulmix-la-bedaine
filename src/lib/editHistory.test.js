@@ -1,5 +1,5 @@
 import fr from '../locales/fr.json';
-import { describeChanges } from './editHistory';
+import { describeChanges, memberHistoryEdits } from './editHistory';
 import { formatCurrency } from './format';
 
 test('a transport change reads in French, with the departure place (#181)', () => {
@@ -44,4 +44,27 @@ test('the message to participants has its own label, apart from the private note
     { label: fr.historyFieldAdminNotes, from: fr.historyEmptyValue, to: 'Privé' },
     { label: fr.historyFieldMessageToParticipants, from: fr.historyEmptyValue, to: 'Bienvenue' }
   ]);
+});
+
+test("place changes are not described: the member's history never shows them (#188)", () => {
+  const places = {
+    old: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: 'p1', label: 'Grange · Lit 3' }],
+    new: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: null, label: null }]
+  };
+  expect(describeChanges({ places })).toEqual([]);
+  expect(describeChanges({ places, admin_notes: { old: null, new: 'Note' } }))
+    .toEqual([{ label: fr.historyFieldAdminNotes, from: fr.historyEmptyValue, to: 'Note' }]);
+});
+
+test("the member's history leaves out the edits that only log places (#188)", () => {
+  const places = { old: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: null, label: null }], new: [{ attendee_id: 'a1', attendee_name: 'Marie', place_id: 'p1', label: 'Grange · Lit 3' }] };
+  const edits = [
+    { id: 'places', changes: { places } },
+    { id: 'venue', changes: { places: { ...places, reason: 'venue_changed' } } },
+    { id: 'notes', changes: { places, admin_notes: { old: null, new: 'Note' } } },
+    { id: 'status', changes: { status: { old: 'registered', new: 'cancelled' } } },
+    { id: 'empty', changes: {} }
+  ];
+  expect(memberHistoryEdits(edits).map(edit => edit.id)).toEqual(['notes', 'status', 'empty']);
+  expect(memberHistoryEdits(null)).toEqual([]);
 });

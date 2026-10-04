@@ -14,6 +14,10 @@ import {
 // lines, for the member's "Historique des modifications" and the admin « Historique des
 // changements » (#173). A creation entry is { created: { old: null, new: { attendees, status,
 // is_waitlisted, calculated_amount_owed } } }: one line with no old value.
+//
+// `places` (#188, the organisers' place assignments) is not described here: the member's history
+// must never show it (RLS already hides the rows, this is the second safeguard). The admin history
+// adds its lines with describePlaceChanges() in changeHistory.js.
 
 const FIELD_LABEL_KEYS = {
   created: 'historyFieldCreated',
@@ -93,10 +97,19 @@ const formatValue = (field, value) => {
 export const describeChanges = (changes) => {
   if (!changes || typeof changes !== 'object') return [];
   return Object.entries(changes)
-    .filter(([, data]) => data && typeof data === 'object' && 'old' in data && 'new' in data)
+    .filter(([field, data]) => field !== 'places' && data && typeof data === 'object' && 'old' in data && 'new' in data)
     .map(([field, data]) => ({
       label: fr[FIELD_LABEL_KEYS[field]] || field.replace(/_/g, ' '),
       from: formatValue(field, data.old),
       to: formatValue(field, data.new)
     }));
 };
+
+/**
+ * The edits the member's history lists: not those that only log places (#188), which it would
+ * show as empty entries (an admin's own party, or a venue change).
+ */
+export const memberHistoryEdits = (edits) => (edits || []).filter(edit => {
+  const keys = edit?.changes && typeof edit.changes === 'object' ? Object.keys(edit.changes) : [];
+  return !(keys.length > 0 && keys.every(key => key === 'places'));
+});
