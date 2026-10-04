@@ -193,6 +193,14 @@ Reloading parties never invalidates the event places. `updatePaymentStatus(party
 and reloads. Profiles (the admin flag, a member's history across editions, who is signed in) are
 plain functions in `src/lib/profiles.ts`.
 
+**« Équipe »** (`src/lib/team.ts`, `TeamSection`, #217, #257) is where all access is managed, and
+admin-only: the admins (every edition), the chosen edition's Organisateurs and Comité, a picker
+that lists accounts with their level before anything is typed (« Inscrits seulement » on by
+default; past `PEOPLE_LIST_CAP` accounts it searches on the server instead), granting Comité,
+Organisateur or Admin (`set_edition_role()`, `admin_set_is_admin()`; Admin asks first, it applies
+to every edition), and a log that merges `admin_role_log` into the edition's role log
+(`mergeTeamLog`). The Inscrits list has no admin checkbox.
+
 The **budget** (`src/lib/budget.ts`, #195): an event's `event_budgets` row and the Budget
 editor's draft, per event, through `useBudget(eventId)`; Résumé and Budget read the same entry.
 `saveBudget` cleans the lines, writes, and drops the draft; a refusal throws the French message

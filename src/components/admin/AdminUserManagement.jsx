@@ -26,10 +26,7 @@ const FILTERS = [
 
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
-// Name | email | people | amount | payment | admin, from lg up; a card per party below.
-// Without the admin flag (anyone but an admin, #217), the last one goes.
-const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem_4.5rem]';
-const READ_GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
+const GRID_COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_5rem_7rem_7rem]';
 
 export const FilterPills = ({ filters, value, onChange, counts, label }) => (
   <div role="group" aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
@@ -55,22 +52,19 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
 );
 
 // Registered parties: who they are, what they owe, whether they paid. A party's name opens its
-// « Inscription » (#258); editing it is from there. Payment and admin changes go through the
+// « Inscription » (#258); editing it is from there. Payment changes go through the
 // parent, which confirms before writing. The search is in the page header; the
 // list scrolls in a box that ends on screen (a dense page, ADR 0022). An action whose handler is
 // missing isn't rendered: the role doesn't allow it (#217); the payment shows as a tag instead.
 const AdminUserManagement = ({
   parties,
-  currentUserId,
   onOpenParty,
-  onAdminToggle,
   onPaymentToggle
 }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const listRef = useRef(null);
-  const gridColumns = onAdminToggle ? GRID_COLUMNS : READ_GRID_COLUMNS;
-
+  
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
     [parties]
@@ -112,19 +106,17 @@ const AdminUserManagement = ({
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
       ) : (
         <div className="overflow-hidden rounded-card border border-line bg-surface">
-          <div className={`hidden lg:grid ${gridColumns} lg:gap-4 border-b border-line px-5 py-3 text-sm font-semibold text-faint`}>
+          <div className={`hidden lg:grid ${GRID_COLUMNS} lg:gap-4 border-b border-line px-5 py-3 text-sm font-semibold text-faint`}>
             <span>{fr.logisticsTableName}</span>
             <span>{fr.logisticsTableEmail}</span>
             <span>{fr.peopleColumn}</span>
             <span className="text-right">{fr.amountDue}</span>
             <span>{fr.paymentColumn}</span>
-            {onAdminToggle && <span>{fr.adminTableHeader}</span>}
           </div>
           {/* relative: the rows' visually hidden inputs are absolutely positioned, and would otherwise escape the scroll box and stretch the page. */}
           <ul ref={listRef} className="relative divide-y divide-line overflow-y-auto overscroll-contain">
             {visible.map(party => {
               const profile = party.profiles || {};
-              const isSelf = profile.id === currentUserId;
               const isPaid = party.payment_status === PAYMENT_STATUS.PAID;
               const isCancelled = !isActiveRegistration(party);
               const amount = isCancelled ? 0 : amountOwedOf(party);
@@ -132,7 +124,7 @@ const AdminUserManagement = ({
               return (
                 <li
                   key={party.id}
-                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${gridColumns} lg:gap-4 lg:px-5 lg:py-3`}
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} lg:gap-4 lg:px-5 lg:py-3`}
                 >
                   <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted lg:hidden">
                     {initials(profile.full_name || profile.email)}
@@ -167,19 +159,6 @@ const AdminUserManagement = ({
                       >
                         {getPaymentStatusShortLabel(party.payment_status)}
                       </button>
-                    )}
-                    {onAdminToggle && (
-                      <label className={cx('ml-auto inline-flex min-h-9 items-center gap-2 text-sm text-muted lg:ml-0', isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
-                        <input
-                          type="checkbox"
-                          checked={!!profile.is_admin}
-                          onChange={e => onAdminToggle(profile, e.target.checked)}
-                          disabled={isSelf}
-                          aria-label={fr.adminTableHeader}
-                          className="size-5 accent-[var(--color-neon)]"
-                        />
-                        <span className="lg:sr-only">{fr.adminTableHeader}</span>
-                      </label>
                     )}
                   </div>
                 </li>

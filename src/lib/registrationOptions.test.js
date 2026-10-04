@@ -1,5 +1,5 @@
 import fr from '../locales/fr.json';
-import { dietaryLabelsOf, dietaryNeedsOf, getTransportKindLabel, nextDietaryNeeds, transportKindOf } from './registrationOptions';
+import { accountLevel, getAccountLevelLabel, dietaryLabelsOf, dietaryNeedsOf, getTransportKindLabel, nextDietaryNeeds, transportKindOf } from './registrationOptions';
 
 test('dietaryNeedsOf reads arrays, and single values from older data', () => {
   expect(dietaryNeedsOf(['vegan', 'other'])).toEqual(['vegan', 'other']);
@@ -33,4 +33,19 @@ test('transportKindOf: offer and need as is; \'None\' (the column default), \'\'
   expect(transportKindOf({ type: '' })).toBe('none');
   expect(transportKindOf(null)).toBe('none');
   expect(['offer', 'need', 'none'].map(getTransportKindLabel)).toEqual([fr.transportKindOffer, fr.transportKindNeed, fr.transportKindNone]);
+});
+
+test('accountLevel: admin > organiser > committee > member', () => {
+  expect(accountLevel({ is_admin: true }, null)).toBe('admin');
+  expect(accountLevel({ is_admin: true }, 'committee')).toBe('admin');
+  expect(accountLevel({ is_admin: false }, 'organiser')).toBe('organiser');
+  expect(accountLevel({ is_admin: false }, 'committee')).toBe('committee');
+  expect(accountLevel({ is_admin: false }, null)).toBe('member');
+  expect(accountLevel({}, undefined)).toBe('member');
+  expect(accountLevel(null, 'unknown')).toBe('member');
+});
+
+test('getAccountLevelLabel names every level in French', () => {
+  expect(['admin', 'organiser', 'committee', 'member'].map(getAccountLevelLabel))
+    .toEqual([fr.editionRoleAdmin, fr.editionRoleOrganiser, fr.editionRoleCommittee, fr.accountLevelMember]);
 });

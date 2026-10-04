@@ -434,17 +434,30 @@ What a reset does (`scripts/preview-db.mjs`):
    admin screens. The seeded users stay regular members (except `admin@test.local`). No migration
    knows about this trigger, so it never reaches production.
 
+The generated registrations go through `save_registration()`, which acts on behalf of
+`auth.uid()` (attendees are writable only that way, #246), so the seed sets `request.jwt.claims`
+to each registrant before the call and clears it after the loop. CI's "Migrations apply cleanly"
+job loads the generated seed on the migrated schema (after `seed.sql`), so a migration that breaks
+the seed fails the PR. The seed is not reapplied to Preview on merge: reseed it after a merge that
+changes migrations touching seeded tables or the seed scripts.
+
 #### Signing in as a test account ("Se connecter comme…")
 
 A preview deployment only offers Google sign-in, so the account menu there has **Se connecter
 comme…** (#105). It signs in as any seeded `@test.local` account, which all share the password
 `password123`:
 
-- **Admin de test** / **Membre de test** in one click, from any state, even signed out. A member
-  can't list other accounts (RLS), so the admin link is the way back.
+- **Admin de test**, **Organisateur de test**, **Comité de test** and **Membre de test** in one
+  click, from any state, even signed out (the current account's button is disabled). A member
+  can't list other accounts (RLS), so the admin link is the way back. Organisateur and Comité
+  hold their role on the active event only where the seed grants it (the Preview seed does; the
+  plain local seed has no event, so grant them first, as the e2e setup does).
 - Any other `@test.local` address, typed in.
-- When the current account is an admin: the full list, searchable, with each account's state on
-  the active event (registered or waitlisted, paid, bed, email to check).
+- When the current account is an admin: the full list, searchable and filterable by level
+  (Admin, Organisateur, Comité, Membre, on the active event), with each account's level and
+  state on the active event (registered or waitlisted, paid, bed, email to check). The list is
+  the shared `AccountPicker` (`src/components/AccountPicker.jsx`), which « Voir comme » (#106)
+  reuses; only the action on choosing differs.
 
 While signed in as a test account, a thin bar under the header says so. It is the same on the
 local dev server against a local stack, which is how `e2e/preview-account-picker.spec.js` tests it.
