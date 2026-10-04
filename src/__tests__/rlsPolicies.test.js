@@ -935,7 +935,8 @@ describe('🛡️ admin-only registration fields (#94)', () => {
     const { error: rpcError } = await memberClient.rpc('save_logistics', {
       p_changes: [{ party_id: ADMIN_FIELDS_PARTY_ID, places: {}, admin_notes: 'hax' }]
     });
-    expect(rpcError?.message).toBe('admin_only');
+    // #217: Organisateur and above on the party's event.
+    expect(rpcError?.message).toBe('organiser_only');
     expect((await partyRow()).admin_notes).toBe('secret');
   });
 
@@ -1189,6 +1190,18 @@ describe('🗑️ removed attendees (#237)', () => {
       const { data } = await client.from('user_parties').select('attendees(name)').eq('id', memberParty.id).single();
       expect(data.attendees).toEqual([{ name: 'Ann' }]);
     }
+  });
+
+  // #217 made save_logistics() SECURITY DEFINER: the restrictive policy no longer hides the removed
+  // attendee from it, its own deleted_at check does.
+  test('save_logistics refuses a removed attendee (#217)', async () => {
+    const [ann, bob] = await attendeesOf(memberClient, memberParty.id);
+    await saveOk(memberClient, EVENT_ID, [person('Ann', { id: ann.id })]);
+    const { data: failed, error } = await adminAuthClient.rpc('save_logistics', {
+      p_changes: [{ party_id: memberParty.id, places: { [bob.id]: null } }]
+    });
+    expect(error).toBeNull();
+    expect(failed).toEqual([expect.objectContaining({ party_id: memberParty.id, message: 'logistics_attendee_not_in_party' })]);
   });
 
   test("the amount owed, the party's size and the event's headcount ignore a removed attendee", async () => {
@@ -2633,6 +2646,8 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     await ok(adminClient.from('email_log').upsert([partyA, partyB].map(party_id => ({ party_id, template: 'payment', status: 'failed' })),
       { onConflict: 'party_id,template' }));
     await ok(admin.from('event_budgets').upsert(EVENT_IDS.map(event_id => ({ event_id, lines: [{ category: 'Food', amount: 100 }] }))));
+    // The organisers' notes on each party (#227).
+    await ok(admin.from('party_admin_notes').upsert([partyA, partyB].map(party_id => ({ party_id, notes: 'Seeded' }))));
 
     for (const [eventId, userId, role] of [
       [EVENT_A, COMMITTEE_ID, 'committee'],
@@ -2677,6 +2692,9 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ["edition B's party", c => c.from('user_parties').select('id').eq('id', partyB), only('admin', 'otherCommittee')],
     ["edition B's registrant's profile", c => c.from('profiles').select('id').eq('id', throwaway.registrantB.id), only('admin', 'otherCommittee')],
     ["edition B's budget", c => c.from('event_budgets').select('event_id').eq('event_id', EVENT_B), ADMIN],
+    ["its party's notes (#227)", c => c.from('party_admin_notes').select('party_id').eq('party_id', partyA), TEAM_A],
+    ["its party's notes, embedded", c => c.from('user_parties').select('id, note:party_admin_notes!inner(notes)').eq('id', partyA), TEAM_A],
+    ["edition B's party's notes", c => c.from('party_admin_notes').select('party_id').eq('party_id', partyB), only('admin', 'otherCommittee')],
     ["A's venue assignments gallery", c => c.from('galleries').select('id').eq('venue_id', venueId).eq('kind', 'assignments'), TEAM_A],
     ['its images', c => c.from('gallery_images').select('id, gallery:galleries!inner(venue_id, kind)')
       .eq('gallery.venue_id', venueId).eq('gallery.kind', 'assignments'), TEAM_A],
@@ -2695,9 +2713,14 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     expect(seen).toEqual(expected);
   });
 
-  const partyRow = async (id = partyA) => ok(admin.from('user_parties').select('*').eq('id', id).single());
+  // The party, with its notes (#227: in party_admin_notes) as admin_notes.
+  const partyRow = async (id = partyA) => {
+    const { note, ...row } = await ok(admin.from('user_parties').select('*, note:party_admin_notes(notes)').eq('id', id).single());
+    return { ...row, admin_notes: note?.notes ?? null };
+  };
   const resetParty = async (id = partyA) => {
-    await ok(admin.from('user_parties').update({ payment_status: 'unpaid', admin_notes: null, music_requests: null }).eq('id', id));
+    await ok(admin.from('user_parties').update({ payment_status: 'unpaid', music_requests: null }).eq('id', id));
+    await ok(admin.from('party_admin_notes').upsert({ party_id: id, notes: 'Seeded' }));
   };
   const attendeeName = async () => (await ok(admin.from('attendees').select('name').eq('id', attendeeA).single())).name;
 
@@ -2709,9 +2732,18 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
     ['payment status by a direct update',
       c => c.from('user_parties').update({ payment_status: 'paid' }).eq('id', partyA),
       async () => (await partyRow()).payment_status === 'paid', () => resetParty(), ADMIN],
-    ['admin notes by a direct update',
-      c => c.from('user_parties').update({ admin_notes: 'direct' }).eq('id', partyA),
-      async () => (await partyRow()).admin_notes === 'direct', () => resetParty(), ADMIN],
+    ['notes by a direct update of party_admin_notes (#227)',
+      c => c.from('party_admin_notes').update({ notes: 'direct' }).eq('party_id', partyA),
+      async () => (await partyRow()).admin_notes === 'direct', () => resetParty(), ORGANISERS_A],
+    ['notes by a direct insert into party_admin_notes',
+      async c => { await admin.from('party_admin_notes').delete().eq('party_id', partyA); return c.from('party_admin_notes').insert({ party_id: partyA, notes: 'direct' }); },
+      async () => (await partyRow()).admin_notes === 'direct', () => resetParty(), ORGANISERS_A],
+    ['notes by a direct delete from party_admin_notes',
+      async c => { await resetParty(); return c.from('party_admin_notes').delete().eq('party_id', partyA); },
+      async () => (await partyRow()).admin_notes === null, () => resetParty(), ORGANISERS_A],
+    ["edition B's notes by a direct update",
+      c => c.from('party_admin_notes').update({ notes: 'direct' }).eq('party_id', partyB),
+      async () => (await partyRow(partyB)).admin_notes === 'direct', () => resetParty(partyB), ADMIN],
     ['any other party column by a direct update',
       c => c.from('user_parties').update({ music_requests: 'direct' }).eq('id', partyA),
       async () => (await partyRow()).music_requests === 'direct', () => resetParty(), ADMIN],

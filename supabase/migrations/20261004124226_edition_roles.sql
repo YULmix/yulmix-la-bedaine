@@ -26,10 +26,15 @@
 --     admin, so reading a party (Comité) never lets anyone write its attendees.
 --   * save_registration() for someone else stays admin-only: its party lookup and writes run
 --     under the caller's RLS, which gives only an admin someone else's row.
+--   * party_admin_notes (#227, admin-only until now): Comité and above on the party's edition
+--     read them, Organisateur and above write them (the "once #217 lands" clause of #227).
+--   * save_logistics() and event_places() become SECURITY DEFINER, so #237's restrictive policy
+--     ("Attendees: removed ones are hidden") no longer filters their reads of attendees: each
+--     filters `deleted_at IS NULL` itself, as #237's other definer functions do.
 --
--- Functions redefined here, each copied from its latest definition:
---   protect_admin_only_party_fields                  20261003045014_message_to_participants.sql
---   save_logistics                                   20261003152504_place_assignment_history.sql (#188)
+-- Functions redefined here, each copied from its latest definition on main:
+--   protect_admin_only_party_fields                  20261004021924_party_admin_notes.sql (#227)
+--   save_logistics                                   20261004021924_party_admin_notes.sql (#227)
 --   event_places                                     20261001225145_event_places.sql
 
 -- ---------------------------------------------------------------------------------------------
@@ -380,7 +385,33 @@ CREATE POLICY "Email Log: Organisateur and above read their edition's" ON public
                    WHERE up.id = email_log.party_id AND public.has_edition_role(up.event_id, 'organiser')));
 
 -- ---------------------------------------------------------------------------------------------
--- The admin-only party fields: as in 20261003045014_message_to_participants.sql, plus the party a
+-- The organisers' notes (#227): Comité and above on the party's edition read them, Organisateur
+-- and above write them (admins included: has_edition_role() is 'admin' for them on every event).
+-- Members still have no access of any kind. The party is read under the caller's RLS, which
+-- shows an edition's team that edition's parties.
+
+DROP POLICY "Party Admin Notes: Admin full access" ON public.party_admin_notes;
+CREATE POLICY "Party Admin Notes: Edition team reads its edition's" ON public.party_admin_notes
+    FOR SELECT TO authenticated
+    USING (EXISTS (SELECT 1 FROM public.user_parties up
+                   WHERE up.id = party_id AND public.has_edition_role(up.event_id, 'committee')));
+CREATE POLICY "Party Admin Notes: Organisateur and above insert" ON public.party_admin_notes
+    FOR INSERT TO authenticated
+    WITH CHECK (EXISTS (SELECT 1 FROM public.user_parties up
+                        WHERE up.id = party_id AND public.has_edition_role(up.event_id, 'organiser')));
+CREATE POLICY "Party Admin Notes: Organisateur and above update" ON public.party_admin_notes
+    FOR UPDATE TO authenticated
+    USING (EXISTS (SELECT 1 FROM public.user_parties up
+                   WHERE up.id = party_id AND public.has_edition_role(up.event_id, 'organiser')))
+    WITH CHECK (EXISTS (SELECT 1 FROM public.user_parties up
+                        WHERE up.id = party_id AND public.has_edition_role(up.event_id, 'organiser')));
+CREATE POLICY "Party Admin Notes: Organisateur and above delete" ON public.party_admin_notes
+    FOR DELETE TO authenticated
+    USING (EXISTS (SELECT 1 FROM public.user_parties up
+                   WHERE up.id = party_id AND public.has_edition_role(up.event_id, 'organiser')));
+
+-- ---------------------------------------------------------------------------------------------
+-- The admin-only party fields: as in 20261004021924_party_admin_notes.sql (#227), plus the party a
 -- role-checking function is writing (bedaine.organiser_party).
 
 CREATE OR REPLACE FUNCTION public.protect_admin_only_party_fields()
@@ -402,11 +433,9 @@ BEGIN
 
     IF TG_OP = 'INSERT' THEN
         NEW.payment_status := 'unpaid';
-        NEW.admin_notes := NULL;
         NEW.message_to_participants := NULL;
     ELSE
         NEW.payment_status := OLD.payment_status;
-        NEW.admin_notes := OLD.admin_notes;
         NEW.message_to_participants := OLD.message_to_participants;
     END IF;
     RETURN NEW;
@@ -477,11 +506,11 @@ REVOKE ALL ON FUNCTION public.apply_event_pricing(uuid, numeric, numeric) FROM P
 GRANT EXECUTE ON FUNCTION public.set_payment_status(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_event_pricing(uuid, numeric, numeric) TO authenticated;
 
--- As in 20261003152504_place_assignment_history.sql (#188), except who may call it (#217): Organisateur
+-- As in 20261004021924_party_admin_notes.sql (#227), except who may call it (#217): Organisateur
 -- and above on each party's event, checked per party. It is now SECURITY DEFINER, since an
--- organiser has no write policy on place_assignments or user_parties; the texts are written
+-- organiser has no write policy on place_assignments or user_parties; the message is written
 -- under bedaine.organiser_party. A caller who is neither admin nor organiser of any edition is
--- refused up front.
+-- refused up front. Being SECURITY DEFINER, it checks attendees.deleted_at itself (#237).
 --
 -- p_changes: [{ "party_id": uuid,
 --               "admin_notes": text,                       -- optional: absent = unchanged
@@ -500,6 +529,7 @@ DECLARE
     v_place record;
     v_places_before jsonb;
     v_place_changes jsonb;
+    v_pending jsonb;
     v_failed jsonb := '[]'::jsonb;
     v_state text;
     v_message text;
@@ -535,12 +565,20 @@ BEGIN
             PERFORM 1 FROM public.user_parties WHERE id = v_party_id FOR UPDATE;
             v_places_before := private.party_places_snapshot(v_party_id);
 
+            -- This party's history entry, collected as it saves: its places here, its notes by
+            -- party_admin_notes' trigger. log_registration_edit takes it when the update below
+            -- writes an entry (and clears it), else it's written at the end.
+            PERFORM set_config('bedaine.logistics_changes',
+                jsonb_build_object('party_id', v_party_id, 'changes', '{}'::jsonb)::text, true);
+
             FOR v_place IN
                 SELECT key::uuid AS attendee_id, CASE WHEN jsonb_typeof(value) = 'null' THEN NULL ELSE (value #>> '{}')::uuid END AS place_id
                 FROM jsonb_each(COALESCE(v_party->'places', '{}'::jsonb))
             LOOP
+                -- #217: deleted_at here, as #237's restrictive policy no longer applies.
                 IF NOT EXISTS (SELECT 1 FROM public.attendees
-                               WHERE id = v_place.attendee_id AND party_id = v_party_id) THEN
+                               WHERE id = v_place.attendee_id AND party_id = v_party_id
+                                 AND deleted_at IS NULL) THEN
                     RAISE EXCEPTION USING MESSAGE = 'logistics_attendee_not_in_party', ERRCODE = 'check_violation';
                 END IF;
 
@@ -555,32 +593,36 @@ BEGIN
                 END IF;
             END LOOP;
 
-            -- The places' history goes in the texts' entry when the update below writes one
-            -- (log_registration_edit takes it from the setting and clears it), else in its own.
             v_place_changes := private.place_changes(v_places_before, private.party_places_snapshot(v_party_id));
             IF v_place_changes IS NOT NULL THEN
-                PERFORM set_config('bedaine.place_changes',
-                    jsonb_build_object('party_id', v_party_id, 'places', v_place_changes)::text, true);
+                v_pending := current_setting('bedaine.logistics_changes', true)::jsonb;
+                PERFORM set_config('bedaine.logistics_changes',
+                    jsonb_set(v_pending, '{changes,places}', v_place_changes)::text, true);
             END IF;
 
-            -- Both texts in one update, so one change-history entry; an absent key keeps the column.
-            IF v_party ? 'admin_notes' OR v_party ? 'message_to_participants' THEN
-                -- #217: protect_admin_only_party_fields() lets this party's texts through.
+            -- The organisers' notes (#227); an absent key keeps them.
+            IF v_party ? 'admin_notes' THEN
+                INSERT INTO public.party_admin_notes (party_id, notes)
+                VALUES (v_party_id, v_party->>'admin_notes')
+                ON CONFLICT (party_id) DO UPDATE SET notes = EXCLUDED.notes
+                WHERE public.party_admin_notes.notes IS DISTINCT FROM EXCLUDED.notes;
+            END IF;
+
+            IF v_party ? 'message_to_participants' THEN
+                -- #217: protect_admin_only_party_fields() lets this party's message through.
                 PERFORM set_config('bedaine.organiser_party', v_party_id::text, true);
                 UPDATE public.user_parties
-                SET admin_notes = CASE WHEN v_party ? 'admin_notes'
-                                       THEN v_party->>'admin_notes' ELSE admin_notes END,
-                    message_to_participants = CASE WHEN v_party ? 'message_to_participants'
-                                                   THEN v_party->>'message_to_participants' ELSE message_to_participants END
+                SET message_to_participants = v_party->>'message_to_participants'
                 WHERE id = v_party_id;
                 PERFORM set_config('bedaine.organiser_party', '', true);
             END IF;
 
-            IF v_place_changes IS NOT NULL AND COALESCE(current_setting('bedaine.place_changes', true), '') <> '' THEN
+            v_pending := NULLIF(current_setting('bedaine.logistics_changes', true), '')::jsonb;
+            IF v_pending IS NOT NULL AND v_pending->'changes' <> '{}'::jsonb THEN
                 INSERT INTO public.registration_edits (registration_id, edited_by, changes)
-                VALUES (v_party_id, auth.uid(), jsonb_build_object('places', v_place_changes));
-                PERFORM set_config('bedaine.place_changes', '', true);
+                VALUES (v_party_id, auth.uid(), v_pending->'changes');
             END IF;
+            PERFORM set_config('bedaine.logistics_changes', '', true);
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT, v_details = PG_EXCEPTION_DETAIL;
             v_failed := v_failed || jsonb_build_array(jsonb_build_object(
@@ -597,11 +639,11 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.save_logistics(jsonb) IS
-    'Saves the Logistique tab''s pending places, admin notes and messages to participants (#150, #216), each party all or nothing, with one change-history entry per party saved (#188), for Organisateur and above on its event (#217). Returns the parties not saved, with their error.';
+    'Saves the Logistique tab''s pending places, admin notes (party_admin_notes, #227) and messages to participants (#150, #216), each party all or nothing, with one change-history entry per party saved (#188), for Organisateur and above on its event (#217). Returns the parties not saved, with their error.';
 
 -- As in 20261001225145_event_places.sql, except who may read it (#217): Comité and above on the
 -- event. SECURITY DEFINER now, since the team's RLS shows the places people sleep in, not the
--- venue's empty ones nor the event's overrides.
+-- venue's empty ones nor the event's overrides; so it skips removed attendees itself (#237).
 CREATE OR REPLACE FUNCTION public.event_places(p_event_id uuid)
 RETURNS TABLE (
     place_id uuid,
@@ -641,6 +683,7 @@ BEGIN
         JOIN public.attendees a ON a.id = pa.attendee_id
         JOIN public.user_parties up ON up.id = a.party_id
         WHERE pa.place_id = vl.place_id AND up.event_id = e.id
+          AND a.deleted_at IS NULL  -- #217: #237's restrictive policy no longer applies here
     ) occ ON true
     WHERE e.id = p_event_id AND vl.place_id IS NOT NULL
     ORDER BY vl."position";
