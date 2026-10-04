@@ -633,3 +633,27 @@ export async function getEditionRole(eventId, userId) {
   );
   return row?.role ?? null;
 }
+
+// #236: a party's attendees ({ id, name }, live ones), in order.
+export async function getAttendees(partyId) {
+  const db = await adminClient();
+  return check(await db.from('attendees').select('id, name').eq('party_id', partyId).order('position'), 'read attendees');
+}
+
+// Saves the party again keeping only the attendees named, so the others are removed (soft-deleted).
+export async function keepOnlyAttendees(eventId, partyId, userId, names) {
+  const db = await adminClient();
+  const kept = (await getAttendees(partyId)).filter(a => names.includes(a.name));
+  const full = E2E_ATTENDEES.filter(a => names.includes(a.name)).map(a => ({ ...a, id: kept.find(k => k.name === a.name).id }));
+  check(await db.rpc('save_registration', { p_event_id: eventId, p_attendees: full, p_user_id: userId, p_party: { id: partyId } }), 'remove attendees');
+}
+
+export async function cancelParty(partyId) {
+  const db = await adminClient();
+  check(await db.from('user_parties').update({ status: 'cancelled' }).eq('id', partyId), 'cancel party');
+}
+
+export async function saveBudgetLines(eventId, lines) {
+  const db = await adminClient();
+  check(await db.from('event_budgets').upsert({ event_id: eventId, lines }), 'seed budget lines');
+}

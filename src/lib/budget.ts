@@ -21,6 +21,8 @@ export interface BudgetLine {
   category: string;
   description?: string | null;
   amount: number | string;
+  /** Who paid it (#236): an attendee id; absent or null = nobody. */
+  paid_by_attendee_id?: string | null;
 }
 
 /** The Budget editor's unsaved lines and contingency (as typed). */
@@ -131,7 +133,8 @@ export const createBudgetStore = (client: Client) => {
           lines: lines.map(line => ({
             category: line.category,
             description: (line.description || '').trim(),
-            amount: Math.max(Number(line.amount) || 0, 0)
+            amount: Math.max(Number(line.amount) || 0, 0),
+            ...(line.paid_by_attendee_id ? { paid_by_attendee_id: line.paid_by_attendee_id } : {})
           })),
           contingency_pct: Math.min(Math.max(Number(contingency) || 0, 0), 100)
         })
@@ -159,9 +162,28 @@ export type BudgetStore = ReturnType<typeof createBudgetStore>;
 
 const store = createBudgetStore(supabase);
 
+/**
+ * The payers' names by attendee id, removed attendees included (the admin-only attendee_by_id
+ * resolves them, RLS hides them from plain reads). Ids it can't resolve are left out.
+ */
+export const fetchPayers = async (client: Client, ids: string[]): Promise<Map<string, { name: string; removed: boolean }>> => {
+  const payers = new Map<string, { name: string; removed: boolean }>();
+  await Promise.all([...new Set(ids)].map(async (id) => {
+    const { data, error } = await client.rpc('attendee_by_id', { p_attendee_id: id });
+    if (error) {
+      console.error('Error resolving a payer:', error);
+      return;
+    }
+    const attendee = data?.[0];
+    if (attendee) payers.set(id, { name: attendee.name, removed: attendee.deleted_at !== null });
+  }));
+  return payers;
+};
+
 export const setBudgetDraft = store.setDraft;
 export const saveBudget = store.save;
 export const refreshBudget = store.refresh;
+export const resolvePayers = (ids: string[]) => fetchPayers(supabase, ids);
 
 /** An event's budget and the editor's draft, from the shared store. Without an event: nothing. */
 export const useBudget = (eventId: string | null | undefined, budgetStore: BudgetStore = store): BudgetSnapshot => {

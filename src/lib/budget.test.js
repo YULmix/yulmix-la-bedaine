@@ -1,5 +1,5 @@
 import fr from '../locales/fr.json';
-import { createBudgetStore } from './budget';
+import { createBudgetStore, fetchPayers } from './budget';
 
 // jest hoists this above the imports.
 jest.mock('./supabase', () => ({ supabase: {} }));
@@ -112,5 +112,37 @@ describe('budget store (#195)', () => {
     client.saveError = { message: 'boom' };
     await expect(store.save(EVENT, [], '20')).rejects.toThrow(fr.saveError);
     expect(store.getSnapshot(EVENT)).toMatchObject({ draft, saving: false, budget: row() });
+  });
+});
+
+describe('« Payé par » on budget lines (#236)', () => {
+  const ANN = '11111111-1111-4111-8111-111111111111';
+
+  test('save() keeps the payer\'s id on a line, and sends none for a cleared one', async () => {
+    const client = fakeClient();
+    const store = createBudgetStore(client);
+    await store.save(EVENT, [
+      { category: 'Food', description: ' Épicerie ', amount: '12.5', paid_by_attendee_id: ANN },
+      { category: 'Food', description: '', amount: 5, paid_by_attendee_id: null },
+      { category: 'Tech', description: '', amount: 1 }
+    ], 20);
+    expect(client.upserts[0].lines).toEqual([
+      { category: 'Food', description: 'Épicerie', amount: 12.5, paid_by_attendee_id: ANN },
+      { category: 'Food', description: '', amount: 5 },
+      { category: 'Tech', description: '', amount: 1 }
+    ]);
+  });
+
+  test('fetchPayers resolves names, marks removed attendees and skips unknown or failing ids', async () => {
+    const answers = {
+      a: { data: [{ id: 'a', name: 'Ann', deleted_at: null }], error: null },
+      b: { data: [{ id: 'b', name: 'Bob', deleted_at: '2026-10-01T00:00:00Z' }], error: null },
+      c: { data: [], error: null },
+      d: { data: null, error: { message: 'boom' } }
+    };
+    const client = { rpc: jest.fn((_name, { p_attendee_id: id }) => Promise.resolve(answers[id])) };
+    const payers = await fetchPayers(client, ['a', 'b', 'c', 'd', 'a']);
+    expect(client.rpc).toHaveBeenCalledTimes(4);
+    expect([...payers]).toEqual([['a', { name: 'Ann', removed: false }], ['b', { name: 'Bob', removed: true }]]);
   });
 });
