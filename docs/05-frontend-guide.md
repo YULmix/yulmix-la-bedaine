@@ -371,6 +371,11 @@ fixture rows was rejected on real data).
   on the demo seed (`npm run db:local:demo`: 70 parties, long names, every enum value), never
   only on the e2e fixtures' few short rows. Every new dialog, pop-up and menu is screenshotted
   **open**.
+- **The organiser judges the preview, not the screenshots.** Screenshots are the developer's (and a
+  visual reviewer's) own check. The organiser confirms a UI change only on the PR's Vercel preview
+  deployment: never hand them screenshots, local files or a local dev page (they may be working
+  remotely, from a terminal). A UI change is ready for the organiser once it is pushed and CI is
+  green, with the preview URL.
 - **Look at them.** No horizontal scroll at 390, nothing overlapping, no clipped text, dialogs with
   the ui dialog component's padding (its body has none: add `p-5 sm:p-6`, as `ExportDialog` does).
 - **Names wrap, never truncate.** A name, a group, an email, anything an organiser reads to tell
