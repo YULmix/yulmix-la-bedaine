@@ -488,8 +488,14 @@ It runs on insert and on any update that sets `status`, which `save_registration
 always does, so it sees the party's attendees as saved.
 
 Waitlisting is **all-or-nothing per party** (a party of 4 that straddles the cap goes entirely to
-the waitlist). When a party is cancelled, `promote_waitlisted_parties` moves waitlisted parties off
-the list, oldest first, while they fit.
+the waitlist). The waiting list is re-run by `private.promote_waitlisted_for_event(event_id)`,
+which takes the same per-event advisory lock, then moves waitlisted (`registered`/`pending`)
+parties off the list, oldest first, while they fit; the first one that does not fit stops the
+loop. It is called by `trg_promote_waitlisted_on_cancel` (a party is cancelled) and by
+`trg_promote_waitlisted_on_capacity_change` (`events.max_attendees` changed, #247). A capacity of
+`NULL` or `<= 0` means no limit: every waitlisted party is promoted. Lowering the capacity
+demotes nobody. A promotion is a plain `is_waitlisted` update, so it sends the « promotion » email
+(next section).
 
 ### Transactional emails
 

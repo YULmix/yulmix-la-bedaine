@@ -935,6 +935,119 @@ describe('👥 capacity and waitlist see every party (#118)', () => {
   });
 });
 
+// #247: changing an event's capacity re-runs the waiting list, like a cancellation does.
+describe('⏫ capacity change promotes the waiting list (#247)', () => {
+  jest.setTimeout(60000);
+
+  const RAISE_EVENT_ID = 'a0000000-a000-a000-a000-a00000000247';
+  const createdUserIds = [];
+  let adminAuthClient;
+  let parties; // { holder, big, small1, small2 }, registered in this order
+
+  const people = n => Array.from({ length: n }, () => ({ type: 'Adult', participation: 'Whole' }));
+  const setCapacity = async (max) => {
+    const { error } = await adminAuthClient.from('events').update({ max_attendees: max }).eq('id', RAISE_EVENT_ID);
+    if (error) throw error;
+  };
+  const waitlistState = async () => {
+    const { data } = await adminAuthClient.from('user_parties').select('id, is_waitlisted').eq('event_id', RAISE_EVENT_ID);
+    const byId = Object.fromEntries(data.map(row => [row.id, row.is_waitlisted]));
+    return Object.fromEntries(Object.entries(parties).map(([name, id]) => [name, byId[id]]));
+  };
+  const newUser = async (label) => {
+    const { data, error } = await adminClient.auth.admin.createUser({
+      email: `cap247-${label}-${Date.now()}@test.local`, password: 'password123', email_confirm: true
+    });
+    if (error) throw error;
+    createdUserIds.push(data.user.id);
+    return data.user.id;
+  };
+  const newParty = async (label, size) => (await saveOk(adminAuthClient, RAISE_EVENT_ID, people(size), { userId: await newUser(label) })).id;
+
+  beforeAll(async () => {
+    adminAuthClient = await signIn('admin@test.local');
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: RAISE_EVENT_ID, theme: 'Capacity Raise Test', status: 'ACTIVE', max_attendees: 1
+    });
+    if (error) throw error;
+    // Capacity 1: the holder fills it, the three others queue in order (sizes 2, 1, 1).
+    parties = {};
+    parties.holder = await newParty('holder', 1);
+    parties.big = await newParty('big', 2);
+    parties.small1 = await newParty('small1', 1);
+    parties.small2 = await newParty('small2', 1);
+  });
+
+  beforeEach(async () => {
+    // Back to the starting point: everyone but the holder waitlisted, capacity 1.
+    await setCapacity(1);
+    for (const name of ['big', 'small1', 'small2']) {
+      const { error } = await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).eq('id', parties[name]);
+      if (error) throw error;
+    }
+  });
+
+  afterAll(async () => {
+    for (const id of createdUserIds) {
+      await adminAuthClient.from('user_parties').delete().eq('user_id', id);
+      await adminClient.auth.admin.deleteUser(id);
+    }
+    await adminAuthClient.from('events').delete().eq('id', RAISE_EVENT_ID);
+  });
+
+  test('starts with the holder in and everyone else waitlisted', async () => {
+    expect(await waitlistState()).toEqual({ holder: false, big: true, small1: true, small2: true });
+  });
+
+  test('raising the capacity promotes oldest first, while the parties fit', async () => {
+    await setCapacity(4); // 3 free places: big (2) then small1 (1); small2 does not fit
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: true });
+  });
+
+  test('a party that straddles the new capacity stays, and nobody behind it jumps the queue', async () => {
+    await setCapacity(2); // 1 free place: big (2) does not fit, small1 would but is behind it
+    expect(await waitlistState()).toEqual({ holder: false, big: true, small1: true, small2: true });
+  });
+
+  test('capacity null or 0 (no limit) promotes every waitlisted party', async () => {
+    await setCapacity(null);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await setCapacity(1);
+    await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).in('id', [parties.big, parties.small1, parties.small2]);
+    await setCapacity(0);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+  });
+
+  test('a cancelled waitlisted party is not promoted', async () => {
+    await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', parties.big);
+    await setCapacity(10);
+    const { data } = await adminAuthClient.from('user_parties').select('is_waitlisted').eq('id', parties.big).single();
+    expect(data.is_waitlisted).toBe(true);
+    await adminAuthClient.from('user_parties').update({ status: 'registered' }).eq('id', parties.big);
+  });
+
+  test('lowering the capacity, or saving it unchanged, moves nobody', async () => {
+    await setCapacity(10);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await setCapacity(1);
+    expect(await waitlistState()).toEqual({ holder: false, big: false, small1: false, small2: false });
+    await adminAuthClient.from('user_parties').update({ is_waitlisted: true }).eq('id', parties.small2);
+    await setCapacity(1); // unchanged: no trigger
+    expect((await waitlistState()).small2).toBe(true);
+  });
+
+  test('a registration racing a capacity raise never overbooks', async () => {
+    const racerUser = await newUser('racer');
+    // Capacity 1 -> 5: the queue (2 + 1 + 1) fills the 4 new places, whichever of the two wins the lock.
+    const [, racer] = await Promise.all([setCapacity(5), saveOk(adminAuthClient, RAISE_EVENT_ID, people(1), { userId: racerUser })]);
+    const state = await waitlistState();
+    expect(state).toEqual({ holder: false, big: false, small1: false, small2: false });
+    const { data } = await adminAuthClient.from('user_parties').select('id, is_waitlisted').eq('event_id', RAISE_EVENT_ID);
+    expect(data.filter(row => !row.is_waitlisted)).toHaveLength(4); // 4 parties, 5 heads: full
+    expect(data.find(row => row.id === racer.id).is_waitlisted).toBe(true);
+  });
+});
+
 // #126 (ADR 0018): attendees are rows of their own table, with the party's access, written only
 // through save_registration().
 describe('🧑‍🤝‍🧑 attendees table (#126)', () => {
