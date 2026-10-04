@@ -3,7 +3,8 @@
 // Dates are emitted relative to current_date, so the data never goes stale.
 //
 // Runs during `supabase db reset` after the migrations and supabase/seed.sql (which creates
-// member@test.local ...0001 and admin@test.local ...0002). Registrations go through
+// member@test.local ...0001, admin@test.local ...0002, committee@test.local ...0003 and
+// organiser@test.local ...0004). Registrations go through
 // save_registration(), so calculated_amount_owed and is_waitlisted come from the database, profiles
 // from handle_new_user(). The last statement installs the Preview-only "new accounts are admins"
 // trigger, after the seeded users exist so they stay regular members.
@@ -161,7 +162,7 @@ function emailFor(first, last, taken) {
 }
 
 function generateMembers(faker, count) {
-  const taken = new Set(['member@test.local', 'admin@test.local']);
+  const taken = new Set(['member@test.local', 'admin@test.local', 'committee@test.local', 'organiser@test.local']);
   return Array.from({ length: count }, () => {
     const firstName = faker.person.firstName();
     const lastName = faker.person.lastName();
@@ -497,6 +498,17 @@ SELECT private.freeze_event_layout(id) FROM public.events WHERE status = 'ARCHIV
 ${feedback.map((f) => `  (${lit(f.userId)}, ${lit(f.content)}, ${f.resolved}, now() - make_interval(days => ${f.daysAgo}), ${f.resolved ? `now() - make_interval(days => ${Math.max(f.daysAgo - 1, 0)})` : 'NULL'})`).join(',\n')};
 `);
   }
+
+  // supabase/seed.sql's Comité and Organisateur test users get their role on the active event
+  // (#217, ADR 0023), so each rung of the ladder can be tried in a preview.
+  out.push(`INSERT INTO public.edition_roles (event_id, user_id, role)
+SELECT e.id, r.user_id, r.role
+FROM public.events e
+CROSS JOIN (VALUES ('00000000-0000-0000-0000-000000000003'::uuid, 'committee'),
+                   ('00000000-0000-0000-0000-000000000004'::uuid, 'organiser')) AS r(user_id, role)
+WHERE e.is_active AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = r.user_id)
+ON CONFLICT (event_id, user_id) DO NOTHING;
+`);
 
   out.push(`-- Preview only: every account created from now on (i.e. real Google sign-ins) is an admin.
 -- Created last so the users seeded above stay regular members. Lives only in this database: a
