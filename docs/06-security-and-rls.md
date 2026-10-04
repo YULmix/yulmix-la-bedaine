@@ -207,6 +207,34 @@ An admin can open the app in a member's **real** session to see exactly what tha
 - The hook is enabled locally by `supabase/config.toml`; in production and Preview it is enabled in
   the dashboard (#268).
 
+The `impersonate` Edge Function (#266, `supabase/functions/impersonate/`) mints the session; it
+adds no rule the database doesn't already hold, and it hands over nothing the database didn't mark:
+
+- **The caller.** `verify_jwt = true`, and the function checks the bearer token again with Supabase
+  Auth (`GET /auth/v1/user`: signature and live session) before reading its claims. A token that
+  carries `impersonated_by` can't start a session (`impersonation_caller_impersonated`, 403);
+  `is_admin()`, called as the caller, must be true (`impersonation_actor_not_admin`, 403). Never a
+  flag from the request.
+- **The target.** Read as the caller (admins read every profile): self, an admin, a deleted or an
+  unknown account is refused before anything is written, with the trigger's codes (422, 404). The
+  trigger checks them again on the insert, and its refusals come back with the same codes
+  (`impersonation_target_pending`: 409). The magic link goes to the email of the **Auth account**
+  found by id, never a profile's email: `generateLink` for an email Auth doesn't know would create
+  an account.
+- **The session.** The `impersonation_log` row is inserted with the service role, then a magic link
+  is generated (no email is sent) and verified at once with no persisted session. The returned
+  token is handed over only if it is the target's, carries `impersonated_by` = the caller, and its
+  `session_id` is the one the hook tied to **this** row. Otherwise (the hook disabled or failed open)
+  the session is signed out, the row ended, and the response is 500 `impersonation_not_marked`. Any
+  failure after the insert ends the row, so it doesn't hold the member's pending slot.
+- **The end.** `{ action: 'end', session_id }` from the admin who started it (another admin gets
+  404) sets `ended_at`, so every refresh is refused by the hook; given the session's
+  `access_token` too, it signs that session out (`/logout?scope=local`). The read-only tab can end
+  its own session with its own token (« Quitter »). Never a global sign-out: the member's own
+  sessions are untouched. An access token already issued stays readable until its `exp` (at most
+  the 30 minutes), read-only.
+- **Logs** carry codes and statuses only: no token, email or member data.
+
 ## The gap that matters most
 
 **`calculated_amount_owed` is computed in the browser and written as a plain column value**
