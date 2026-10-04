@@ -2,10 +2,10 @@ import fr from '../locales/fr.json';
 import { formatCurrency } from './format.js';
 import {
   ACCOMMODATION_OPTIONS,
-  TRANSPORT_TYPES,
   departureOf,
   getOptionLabel,
   getDietaryRequestsLabel,
+  getTransportTypeLabel,
   getRegistrationStatusLabel,
   getPaymentStatusLabel
 } from './registrationOptions';
@@ -76,7 +76,7 @@ const formatValue = (field, value) => {
     case 'transport':
       if (typeof value === 'object') {
         const place = departureOf(value) ? `, ${fr.transportDeparturePlaceShort}: ${departureOf(value)}` : '';
-        return `${getOptionLabel(TRANSPORT_TYPES, value.type, fr.noneFallback)}, ${fr.transportSeats}: ${value.seats || 0}${place}`;
+        return `${getTransportTypeLabel(value)}, ${fr.transportSeats}: ${value.seats || 0}${place}`;
       }
       return JSON.stringify(value);
     case 'status':
