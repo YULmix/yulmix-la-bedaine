@@ -145,7 +145,21 @@ jobs:
       # or typecheck would be checking the app against a schema that no longer exists.
       - name: Database types match the migrations
         run: |
-          supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"
+          # `gen types` pulls the postgres-meta image from public.ecr.aws, which sometimes
+          # answers "toomanyrequests: Rate exceeded" (#253). Retry the generation only: the
+          # diff below runs once, so a real mismatch still fails at once without retries.
+          for attempt in 1 2 3 4 5; do
+            if supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::supabase gen types failed 5 times (registry rate limit?)"
+              exit 1
+            fi
+            delay=$((10 * 2 ** (attempt - 1)))
+            echo "gen types failed (attempt $attempt); retrying in ${delay}s"
+            sleep "$delay"
+          done
           if ! diff -u src/lib/database.types.ts "$RUNNER_TEMP/database.types.ts"; then
             echo "::error file=src/lib/database.types.ts::Out of date with supabase/migrations/: run npm run db:types and commit the result."
             exit 1
