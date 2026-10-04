@@ -517,6 +517,92 @@ describe('💵 main-event ratio and admin-only budget (#109)', () => {
   });
 });
 
+describe('🧾 « Payé par » on budget lines (#236)', () => {
+  jest.setTimeout(30000);
+
+  const EVENT_ID = 'a0000000-a000-a000-a000-a00000000236';
+  const OTHER_EVENT_ID = 'a0000000-a000-a000-a000-a00000002361';
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+
+  let memberClient;
+  let adminAuthClient;
+  let party;
+  let ann;
+  let bob;
+  let outsider;
+
+  const attendeesOf = async (partyId) => (await adminAuthClient.from('attendees')
+    .select('id, name').eq('party_id', partyId).order('position')).data;
+  const saveLines = (lines) => adminAuthClient.from('event_budgets')
+    .upsert({ event_id: EVENT_ID, lines }).select().single();
+  const line = (extra = {}) => ({ category: 'Food', description: 'Épicerie', amount: 100, ...extra });
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+  });
+
+  beforeEach(async () => {
+    for (const id of [EVENT_ID, OTHER_EVENT_ID]) {
+      await adminAuthClient.from('user_parties').delete().eq('event_id', id);
+      await adminAuthClient.from('event_budgets').delete().eq('event_id', id);
+      const { error } = await adminAuthClient.from('events').upsert({
+        id, theme: 'Payer Test Event', status: 'ACTIVE', selling_price_whole_event: 100
+      });
+      if (error) throw error;
+    }
+    party = await saveOk(memberClient, EVENT_ID, [person('Ann'), person('Bob')]);
+    [ann, bob] = await attendeesOf(party.id);
+    const other = await saveOk(adminAuthClient, OTHER_EVENT_ID, [person('Zed')]);
+    [outsider] = await attendeesOf(other.id);
+  });
+
+  afterAll(async () => {
+    for (const id of [EVENT_ID, OTHER_EVENT_ID]) {
+      await adminAuthClient.from('user_parties').delete().eq('event_id', id);
+      await adminAuthClient.from('event_budgets').delete().eq('event_id', id);
+    }
+  });
+
+  test('an attendee of the same event saves; absent or null saves; the total is unchanged', async () => {
+    const { data, error } = await saveLines([
+      line({ paid_by_attendee_id: ann.id }),
+      line({ paid_by_attendee_id: null }),
+      line()
+    ]);
+    expect(error).toBeNull();
+    expect(data.lines[0].paid_by_attendee_id).toBe(ann.id);
+    expect(Number(data.total_cost)).toBe(300);
+  });
+
+  test('an attendee of another event, a random uuid or a malformed value raises the payer code', async () => {
+    for (const value of [outsider.id, 'a0000000-a000-a000-a000-a00000009999', 'not-a-uuid', 42, ann.id.toUpperCase().slice(1)]) {
+      const { error } = await saveLines([line({ paid_by_attendee_id: value })]);
+      expect(error?.message).toBe('event_budget_payer_invalid');
+    }
+  });
+
+  test('a removed attendee stays a valid payer, and the admin resolves their name', async () => {
+    await saveOk(memberClient, EVENT_ID, [{ ...person('Ann'), id: ann.id }], { id: party.id });
+    expect((await adminAuthClient.from('attendees').select('id').eq('id', bob.id)).data).toEqual([]);
+
+    const { error } = await saveLines([line({ paid_by_attendee_id: bob.id })]);
+    expect(error).toBeNull();
+    // Saving the budget again with the removed payer still passes.
+    expect((await saveLines([line({ paid_by_attendee_id: bob.id }), line()])).error).toBeNull();
+
+    const { data } = await adminAuthClient.rpc('attendee_by_id', { p_attendee_id: bob.id });
+    expect(data[0]).toMatchObject({ name: 'Bob' });
+    expect(data[0].deleted_at).not.toBeNull();
+  });
+
+  test('a member still cannot write the budget with a payer', async () => {
+    const { error } = await memberClient.from('event_budgets')
+      .upsert({ event_id: EVENT_ID, lines: [line({ paid_by_attendee_id: ann.id })] });
+    expect(error).not.toBeNull();
+  });
+});
+
 describe('✉️ email_log is admin-only (#12)', () => {
   jest.setTimeout(30000);
 

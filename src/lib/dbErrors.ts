@@ -31,6 +31,7 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   event_deletion_forbidden: () => fr.dbErrorEventDeletionForbidden,
   event_budget_lines_invalid: () => fr.dbErrorEventBudgetInvalid,
   event_budget_line_invalid: () => fr.dbErrorEventBudgetInvalid,
+  event_budget_payer_invalid: () => fr.dbErrorEventBudgetPayerInvalid,
   own_admin_status_unchangeable: () => fr.selfAdminToggleError,
   self_admin_promotion_forbidden: () => fr.dbErrorSelfAdminPromotionForbidden,
   root_admin_cannot_be_demoted: () => fr.dbErrorRootAdminCannotBeDemoted,

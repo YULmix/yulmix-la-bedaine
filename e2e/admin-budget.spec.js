@@ -210,3 +210,49 @@ test('the event editor and Inscrits no longer hold money settings', async ({ pag
   await expect(page.getByLabel(fr.eventTitle)).toBeVisible();
   await expect(page.getByLabel(fr.eventSellingPriceLabel)).toHaveCount(0);
 });
+
+// #236: « Payé par » on an expense line, picked from the event's attendees.
+for (const viewport of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1440, height: 900 }]) {
+  test(`${viewport.name}: an expense names who paid it, which survives a reload and can be cleared`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/admin/budget');
+    await expand(page, fr.budgetLinesTitle);
+    await panel(page).getByRole('button', { name: fr.budgetLineAdd }).click();
+    await panel(page).getByRole('textbox', { name: fr.budgetLineDescription }).fill('Épicerie');
+    await panel(page).getByRole('spinbutton', { name: fr.budgetLineAmount }).fill('120');
+
+    const payer = panel(page).getByRole('combobox', { name: fr.budgetLinePaidBy });
+    await expect(payer).toHaveAttribute('placeholder', fr.budgetPayerPlaceholder);
+    await payer.click();
+    // Accent- and case-insensitive: « bob e2e » finds « Bob E2E ».
+    await payer.fill('BOB e2e');
+    const options = panel(page).getByRole('listbox', { name: fr.budgetLinePaidBy }).getByRole('option');
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText('Bob E2E');
+    await page.screenshot({ path: `${process.env.HOME}/code/yulmix-la-bedaine.worktrees/screenshots/236/budget-payer-open-admin-${viewport.width}.png` });
+    await options.first().click();
+    await expect(payer).toHaveValue('Bob E2E');
+    await expectNoHorizontalOverflow(page);
+
+    await panel(page).getByRole('button', { name: fr.budgetSave }).click();
+    await expect(page.getByText(fr.budgetSavedToast)).toBeVisible();
+    const attendeeId = (await getBudget(seeded.eventId)).lines[0].paid_by_attendee_id;
+    expect(attendeeId).toBeTruthy();
+    // No effect on money.
+    expect(Number((await getBudget(seeded.eventId)).total_cost)).toBe(120);
+    expect(Number((await getParty(seeded.partyId)).calculated_amount_owed)).toBe(308);
+
+    await page.reload();
+    await expand(page, fr.budgetLinesTitle);
+    await expect(panel(page).getByRole('combobox', { name: fr.budgetLinePaidBy })).toHaveValue('Bob E2E');
+    await page.screenshot({ path: `${process.env.HOME}/code/yulmix-la-bedaine.worktrees/screenshots/236/budget-payer-saved-admin-${viewport.width}.png` });
+
+    // Clear it: « Personne / fonds commun ».
+    await panel(page).getByRole('combobox', { name: fr.budgetLinePaidBy }).click();
+    await panel(page).getByRole('listbox', { name: fr.budgetLinePaidBy }).getByRole('option', { name: fr.budgetPayerNone }).click();
+    await expect(panel(page).getByRole('combobox', { name: fr.budgetLinePaidBy })).toHaveValue('');
+    await panel(page).getByRole('button', { name: fr.budgetSave }).click();
+    await expect(page.getByText(fr.budgetSavedToast)).toBeVisible();
+    expect((await getBudget(seeded.eventId)).lines[0]).toEqual({ category: 'Other', description: 'Épicerie', amount: 120 });
+  });
+}
