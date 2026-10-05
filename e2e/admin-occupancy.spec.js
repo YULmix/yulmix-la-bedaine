@@ -80,6 +80,6 @@ test('an event without places shows no occupancy', async ({ page }) => {
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin');
 
-  await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle })).toBeVisible();
+  await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle, exact: true })).toBeVisible();
   await expect(occupancy(page)).toHaveCount(0);
 });

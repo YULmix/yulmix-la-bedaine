@@ -43,7 +43,9 @@ const TIER_LABEL_KEYS = {
 // `showEmailProblems` false (Comité) leaves out the emails to follow up.
 // `showFinances` false (Comité, #290) leaves out « Groupes payés »: its parties have no payment
 // status, and the strip reflows to three figures.
-const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, showFinances = true, parties, places, onOpenParty }) => {
+// `showPrices` false (Comité) leaves out the selling price per tier: prices aren't its concern.
+// Without the budget card nor the prices, that row isn't there at all.
+const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, showFinances = true, showPrices = true, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
@@ -95,7 +97,7 @@ const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = t
         </div>
       </Card>
 
-      <div className={showBudget ? 'grid gap-6 @4xl:grid-cols-[3fr_2fr]' : 'grid gap-6'}>
+      {(showBudget || showPrices) && <div className={showBudget && showPrices ? 'grid gap-6 @4xl:grid-cols-[3fr_2fr]' : 'grid gap-6'}>
         {showBudget && (
           <Card className="space-y-6 p-5 sm:p-6">
             <h3 className="text-lg font-semibold text-ink">{fr.budgetTitle}</h3>
@@ -134,8 +136,8 @@ const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = t
           </Card>
         )}
 
-        <Card className="p-5 sm:p-6">
-          <h3 className="text-lg font-semibold text-ink">{fr.costVsPriceTitle}</h3>
+        {showPrices && <Card className="p-5 sm:p-6">
+          <h3 className="text-lg font-semibold text-ink">{fr.tierPricesTitle}</h3>
           {tierPrices.length ? (
             <ul className="mt-4 divide-y divide-line">
               {tierPrices.map(tier => (
@@ -146,8 +148,8 @@ const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = t
               ))}
             </ul>
           ) : <p className="mt-4 text-sm text-faint">{fr.notSpecified}</p>}
-        </Card>
-      </div>
+        </Card>}
+      </div>}
 
       <div className="grid gap-6 @xl:grid-cols-2 @3xl:grid-cols-3">
         <Card className="p-5 sm:p-6">

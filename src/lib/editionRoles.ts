@@ -37,6 +37,8 @@ export const hasRole = (role: AccessRole | null | undefined, min: AccessRole): b
 export const ACTION_ROLES = {
   /** Résumé's budget card (the budget itself is Organisateur and above). */
   budgetFigures: 'organiser',
+  /** Résumé's selling price per tier (#290: prices aren't Comité's concern, organiser 2026-10-05). */
+  tierPrices: 'organiser',
   /** Résumé's email problems (email_log, #93). */
   emailProblems: 'organiser',
   /** The email log in an Inscription's dialog (email_log, ADR 0023). */

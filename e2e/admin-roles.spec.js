@@ -204,10 +204,13 @@ test('Comité: reads Résumé, Participants and Logistique, and changes nothing'
   await enterAdmin(page);
   await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabParticipants', 'adminTabLogistics'));
   // Résumé without the budget card, nor « Groupes payés » (#290).
-  await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle })).toBeVisible();
+  await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle, exact: true })).toBeVisible();
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toHaveCount(0);
   await expect(panel(page).getByText(fr.registeredGroupsStatLabel)).toBeVisible();
   await expect(panel(page).getByText(fr.kpiPaidGroups)).toHaveCount(0);
+  // Nor the prices per tier, nor any other amount.
+  await expect(panel(page).getByRole('heading', { name: fr.tierPricesTitle })).toHaveCount(0);
+  await expect(panel(page).getByText(MONEY)).toHaveCount(0);
   await shoot(page, 'resume-committee', [1440, 390, 2560]);
   // Nor the emails to follow up: those are Organisateur's.
   await expect(emailProblems(page)).toHaveCount(0);
@@ -306,6 +309,7 @@ for (const role of ['organiser', 'admin']) {
     await loginAs(page, TEST_USERS[role]);
     await page.goto('/admin/overview');
     await expect(panel(page).getByText(fr.kpiPaidGroups)).toBeVisible();
+    await expect(panel(page).getByRole('heading', { name: fr.tierPricesTitle })).toBeVisible();
     await shoot(page, `resume-${role}`, [1440, 390, 2560]);
     const profile = await openProfileFromLogistics(page);
     await expect(profile.getByText(fr.unpaidShort, { exact: true })).toBeVisible();

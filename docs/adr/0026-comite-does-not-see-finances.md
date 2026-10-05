@@ -29,7 +29,9 @@ flowchart LR
   `locked_selling_price_whole_event`, `locked_ratio_main_whole` and `payment_status`, and what
   derives from them: paid counts (Résumé's « Groupes payés »), totals, and the amounts and payment
   changes logged in the change history. The budget was already Organisateur and above. The event's
-  selling price and the tier prices aren't a party's finances: every member sees them.
+  selling price and the tier prices aren't a party's finances: every member sees them. Résumé's
+  « Prix par type de participation » card is still left out for Comité (`can(role, 'tierPrices')`,
+  organiser, 2026-10-05): prices aren't its concern.
 - **A definer function, not a UI rule.** `edition_parties(event)` (`SECURITY DEFINER`, stable,
   pinned `search_path`) returns the edition's parties as the admin list shows them (attendees in
   order with their place, the registrant's profile, the organisers' notes) for Comité and above on
