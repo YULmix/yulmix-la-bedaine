@@ -1,4 +1,4 @@
-import { formatEventDates, getTravelRange } from './eventDisplay';
+import { formatEventDates, getTravelRange, ofName } from './eventDisplay';
 
 describe('getTravelRange', () => {
   it('arrives midday on the first day, leaves mid-afternoon on the last, and spans the whole event', () => {
@@ -46,5 +46,18 @@ describe('with a start time', () => {
     expect(formatEventDates({ event_start_date: lateStart, duration_days: 3 })).toMatch(/^14 août au 16 août 2026, dès 23\sh\s30$/);
     expect(formatEventDates({ event_start_date: '2026-08-14T22:00:00Z', duration_days: 1 })).toMatch(/^14 août 2026, dès 18\sh\s00$/);
     expect(formatEventDates({ event_start_date: '2026-08-14T04:00:00Z', duration_days: 3 })).toBe('14 août au 16 août 2026');
+  });
+});
+
+describe('ofName', () => {
+  it('elides « de » before a vowel, accented or not, whatever the case', () => {
+    expect(ofName('Absalon Guillot')).toBe("d'Absalon Guillot");
+    expect(ofName('Émile')).toBe("d'Émile");
+    expect(ofName('yves')).toBe("d'yves");
+  });
+
+  it('keeps « de » before a consonant or an h', () => {
+    expect(ofName('Marc Guillot')).toBe('de Marc Guillot');
+    expect(ofName('Hélier Royer')).toBe('de Hélier Royer');
   });
 });

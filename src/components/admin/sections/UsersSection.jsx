@@ -12,6 +12,7 @@ import AdminUserManagement from '../AdminUserManagement';
 import PartyDetailDialog from '../PartyDetailDialog';
 import PartyEditDialog from '../PartyEditDialog';
 import UserProfileDialog from '../UserProfileDialog';
+import ParticipantsView from '../ParticipantsView';
 import { ChangeHistory } from '../ChangeHistory';
 import ExportDialog from '../ExportDialog';
 import { ConfirmDialog, EmptyState } from '../../ui';
@@ -110,6 +111,15 @@ const HistoryView = ({ addToast }) => {
     : <EmptyState icon={History} title={fr.changeHistoryEmpty} />;
 };
 
+// Comité reads the attendees as it reads the list (RLS); the view is read-only.
+const ParticipantsPage = () => {
+  const { activeEvent } = useEvents();
+  const { activeParties, loading, error } = useAdminParties(activeEvent?.id);
+  if (!activeEvent) return <NoActiveEvent />;
+  if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={() => refreshAdminParties(activeEvent.id)} />;
+  return <ParticipantsView parties={activeParties} />;
+};
+
 const UsersSection = ({ view }) => {
   const { addToast } = useToasts(1699);
   const { role } = useAdminAccess();
@@ -118,7 +128,7 @@ const UsersSection = ({ view }) => {
   return (
     <>
       {activeEvent && view === 'list' && can(role, 'exportData') && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}
-      {view === 'history' ? <HistoryView addToast={addToast} /> : <UsersList addToast={addToast} />}
+      {view === 'history' ? <HistoryView addToast={addToast} /> : view === 'participants' ? <ParticipantsPage /> : <UsersList addToast={addToast} />}
     </>
   );
 };

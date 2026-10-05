@@ -298,6 +298,34 @@ test.describe('admin tabs', () => {
     await closeModal(edit);
   });
 
+  // #262: a swipe that starts on a list scrolls the page. A list with a scroll box of its own
+  // (overflow-y: auto, overscroll-contain) kept the swipe to itself.
+  test('mobile: swiping inside the Inscrits lists scrolls the page, there is no scroll box', async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('mobile'), 'touch only');
+    // Short enough that the party and its attendees run past the bottom, whatever the data.
+    await page.setViewportSize({ width: 412, height: 480 });
+    for (const path of ['/users', '/users/participants']) {
+      await openAdmin(page, path);
+      // The Liste's rows (#259 made it a table): the rowgroup is the box that scrolls from lg.
+      const list = path === '/users' ? panel(page).getByRole('table').getByRole('rowgroup') : panel(page).getByRole('table');
+      await expect(list).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      expect(await list.evaluate(el => getComputedStyle(el).overflowY), 'no scroll box of its own').not.toMatch(/auto|scroll/);
+      expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight), 'the page is taller than the screen').toBeGreaterThan(40);
+      const box = await list.boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      // A finger drags up over the list, in small steps.
+      const x = Math.round(box.x + box.width / 2);
+      const y = Math.round(Math.min(box.y + box.height / 2, 380));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 10; step += 1) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 15 }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(() => page.evaluate(() => window.scrollY), { message: `${path}: the page scrolled` }).toBeGreaterThan(0);
+    }
+  });
+
   test('mobile: no horizontal overflow, tappable tabs, controls within the viewport', async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('mobile'), 'mobile-only layout checks');
 
@@ -456,8 +484,8 @@ test.describe('admin navigation shell', () => {
     const fromHeader = async (locator) => 64 + (await locator.boundingBox()).y - (await page.locator('#main').boundingBox()).y;
 
     await openAdmin(page, '/users');
-    // The sections, and Inscrits' two views under it.
-    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT + 2);
+    // The sections, and Inscrits' three views under it.
+    await expect(adminNav(page).getByRole('link')).toHaveCount(SECTION_COUNT + 3);
     await expect(page.getByRole('tablist', { name: fr.adminTabsAriaLabel })).toHaveCount(0);
     const filters = adminMain(page).getByRole('group', { name: fr.filterLabel });
     await expect(filters).toBeVisible();

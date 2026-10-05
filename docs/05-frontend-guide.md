@@ -105,9 +105,12 @@ Inscrits' « Exporter » (#178, #209), a dialog opened from the page header, bui
 `toCsv` (BOM, every cell quoted) or `toTsv` (line breaks flattened, for a Sheets paste). Unlike
 the Logistique views, it keeps waitlisted parties, with a « Statut » column; the totals skip them.
 
-Inscrits has views too, in `/admin/users/<view>` (`list` by default, `history`), switched by
+Inscrits has views too, in `/admin/users/<view>` (`list` by default, `participants`, `history`), switched by
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
-old `/admin/tools/…` URLs redirect. The « Historique des
+old `/admin/tools/…` URLs redirect. « Participants » (#262, Comité and up) is one row per attendee of the non-cancelled parties, read-only: enum
+values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
+are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
+`sortAttendees()` orders them. The « Historique des
 changements » (#173) lists one event's `registration_edits`, newest first, picked with its own
 event selector (the active event by default). Place changes (#188) are one line per attendee
 (`describePlaceChanges()` in `src/lib/changeHistory.js`); the member's history doesn't show them.
@@ -417,6 +420,38 @@ toggle, event archiving, deleting a registration). Focus starts on Cancel.
 
 **Supabase errors** are logged with `message`, `code`, `details`, `hint` before being surfaced in
 French. Keep that — PostgREST errors are otherwise very hard to diagnose from a screenshot.
+
+## UI checklist
+
+What a UI change must show before it is called done (#262: a view that passed its e2e on a few short
+fixture rows was rejected on real data).
+
+- **Screenshots on real data.** Every screen touched, at 390 and 1440 px (and 2560 for the admin),
+  on the demo seed (`npm run db:local:demo`: 70 parties, long names, every enum value), never
+  only on the e2e fixtures' few short rows. Every new dialog, pop-up and menu is screenshotted
+  **open**.
+- **The organiser judges the preview, not the screenshots.** Screenshots are the developer's (and a
+  visual reviewer's) own check. The organiser confirms a UI change only on the PR's Vercel preview
+  deployment: never hand them screenshots, local files or a local dev page (they may be working
+  remotely, from a terminal). A UI change is ready for the organiser once it is pushed and CI is
+  green, with the preview URL.
+- **Look at them.** No horizontal scroll at 390, nothing overlapping, no clipped text, dialogs with
+  the ui dialog component's padding (its body has none: add `p-5 sm:p-6`, as `ExportDialog` does).
+- **Names wrap, never truncate.** A name, a group, an email, anything an organiser reads to tell
+  people apart: `break-words`, not `truncate`.
+- **Pills stay on one line.** In a table, a pill never wraps: the free-text column (a name) is the one
+  that gives, and a cell with several pills stacks them. If the columns don't fit at 1440 px, merge
+  one (the « Participants » name cell carries the group under the name) rather than squeeze them.
+  With a CSS subgrid row, put the column gap on the parent grid: a gap on the subgrid pads every cell.
+- **Enum values carry their icon.** A sleeping type or a dietary need shows the app's icon beside its
+  label, from the shared `src/components/accommodationIcons.js` (the registration form, the recap and
+  the admin's « Participants » all import it). A new fixed list gets its icons there too.
+- **A swipe scrolls the page.** On a phone, swiping inside a list or card must scroll the page: no
+  nested scroll box (`overflow-y-auto` + `overscroll-contain`) unless the design needs one, and
+  then only from the width that has the room (`lg:overflow-y-auto`, `useFitToViewport({ fromWidth })`).
+  A `mobile-chrome` (touch) e2e swipes inside each new list (see `admin-tabs.spec.js`).
+- **Reuse the ui components** (`Dialog`, `ChipGroup`, `Toggle`, `Tag`, `Button`…) before building new
+  ones.
 
 ## Known frontend defects
 

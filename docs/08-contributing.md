@@ -42,6 +42,8 @@ project will not sustain.
 - One logical change per PR. The existing history has commits like *"Admin bugfixes"* touching
   hundreds of lines across eight concerns — reviewable by nobody, including the author in six months.
 - Every PR needs: what changed, why, how it was verified, and a migration file if the schema moved.
+- A UI change is confirmed by the organiser on the PR's Vercel preview deployment only, once it is
+  pushed and CI is green: never on screenshots or a local page ([UI checklist](./05-frontend-guide.md#ui-checklist)).
 - Small, obvious PRs can self-merge after CI is green. Anything touching **pricing, RLS, or the
   schema** needs a second pair of eyes. Those three areas are where a mistake costs money or leaks
   personal data.
@@ -97,7 +99,8 @@ This codebase was built mostly by prompting, and that will continue. What makes 
   `AGENTS.md`/`CLAUDE.md`/`.clinerules`; personal shell or OS setup belongs in the individual's own
   config, never in a tracked file.
 - **Verify, don't trust.** An agent will report "build passes, all tests green" because the pricing
-  script exits 0 while `npm test` is red. Run the commands.
+  script exits 0 while `npm test` is red. Run the commands. A UI change also passes the
+  [UI checklist](./05-frontend-guide.md#ui-checklist) (screenshots on the demo seed, swipe, icons).
 - **Small scopes.** "Fix the counts trigger and its callers" is a good task. "Refactor AdminView" is
   how you get a 1,364-line file rewritten in a way nobody can review.
 

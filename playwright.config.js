@@ -143,8 +143,11 @@ const SERIAL_ENTRIES = [
   // One app canvas (#226): seeds the shared active event for the member pages, so it runs after
   // admin-roles, on its own. Sets its own viewports.
   { name: 'app-canvas' },
+  // The Inscrits sort (#259) seeds the shared active event with two more registrations, so it
+  // runs after app-canvas, on its own. Sets its own viewports.
+  { name: 'admin-users-sort' },
   // « Voir comme » (#267): reseeds the shared active event and opens the member's read-only
-  // session through the impersonate Edge Function, so it runs after app-canvas, on its own.
+  // session through the impersonate Edge Function, so it runs after admin-users-sort, on its own.
   // Sets its own viewports.
   { name: 'voir-comme' },
 ];

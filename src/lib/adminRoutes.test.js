@@ -65,6 +65,11 @@ describe('adminHref and parseAdminLocation', () => {
 });
 
 describe('adminRedirect', () => {
+  it('leaves the Inscrits sort param alone', () => {
+    expect(adminRedirect('/admin/users', '?tri=-modification')).toBeNull();
+    expect(adminRedirect('/admin/venues', '?tri=nom')).toBe('/admin/venues');
+  });
+
   test.each([
     ['/admin/tools', '/admin/users'],
     ['/admin/tools/exports', '/admin/users'],
