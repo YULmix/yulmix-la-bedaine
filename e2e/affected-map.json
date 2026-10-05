@@ -25,10 +25,12 @@
    "admin-event-editor",
    "admin-remount",
    "header-phone",
-   "member-account-deletion"
+   "member-account-deletion",
+   "voir-comme"
   ],
   "src/components/AccountPicker.jsx": [
-   "preview-account-picker"
+   "preview-account-picker",
+   "voir-comme"
   ],
   "src/components/Avatar.jsx": [
    "admin-budget",
@@ -71,7 +73,8 @@
    "member-account-deletion",
    "member-carpool-board",
    "member-registration-draft",
-   "preview-account-picker"
+   "preview-account-picker",
+   "voir-comme"
   ],
   "src/components/MyPartyEmails.jsx": [
    "email-log"
@@ -115,6 +118,12 @@
    "admin-remount",
    "header-phone",
    "member-account-deletion"
+  ],
+  "src/components/VoirCommePicker.jsx": [
+   "voir-comme"
+  ],
+  "src/components/VoirCommeTab.jsx": [
+   "voir-comme"
   ],
   "src/components/accommodationIcons.js": [
    "admin-budget",
@@ -274,7 +283,8 @@
    "admin-roles",
    "admin-tabs",
    "admin-users-sort",
-   "member-pass"
+   "member-pass",
+   "voir-comme"
   ],
   "src/components/admin/PartyEditDialog.jsx": [
    "admin-roles",
@@ -341,7 +351,8 @@
   ],
   "src/components/admin/sections/TeamSection.jsx": [
    "admin-roles",
-   "admin-tabs"
+   "admin-tabs",
+   "voir-comme"
   ],
   "src/components/admin/sections/UsersSection.jsx": [
    "admin-roles",
@@ -349,7 +360,8 @@
    "attendee-removal",
    "attendees-edit",
    "member-pass",
-   "member-registration-confirmation"
+   "member-registration-confirmation",
+   "voir-comme"
   ],
   "src/components/admin/sections/VenuesSection.jsx": [
    "admin-logistics-batch-save"
@@ -454,6 +466,9 @@
    "member-registration-confirmation",
    "member-registration-draft",
    "member-transport-none"
+  ],
+  "src/hooks/useVoirComme.js": [
+   "voir-comme"
   ],
   "src/lib/activeEvent.js": [
    "admin-event-create"
@@ -1036,6 +1051,9 @@
    "admin-venues",
    "galleries",
    "member-carpool-board"
+  ],
+  "src/lib/voirComme.ts": [
+   "voir-comme"
   ],
   "src/main.jsx": [],
   "src/preview/TestAccounts.jsx": [
