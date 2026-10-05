@@ -465,6 +465,95 @@ jobs:
             VALUES ('email_function_url', 'https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/send-party-email')
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
 
+  # Deploys this PR's supabase/functions/ to the Preview Supabase project (ADR 0015), so the PR's
+  # Vercel preview, which talks to Preview, can call them (« Voir comme », #267). Preview is shared:
+  # it runs the functions of the last PR deployed there. Production's deploy (`functions` above)
+  # is untouched. Same-repo PRs only (a fork's run gets no secrets).
+  #
+  # Then makes sure Preview's Auth calls the custom access token hook (ADR 0025), through the
+  # Management API, setting only the two hook fields. `supabase config push` would push the whole
+  # local config.toml (site URL, redirect URLs, providers) over Preview's, so it isn't used. The
+  # hook is enabled only once Preview's database has the hook function (main's migrations, pushed
+  # by `preview-db`): with the hook on and the function missing, every sign-in fails. Never
+  # disabled from here (an old « Voir comme » refresh token would come back writable).
+  #
+  # One-time setup, done by a maintainer, run locally, never pasted to an AI assistant:
+  #   gh secret set PREVIEW_SUPABASE_ACCESS_TOKEN
+  #        # a scoped token (supabase.com/dashboard/account/tokens), resource access
+  #        # Project → "YULmix - La Bedaine (Preview)" ONLY, never production; permissions in
+  #        # docs/07-development-setup.md ("PREVIEW_SUPABASE_ACCESS_TOKEN permissions").
+  # Until it is set the job warns and skips, so PRs don't fail for it. PREVIEW_DB_URL already exists.
+  preview-functions:
+    name: Deploy Edge Functions to Preview
+    needs: [build-and-test, changes]
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    # One Preview write at a time, queued: two PRs deploying at once would interleave functions.
+    concurrency:
+      group: preview-functions
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.PREVIEW_SUPABASE_ACCESS_TOKEN }}
+      PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
+      # Not a secret: it is in every URL a preview deployment calls.
+      PREVIEW_PROJECT_REF: uacfrldoiixfstigosqv
+      HOOK_URI: pg-functions://postgres/public/custom_access_token_hook
+    steps:
+      - name: Require the Preview token
+        id: token
+        run: |
+          if [ "$PREVIEW_PROJECT_REF" = "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::PREVIEW_PROJECT_REF is production's ref: refusing."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::warning::PREVIEW_SUPABASE_ACCESS_TOKEN is not set: Edge Functions are not deployed to Preview. See the one-time setup above this job."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.ready == 'true'
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        if: steps.token.outputs.ready == 'true'
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # verify_jwt per function comes from supabase/config.toml. send-party-email goes too, and
+      # stays inert there: Preview's email trigger URL points elsewhere and it has no Resend key
+      # (it would only record dry runs).
+      - name: Deploy to Preview
+        if: steps.token.outputs.ready == 'true'
+        run: supabase functions deploy --project-ref "$PREVIEW_PROJECT_REF"
+
+      - name: Enable the custom access token hook on Preview
+        if: steps.token.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          # The hook function must be in Preview's database and callable by Auth first.
+          if ! ready=$(psql "$PREVIEW_DB_URL" -tA -v ON_ERROR_STOP=1 \
+              -c "SELECT has_function_privilege('supabase_auth_admin', 'public.custom_access_token_hook(jsonb)', 'EXECUTE')" 2>/dev/null) \
+              || [ "$ready" != t ]; then
+            echo "::warning::Preview's database has no usable public.custom_access_token_hook yet (main's migrations not pushed?): the hook is left as it is."
+            exit 0
+          fi
+          api="https://api.supabase.com/v1/projects/$PREVIEW_PROJECT_REF/config/auth"
+          current=$(curl -fsS "$api" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
+          if jq -e --arg uri "$HOOK_URI" '.hook_custom_access_token_enabled == true and .hook_custom_access_token_uri == $uri' <<<"$current" > /dev/null; then
+            echo "The hook is already enabled on Preview."
+            exit 0
+          fi
+          jq -n --arg uri "$HOOK_URI" '{hook_custom_access_token_enabled: true, hook_custom_access_token_uri: $uri}' \
+            | curl -fsS -X PATCH "$api" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+                -H 'Content-Type: application/json' --data-binary @- \
+            | jq '{hook_custom_access_token_enabled, hook_custom_access_token_uri}'
+          echo "::notice::Enabled the custom access token hook on Preview."
+
   # Runs on every push to main that touches more than docs/**Markdown, migration
   # or not. The explicit condition is needed because GitHub skips a job whose
   # `needs` were skipped unless its `if:` says otherwise, and `migrate` is
