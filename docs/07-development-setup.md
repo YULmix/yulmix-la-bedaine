@@ -401,8 +401,9 @@ small proxy that sends `/auth/v1/*` to that container and the rest to the stack 
 verified).
 
 Production: CI deploys it with the other functions (`supabase functions deploy`, job **Deploy
-Edge Functions**); it needs no secret of its own. It is useless there until the hook is enabled in
-the dashboard (#268).
+Edge Functions**); it needs no secret of its own. The same job then enables the custom access token hook
+(`scripts/enable-access-token-hook.sh`, #268); without it the function is useless. Preview has
+its own job, `preview-functions`.
 
 ## Transactional email (Edge Function)
 
@@ -619,6 +620,7 @@ PITR/restore feature):
 | Category | Setting |
 |---|---|
 | Project Settings | Read |
+| Auth Configuration | Read-write |
 | Database | Read-write |
 | Connection Pooling | Read |
 | Migrations | Read-write |
@@ -649,6 +651,9 @@ page, which doesn't list the raw permission IDs):
 - **Database** (`database_write`, for `Read-write`): `db dump`/`db push`/`migration list` all
   mint a temporary Postgres login role via `POST /v1/projects/{ref}/cli/login-role` once they have
   a connection, rather than needing a stored database password.
+- **Auth Configuration** (`auth_config_write`): `scripts/enable-access-token-hook.sh` enables the
+  « Voir comme » custom access token hook with `PATCH /v1/projects/{ref}/config/auth`
+  ([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md), #268) and reads it back.
 - **Edge Functions** (`Read-write`) and **Edge Function Secrets** (`Read`,
   `edge_functions_secrets_read`): the **Deploy Edge Functions** job
   ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) runs `supabase functions
@@ -661,6 +666,14 @@ page, which doesn't list the raw permission IDs):
   Management API call. Kept anyway since `supabase migration repair` (used for the one-time
   history-repair step, see [Database migrations](#database-migrations)) is a plausible future
   need and it's a low-risk permission to hold.
+
+#### Preview: `PREVIEW_SUPABASE_ACCESS_TOKEN`
+
+The `preview-functions` job deploys the Edge Functions to the Preview project and enables the
+hook there, after `preview-db` has applied the migrations. Its token is a scoped token for
+**Project → Preview** with the same permission table as above, set as
+`gh secret set PREVIEW_SUPABASE_ACCESS_TOKEN --env Preview`. The hook is never enabled by hand
+in a dashboard, and never disabled while `impersonation_log` holds live sessions.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.

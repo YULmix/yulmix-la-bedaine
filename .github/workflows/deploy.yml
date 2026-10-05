@@ -69,6 +69,7 @@ env:
   SQUAWK_VERSION: '2.66.0'
   # Not a secret: it is in every Supabase URL the app ships.
   SUPABASE_PROJECT_REF: ceacurlofmasyvhsoska
+  PREVIEW_SUPABASE_PROJECT_REF: uacfrldoiixfstigosqv
 
 jobs:
   build-and-test:
@@ -412,6 +413,37 @@ jobs:
         env:
           PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
 
+  # Preview's counterpart of `functions`: the Edge Functions and the custom access token hook
+  # (« Voir comme », ADR 0025) on the Preview project, after its database has the migrations.
+  # No email trigger setup: Preview sends no real email.
+  preview-functions:
+    name: Deploy Edge Functions to Preview
+    needs: [changes, preview-db]
+    if: >-
+      !cancelled()
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.changes.result == 'success'
+      && (needs.changes.outputs.functions == 'true' || needs.changes.outputs.migrations == 'true')
+      && (needs.changes.outputs.migrations != 'true' || needs.preview-db.result == 'success')
+    runs-on: ubuntu-latest
+    environment: Preview
+    concurrency:
+      group: preview-db-reset
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.PREVIEW_SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - run: supabase functions deploy --project-ref "$PREVIEW_SUPABASE_PROJECT_REF"
+
+      - name: Enable the custom access token hook
+        run: scripts/enable-access-token-hook.sh "$PREVIEW_SUPABASE_PROJECT_REF"
+
   # Deploys supabase/functions/ to production when they (or config.toml) changed, after any
   # pending migration has applied, then points the email trigger at the deployed function
   # (ADR 0016: the URL is per environment, so it lives in private.settings, not in a migration).
@@ -456,6 +488,10 @@ jobs:
 
       # verify_jwt per function comes from supabase/config.toml.
       - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+
+      # The function exists in production once `migrate` has run (this job needs it).
+      - name: Enable the custom access token hook
+        run: scripts/enable-access-token-hook.sh "$SUPABASE_PROJECT_REF"
 
       - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
