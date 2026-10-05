@@ -1073,20 +1073,6 @@ export type Database = {
             referencedRelation: "attendees"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "user_parties_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_parties_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "user_event_history"
-            referencedColumns: ["event_id"]
-          },
         ]
       }
       user_event_history: {
@@ -1170,6 +1156,7 @@ export type Database = {
       create_event_venue: { Args: { p_event_id: string }; Returns: string }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       delete_my_account: { Args: never; Returns: undefined }
+      edition_parties: { Args: { p_event_id: string }; Returns: Json }
       edition_role: { Args: { p_event_id: string }; Returns: string }
       event_places: {
         Args: { p_event_id: string }
