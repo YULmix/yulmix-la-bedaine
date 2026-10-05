@@ -428,7 +428,10 @@ verified).
 Production: CI deploys it with the other functions (`supabase functions deploy`, job **Deploy
 Edge Functions**); it needs no secret of its own. The custom access token hook, without which the
 function is useless, is enabled by its own job, **Enable the access token hook (production)**,
-on every push to main (idempotent; also "Run workflow" on main). It calls
+on every push to main (idempotent; also "Run workflow" on main). "Run workflow" on main also
+deploys the functions to both projects unconditionally (jobs **Deploy Edge Functions** and
+`preview-functions`, no changes filter); it never migrates, backs up or resets anything, since
+those jobs are push-only. Use it when a function was never deployed to an environment. It calls
 `scripts/enable-access-token-hook.sh` (#268), which first checks that `public.custom_access_token_hook`
 exists in the database and touches only the two hook fields of the auth config. Preview has
 `preview-functions` and **Enable the access token hook (Preview)**.
@@ -661,7 +664,7 @@ scripts/setup-supabase-token.sh all                 # production, then Preview
 ```
 
 For each environment it prints the permissions to tick, you create the **scoped** token (resource
-access **Project → that project**, not Organization) at `supabase.com/dashboard/account/tokens` and
+access **Organization → YULmix**: one org-scoped token, not one per project) at `supabase.com/dashboard/account/tokens` and
 paste it at a hidden prompt. It then calls the Management API once per permission, and only a
 token that passes is stored (`gh secret set --env`, through stdin). The token is never printed.
 A token with a gap is refused with the name of the missing permission.
