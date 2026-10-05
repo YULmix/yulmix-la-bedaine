@@ -1,17 +1,19 @@
-// Picks the e2e specs a change can affect, so a developer runs those instead of the whole suite.
+// Picks the e2e specs a change can affect, so a developer iterating runs those, not the whole suite.
 //
-//   npm run test:e2e:affected                 # specs for the diff against origin/main (prints them)
-//   npm run test:e2e:affected -- --run        # ...and runs them (needs the local DB, see docs/07)
+//   npm run test:e2e:affected                 # prints the specs for the diff against origin/main
+//   npm run test:e2e:affected -- --run        # ...and runs them (one worker; needs the local DB)
 //   npm run test:e2e:affected -- --base=HEAD~1 --explain
 //
-// How it decides (docs/07-development-setup.md, "Running fewer specs"). Specs and the app share the
-// strings in src/locales/fr.json (`fr.someKey`), so a spec "covers" a source file when it uses a key
-// that the file, or a module that imports it (transitively), uses. Anything that could touch every
-// screen (the app shell, styles, migrations, the e2e support code, config) selects the whole suite.
-// A small smoke set always runs. Runs use one worker: the specs share one active event (#170). The full suite is still what the supervisor/CI-like checks run.
+// The map lives in e2e/affected-map.json (one versioned file; src/__tests__/e2eAffectedMap.test.js
+// fails when a spec or a source file is missing from it). Rules, in order:
+//   - a changed e2e/*.spec.js runs itself;
+//   - a path matching one of "all" (shared code, migrations, config, e2e/support...) runs the WHOLE suite;
+//   - a changed src/locales/fr.json value runs the specs that use that key;
+//   - another src/ file: its "map" entry, and the WHOLE suite when it has none (a new file: add it);
+//   - the "smoke" specs always run.
+// Before a PR is pushed the developer still runs the whole suite once (docs/08-contributing.md).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, normalize, relative } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
@@ -19,97 +21,51 @@ const base = (flag('base') || '--base=origin/main').split('=')[1];
 const explain = !!flag('explain');
 const run = !!flag('run');
 
-// Always run: the member/admin RLS boundary and the core member flow.
-const SMOKE = ['auth-and-rls', 'member-registration-confirmation'];
-// A change here can affect any screen, or the test setup itself: run everything.
-const GLOBAL = [
-  /^src\/(App|main)\.jsx$/, /^src\/index\.css$/, /^src\/components\/(ui|Header|Toast)\b/, /^src\/lib\/(supabase|toasts|format|database\.types)\b/,
-  /^supabase\/(migrations|seed\.sql|config\.toml|functions)/, /^e2e\/support\//, /^playwright\.config\.js$/, /^package(-lock)?\.json$/,
-  /^(vite|vercel)\./, /^index\.html$/, /^src\/locales\/(?!fr\.json)/
-];
-
-const sh = (cmd, a) => execFileSync(cmd, a, { encoding: 'utf-8', maxBuffer: 64 << 20 }).trim();
-const changed = [...new Set([
-  ...sh('git', ['diff', '--name-only', `${base}...HEAD`]).split('\n'),
-  ...sh('git', ['diff', '--name-only', 'HEAD']).split('\n'),
-  ...sh('git', ['ls-files', '--others', '--exclude-standard']).split('\n')
-].filter(Boolean))];
-
-const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
-  d.isDirectory() ? walk(join(dir, d.name)) : [join(dir, d.name)]);
-const srcFiles = walk('src').filter((f) => /\.(jsx?|tsx?)$/.test(f) && !/\.test\./.test(f) && !f.includes('__tests__'));
+const { smoke, all: allPatterns, map } = JSON.parse(readFileSync('e2e/affected-map.json', 'utf-8'));
 const specs = readdirSync('e2e').filter((f) => f.endsWith('.spec.js')).map((f) => f.replace('.spec.js', ''));
 
-const keysOf = (text) => new Set([...text.matchAll(/\bfr\.([A-Za-z0-9_]+)/g)].map((m) => m[1]));
-const specKeys = Object.fromEntries(specs.map((s) => [s, keysOf(readFileSync(`e2e/${s}.spec.js`, 'utf-8'))]));
+const sh = (a) => execFileSync('git', a, { encoding: 'utf-8', maxBuffer: 64 << 20 }).trim();
+const changed = [...new Set([
+  ...sh(['diff', '--name-only', `${base}...HEAD`]).split('\n'),
+  ...sh(['diff', '--name-only', 'HEAD']).split('\n'),
+  ...sh(['ls-files', '--others', '--exclude-standard']).split('\n')
+].filter(Boolean))];
 
-// Import graph of src (relative imports only).
-const resolveImport = (from, spec) => {
-  const p = normalize(join(dirname(from), spec));
-  for (const c of [p, ...['.js', '.jsx', '.ts', '.tsx'].map((e) => p + e), ...['index.js', 'index.jsx', 'index.ts', 'index.tsx'].map((i) => join(p, i))]) {
-    if (srcFiles.includes(c)) return c;
-  }
-  return null;
-};
-const importers = new Map(); // file -> files importing it
-const fileKeys = new Map();
-for (const f of srcFiles) {
-  const text = readFileSync(f, 'utf-8');
-  fileKeys.set(f, keysOf(text));
-  for (const m of text.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
-    const target = resolveImport(f, m[1]);
-    if (target) importers.set(target, [...(importers.get(target) || []), f]);
-  }
-}
-// The keys that tell which screens a file shows: its own, plus (for a helper with few of its own,
-// or any lib/ module, e.g.) those of the modules that import it directly.
-const screenKeys = (f) => {
-  const own = fileKeys.get(f);
-  if (own.size >= 3 && /\.(jsx|tsx)$/.test(f)) return own;
-  return new Set([...own, ...(importers.get(f) || []).flatMap((i) => [...fileKeys.get(i)])]);
-};
-
-// Keys used by many specs say little about one screen: ignore them when matching.
-const usage = {};
-for (const s of specs) for (const k of specKeys[s]) usage[k] = (usage[k] || 0) + 1;
-const common = new Set(Object.keys(usage).filter((k) => usage[k] > specs.length * 0.1));
-
-const selected = new Map(SMOKE.map((s) => [s, 'smoke set']));
-let all = false;
+const selected = new Map(smoke.map((s) => [s, 'smoke set']));
 const add = (s, why) => { if (!selected.has(s)) selected.set(s, why); };
-const addByKeys = (keys, why) => {
-  for (const s of specs) { const hit = [...keys].find((k) => !common.has(k) && specKeys[s].has(k)); if (hit) add(s, `${why} (fr.${hit})`); }
-};
+let allWhy = null;
+const globals = allPatterns.map((p) => new RegExp(p));
 
 for (const f of changed) {
-  if (!existsSync(f) && !/^(src|e2e)\//.test(f)) continue;
   let m;
   if ((m = f.match(/^e2e\/([^/]+)\.spec\.js$/))) { if (specs.includes(m[1])) add(m[1], `edited ${f}`); continue; }
+  if (globals.some((re) => re.test(f))) { allWhy ||= `${f} can affect every screen`; continue; }
   if (f === 'src/locales/fr.json') {
     const parse = (t) => { try { return JSON.parse(t); } catch { return {}; } };
-    const before = parse(sh('git', ['show', `${base}:src/locales/fr.json`]));
+    const before = parse(sh(['show', `${base}:src/locales/fr.json`]));
     const now = parse(readFileSync(f, 'utf-8'));
-    const keys = new Set(Object.keys(now).filter((k) => before[k] !== now[k]).concat(Object.keys(before).filter((k) => !(k in now))));
-    addByKeys(keys, 'fr.json key changed');
+    const keys = new Set([...Object.keys(now), ...Object.keys(before)].filter((k) => before[k] !== now[k]));
+    for (const s of specs) {
+      const text = readFileSync(`e2e/${s}.spec.js`, 'utf-8');
+      const hit = [...keys].find((k) => text.includes(`fr.${k}`));
+      if (hit) add(s, `fr.json key ${hit} changed`);
+    }
     continue;
   }
-  if (GLOBAL.some((re) => re.test(f))) { all = true; add('*', `${f} can affect every screen`); continue; }
-  if (/^src\//.test(f) && srcFiles.includes(f)) {
-    const keys = screenKeys(f);
-    addByKeys(keys, `${f}`);
-    continue;
-  }
-  if (/^(src|e2e|supabase|scripts)\//.test(f) && !/\.(md|test\.jsx?)$/.test(f) && !/__tests__/.test(f)) {
-    if (/^supabase\//.test(f)) { all = true; add('*', `${f} (database/functions)`); }
+  if (/^src\/.*\.(jsx?|tsx?)$/.test(f) && !/\.test\.|__tests__/.test(f)) {
+    if (map[f]) map[f].forEach((s) => add(s, f));
+    else if (changed.includes(f) && !isDeleted(f)) allWhy ||= `${f} is not in e2e/affected-map.json (add it)`;
   }
 }
+function isDeleted(f) { try { readFileSync(f); return false; } catch { return true; } }
 
-const picked = all ? specs : [...selected.keys()].filter((s) => s !== '*');
+const picked = allWhy ? specs : [...selected.keys()];
 if (explain) for (const [s, why] of selected) console.error(`${s.padEnd(36)} ${why}`);
-console.error(`${all ? 'ALL' : picked.length} of ${specs.length} specs${all ? ' (a changed file can affect every screen)' : ''}`);
+console.error(allWhy ? `ALL ${specs.length} specs: ${allWhy}` : `${picked.length} of ${specs.length} specs`);
 console.log(picked.map((s) => `e2e/${s}.spec.js`).join(' '));
 
 if (run) {
-  const files = all ? [] : picked.map((s) => `e2e/${s}.spec.js`);
+  const files = allWhy ? [] : picked.map((s) => `e2e/${s}.spec.js`);
+  // One worker: the specs share one active event (#170).
   execFileSync('npx', ['playwright', 'test', '--no-deps', '--workers=1', ...files], { stdio: 'inherit' });
 }

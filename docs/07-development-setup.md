@@ -343,9 +343,9 @@ end of `SERIAL_ENTRIES` in `playwright.config.js`. The chain of `dependencies` a
 `device` to `'Desktop Chrome'`). Never add a hand-written project to `projects`: that is what made
 every branch conflict (#244).
 
-**Running fewer specs.** The whole suite is ~250 tests and takes about 8 minutes, because every spec
-shares one active event and so they run one at a time. For a change that touches one screen, run
-only the specs that can see it:
+**Running fewer specs.** The whole suite is ~250 tests and takes several minutes, because every spec
+shares one active event and so they run one at a time. While iterating on a change, run only the
+specs that can see it:
 
 ```sh
 npm run test:e2e:affected                    # prints the specs for the diff against origin/main
@@ -353,12 +353,20 @@ npm run test:e2e:affected -- --run           # runs them (one worker; needs the 
 npm run test:e2e:affected -- --explain       # says why each spec was picked
 ```
 
-`scripts/e2e-affected.mjs` matches by the strings in `src/locales/fr.json`: a spec is picked when it
-uses a `fr.someKey` that a changed source file (or, for a `lib/` helper, a module that imports it)
-also uses; a changed spec is picked; a small smoke set (`auth-and-rls`, the registration flow)
-always runs. A change that can touch every screen (app shell, `Header`, `ui`, styles, migrations,
-`seed.sql`, Edge Functions, `e2e/support`, config, `package.json`) selects **all** specs, and the
-script says so. It is a heuristic: when in doubt, or before a merge, run the whole suite.
+`scripts/e2e-affected.mjs` reads the map in `e2e/affected-map.json` (source file → specs that cover
+it). It picks a changed spec; the specs mapped from each changed file; the specs using a changed
+`fr.json` key; and the **smoke set**, which always runs (`auth-and-rls`: member vs admin;
+`member-registration-confirmation`: registration; `member-pass`: payment status; add « Voir comme »
+once its spec exists, in `smoke`). It selects the **whole suite**, and says so, when a changed file
+matches `all` (app shell, `Header`, `ui`, shared `lib/` core modules, migrations, `seed.sql`, Edge
+Functions, `e2e/support`, config, `package.json`) or is a source file with no map entry.
+`src/__tests__/e2eAffectedMap.test.js` (in `npm test`) fails when a spec is mapped from nothing, or
+a source file is neither mapped nor in `all`: **adding a component or a spec means adding it to the
+map**. The map is a judgement, not proof: when in doubt, run the whole suite.
+
+Logins are cached per worker: `loginAs` (`e2e/support/auth.js`) does the password grant once per
+user, then hands the session to the page before the app loads (no second page load), and the
+`testData.js` admin client signs in once, not once per helper call.
 
 **When the suite fails for reasons that look unrelated, reset the local database first**
 (`supabase db reset`, always safe locally). Interrupted runs leave throwaway members and parties

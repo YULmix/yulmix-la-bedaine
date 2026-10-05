@@ -66,6 +66,18 @@ The current history (*"head assets"* ×3) is not a model to follow.
       screens and the RLS boundary between them is the thing most likely to break.
 - [ ] No new `console.log` of session or personal data.
 
+### e2e verification: the affected set while iterating, the whole suite before the PR
+
+- **Iterating** (after each change, before the branch is final): `npm run test:e2e:affected -- --run`
+  after a `supabase db reset`. It runs the specs mapped from your diff plus the smoke set (member vs
+  admin boundary, registration, payment status), typically 1–3 minutes
+  ([how it picks](./07-development-setup.md#e2eauth-and-rlsspecjs--the-playwright-suite)).
+- **The whole suite is required** (`npx playwright test`, once, on the final HEAD, before the branch
+  is pushed): always for the developer's full verification; and whenever the script prints
+  `ALL` (shared code, migrations, seed, `e2e/support`, config), because then the affected set is
+  not enough. The affected set is never the final check.
+- A new spec or source file goes in `e2e/affected-map.json`; `npm test` fails until it does.
+
 ## Tracking work
 
 **Work in progress and work to be done lives in GitHub Issues** (or beads tasks, if the team
