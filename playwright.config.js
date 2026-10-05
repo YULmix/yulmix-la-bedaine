@@ -143,6 +143,9 @@ const SERIAL_ENTRIES = [
   // One app canvas (#226): seeds the shared active event for the member pages, so it runs after
   // admin-roles, on its own. Sets its own viewports.
   { name: 'app-canvas' },
+  // The Inscrits sort (#259) seeds the shared active event with two more registrations, so it
+  // runs after app-canvas, on its own. Sets its own viewports.
+  { name: 'admin-users-sort' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 

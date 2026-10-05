@@ -552,6 +552,13 @@ export async function addParty(userId, eventId, status = 'registered') {
   return partyId;
 }
 
+// Backdates a registration's « Inscrit le » (test data only, service role). A trigger restamps
+// last_edited_at with now() on any update, so that one can't be set.
+export async function setPartyTimestamps(partyId, { created_at }) {
+  const db = await adminClient();
+  check(await db.from('user_parties').update({ created_at }).eq('id', partyId), 'set party created_at');
+}
+
 export async function getProfile(userId) {
   const db = await adminClient();
   return check(await db.from('profiles').select('deleted_at').eq('id', userId).single(), 'read e2e profile');

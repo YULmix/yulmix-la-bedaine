@@ -306,7 +306,8 @@ test.describe('admin tabs', () => {
     await page.setViewportSize({ width: 412, height: 480 });
     for (const path of ['/users', '/users/participants']) {
       await openAdmin(page, path);
-      const list = path === '/users' ? panel(page).getByRole('list') : panel(page).getByRole('table');
+      // The Liste's rows (#259 made it a table): the rowgroup is the box that scrolls from lg.
+      const list = path === '/users' ? panel(page).getByRole('table').getByRole('rowgroup') : panel(page).getByRole('table');
       await expect(list).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
       expect(await list.evaluate(el => getComputedStyle(el).overflowY), 'no scroll box of its own').not.toMatch(/auto|scroll/);

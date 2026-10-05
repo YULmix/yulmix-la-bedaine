@@ -2,7 +2,7 @@
 // UI checklist (docs/05-frontend-guide.md): run it after `npm run db:local:demo` (70 parties, long
 // names, every enum value), never on the e2e fixtures' few rows. Seeds nothing; skipped unless
 // E2E_SCREENSHOT_DIR=<dir> is set. Saves each screen at 390, 768, 1024, 1440 and 2560 px, with the
-// « Détails » pop-up and the sort sheet open, plus « Historique ».
+// « Détails » pop-up and the sort sheet open, plus « Historique » and « Liste » (sorted, its sheet open).
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { loginAs, TEST_USERS } from './support/auth.js';
@@ -49,7 +49,17 @@ test('Inscrits screenshots', async ({ page }) => {
     await settle();
     await shot('historique', width);
     await page.goto('/admin/users');
-    await expect(page.getByRole('main').getByRole('list').first()).toBeVisible();
+    await expect(page.getByRole('main').getByRole('table')).toBeVisible();
     await shot('liste', width);
+    if (width < 1280) {
+      await page.getByRole('main').getByRole('button', { name: fr.participantsSortButton }).click();
+      await settle();
+      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/liste-sortmenu-admin-${width}.png` });
+      await page.keyboard.press('Escape');
+    }
+    // Sorted by a date, the dates show (in the table from xl, under each name below).
+    await page.goto('/admin/users?tri=-modification');
+    await expect(page.getByRole('main').getByRole('table')).toBeVisible();
+    await shot('liste-sorted', width);
   }
 });

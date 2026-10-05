@@ -143,5 +143,8 @@ export const adminRedirect = (pathname: string, search = ''): string | null => {
   const params = new URLSearchParams(search);
   const legacy = pathname.replace(/\/+$/, '') === ADMIN_ROOT;
   const href = adminHref(legacy ? legacyRoute(params) : parseAdminLocation(pathname, search));
-  return href === `${pathname}${search && search !== '?' ? search : ''}` ? null : href;
+  // The Inscrits list keeps its sort in ?tri= (#259): the one param a canonical path may carry.
+  const kept = !legacy && params.has('tri') && parseAdminLocation(pathname, search).section === 'users' ? `?tri=${encodeURIComponent(params.get('tri') ?? '')}` : '';
+  const here = `${pathname}${search && search !== '?' ? search : ''}`;
+  return href === here || (kept && `${href}${kept}` === here) ? null : href;
 };
