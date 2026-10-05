@@ -41,7 +41,9 @@ const TIER_LABEL_KEYS = {
 // `showBudget` false (Comité, #217) leaves the budget card out. Without `onOpenParty`, the email
 // problems name their parties without opening them.
 // `showEmailProblems` false (Comité) leaves out the emails to follow up.
-const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, parties, places, onOpenParty }) => {
+// `showFinances` false (Comité, #290) leaves out « Groupes payés »: its parties have no payment
+// status, and the strip reflows to three figures.
+const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = true, showFinances = true, parties, places, onOpenParty }) => {
   const stats = useMemo(() => computeAdminStats(parties), [parties]);
   const placeStats = useMemo(() => (places.length ? computePlaceStats(parties, places) : null), [parties, places]);
   const receivedShare = stats.totalDue > 0 ? stats.received / stats.totalDue : 0;
@@ -76,16 +78,18 @@ const AdminOverview = ({ event, budget, showBudget = true, showEmailProblems = t
       {placeStats && <OverbookedPlaces places={placeStats.overbooked} />}
 
       {/* KPI strip: one ruled row, not a grid of identical cards. */}
-      <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line sm:grid-cols-4">
+      <Card className={`grid gap-px overflow-hidden bg-line ${showFinances ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
         <div className="bg-surface p-5">
           <Stat label={fr.kpiPeople} value={stats.people} hint={capacity ? fr.kpiCapacity.replace('{max}', capacity) : undefined} />
         </div>
         <div className="bg-surface p-5">
           <Stat label={fr.registeredGroupsStatLabel} value={stats.parties} hint={stats.waitlistedParties ? fr.kpiWaitlisted.replace('{count}', stats.waitlistedParties) : undefined} />
         </div>
-        <div className="bg-surface p-5">
-          <Stat label={fr.kpiPaidGroups} value={`${stats.paidParties}/${stats.parties}`} tone={stats.parties && stats.paidParties === stats.parties ? 'ok' : undefined} />
-        </div>
+        {showFinances && (
+          <div className="bg-surface p-5">
+            <Stat label={fr.kpiPaidGroups} value={`${stats.paidParties}/${stats.parties}`} tone={stats.parties && stats.paidParties === stats.parties ? 'ok' : undefined} />
+          </div>
+        )}
         <div className="bg-surface p-5">
           <Stat label={fr.kpiNewMembers} value={stats.newMembers} />
         </div>

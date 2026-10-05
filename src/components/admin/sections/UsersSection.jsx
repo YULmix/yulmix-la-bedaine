@@ -24,13 +24,15 @@ import SectionStatus from './SectionStatus';
 // « Historique », the change history of an event's registrations (/admin/users/history). The
 // header's « Exporter » is on the list only: the history has its own export buttons. The list owns its dialogs: the payment confirmation, a
 // member's profile, the god-mode editor. Payment changes reload the parties from the
-// shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list,
+// shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list
+// without amounts nor payments (#290, ADR 0026),
 // Organisateur also marks payments, and only an admin edits a registration (the admin flag is in « Équipe »).
 const UsersList = ({ addToast }) => {
   const { role, isAdmin } = useAdminAccess();
   const canEdit = can(role, 'editRegistration');
+  const seeFinances = can(role, 'seeFinances');
   const { activeEvent } = useEvents();
-  const { parties, loading, error } = useAdminParties(activeEvent?.id);
+  const { parties, loading, error } = useAdminParties(activeEvent?.id, role);
   const [profile, setProfile] = useState(null);
   // The registration open read-only (by id, so it follows a refresh) and the one in the editor.
   const [viewingId, setViewingId] = useState(null);
@@ -71,6 +73,7 @@ const UsersList = ({ addToast }) => {
         parties={parties}
         onOpenParty={party => setViewingId(party.id)}
         onPaymentToggle={can(role, 'markPayment') ? (party, newStatus) => setPendingPayment({ party, newStatus }) : undefined}
+        showFinances={seeFinances}
       />
       <PartyDetailDialog
         party={parties.find(party => party.id === viewingId) || null}
@@ -79,8 +82,9 @@ const UsersList = ({ addToast }) => {
         onEdit={canEdit ? party => { setViewingId(null); setEditingParty(party); } : undefined}
         onViewAs={isAdmin ? profile => openVoirComme(profile.id) : undefined}
         showEmailLog={can(role, 'emailLog')}
+        showFinances={seeFinances}
       />
-      <UserProfileDialog profile={profile} onClose={() => setProfile(null)} />
+      <UserProfileDialog profile={profile} onClose={() => setProfile(null)} showFinances={seeFinances} event={activeEvent} parties={parties} />
       {canEdit && <PartyEditDialog party={editingParty} event={activeEvent} onClose={() => setEditingParty(null)} onSaved={handleSaved} />}
       <ConfirmDialog
         open={!!pendingPayment}
@@ -113,8 +117,9 @@ const HistoryView = ({ addToast }) => {
 
 // Comité reads the attendees as it reads the list (RLS); the view is read-only.
 const ParticipantsPage = () => {
+  const { role } = useAdminAccess();
   const { activeEvent } = useEvents();
-  const { activeParties, loading, error } = useAdminParties(activeEvent?.id);
+  const { activeParties, loading, error } = useAdminParties(activeEvent?.id, role);
   if (!activeEvent) return <NoActiveEvent />;
   if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={() => refreshAdminParties(activeEvent.id)} />;
   return <ParticipantsView parties={activeParties} />;
@@ -124,7 +129,7 @@ const UsersSection = ({ view }) => {
   const { addToast } = useToasts(1699);
   const { role } = useAdminAccess();
   const { activeEvent } = useEvents();
-  const { activeParties } = useAdminParties(activeEvent?.id);
+  const { activeParties } = useAdminParties(activeEvent?.id, role);
   return (
     <>
       {activeEvent && view === 'list' && can(role, 'exportData') && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}

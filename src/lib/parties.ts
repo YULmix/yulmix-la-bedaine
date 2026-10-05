@@ -31,11 +31,25 @@ export interface AttendeePlace {
 }
 export type Attendee = AttendeeRow & { place: AttendeePlace | null };
 export type Party = PartyRow & { attendees: Attendee[] };
-/** A party as the admin lists it, with its member's profile and the organisers' notes. */
-export type AdminParty = Party & {
-  profiles: Pick<ProfileRow, 'id' | 'email' | 'full_name' | 'is_admin' | 'created_at' | 'deleted_at'>;
-  admin_notes: string | null;
-};
+/**
+ * A party's finances (#290, ADR 0026): its amounts and payment status. Organisateur and above read
+ * them; Comité doesn't (the database leaves them out of edition_parties()).
+ */
+export const FINANCE_COLUMNS = [
+  'payment_status', 'calculated_amount_owed', 'locked_selling_price_whole_event', 'locked_ratio_main_whole'
+] as const satisfies ReadonlyArray<keyof PartyRow>;
+type FinanceColumn = (typeof FINANCE_COLUMNS)[number];
+/**
+ * A party as the admin lists it, with its member's profile and the organisers' notes. Its finances
+ * (and confirmation_message) are there for Organisateur and above only: a Comité's list has none
+ * (listEditionParties), so a screen checks can(role, 'seeFinances') before showing them.
+ */
+export type AdminParty = Omit<Party, FinanceColumn | 'confirmation_message'>
+  & Partial<Pick<PartyRow, FinanceColumn | 'confirmation_message'>>
+  & {
+    profiles: Pick<ProfileRow, 'id' | 'email' | 'full_name' | 'is_admin' | 'created_at' | 'deleted_at'>;
+    admin_notes: string | null;
+  };
 
 // Named columns, not *: a private column added to user_parties later isn't sent to members by
 // default (#227). Typed against the table, so a renamed or dropped column fails the type check.
@@ -88,6 +102,18 @@ export const listEventParties = async (client: Client, eventId: string): Promise
   return ((data ?? []) as unknown as Row[])
     .filter(party => !(party.profiles?.deleted_at && party.status === REGISTRATION_STATUS.CANCELLED))
     .map(({ admin_note, ...party }) => ({ ...party, admin_notes: admin_note?.notes ?? null }));
+};
+
+/**
+ * An event's parties as the admin lists them, without their finances, for Comité (#290, ADR 0026):
+ * edition_parties() reads them for Comité and above on the event, and leaves out the amounts and
+ * the payment status, removed attendees and a deleted account's cancelled registrations, as
+ * listEventParties() does. Same order and shape otherwise.
+ */
+export const listEditionParties = async (client: Client, eventId: string): Promise<AdminParty[]> => {
+  const { data, error } = await client.rpc('edition_parties', { p_event_id: eventId });
+  if (error) throw failure('Error fetching edition parties', error, fr.loadErrorHint);
+  return (data ?? []) as unknown as AdminParty[];
 };
 
 /** What the preview's test-account picker shows about each party of an event. */

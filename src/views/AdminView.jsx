@@ -81,7 +81,8 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
   // The shell keeps the active event's shared caches subscribed, so moving between sections (and
   // in and out of the event editor) never reloads them: a cache reloads when a screen subscribes
   // while nobody was.
-  useAdminParties(activeEvent?.id);
+  // Without a role there is nothing to read (the « accès restreint » notice).
+  useAdminParties(role ? activeEvent?.id : null, role);
   useEventPlaces(activeEvent?.id);
   // The budget is Organisateur's and above (the database shows nobody else anything).
   useBudget(hasRole(role, 'organiser') ? activeEvent?.id : null);

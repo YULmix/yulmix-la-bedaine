@@ -43,6 +43,11 @@ export const ACTION_ROLES = {
   emailLog: 'organiser',
   /** Inscrits' « Exporter ». */
   exportData: 'organiser',
+  /**
+   * A party's amounts and payment status, wherever they show (#290, ADR 0026): Inscrits' list, the
+   * party and profile dialogs, Résumé's « Groupes payés ». Comité's parties come without them.
+   */
+  seeFinances: 'organiser',
   /** Inscrits' payment toggle. */
   markPayment: 'organiser',
   /** Logistique's places, notes and messages, and its Save. */
