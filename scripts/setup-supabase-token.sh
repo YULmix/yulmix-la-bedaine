@@ -30,7 +30,7 @@ api="${SUPABASE_API_URL:-https://api.supabase.com}/v1/projects/$ref"
 
 echo "== $target: project « $name » ($ref) → secret $secret in GitHub environment $ghenv"
 echo "Create a SCOPED token at https://supabase.com/dashboard/account/tokens"
-echo "  Resource access: Project → $name (not Organization). Everything not listed stays None:"
+echo "  Resource access: Organization → YULmix (one org-scoped token, not per project). Everything not listed stays None:"
 jq -r '.permissions[] | "    \(.[0]): \(.[1])"' "$conf"
 
 # permission label | method path [body]: the cheapest call that needs it.

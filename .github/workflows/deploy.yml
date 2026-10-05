@@ -412,16 +412,20 @@ jobs:
           PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
 
   # Preview's counterpart of `functions`: the Edge Functions on the Preview project, after its
-  # database has the migrations. No email trigger setup: Preview sends no real email.
+  # database has the migrations. "Run workflow" on main deploys them unconditionally (no changes
+  # filter; backup/migrate/preview-db are push-only, so they are skipped then and nothing is reset). No email trigger setup: Preview sends no real email.
   preview-functions:
     name: Deploy Edge Functions to Preview
     needs: [changes, preview-db]
     if: >-
       !cancelled()
-      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && github.ref == 'refs/heads/main'
       && needs.changes.result == 'success'
-      && (needs.changes.outputs.functions == 'true' || needs.changes.outputs.migrations == 'true')
-      && (needs.changes.outputs.migrations != 'true' || needs.preview-db.result == 'success')
+      && ((github.event_name == 'push'
+           && (needs.changes.outputs.functions == 'true' || needs.changes.outputs.migrations == 'true')
+           && (needs.changes.outputs.migrations != 'true' || needs.preview-db.result == 'success'))
+          || (github.event_name == 'workflow_dispatch'
+              && (needs.preview-db.result == 'success' || needs.preview-db.result == 'skipped')))
     runs-on: ubuntu-latest
     environment: Preview
     concurrency:
@@ -469,8 +473,8 @@ jobs:
       - name: Enable the custom access token hook
         run: scripts/enable-access-token-hook.sh "$PREVIEW_SUPABASE_PROJECT_REF"
 
-  # Deploys supabase/functions/ to production when they (or config.toml) changed, after any
-  # pending migration has applied, then points the email trigger at the deployed function
+  # Deploys supabase/functions/ to production when they (or config.toml) changed (always on "Run
+  # workflow" on main, which never migrates), after any pending migration has applied, then points the email trigger at the deployed function
   # (ADR 0016: the URL is per environment, so it lives in private.settings, not in a migration).
   #
   # One-time setup, done by a maintainer, run locally, never pasted to an AI assistant, and
@@ -484,11 +488,14 @@ jobs:
     needs: [build-and-test, changes, migrate]
     if: >-
       !cancelled()
-      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && github.ref == 'refs/heads/main'
       && needs.build-and-test.result == 'success'
       && needs.changes.result == 'success'
-      && needs.changes.outputs.functions == 'true'
-      && (needs.changes.outputs.migrations != 'true' || needs.migrate.result == 'success')
+      && ((github.event_name == 'push'
+           && needs.changes.outputs.functions == 'true'
+           && (needs.changes.outputs.migrations != 'true' || needs.migrate.result == 'success'))
+          || (github.event_name == 'workflow_dispatch'
+              && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')))
     runs-on: ubuntu-latest
     environment: supabase-production
     env:
