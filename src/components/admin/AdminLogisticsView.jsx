@@ -94,10 +94,10 @@ const PlacesView = ({
       <p className="max-w-prose text-muted">{fr.logisticsViewDescription}</p>
       <AdminHeaderActions>
         {galleryImages.length > 0 && (
-          <Button variant="secondary" size="sm" aria-pressed={pinned} onClick={togglePinned}
-            className={cx('min-h-11', pinned && 'border-neon text-neon')}>
-            <Pin aria-hidden="true" className={cx('size-4', pinned && 'fill-current')} strokeWidth={1.75} />
-            {fr.galleryPin}
+          // Icon only (organiser, #293): the pin is filled and neon while pinned.
+          <Button variant="secondary" size="icon" aria-pressed={pinned} aria-label={fr.galleryPin} title={fr.galleryPin}
+            onClick={togglePinned} className={cx(pinned && 'border-neon bg-raised text-neon')}>
+            <Pin aria-hidden="true" className={cx('size-5', pinned && 'fill-current')} strokeWidth={1.75} />
           </Button>
         )}
         <GalleryButton images={galleryImages} name={galleryName} size="sm" />
