@@ -45,8 +45,14 @@ const fakeClient = (rows = {}) => {
     });
     return builder;
   });
-  // set_payment_status() (#217) answers like an update, and is recorded with them.
+  // set_payment_status() (#217) answers like an update, and is recorded with them;
+  // edition_parties() (#290) answers like a read, as `edition:<event>`, without the finances.
   client.rpc = jest.fn(async (name, args) => {
+    if (name === 'edition_parties') {
+      client.reads.push(`edition:${args.p_event_id}`);
+      if (client.loadError) return { data: null, error: client.loadError };
+      return { data: (client.rows[args.p_event_id] || []).map(({ payment_status, calculated_amount_owed, ...row }) => row), error: null };
+    }
     client.updates.push({ rpc: name, args });
     return { data: null, error: client.writeError };
   });
@@ -68,9 +74,9 @@ const fakeClient = (rows = {}) => {
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
-const watch = (store, eventId = EVENT) => {
+const watch = (store, eventId = EVENT, withFinances) => {
   const seen = { count: 0 };
-  seen.stop = store.subscribe(eventId, () => { seen.count += 1; });
+  seen.stop = store.subscribe(eventId, () => { seen.count += 1; }, withFinances);
   return seen;
 };
 
@@ -216,6 +222,48 @@ describe('admin parties store (#195)', () => {
 
     expect(client.updates).toEqual([{ rpc: 'set_payment_status', args: { p_party_id: 'a', p_payment_status: 'paid' } }]);
     expect(store.getSnapshot(EVENT).parties[0].payment_status).toBe('paid');
+  });
+
+  test('Comité (no finances, #290): loads through edition_parties(), without amounts nor payment, and opens no realtime channel', async () => {
+    const client = fakeClient({ [EVENT]: [party('a', { calculated_amount_owed: 120 }), party('b', { status: 'cancelled' })] });
+    const store = createAdminPartiesStore(client);
+    watch(store, EVENT, false);
+    await settle();
+    expect(client.reads).toEqual([`edition:${EVENT}`]);
+    expect(client.from).not.toHaveBeenCalled();
+    expect(client.channels).toHaveLength(0);
+    const snapshot = store.getSnapshot(EVENT);
+    expect(snapshot.parties.map(p => p.id)).toEqual(['a', 'b']);
+    expect(snapshot.activeParties.map(p => p.id)).toEqual(['a']);
+    expect(snapshot.parties.some(p => 'payment_status' in p || 'calculated_amount_owed' in p)).toBe(false);
+    await store.refresh(EVENT);
+    expect(client.reads).toEqual([`edition:${EVENT}`, `edition:${EVENT}`]);
+  });
+
+  test('a role change switches the source and drops what was shown: no finances linger for Comité', async () => {
+    const client = fakeClient({ [EVENT]: [party('a', { calculated_amount_owed: 120 })] });
+    client.holdNext = true;
+    const store = createAdminPartiesStore(client);
+    const organiser = watch(store, EVENT, true);
+    client.release();
+    await settle();
+    expect(store.getSnapshot(EVENT).parties[0].payment_status).toBe('unpaid');
+
+    organiser.stop();
+    const committee = watch(store, EVENT, false);
+    expect(store.getSnapshot(EVENT)).toMatchObject({ parties: [], loading: true });
+    await settle();
+    expect(client.reads).toEqual([EVENT, `edition:${EVENT}`]);
+    expect(store.getSnapshot(EVENT).parties[0]).not.toHaveProperty('payment_status');
+    expect(client.channels).toHaveLength(1);
+    expect(client.removed).toEqual([client.channels[0]]);
+
+    // Still watched, and Organisateur again: the table, live.
+    watch(store, EVENT, true);
+    await settle();
+    expect(client.reads).toEqual([EVENT, `edition:${EVENT}`, EVENT]);
+    expect(client.channels).toHaveLength(2);
+    committee.stop();
   });
 
   test('updatePaymentStatus throws the French message and doesn\'t reload', async () => {

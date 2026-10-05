@@ -4,6 +4,7 @@ import { dbErrorMessage } from '../../../lib/dbErrors';
 import { refreshAdminParties, useAdminParties } from '../../../lib/adminParties';
 import { refreshBudget, saveBudget, setBudgetDraft, useBudget } from '../../../lib/budget';
 import { useToasts } from '../../../hooks/useToasts';
+import { useAdminAccess } from '../../../hooks/useAdminAccess';
 import AdminBudget from '../AdminBudget';
 import NoActiveEvent from './NoActiveEvent';
 import SectionStatus from './SectionStatus';
@@ -13,7 +14,8 @@ import SectionStatus from './SectionStatus';
 const BudgetSection = () => {
   const { activeEvent } = useEvents();
   const eventId = activeEvent?.id;
-  const parties = useAdminParties(eventId);
+  const { role } = useAdminAccess();
+  const parties = useAdminParties(eventId, role);
   const { budget, draft, saving, loading, error } = useBudget(eventId);
   const { addToast } = useToasts(1699);
 

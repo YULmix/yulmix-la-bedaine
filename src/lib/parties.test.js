@@ -1,5 +1,5 @@
 import fr from '../locales/fr.json';
-import { cancelParty, fetchMyParty, fetchParty, listEventParties, listPartySummaries, saveRegistration, setPaymentStatus } from './parties';
+import { cancelParty, fetchMyParty, fetchParty, listEditionParties, listEventParties, listPartySummaries, saveRegistration, setPaymentStatus } from './parties';
 
 // A Supabase client whose queries record each builder call and resolve to the next queued result.
 const mockClient = (...results) => {
@@ -83,6 +83,14 @@ describe('reads', () => {
     expect(calledWith(queries[0], 'select')[0][0]).toMatch(/admin_note:party_admin_notes\(notes\)/);
   });
 
+  test('listEditionParties (Comité, #290) reads edition_parties(), never the table', async () => {
+    const rows = [party('a', { profiles: { deleted_at: null }, admin_notes: 'VIP' })];
+    const { client, queries } = mockClient({ data: rows, error: null });
+    await expect(listEditionParties(client, 'e1')).resolves.toEqual(rows);
+    expect(client.rpc).toHaveBeenCalledWith('edition_parties', { p_event_id: 'e1' });
+    expect(queries).toEqual([]);
+  });
+
   test('listPartySummaries says whether any attendee has a place', async () => {
     const rows = [
       { id: 'a', user_id: 'u1', status: 'registered', is_waitlisted: false, payment_status: 'paid', attendees: [{ place: null }, { place: { place_id: 'x' } }] },
@@ -134,6 +142,7 @@ describe('errors are thrown in French, raw ones logged', () => {
     ['fetchParty', (client) => fetchParty(client, 'p1'), fr.loadErrorHint],
     ['fetchMyParty', (client) => fetchMyParty(client, 'u1', 'e1'), fr.loadErrorHint],
     ['listEventParties', (client) => listEventParties(client, 'e1'), fr.loadErrorHint],
+    ['listEditionParties', (client) => listEditionParties(client, 'e1'), fr.loadErrorHint],
     ['listPartySummaries', (client) => listPartySummaries(client, 'e1'), fr.loadErrorHint],
     ['saveRegistration', (client) => saveRegistration(client, { eventId: 'e1', attendees: [] }), fr.saveError],
     ['cancelParty', (client) => cancelParty(client, 'p1'), fr.cancelRegistrationError],

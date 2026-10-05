@@ -27,7 +27,8 @@ const Fact = ({ label, children }) => (
 // `party` null is closed. The member's profile and history open from « Voir le profil ».
 // « Voir comme » (#267) is the admin's `onViewAs`, offered on a registrant who isn't an admin nor
 // deleted: it opens the member's read-only session in a new tab.
-const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, onViewAs, showEmailLog }) => {
+// `showFinances` false (Comité, #290): no payment status nor amount; its parties don't carry them.
+const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, onViewAs, showEmailLog, showFinances = true }) => {
   const profile = party?.profiles || {};
   const viewAs = onViewAs && canViewAs(profile) ? onViewAs : null;
   const cancelled = party ? !isActiveRegistration(party) : false;
@@ -81,12 +82,16 @@ const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, onViewAs, sh
                 {party.is_waitlisted && <Tag tone="warn">{fr.filterWaitlist}</Tag>}
               </span>
             </Fact>
-            <Fact label={fr.paymentColumn}>
-              <Tag tone={isPaid ? 'ok' : 'warn'}>{getPaymentStatusShortLabel(party.payment_status)}</Tag>
-            </Fact>
-            <Fact label={fr.amountDue}>
-              <span className="font-data">{formatCurrency(cancelled ? 0 : amountOwedOf(party))}</span>
-            </Fact>
+            {showFinances && (
+              <>
+                <Fact label={fr.paymentColumn}>
+                  <Tag tone={isPaid ? 'ok' : 'warn'}>{getPaymentStatusShortLabel(party.payment_status)}</Tag>
+                </Fact>
+                <Fact label={fr.amountDue}>
+                  <span className="font-data">{formatCurrency(cancelled ? 0 : amountOwedOf(party))}</span>
+                </Fact>
+              </>
+            )}
             <Fact label={fr.partyDetailRegisteredOn}>{formatDateTime(party.created_at) || fr.notSpecified}</Fact>
             <Fact label={fr.partyDetailEditedOn}>
               {party.last_edited_at ? formatDateTime(party.last_edited_at) : fr.neverEditedMessage}

@@ -37,12 +37,19 @@ export const hasRole = (role: AccessRole | null | undefined, min: AccessRole): b
 export const ACTION_ROLES = {
   /** Résumé's budget card (the budget itself is Organisateur and above). */
   budgetFigures: 'organiser',
+  /** Résumé's selling price per tier (#290: prices aren't Comité's concern, organiser 2026-10-05). */
+  tierPrices: 'organiser',
   /** Résumé's email problems (email_log, #93). */
   emailProblems: 'organiser',
   /** The email log in an Inscription's dialog (email_log, ADR 0023). */
   emailLog: 'organiser',
   /** Inscrits' « Exporter ». */
   exportData: 'organiser',
+  /**
+   * A party's amounts and payment status, wherever they show (#290, ADR 0026): Inscrits' list, the
+   * party and profile dialogs, Résumé's « Groupes payés ». Comité's parties come without them.
+   */
+  seeFinances: 'organiser',
   /** Inscrits' payment toggle. */
   markPayment: 'organiser',
   /** Logistique's places, notes and messages, and its Save. */

@@ -2,10 +2,12 @@ import { useCallback, useSyncExternalStore } from 'react';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import { supabase } from './supabase';
-import { listEventParties, setPaymentStatus } from './parties';
+import { listEditionParties, listEventParties, setPaymentStatus } from './parties';
 import type { AdminParty } from './parties';
 import { isActiveRegistration } from './registrationOptions';
 import type { PaymentStatus } from './registrationOptions';
+import { can } from './editionRoles';
+import type { AccessRole } from './editionRoles';
 
 // Admin parties (#195): an event's parties as the admin lists them (the party module's
 // listEventParties, #197), in one cache per event that every admin section shares: Résumé,
@@ -15,6 +17,11 @@ import type { PaymentStatus } from './registrationOptions';
 // of the event (the realtime channel on user_parties, open only while someone watches), and on
 // refresh(); never because a section changed. Reloading parties doesn't touch the event places:
 // Aperçu and Logistique take who sleeps where from the parties (it broke a Logistique save, #193).
+//
+// Comité doesn't read finances (#290, ADR 0026): its entry loads through edition_parties(), whose
+// parties have no amounts nor payment status, and has no realtime channel (realtime follows RLS,
+// which no longer shows Comité its edition's parties); it reloads on navigation and on retry.
+// Organisateur and above read the table, with the channel.
 //
 // A failed load keeps the French message (ADR 0021) in `error`, and what was shown before.
 // Actions throw the party module's error, whose message is already French.
@@ -36,6 +43,8 @@ interface Entry {
   error: string | null;
   listeners: Set<() => void>;
   channel: RealtimeChannel | null;
+  /** Organisateur and above (the table, live), or Comité (edition_parties(), no finances). */
+  withFinances: boolean;
   snapshot: AdminPartiesSnapshot | null;
   request: number;
 }
@@ -47,7 +56,7 @@ export const createAdminPartiesStore = (client: Client) => {
 
   const entryOf = (eventId: string): Entry => {
     if (!entries.has(eventId)) {
-      entries.set(eventId, { rows: null, error: null, listeners: new Set(), channel: null, snapshot: null, request: 0 });
+      entries.set(eventId, { rows: null, error: null, listeners: new Set(), channel: null, withFinances: true, snapshot: null, request: 0 });
     }
     return entries.get(eventId)!;
   };
@@ -68,7 +77,7 @@ export const createAdminPartiesStore = (client: Client) => {
     let rows: AdminParty[] | null = null;
     let error: string | null = null;
     try {
-      rows = await listEventParties(client, eventId);
+      rows = await (entry.withFinances ? listEventParties : listEditionParties)(client, eventId);
     } catch (err) {
       error = (err as Error).message;
     }
@@ -80,21 +89,37 @@ export const createAdminPartiesStore = (client: Client) => {
     entry.listeners.forEach(listener => listener());
   };
 
-  const subscribe = (eventId: string, listener: () => void): (() => void) => {
+  const closeChannel = (entry: Entry): void => {
+    if (entry.channel) client.removeChannel(entry.channel);
+    entry.channel = null;
+  };
+
+  /**
+   * Watches an event's parties. `withFinances`: the caller may read them (Organisateur and above),
+   * else they load without (Comité). A change of it (the role changed) reloads the entry, and
+   * forgets what it held, so no finances stay on screen for someone who may no longer read them.
+   */
+  const subscribe = (eventId: string, listener: () => void, withFinances = true): (() => void) => {
     const entry = entryOf(eventId);
-    if (entry.listeners.size === 0) {
+    if (entry.listeners.size === 0 || entry.withFinances !== withFinances) {
+      if (entry.withFinances !== withFinances) {
+        entry.withFinances = withFinances;
+        entry.rows = null;
+        entry.error = null;
+        build(entry);
+      }
+      closeChannel(entry);
       load(eventId);
-      entry.channel = client.channel(`admin_parties_${eventId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'user_parties', filter: `event_id=eq.${eventId}` }, () => { load(eventId); })
-        .subscribe();
+      if (withFinances) {
+        entry.channel = client.channel(`admin_parties_${eventId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'user_parties', filter: `event_id=eq.${eventId}` }, () => { load(eventId); })
+          .subscribe();
+      }
     }
     entry.listeners.add(listener);
     return () => {
       entry.listeners.delete(listener);
-      if (entry.listeners.size === 0 && entry.channel) {
-        client.removeChannel(entry.channel);
-        entry.channel = null;
-      }
+      if (entry.listeners.size === 0) closeChannel(entry);
     };
   };
 
@@ -130,11 +155,20 @@ const store = createAdminPartiesStore(supabase);
 export const refreshAdminParties = store.refresh;
 export const updatePaymentStatus = store.updatePaymentStatus;
 
-/** An event's parties for the admin, from the shared cache. Without an event: nothing, not loading. */
-export const useAdminParties = (eventId: string | null | undefined, adminPartiesStore: AdminPartiesStore = store): AdminPartiesSnapshot => {
+/**
+ * An event's parties for the admin, from the shared cache, as `role` (the caller's role on the
+ * event, useAdminAccess()) may read them: with their finances for Organisateur and above, without
+ * for Comité (#290). Without an event: nothing, not loading.
+ */
+export const useAdminParties = (
+  eventId: string | null | undefined,
+  role: AccessRole | null | undefined,
+  adminPartiesStore: AdminPartiesStore = store
+): AdminPartiesSnapshot => {
+  const withFinances = can(role, 'seeFinances');
   const subscribe = useCallback(
-    (listener: () => void) => (eventId ? adminPartiesStore.subscribe(eventId, listener) : () => {}),
-    [eventId, adminPartiesStore]
+    (listener: () => void) => (eventId ? adminPartiesStore.subscribe(eventId, listener, withFinances) : () => {}),
+    [eventId, withFinances, adminPartiesStore]
   );
   return useSyncExternalStore(subscribe, () => adminPartiesStore.getSnapshot(eventId));
 };

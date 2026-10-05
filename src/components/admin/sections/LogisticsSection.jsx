@@ -21,7 +21,7 @@ const LogisticsSection = ({ view }) => {
   const { role } = useAdminAccess();
   const { activeEvent } = useEvents();
   const eventId = activeEvent?.id;
-  const { parties, activeParties, loading, error } = useAdminParties(eventId);
+  const { parties, activeParties, loading, error } = useAdminParties(eventId, role);
   // The sleeping places as the event uses them (#113, #193), shared with the event editor.
   const { available: places } = useEventPlaces(eventId);
   const { changes, errors, unsavedCount, saving } = useLogistics(eventId);
@@ -64,7 +64,7 @@ const LogisticsSection = ({ view }) => {
         onDiscard={() => discardLogistics(eventId)}
         onOpenUserProfile={setProfile}
       />
-      <UserProfileDialog profile={profile} onClose={() => setProfile(null)} />
+      <UserProfileDialog profile={profile} onClose={() => setProfile(null)} showFinances={can(role, 'seeFinances')} event={activeEvent} parties={parties} />
     </>
   );
 };

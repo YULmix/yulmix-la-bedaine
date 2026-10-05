@@ -27,11 +27,17 @@ const FILTERS = [
   { id: 'cancelled', labelKey: 'filterCancelled', test: party => !isActiveRegistration(party), hideWhenEmpty: true }
 ];
 
+// Comité (#290, ADR 0026) has no payment status to filter on.
+const FINANCE_FILTERS = new Set(['unpaid', 'paid']);
+const NO_FINANCE_FILTERS = FILTERS.filter(filter => !FINANCE_FILTERS.has(filter.id));
+
 const isShown = (filter, counts) => !filter.hideWhenEmpty || counts[filter.id] > 0;
 
 // The table from xl, as « Participants »: at lg (1024) the seven columns leave the name and the
 // email no room (#259 added the two dates); below xl each party is a card.
 const GRID_COLUMNS = 'xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_6rem_7rem_8.5rem_8.5rem]';
+// Without the amount and the payment (Comité).
+const NO_FINANCE_GRID_COLUMNS = 'xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_4rem_8.5rem_8.5rem]';
 
 const SORT_LABEL_KEYS = { name: 'logisticsTableName', registered: 'partyDetailRegisteredOn', modified: 'sortModifiedOn' };
 const SORT_OPTIONS = PARTY_SORT_KEYS.map(key => ({ value: key, label: fr[SORT_LABEL_KEYS[key]] }));
@@ -74,11 +80,16 @@ export const FilterPills = ({ filters, value, onChange, counts, label }) => (
 // parent, which confirms before writing. The search is in the page header; the
 // list scrolls in a box that ends on screen (a dense page, ADR 0022). An action whose handler is
 // missing isn't rendered: the role doesn't allow it (#217); the payment shows as a tag instead.
+// `showFinances` false (Comité, #290): no amount, no payment, no paid/unpaid filter; its parties
+// don't carry them.
 const AdminUserManagement = ({
   parties,
   onOpenParty,
-  onPaymentToggle
+  onPaymentToggle,
+  showFinances = true
 }) => {
+  const filters = showFinances ? FILTERS : NO_FINANCE_FILTERS;
+  const gridColumns = showFinances ? GRID_COLUMNS : NO_FINANCE_GRID_COLUMNS;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const listRef = useRef(null);
@@ -96,14 +107,14 @@ const AdminUserManagement = ({
   const [sortOpen, setSortOpen] = useState(false);
 
   const counts = useMemo(
-    () => Object.fromEntries(FILTERS.map(f => [f.id, parties.filter(f.test).length])),
-    [parties]
+    () => Object.fromEntries(filters.map(f => [f.id, parties.filter(f.test).length])),
+    [parties, filters]
   );
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     // Falls back to "Tous" if the selected pill disappeared (its last party was re-registered).
-    const activeFilter = FILTERS.find(f => f.id === filter && isShown(f, counts)) || FILTERS[0];
+    const activeFilter = filters.find(f => f.id === filter && isShown(f, counts)) || filters[0];
     return sortParties(parties, sort).filter(party => {
       if (!activeFilter.test(party)) return false;
       if (!needle) return true;
@@ -111,7 +122,7 @@ const AdminUserManagement = ({
       return [profile.full_name, profile.email, ...(party.attendees || []).map(a => a.name)]
         .some(value => value?.toLowerCase().includes(needle));
     });
-  }, [parties, query, filter, counts, sort]);
+  }, [parties, query, filter, filters, counts, sort]);
   useFitToViewport(listRef, { fromWidth: 1280, deps: [visible] });
 
   return (
@@ -130,7 +141,7 @@ const AdminUserManagement = ({
         </div>
       </AdminHeaderActions>
 
-      <FilterPills filters={FILTERS} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
+      <FilterPills filters={filters} value={filter} onChange={setFilter} counts={counts} label={fr.filterLabel} />
 
       {/* Below xl there are no column headers: the « Trier » sheet, as in « Participants ». */}
       <div className="flex items-center gap-3 xl:hidden">
@@ -144,12 +155,16 @@ const AdminUserManagement = ({
         <EmptyState icon={UsersRound} title={parties.length ? fr.noMatchingParties : fr.noPartiesYet} />
       ) : (
         <div role="table" aria-label={fr.adminTabUsersShort} className="overflow-hidden rounded-card border border-line bg-surface">
-          <div role="row" className={`hidden xl:grid ${GRID_COLUMNS} xl:items-center xl:gap-4 border-b border-line px-5 py-1 text-sm font-semibold text-faint`}>
+          <div role="row" className={`hidden xl:grid ${gridColumns} xl:items-center xl:gap-4 border-b border-line px-5 py-1 text-sm font-semibold text-faint`}>
             <SortHeader sortKey="name" sort={sort} onSort={onSort} />
             <span role="columnheader">{fr.logisticsTableEmail}</span>
             <span role="columnheader">{fr.peopleColumn}</span>
-            <span role="columnheader" className="text-right">{fr.amountDue}</span>
-            <span role="columnheader">{fr.paymentColumn}</span>
+            {showFinances && (
+              <>
+                <span role="columnheader" className="text-right">{fr.amountDue}</span>
+                <span role="columnheader">{fr.paymentColumn}</span>
+              </>
+            )}
             <SortHeader sortKey="registered" sort={sort} onSort={onSort} />
             <SortHeader sortKey="modified" sort={sort} onSort={onSort} />
           </div>
@@ -165,7 +180,7 @@ const AdminUserManagement = ({
                 <div
                   role="row"
                   key={party.id}
-                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${GRID_COLUMNS} xl:gap-4 xl:px-5 xl:py-3`}
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-3 px-4 py-4 ${gridColumns} xl:gap-4 xl:px-5 xl:py-3`}
                 >
                   <span aria-hidden="true" className="grid size-10 place-items-center rounded-full bg-raised font-data text-sm text-muted xl:hidden">
                     {initials(profile.full_name || profile.email)}
@@ -180,19 +195,22 @@ const AdminUserManagement = ({
                     <p className="text-sm text-faint xl:hidden">
                       {plural(people, 'countPersonOne', 'countPersonOther')}{party.is_waitlisted ? `, ${fr.filterWaitlist.toLowerCase()}` : ''}
                     </p>
+                    {!showFinances && isCancelled && (
+                      <Tag className="mt-1">{getRegistrationStatusLabel(party.status)}</Tag>
+                    )}
                     {sort.key !== 'name' && (
                       <p className="text-sm text-faint xl:hidden">
                         {fr[SORT_LABEL_KEYS[sort.key]]} {formatDate(sort.key === 'registered' ? party.created_at : partyModifiedAt(party))}
                       </p>
                     )}
                   </div>
-                  <span role="cell" className="font-data text-base text-ink xl:hidden">{formatCurrency(amount)}</span>
+                  {showFinances && <span role="cell" className="font-data text-base text-ink xl:hidden">{formatCurrency(amount)}</span>}
 
                   <span role="cell" className="col-span-3 hidden break-all text-sm text-muted xl:col-span-1 xl:block">{profile.email}</span>
                   <span role="cell" className="hidden font-data text-sm text-muted xl:block">{people}</span>
-                  <span role="cell" className="hidden text-right font-data text-ink xl:block">{formatCurrency(amount)}</span>
+                  {showFinances && <span role="cell" className="hidden text-right font-data text-ink xl:block">{formatCurrency(amount)}</span>}
 
-                  <div role="cell" className="col-span-3 flex items-center gap-3 xl:contents">
+                  {showFinances && <div role="cell" className="col-span-3 flex items-center gap-3 xl:contents">
                     {isCancelled ? (
                       <Tag className="justify-self-start">{getRegistrationStatusLabel(party.status)}</Tag>
                     ) : !onPaymentToggle ? (
@@ -206,7 +224,7 @@ const AdminUserManagement = ({
                         {getPaymentStatusShortLabel(party.payment_status)}
                       </button>
                     )}
-                  </div>
+                  </div>}
                   <span role="cell" className="hidden text-sm text-muted xl:block">{formatDate(party.created_at)}</span>
                   <span role="cell" className="hidden text-sm text-muted xl:block">{party.last_edited_at ? formatDate(party.last_edited_at) : <span aria-label={fr.neverEditedMessage}>—</span>}</span>
                 </div>

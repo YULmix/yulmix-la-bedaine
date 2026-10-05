@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import fr from '../../locales/fr.json';
 import { supabase } from '../../lib/supabase';
 import { fetchEventHistory } from '../../lib/profiles';
@@ -10,20 +10,36 @@ import { Dialog, Tag } from '../ui';
 
 // A member's identity and their registrations across editions (user_event_history view), which
 // it loads itself when it opens.
-const UserProfileDialog = ({ profile, onClose }) => {
-  const [history, setHistory] = useState([]);
+// Without finances (Comité, #290, ADR 0026) it doesn't: the view carries the amounts and payment
+// status, and the database shows Comité only its own rows there. It lists the member's registration
+// in the edition Comité reads instead (`event` and its `parties`, from the admin parties store,
+// which have no finances), without the payment and the amount.
+const UserProfileDialog = ({ profile, onClose, showFinances = true, event = null, parties = [] }) => {
+  const [fetched, setFetched] = useState([]);
   const { addToast } = useToasts(1699);
   const profileId = profile?.id;
+  const editionHistory = useMemo(
+    () => (showFinances ? [] : parties
+      .filter(party => party.user_id === profileId)
+      .map(party => ({
+        event_theme: event?.theme,
+        registration_date: party.created_at,
+        registration_status: party.status,
+        is_waitlisted: party.is_waitlisted
+      }))),
+    [showFinances, parties, profileId, event?.theme]
+  );
+  const history = showFinances ? fetched : editionHistory;
 
   useEffect(() => {
-    setHistory([]);
-    if (!profileId) return undefined;
+    setFetched([]);
+    if (!profileId || !showFinances) return undefined;
     let current = true;
     fetchEventHistory(supabase, profileId)
-      .then(entries => { if (current) setHistory(entries); })
+      .then(entries => { if (current) setFetched(entries); })
       .catch(err => { if (current) addToast(err.message, 'error'); });
     return () => { current = false; };
-  }, [profileId, addToast]);
+  }, [profileId, showFinances, addToast]);
 
   return (
     <Dialog open={!!profile} onClose={onClose} title={fr.userProfileModalTitle} size="md">
@@ -64,8 +80,12 @@ const UserProfileDialog = ({ profile, onClose }) => {
                     <div className="flex flex-wrap items-center gap-2">
                       <Tag>{getRegistrationStatusLabel(entry.registration_status)}</Tag>
                       {entry.is_waitlisted && <Tag tone="warn">{fr.filterWaitlist}</Tag>}
-                      <Tag tone={entry.payment_status === PAYMENT_STATUS.PAID ? 'ok' : 'warn'}>{getPaymentStatusShortLabel(entry.payment_status)}</Tag>
-                      <span className="font-data text-sm text-ink">{formatCurrency(entry.calculated_amount_owed)}</span>
+                      {showFinances && (
+                        <>
+                          <Tag tone={entry.payment_status === PAYMENT_STATUS.PAID ? 'ok' : 'warn'}>{getPaymentStatusShortLabel(entry.payment_status)}</Tag>
+                          <span className="font-data text-sm text-ink">{formatCurrency(entry.calculated_amount_owed)}</span>
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}

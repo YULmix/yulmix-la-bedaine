@@ -30,9 +30,14 @@ describe('the admin section registry', () => {
     expect(last).toMatchObject({ id: 'feedback', inBar: false, marker: 'unresolvedFeedback' });
   });
 
-  test('the phone bar has Résumé, Inscrits, Logistique and Budget; the rest is under « Plus »', () => {
-    expect(BAR_SECTIONS.map(section => section.id)).toEqual(['overview', 'users', 'logistics', 'budget']);
-    expect(MORE_SECTIONS.map(section => section.id)).toEqual(ADMIN_SECTIONS.filter(id => !['overview', 'users', 'logistics', 'budget'].includes(id)));
+  test('the phone bar has Résumé, Inscrits (or Comité\'s Participants), Logistique and Budget; the rest is under « Plus »', () => {
+    const BAR = ['overview', 'users', 'participants', 'logistics', 'budget'];
+    expect(BAR_SECTIONS.map(section => section.id)).toEqual(BAR);
+    expect(MORE_SECTIONS.map(section => section.id)).toEqual(ADMIN_SECTIONS.filter(id => !BAR.includes(id)));
+    // No role gets more than the bar's four slots.
+    for (const role of ['committee', 'organiser', 'admin']) {
+      expect(sectionsFor(role).filter(section => section.inBar).length).toBeLessThanOrEqual(4);
+    }
   });
 });
 
@@ -59,10 +64,10 @@ describe('adminPage', () => {
 describe('what each role may open (#217, ADR 0023)', () => {
   const ids = role => sectionsFor(role).map(section => ({ id: section.id, views: section.views.map(view => view.id) }));
 
-  test('Comité: Résumé, the list and participants of Inscrits and every Logistique view', () => {
+  test('Comité: Résumé, Participants (a section, #291) and every Logistique view; no Inscrits', () => {
     expect(ids('committee')).toEqual([
       { id: 'overview', views: [] },
-      { id: 'users', views: ['list', 'participants'] },
+      { id: 'participants', views: [] },
       { id: 'logistics', views: [...LOGISTICS_VIEW_IDS] }
     ]);
   });
@@ -76,8 +81,8 @@ describe('what each role may open (#217, ADR 0023)', () => {
     ]);
   });
 
-  test('admin: everything, Équipe included; no role: nothing', () => {
-    expect(sectionsFor('admin').map(section => section.id)).toEqual([...ADMIN_SECTIONS]);
+  test('admin: everything but Comité\'s Participants, Équipe included; no role: nothing', () => {
+    expect(sectionsFor('admin').map(section => section.id)).toEqual(ADMIN_SECTIONS.filter(id => id !== 'participants'));
     expect(sectionsFor('admin').find(section => section.id === 'users').views).toHaveLength(USERS_VIEW_IDS.length);
     expect(sectionsFor(null)).toEqual([]);
   });
@@ -91,7 +96,12 @@ describe('what each role may open (#217, ADR 0023)', () => {
   });
 
   test('mayOpen checks the section and the view', () => {
-    expect(mayOpen({ section: 'users', view: 'list' }, 'committee')).toBe(true);
+    expect(mayOpen({ section: 'users', view: 'list' }, 'committee')).toBe(false);
+    expect(mayOpen({ section: 'users', view: 'participants' }, 'committee')).toBe(false);
+    expect(mayOpen(adminRoute('participants'), 'committee')).toBe(true);
+    expect(mayOpen(adminRoute('participants'), 'organiser')).toBe(false);
+    expect(mayOpen(adminRoute('participants'), 'admin')).toBe(false);
+    expect(mayOpen({ section: 'users', view: 'list' }, 'organiser')).toBe(true);
     expect(mayOpen({ section: 'users', view: 'history' }, 'committee')).toBe(false);
     expect(mayOpen({ section: 'users', view: 'history' }, 'organiser')).toBe(true);
     expect(mayOpen(adminRoute('budget'), 'committee')).toBe(false);
@@ -102,7 +112,7 @@ describe('what each role may open (#217, ADR 0023)', () => {
 
   test('roleRedirect sends a forbidden page to the first section the role may open', () => {
     expect(roleRedirect(adminRoute('budget'), 'committee')).toEqual(adminRoute('overview'));
-    expect(roleRedirect({ section: 'users', view: 'history' }, 'committee')).toEqual(adminRoute('overview'));
+    expect(roleRedirect(adminRoute('team'), 'committee')).toEqual(adminRoute('overview'));
     expect(roleRedirect({ section: 'venues', venueId: VENUE, locationId: null }, 'organiser')).toEqual(adminRoute('overview'));
     expect(roleRedirect(adminRoute('budget'), 'organiser')).toBeNull();
     expect(roleRedirect(adminRoute('feedback'), 'admin')).toBeNull();
@@ -110,7 +120,19 @@ describe('what each role may open (#217, ADR 0023)', () => {
     expect(roleRedirect(adminRoute('overview'), null)).toBeNull();
   });
 
+  test('Comité: every Inscrits URL lands on its Participants; Organisateur and admin: Participants lands on Inscrits\' (#291)', () => {
+    for (const view of USERS_VIEW_IDS) {
+      expect(roleRedirect({ section: 'users', view }, 'committee')).toEqual(adminRoute('participants'));
+    }
+    for (const role of ['organiser', 'admin']) {
+      expect(roleRedirect(adminRoute('participants'), role)).toEqual({ section: 'users', view: 'participants' });
+      expect(roleRedirect({ section: 'users', view: 'list' }, role)).toBeNull();
+    }
+    expect(roleRedirect(adminRoute('participants'), 'committee')).toBeNull();
+  });
+
   test('adminPage with a role\'s sections lists only its views', () => {
-    expect(adminPage({ section: 'users', view: 'list' }, sectionsFor('committee')).section.views.map(view => view.id)).toEqual(['list', 'participants']);
+    expect(adminPage({ section: 'users', view: 'list' }, sectionsFor('organiser')).section.views.map(view => view.id)).toEqual([...USERS_VIEW_IDS]);
+    expect(adminPage(adminRoute('participants'), sectionsFor('committee'))).toMatchObject({ section: { id: 'participants', labelKey: 'adminTabParticipants' }, view: null, width: 'dense' });
   });
 });

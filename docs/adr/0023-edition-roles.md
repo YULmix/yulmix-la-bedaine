@@ -10,7 +10,10 @@ edition), and Admin (per account). The database enforces it through one function
 **Status: accepted** (October 2026), decided in a design session on #217, and implemented by
 #217: migration `20261004124226_edition_roles.sql` (PR #250), the section registry's `minRole`
 (`src/lib/adminSections.ts`), `src/lib/editionRoles.ts`, and « Équipe »
-(`src/components/admin/sections/TeamSection.jsx`).
+(`src/components/admin/sections/TeamSection.jsx`). **Amended by
+[ADR 0026](./0026-comite-does-not-see-finances.md)** (#290): Comité no longer sees a party's
+amounts nor payment status; it reads its edition's parties through `edition_parties()`, not
+`user_parties`.
 
 ```mermaid
 flowchart LR
@@ -31,7 +34,8 @@ flowchart LR
   budget cards), Inscrits (the list, read-only), and every Logistique view, places included. It
   sees registrations in full, payments and private notes included: helpers are trusted
   organisers, and hiding columns would need a database function per view. No Budget section and
-  no writes.
+  no writes. *Amended by [ADR 0026](./0026-comite-does-not-see-finances.md): no amounts nor payment
+  status, through a database function; private notes stay.*
 - **Organisateur** (per edition). Everything Comité has, plus Budget, Inscrits' Historique and
   the exports, plus the edition's operations: assigning places and writing the party notes and
   messages (`save_logistics`), marking payments, saving the budget, applying pricing.
@@ -47,7 +51,10 @@ flowchart LR
   the active event. The « Admin » nav entry shows to admins and to anyone with a role on the
   active event. Sections and views are filtered by role in the section registry (ADR 0022). An
   admin URL the role doesn't allow redirects to the first section it does (replacing the history
-  entry); with no role, the existing « accès restreint » notice shows.
+  entry); with no role, the existing « accès restreint » notice shows. *Since #291 Comité's
+  sections are Résumé, Participants (a section of its own, `/admin/participants`) and Logistique:
+  no Inscrits, whose « Liste » shows finances ([ADR 0026](./0026-comite-does-not-see-finances.md));
+  Comité's Inscrits URLs land on Participants.*
 - **Only admins grant roles**, in a new admin-only section, « Équipe »: the people with a role on
   each edition, add someone by name or email (registered for the edition or not), change or
   remove their role. Every grant, change and removal is logged (who, to whom, which role and
@@ -78,7 +85,8 @@ flowchart LR
   test table per object, not a redesign. Splitting a rung by topic is the grid we rejected; it
   needs a new ADR.
 - Comité sees payments and private notes. If that ever becomes a problem, the fix is restricted
-  functions per view, not hiding columns in React.
+  functions per view, not hiding columns in React. *For payments it did:
+  [ADR 0026](./0026-comite-does-not-see-finances.md) (#290).*
 - « Organisateur » is now a role name: the glossary's "avoid *organiser*" note for admins no
   longer holds. In code, `organiser` means the edition role; prose about the people running the
   weekend says *organisers* only where the role doesn't matter.

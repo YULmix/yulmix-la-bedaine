@@ -146,7 +146,8 @@ Two things to notice, because they shape every future change:
 The admin sections read module stores in `src/lib` (#195). The active event's parties come from
 the admin parties store (`src/lib/adminParties.ts`), which subscribes to Realtime for
 `user_parties` filtered by `event_id` while a section shows them and re-fetches the whole list on
-any change. Writes go through the data modules (`parties.ts`, `profiles.ts`, `events.ts`); granting
+any change. Comité reads them through `rpc('edition_parties')` instead, without their finances and
+without Realtime ([ADR 0026](./adr/0026-comite-does-not-see-finances.md)). Writes go through the data modules (`parties.ts`, `profiles.ts`, `events.ts`); granting
 admin must go through `rpc('admin_set_is_admin')` (`setIsAdmin`) because direct `UPDATE` on
 `profiles.is_admin` is revoked.
 

@@ -5,6 +5,7 @@ import { adminPage, mayOpen, roleRedirect, sectionsFor } from '../lib/adminSecti
 import fr from '../locales/fr.json';
 import OverviewSection from '../components/admin/sections/OverviewSection';
 import UsersSection from '../components/admin/sections/UsersSection';
+import ParticipantsSection from '../components/admin/sections/ParticipantsSection';
 import LogisticsSection from '../components/admin/sections/LogisticsSection';
 import BudgetSection from '../components/admin/sections/BudgetSection';
 import EventsSection from '../components/admin/sections/EventsSection';
@@ -39,6 +40,7 @@ import { AdminAccessContext } from '../hooks/useAdminAccess';
 const SECTION_COMPONENTS = {
   overview: OverviewSection,
   users: UsersSection,
+  participants: ParticipantsSection,
   logistics: LogisticsSection,
   budget: BudgetSection,
   events: EventsSection,
@@ -81,7 +83,8 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
   // The shell keeps the active event's shared caches subscribed, so moving between sections (and
   // in and out of the event editor) never reloads them: a cache reloads when a screen subscribes
   // while nobody was.
-  useAdminParties(activeEvent?.id);
+  // Without a role there is nothing to read (the « accès restreint » notice).
+  useAdminParties(role ? activeEvent?.id : null, role);
   useEventPlaces(activeEvent?.id);
   // The budget is Organisateur's and above (the database shows nobody else anything).
   useBudget(hasRole(role, 'organiser') ? activeEvent?.id : null);
@@ -121,7 +124,8 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
   const Section = SECTION_COMPONENTS[route.section];
   const theme = activeEvent?.theme;
   const { section, view } = page;
-  // A page the role may not open isn't rendered while the shell sends it elsewhere.
+  // A page the role may not open isn't rendered while the shell sends it elsewhere: neither its
+  // content nor its header and view tabs (no « Inscriptions · Liste » flash for Comité, #291).
   const content = allowed ? <Section {...route} /> : null;
 
   return (
@@ -134,9 +138,9 @@ const AdminView = ({ isAdmin = false, role = isAdmin ? 'admin' : null, editionRo
         <main className="min-w-0 flex-1 pb-28 pt-4 md:pb-16 md:pl-8 md:pt-5">
           <div className={pageWidthClass(page.width)}>
             {/* A drill-down (the event editor, a venue) brings its own header and back link (#210). */}
-            {!page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}
+            {allowed && !page.drillDown && <AdminPageHeader page={page} slotRef={setActionsSlot} theme={theme} />}
             <AdminHeaderActionsProvider slot={page.drillDown ? null : actionsSlot}>
-              {view ? (
+              {view && allowed ? (
                 <>
                   {/* Phones switch views here; the sidebar lists them from md up. */}
                   <div className="mb-5 md:hidden">
