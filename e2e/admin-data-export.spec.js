@@ -155,15 +155,16 @@ test('« Exporter » is on the list, not on the history', async ({ page }) => {
   await expect(page.getByRole('button', { name: fr.adminExportAction, exact: true })).toHaveCount(0);
 });
 
-// #262: Inscrits › « Participants », one row per attendee, read-only, from Comité up.
+// #262: « Participants », one row per attendee, read-only: Inscrits' view from Organisateur up, and
+// Comité's own section (#291).
 const participantsRow = (page, name) => page.getByRole('main').getByRole('row').filter({ hasText: name });
 
 test('« Participants » (Comité): pills, details pop-up only where there is free text, sort, grouping', async ({ page }) => {
   await grantEditionRoles(seeded.eventId);
   await loginAs(page, TEST_USERS.committee);
-  await page.goto('/admin/users');
-  await page.getByRole('navigation', { name: fr.adminTabsAriaLabel }).getByRole('link', { name: fr.usersViewParticipants }).click();
-  await expect(page).toHaveURL(/\/admin\/users\/participants$/);
+  await page.goto('/admin/overview');
+  await page.getByRole('navigation', { name: fr.adminTabsAriaLabel }).getByRole('link', { name: fr.adminTabParticipants, exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/participants$/);
 
   // The member's party, the admin's and the waitlisted one are all here.
   for (const name of [ZOE.name, WANDA.name]) await expect(participantsRow(page, name)).toBeVisible();

@@ -96,14 +96,15 @@ function recordParties(page) {
   return rows;
 }
 
-// E2E_SCREENSHOT_DIR: the page at each width, then back to the default.
+// E2E_SCREENSHOT_DIR: the page at each width, then back to the size it had.
 async function shoot(page, name, widths = [1440, 390]) {
   if (!process.env.E2E_SCREENSHOT_DIR) return;
+  const before = page.viewportSize();
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
-    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
   }
-  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.setViewportSize(before);
 }
 
 // The profile dialog, opened from a Logistique card.
@@ -127,13 +128,27 @@ async function expectSidebar(page, names) {
   await expect(navLinks(page)).toHaveText(names);
 }
 
-// A URL the role may not open lands on Résumé, replacing it in the history.
-async function expectRedirected(page, path) {
+// A URL the role may not open lands on Résumé (or `target`), replacing it in the history.
+async function expectRedirected(page, path, target = /\/admin\/overview$/) {
   await page.goto('/admin/overview');
   await page.goto(path);
-  await expect(page).toHaveURL(/\/admin\/overview$/);
+  await expect(page).toHaveURL(target);
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/overview$/);
+}
+
+// Every page title (h1) the tab shows from now on, even for one frame, across page loads (kept in
+// sessionStorage): returns a reader.
+async function watchHeadings(page) {
+  await page.addInitScript(() => {
+    const KEY = 'e2e-headings';
+    new MutationObserver(() => {
+      const seen = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+      for (const h1 of document.querySelectorAll('h1')) seen.push(h1.textContent);
+      sessionStorage.setItem(KEY, JSON.stringify(seen));
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  return () => page.evaluate(() => JSON.parse(sessionStorage.getItem('e2e-headings') || '[]'));
 }
 
 test('member: no « Admin » entry, and the admin says it is restricted', async ({ page }) => {
@@ -179,7 +194,7 @@ for (const [user, level, label] of LEVELS) {
   });
 }
 
-test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes nothing', async ({ page }) => {
+test('Comité: reads Résumé, Participants and Logistique, and changes nothing', async ({ page }) => {
   // A place and a note on the member's party: Comité reads both (#290: through edition_parties()).
   const [room] = await getLocations(seeded.eventId);
   await assignPlace(room.places.find(place => place.label === 'Lit A').id, seeded.partyId, 1);
@@ -187,7 +202,7 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   const received = recordParties(page);
   await loginAs(page, TEST_USERS.committee);
   await enterAdmin(page);
-  await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabUsers', 'adminTabLogistics'));
+  await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabParticipants', 'adminTabLogistics'));
   // Résumé without the budget card, nor « Groupes payés » (#290).
   await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle })).toBeVisible();
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toHaveCount(0);
@@ -197,35 +212,25 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   // Nor the emails to follow up: those are Organisateur's.
   await expect(emailProblems(page)).toHaveCount(0);
 
-  // Inscrits: the list, read-only, without amounts nor payments (#290).
-  await page.goto('/admin/users');
-  await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toBeVisible();
-  await expect(panel(page).getByText(fr.unpaidShort, { exact: true })).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: fr.paid, exact: true })).toHaveCount(0);
-  await expect(panel(page).getByText(fr.amountDue)).toHaveCount(0);
+  // « Participants » is a section of its own (#291), first after Résumé: every attendee, read-only.
+  await adminNav(page).getByRole('link', { name: fr.adminTabParticipants, exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/participants$/);
+  await expect(page.getByRole('heading', { level: 1, name: fr.adminTabParticipants })).toBeVisible();
+  for (const name of [ALICE, 'Bob E2E']) await expect(panel(page).getByRole('row').filter({ hasText: name })).toBeVisible();
   await expect(panel(page).getByText(MONEY)).toHaveCount(0);
-  await shoot(page, 'liste-committee', [1440, 390, 2560]);
-  await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
-  await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
-  // Opening a registration: read-only, with its attendees but neither « Modifier » nor the email log
-  // (email_log is Organisateur's), and no error from it.
-  const consoleErrors = [];
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  const detail = await openPartyDetail(page);
-  await expect(detail.getByText(ALICE, { exact: true })).toBeVisible();
-  await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
-  await expect(detail.getByText(fr.emailLogTitle)).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
-  await expect(detail.getByText(fr.paymentColumn)).toHaveCount(0);
-  await expect(detail.getByText(fr.amountDue)).toHaveCount(0);
-  await expect(detail.getByText(MONEY)).toHaveCount(0);
-  await shoot(page, 'inscription-committee');
-  expect(consoleErrors).toEqual([]);
-  await detail.getByRole('button', { name: fr.close, exact: true }).click();
-  // Only the list: no Historique.
-  await expect(adminNav(page).getByRole('link', { name: fr.usersViewHistory })).toHaveCount(0);
+  // No Inscrits, nor its views, anywhere in the navigation.
+  for (const name of [fr.adminTabUsers, fr.usersViewList, fr.usersViewHistory]) {
+    await expect(adminNav(page).getByRole('link', { name, exact: true })).toHaveCount(0);
+  }
+  await shoot(page, 'participants-committee', [1440, 390, 2560]);
+
+  // Every Inscrits URL lands on « Participants », replacing it, and never shows « Liste » on the way.
+  const headings = await watchHeadings(page);
+  for (const path of ['/admin/users', '/admin/users/list', '/admin/users/participants', '/admin/users/history']) {
+    await expectRedirected(page, path, /\/admin\/participants$/);
+  }
+  expect((await headings()).filter(text => text.includes(fr.adminTabUsers))).toEqual([]);
 
   // Logistique: every view; places, notes and messages read-only, no Save.
   await page.goto('/admin/logistics');
@@ -249,13 +254,9 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await shoot(page, 'profile-committee');
   await profile.getByRole('button', { name: fr.close, exact: true }).click();
 
-  for (const path of ['/admin/budget', '/admin/users/history', '/admin/events', '/admin/venues', '/admin/team', '/admin/feedback']) {
+  for (const path of ['/admin/budget', '/admin/events', '/admin/venues', '/admin/team', '/admin/feedback']) {
     await expectRedirected(page, path);
   }
-
-  // « Participants »: every attendee, as before.
-  await page.goto('/admin/users/participants');
-  for (const name of ['Alice E2E', 'Bob E2E']) await expect(panel(page).getByRole('row').filter({ hasText: name })).toBeVisible();
 
   // The parties came through edition_parties(), none with its finances; user_parties and
   // registration_edits gave Comité (not registered here) no row at all (#290).
@@ -265,7 +266,7 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   expect(withFinances.filter(({ row }) => row.user_id !== COMMITTEE_ID)).toEqual([]);
 });
 
-test('Comité who registered: their own Pass shows the amount; the admin list shows their party without it (#290)', async ({ page }) => {
+test('Comité who registered: their own Pass shows the amount; « Participants » lists their party without it (#290)', async ({ page }) => {
   const own = await addParty(COMMITTEE_ID, seeded.eventId);
   try {
     await loginAs(page, TEST_USERS.committee);
@@ -274,8 +275,8 @@ test('Comité who registered: their own Pass shows the amount; the admin list sh
     await expect(pass.getByText(fr.amountDue, { exact: true })).toBeVisible();
     await expect(pass.getByText(MONEY).first()).toBeVisible();
 
-    await page.goto('/admin/users');
-    await expect(panel(page).getByRole('button', { name: 'Test Comité', exact: true })).toBeVisible();
+    await page.goto('/admin/participants');
+    await expect(panel(page).getByRole('row').filter({ hasText: 'Test Comité' }).first()).toBeVisible();
     await expect(panel(page).getByText(MONEY)).toHaveCount(0);
     await expect(panel(page).getByText(fr.unpaidShort, { exact: true })).toHaveCount(0);
   } finally {
@@ -318,6 +319,8 @@ test('Organisateur: plus Budget, Historique and the export; marks a payment and 
   await enterAdmin(page);
   await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabUsers', 'adminTabLogistics', 'adminTabBudget'));
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toBeVisible();
+  // No top-level « Participants » (Comité's, #291): its URL lands on Inscrits' view.
+  await expectRedirected(page, '/admin/participants', /\/admin\/users\/participants$/);
   await expect(emailProblems(page)).toBeVisible();
   // The list names the party; opening it is the admin's god-mode editor.
   await panel(page).getByRole('button', { name: fr.emailProblemsShow }).click();
@@ -418,6 +421,17 @@ test('admin: grants, changes and removes a role in « Équipe », each in the lo
   await expect(log.nth(0)).toContainText(line('teamLogRemoved', { actor: 'Test Admin', role: fr.editionRoleCommittee, person: 'Test Organisateur' }));
   await expect(log.nth(1)).toContainText(line('teamLogChanged', { actor: 'Test Admin', person: 'Test Organisateur', old: fr.editionRoleOrganiser, new: fr.editionRoleCommittee }));
   await expect(log.nth(2)).toContainText(line('teamLogGranted', { actor: 'Test Admin', role: fr.editionRoleOrganiser, person: 'Test Organisateur' }));
+});
+
+test('admin: Inscrits keeps « Liste », « Participants » and « Historique »; no top-level « Participants » (#291)', async ({ page }) => {
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users');
+  await expect(adminNav(page).getByRole('link', { name: fr.adminTabUsers, exact: true })).toBeVisible();
+  for (const view of ['usersViewList', 'usersViewParticipants', 'usersViewHistory']) {
+    await expect(adminNav(page).getByRole('link', { name: fr[view], exact: true })).toHaveCount(1);
+  }
+  await expectRedirected(page, '/admin/participants', /\/admin\/users\/participants$/);
+  await shoot(page, 'nav-admin');
 });
 
 test('admin: « Équipe » lists the people with their level; « Inscrits seulement » is on and filters', async ({ page }) => {
@@ -591,15 +605,25 @@ test('Comité and Organisateur: « Équipe » is out of reach, and admin_set_is_
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('Comité has three sections in the bar and no « Plus »; Organisateur four', async ({ page }) => {
+  test('Comité has three sections in the bar (Résumé, Participants, Logistique) and no « Plus »; Organisateur four', async ({ page }) => {
     await loginAs(page, TEST_USERS.committee);
     await page.goto('/admin/overview');
-    await expect(navLinks(page)).toHaveText(sectionNames('adminTabOverviewShort', 'adminTabUsersShort', 'adminTabLogisticsShort'));
+    await expect(navLinks(page)).toHaveText(sectionNames('adminTabOverviewShort', 'adminTabParticipantsShort', 'adminTabLogisticsShort'));
     await expect(moreButton(page)).toHaveCount(0);
+    await shoot(page, 'nav-committee', [390]);
+    // « Participants » from the bar: the attendees, no view tabs, no horizontal scroll.
+    await navLinks(page).filter({ hasText: fr.adminTabParticipantsShort }).click();
+    await expect(page).toHaveURL(/\/admin\/participants$/);
+    await expect(panel(page).getByRole('row').filter({ hasText: ALICE })).toBeVisible();
+    await expect(navLinks(page).filter({ hasText: fr.adminTabParticipantsShort })).toHaveAttribute('aria-current', 'page');
+    await expect(navLinks(page).filter({ hasText: fr.adminTabOverviewShort })).not.toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('tablist')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await shoot(page, 'participants-committee-phone', [390]);
 
     await loginAs(page, TEST_USERS.organiser);
     await page.goto('/admin/overview');
-    await expect(navLinks(page)).toHaveCount(4);
+    await expect(navLinks(page)).toHaveText(sectionNames('adminTabOverviewShort', 'adminTabUsersShort', 'adminTabLogisticsShort', 'adminTabBudgetShort'));
     await expect(moreButton(page)).toHaveCount(0);
   });
 });

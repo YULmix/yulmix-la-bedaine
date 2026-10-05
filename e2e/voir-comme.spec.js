@@ -200,10 +200,15 @@ async function adminsOnly(page) {
   for (const user of [TEST_USERS.committee, TEST_USERS.organiser]) {
     await loginAs(page, user);
     await page.goto('/admin/users');
-    const dialog = await openPartyDetail(page);
-    await expect(dialog.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
-    await expect(viewAsButton(dialog)).toHaveCount(0);
-    await dialog.getByRole('button', { name: fr.close, exact: true }).click();
+    if (user === TEST_USERS.committee) {
+      // Comité has no Inscrits, so no « Inscription » dialog (#291): its URL lands on Participants.
+      await expect(page).toHaveURL(/\/admin\/participants$/);
+    } else {
+      const dialog = await openPartyDetail(page);
+      await expect(dialog.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
+      await expect(viewAsButton(dialog)).toHaveCount(0);
+      await dialog.getByRole('button', { name: fr.close, exact: true }).click();
+    }
     await accountMenu(page).click();
     await expect(page.getByRole('menuitem', { name: fr.about })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: fr.voirCommeMenuItem })).toHaveCount(0);
@@ -244,7 +249,8 @@ test('the header\'s « Voir comme… »: Comité accounts, admins not choosable;
 
   await expect(banner(tab)).toContainText(fr.voirCommeBannerViewing.replace('{name}', 'Test Comité'));
   await tab.getByRole('link', { name: fr.navAdmin }).click();
-  await expect(adminNav(tab).getByRole('link', { name: fr.adminTabUsers })).toBeVisible();
+  await expect(adminNav(tab).getByRole('link', { name: fr.adminTabParticipants, exact: true })).toBeVisible();
+  await expect(adminNav(tab).getByRole('link', { name: fr.adminTabUsers })).toHaveCount(0);
   await expect(adminNav(tab).getByRole('link', { name: fr.adminTabBudget })).toHaveCount(0);
   // Its Résumé, read through edition_parties(): no « Groupes payés » (#290).
   await expect(tab.getByRole('main').getByText(fr.registeredGroupsStatLabel)).toBeVisible();
