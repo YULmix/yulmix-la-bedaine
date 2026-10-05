@@ -41,7 +41,8 @@ An access role granted to an account for one event, by an admin, in « Équipe �
 
 **Comité** (code: `committee`)
 The read-only edition role: sees that edition's admin area (Résumé, Inscrits, Logistique), not
-the budget, and changes nothing.
+the budget nor a party's finances (amounts owed, locked price, payment status:
+[ADR 0026](./adr/0026-comite-does-not-see-finances.md)), and changes nothing.
 _Avoid_: helper, volunteer (a volunteer is a member who signed up for a task).
 
 **Organisateur** (code: `organiser`)

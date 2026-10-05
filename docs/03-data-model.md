@@ -651,6 +651,7 @@ granted per edition; admin stays per account (`profiles.is_admin`).
 | `admin_role_log` | One row per admin grant and removal (#256): `user_id` (to whom), `actor_id` (`auth.uid()`, null for no one: a migration, the service role), `granted` (true for a grant, false for a removal), `changed_at`. Written by `trg_log_admin_flag_change` (`AFTER UPDATE OF is_admin` on `profiles`, `SECURITY DEFINER`) whenever `is_admin` actually flips, whatever the path (`admin_set_is_admin()` or any other update); a null flag counts as false. Admins read it; « Équipe » merges it by date into each edition's `edition_role_log` (#257). No backfill: grants before #256 left no trace |
 | `edition_role(event)` | `admin` for an admin, else the caller's role on that event, else null (a deleted account has none). `SECURITY DEFINER`, stable |
 | `has_edition_role(event, min)` | Whether `edition_role(event)` is at least `min` on `committee < organiser < admin`. What the policies and functions check |
+| `edition_parties(event)` | Comité and above on the event (`committee_only` otherwise), `SECURITY DEFINER`, stable (#290, [ADR 0026](./adr/0026-comite-does-not-see-finances.md)): a `jsonb` array of the edition's parties as the admin list reads them (party columns, `attendees` in position order with their `place`, `profiles`, `admin_notes`), without `calculated_amount_owed`, `locked_selling_price_whole_event`, `locked_ratio_main_whole`, `payment_status` (nor `confirmation_message`). Skips removed attendees and a deleted account's cancelled registrations. How Comité reads parties: its RLS on `user_parties` and `registration_edits` is gone |
 | `set_payment_status(party, status)` | Organisateur and above on the party's event; changes `payment_status` only |
 | `apply_event_pricing(event, price, ratio)` | Organisateur and above; changes `selling_price_whole_event` and `ratio_main_whole` only |
 
@@ -658,7 +659,10 @@ granted per edition; admin stays per account (`profiles.is_admin`).
 in the transaction-local setting `bedaine.organiser_party`, which
 `protect_admin_only_party_fields` lets through, as `save_registration()` does with
 `bedaine.saving_party`. `party_admin_notes` is read by Comité and above and written by
-Organisateur and above on the party's edition (#227's « once #217 lands »).
+Organisateur and above on the party's edition (#227's « once #217 lands »). Since #290 Comité's
+reads of attendees, `attendee_places` and notes reach the party's event through the definer
+helpers `private.edition_team_reads_party(party)` and `private.party_event_id(party)`, since its
+RLS no longer shows it `user_parties`.
 
 ## « Voir comme » (#265)
 

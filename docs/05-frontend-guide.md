@@ -190,9 +190,13 @@ click; what is still waiting is sent when the editor goes away; one status line
 
 The **admin parties** (`src/lib/adminParties.ts`, #195): an event's parties as the admin lists
 them, in one cache per event that Résumé, Inscrits, Logistique, Budget and the exports share
-through `useAdminParties(eventId)` (`parties`, cancelled ones included, and `activeParties`). An
+through `useAdminParties(eventId, role)` (`parties`, cancelled ones included, and `activeParties`). An
 entry loads for its first screen, on `refreshAdminParties(eventId)` after a write, and on any
 change to the event's `user_parties` rows (a Realtime channel, open only while a screen watches).
+For Comité (`!can(role, 'seeFinances')`, #290, [ADR 0026](./adr/0026-comite-does-not-see-finances.md))
+it loads through `listEditionParties()` (`edition_parties()`): no amounts nor payment status, and
+no Realtime channel. A screen that shows money checks `can(role, 'seeFinances')`; `AdminParty`'s
+money fields are optional for that reason.
 Reloading parties never invalidates the event places. `updatePaymentStatus(party, status)` writes
 and reloads. Profiles (the admin flag, a member's history across editions, who is signed in) are
 plain functions in `src/lib/profiles.ts`.
