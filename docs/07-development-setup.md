@@ -343,6 +343,23 @@ end of `SERIAL_ENTRIES` in `playwright.config.js`. The chain of `dependencies` a
 `device` to `'Desktop Chrome'`). Never add a hand-written project to `projects`: that is what made
 every branch conflict (#244).
 
+**Running fewer specs.** The whole suite is ~250 tests and takes about 8 minutes, because every spec
+shares one active event and so they run one at a time. For a change that touches one screen, run
+only the specs that can see it:
+
+```sh
+npm run test:e2e:affected                    # prints the specs for the diff against origin/main
+npm run test:e2e:affected -- --run           # runs them (one worker; needs the local DB, after a reset)
+npm run test:e2e:affected -- --explain       # says why each spec was picked
+```
+
+`scripts/e2e-affected.mjs` matches by the strings in `src/locales/fr.json`: a spec is picked when it
+uses a `fr.someKey` that a changed source file (or, for a `lib/` helper, a module that imports it)
+also uses; a changed spec is picked; a small smoke set (`auth-and-rls`, the registration flow)
+always runs. A change that can touch every screen (app shell, `Header`, `ui`, styles, migrations,
+`seed.sql`, Edge Functions, `e2e/support`, config, `package.json`) selects **all** specs, and the
+script says so. It is a heuristic: when in doubt, or before a merge, run the whole suite.
+
 **When the suite fails for reasons that look unrelated, reset the local database first**
 (`supabase db reset`, always safe locally). Interrupted runs leave throwaway members and parties
 behind, and the preview seed (`scripts/preview-seed`) must never be applied locally: its trigger
