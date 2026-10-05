@@ -11,11 +11,20 @@ export const TEST_USERS = {
   organiser: { email: 'organiser@test.local', password: 'password123' }
 };
 
-export async function loginAs(page, { email, password }) {
+// Password grants are cached per Node process (a Playwright worker), so a user is granted a
+// session once, not once per test: the grant answers with a session valid for an hour, and a worker
+// lives a few minutes. The session is handed to the page before the app loads, in the key the
+// Supabase client reads on start-up (auth-js's default storage key), so the app boots already
+// signed in: one page load instead of load + setSession + reload.
+const sessions = new Map(); // email -> Promise<session>
+const MAX_AGE_MS = 20 * 60 * 1000;
+
+async function sessionFor(request, { email, password }) {
+  const cached = sessions.get(email);
+  if (cached && Date.now() - cached.at < MAX_AGE_MS) return cached.session;
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
-
-  const response = await page.request.post(
+  const response = await request.post(
     `${supabaseUrl}/auth/v1/token?grant_type=password`,
     {
       headers: { apikey: anonKey, 'Content-Type': 'application/json' },
@@ -23,18 +32,25 @@ export async function loginAs(page, { email, password }) {
     }
   );
   if (!response.ok()) {
+    sessions.delete(email);
     throw new Error(`Password grant for ${email} failed: ${response.status()} ${await response.text()}`);
   }
-  const { access_token, refresh_token } = await response.json();
+  const session = await response.json();
+  sessions.set(email, { at: Date.now(), session });
+  return session;
+}
 
+let loginCount = 0;
+export async function loginAs(page, { email, password }) {
+  const session = await sessionFor(page.request, { email, password });
+  const storageKey = `sb-${new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
+  // Written once per loginAs call (a marker in sessionStorage), so a spec that signs out and
+  // reloads stays signed out; a later loginAs on the same page, as another user, wins.
+  await page.addInitScript(({ storageKey, session, marker }) => {
+    if (sessionStorage.getItem(marker)) return;
+    sessionStorage.setItem(marker, '1');
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }, { storageKey, session, marker: `e2e-login-${++loginCount}` });
   await page.goto('/');
   await page.waitForFunction(() => !!window.__supabase);
-  await page.evaluate(
-    async ({ access_token, refresh_token }) => {
-      const { error } = await window.__supabase.auth.setSession({ access_token, refresh_token });
-      if (error) throw error;
-    },
-    { access_token, refresh_token }
-  );
-  await page.reload();
 }

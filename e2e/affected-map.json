@@ -1,0 +1,1097 @@
+{
+ "_doc": "Used by scripts/e2e-affected.mjs and tested by src/__tests__/e2eAffectedMap.test.js. See docs/07-development-setup.md (Running fewer specs).",
+ "smoke": [
+  "auth-and-rls",
+  "member-registration-confirmation",
+  "member-pass"
+ ],
+ "all": [
+  "^src/(App|main)\\.jsx$",
+  "^src/index\\.css$",
+  "^src/components/(ui|Header|Toast)\\b",
+  "^src/lib/(supabase|toasts|format|database\\.types|registrationOptions|dbErrors|pricingEngine|events|parties|registration)\\b",
+  "^supabase/",
+  "^e2e/support/",
+  "^playwright\\.config\\.js$",
+  "^package(-lock)?\\.json$",
+  "^(vite|vercel)\\.",
+  "^index\\.html$",
+  "^src/locales/(?!fr\\.json)",
+  "^scripts/e2e-affected\\.mjs$",
+  "^e2e/affected-map\\.json$"
+ ],
+ "map": {
+  "src/App.jsx": [
+   "admin-event-editor",
+   "admin-remount",
+   "header-phone",
+   "member-account-deletion"
+  ],
+  "src/components/AccountPicker.jsx": [
+   "preview-account-picker"
+  ],
+  "src/components/Avatar.jsx": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker",
+   "header-avatar"
+  ],
+  "src/components/EventFacts.jsx": [
+   "member-pass"
+  ],
+  "src/components/EventModal.jsx": [
+   "admin-event-editor",
+   "admin-remount",
+   "header-phone",
+   "member-account-deletion"
+  ],
+  "src/components/FeedbackModal.jsx": [
+   "admin-feedback"
+  ],
+  "src/components/Gallery.jsx": [
+   "admin-roles",
+   "galleries"
+  ],
+  "src/components/Header.jsx": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker"
+  ],
+  "src/components/MyPartyEmails.jsx": [
+   "email-log"
+  ],
+  "src/components/RegistrationConfirmation.jsx": [
+   "member-registration-confirmation",
+   "member-registration-draft"
+  ],
+  "src/components/RegistrationDetails.jsx": [
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "member-arrival-default",
+   "member-departure-place",
+   "member-registration-confirmation",
+   "member-transport-none"
+  ],
+  "src/components/RegistrationForm.jsx": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "member-prefill-name"
+  ],
+  "src/components/ResolutionBanner.jsx": [
+   "member-registration-confirmation"
+  ],
+  "src/components/Toast.jsx": [
+   "admin-event-editor",
+   "admin-remount",
+   "header-phone",
+   "member-account-deletion"
+  ],
+  "src/components/accommodationIcons.js": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "inscrits-screenshots",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/components/admin/AdminBudget.jsx": [
+   "admin-budget"
+  ],
+  "src/components/admin/AdminEvents.jsx": [
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-venues"
+  ],
+  "src/components/admin/AdminLogisticsView.jsx": [
+   "admin-cancelled-parties",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-place-picker",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-removal",
+   "galleries"
+  ],
+  "src/components/admin/AdminNav.jsx": [
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-feedback",
+   "admin-tabs"
+  ],
+  "src/components/admin/AdminOverview.jsx": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-occupancy",
+   "admin-roles",
+   "admin-tabs",
+   "email-log",
+   "member-dietary"
+  ],
+  "src/components/admin/AdminUserManagement.jsx": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-removal",
+   "member-pass"
+  ],
+  "src/components/admin/AdminVenues.jsx": [
+   "admin-drill-down",
+   "admin-locations",
+   "admin-tabs",
+   "admin-venues"
+  ],
+  "src/components/admin/ChangeHistory.jsx": [
+   "admin-change-history",
+   "admin-data-export",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs"
+  ],
+  "src/components/admin/DrillDownHeader.jsx": [
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "galleries",
+   "member-carpool-board"
+  ],
+  "src/components/admin/EmailProblems.jsx": [
+   "admin-roles",
+   "email-log"
+  ],
+  "src/components/admin/EventEditor.jsx": [
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-editor"
+  ],
+  "src/components/admin/EventLocations.jsx": [
+   "admin-drill-down",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-roles",
+   "admin-venues",
+   "galleries",
+   "member-carpool-board"
+  ],
+  "src/components/admin/EventVenue.jsx": [
+   "admin-event-venue",
+   "admin-locations",
+   "admin-venues",
+   "galleries"
+  ],
+  "src/components/admin/ExportDialog.jsx": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-roles",
+   "attendee-removal"
+  ],
+  "src/components/admin/GalleryEditor.jsx": [
+   "galleries"
+  ],
+  "src/components/admin/LogisticsFormViews.jsx": [
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-removal",
+   "member-arrival-default",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-registration-confirmation"
+  ],
+  "src/components/admin/LogisticsSummary.jsx": [
+   "admin-logistics-batch-save",
+   "admin-occupancy",
+   "admin-tabs"
+  ],
+  "src/components/admin/ParticipantsView.jsx": [
+   "admin-data-export",
+   "inscrits-screenshots"
+  ],
+  "src/components/admin/PartyDetailDialog.jsx": [
+   "admin-change-history",
+   "admin-data-export",
+   "admin-participant-message",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "member-pass"
+  ],
+  "src/components/admin/PartyEditDialog.jsx": [
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/components/admin/PartyEmailLog.jsx": [
+   "admin-roles",
+   "email-log"
+  ],
+  "src/components/admin/PayerPicker.jsx": [
+   "admin-budget"
+  ],
+  "src/components/admin/PlaceOccupancy.jsx": [
+   "admin-logistics-batch-save",
+   "admin-occupancy",
+   "admin-tabs"
+  ],
+  "src/components/admin/PlacePicker.jsx": [
+   "admin-place-picker"
+  ],
+  "src/components/admin/SaveBar.jsx": [
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-participant-message"
+  ],
+  "src/components/admin/SortControls.jsx": [
+   "admin-users-sort",
+   "inscrits-screenshots"
+  ],
+  "src/components/admin/UserProfileDialog.jsx": [
+   "admin-data-export",
+   "admin-tabs"
+  ],
+  "src/components/admin/sections/BudgetSection.jsx": [
+   "admin-budget"
+  ],
+  "src/components/admin/sections/EventsSection.jsx": [
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-venues"
+  ],
+  "src/components/admin/sections/FeedbackSection.jsx": [
+   "admin-feedback"
+  ],
+  "src/components/admin/sections/LogisticsSection.jsx": [
+   "admin-logistics-batch-save"
+  ],
+  "src/components/admin/sections/NoActiveEvent.jsx": [
+   "admin-event-archive"
+  ],
+  "src/components/admin/sections/OverviewSection.jsx": [
+   "admin-logistics-batch-save",
+   "attendee-removal",
+   "attendees-edit",
+   "member-registration-confirmation"
+  ],
+  "src/components/admin/sections/SectionStatus.jsx": [
+   "admin-tabs"
+  ],
+  "src/components/admin/sections/TeamSection.jsx": [
+   "admin-roles",
+   "admin-tabs"
+  ],
+  "src/components/admin/sections/UsersSection.jsx": [
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/components/admin/sections/VenuesSection.jsx": [
+   "admin-logistics-batch-save"
+  ],
+  "src/components/brand/Pass.jsx": [
+   "admin-budget",
+   "admin-change-history",
+   "attendee-price-rounding",
+   "member-pass"
+  ],
+  "src/components/brand/PhaseTrack.jsx": [
+   "member-pass",
+   "member-page-widths"
+  ],
+  "src/components/brand/PosterHeader.jsx": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-registration-confirmation"
+  ],
+  "src/components/ui/index.jsx": [
+   "admin-event-venue"
+  ],
+  "src/hooks/useAdminAccess.js": [
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/hooks/useAutosave.js": [
+   "admin-drill-down",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-roles",
+   "admin-venues",
+   "galleries",
+   "member-carpool-board"
+  ],
+  "src/hooks/useCarpoolAccess.js": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker"
+  ],
+  "src/hooks/useFitToViewport.js": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-removal",
+   "member-pass"
+  ],
+  "src/hooks/useMyRegistration.js": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "member-cancellation",
+   "member-registration-confirmation"
+  ],
+  "src/hooks/useToasts.js": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/activeEvent.js": [
+   "admin-event-create"
+  ],
+  "src/lib/adminParties.ts": [
+   "admin-budget",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/lib/adminRoutes.ts": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-feedback",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "galleries",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker"
+  ],
+  "src/lib/adminSections.ts": [
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-tabs"
+  ],
+  "src/lib/adminStats.js": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-place-picker",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-removal",
+   "email-log",
+   "galleries",
+   "member-arrival-default",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/lib/budget.ts": [
+   "admin-budget",
+   "admin-logistics-batch-save",
+   "attendee-removal",
+   "attendees-edit",
+   "member-registration-confirmation"
+  ],
+  "src/lib/budgetPayers.ts": [
+   "admin-budget"
+  ],
+  "src/lib/carousel.js": [
+   "admin-roles",
+   "galleries"
+  ],
+  "src/lib/carpool.js": [
+   "admin-logistics-views",
+   "attendee-removal",
+   "member-arrival-default",
+   "member-carpool-board",
+   "member-departure-place"
+  ],
+  "src/lib/changeHistory.js": [
+   "admin-change-history",
+   "admin-data-export",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs"
+  ],
+  "src/lib/dataExport.js": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-feedback",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "inscrits-screenshots"
+  ],
+  "src/lib/database.types.ts": [
+   "admin-event-create",
+   "admin-roles",
+   "admin-tabs"
+  ],
+  "src/lib/dbErrors.ts": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "header-phone",
+   "member-account-deletion",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "preview-account-picker"
+  ],
+  "src/lib/editHistory.js": [
+   "admin-change-history",
+   "admin-data-export",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-participant-message",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary"
+  ],
+  "src/lib/editionRoles.ts": [
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "header-phone",
+   "member-account-deletion",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/lib/eventDisplay.js": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "galleries",
+   "header-phone",
+   "inscrits-screenshots",
+   "member-account-deletion",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "preview-account-picker"
+  ],
+  "src/lib/eventDraft.js": [
+   "admin-drill-down",
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-venues"
+  ],
+  "src/lib/eventDrafts.ts": [
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-logistics-batch-save",
+   "admin-venues"
+  ],
+  "src/lib/eventPhase.ts": [
+   "admin-budget",
+   "admin-change-history",
+   "admin-event-editor",
+   "admin-locations",
+   "admin-participant-message",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-departure-place",
+   "member-registration-confirmation"
+  ],
+  "src/lib/eventPlaces.ts": [
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-roles",
+   "admin-venues",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-carpool-board",
+   "member-registration-confirmation"
+  ],
+  "src/lib/eventTime.ts": [
+   "admin-logistics-batch-save"
+  ],
+  "src/lib/events.ts": [
+   "admin-budget",
+   "admin-event-archive",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "attendee-removal",
+   "attendees-edit",
+   "header-phone",
+   "member-account-deletion",
+   "member-pass",
+   "member-registration-confirmation"
+  ],
+  "src/lib/feedback.ts": [
+   "admin-feedback",
+   "admin-logistics-batch-save"
+  ],
+  "src/lib/format.js": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-event-editor",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "galleries",
+   "member-account-deletion",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/galleries.js": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-drill-down",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-place-picker",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "admin-venues",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place"
+  ],
+  "src/lib/gravatar.ts": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker",
+   "header-avatar"
+  ],
+  "src/lib/logistics.ts": [
+   "admin-logistics-batch-save"
+  ],
+  "src/lib/logisticsDraft.js": [
+   "admin-logistics-batch-save"
+  ],
+  "src/lib/organisers.js": [
+   "member-registration-confirmation",
+   "member-registration-draft"
+  ],
+  "src/lib/pageWidth.ts": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker",
+   "member-page-widths",
+   "app-canvas"
+  ],
+  "src/lib/parties.ts": [
+   "admin-budget",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-locations",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "preview-account-picker"
+  ],
+  "src/lib/partySort.ts": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "attendee-removal",
+   "member-pass"
+  ],
+  "src/lib/places.ts": [
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-drill-down",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-place-picker",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "admin-venues",
+   "attendee-removal",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place"
+  ],
+  "src/lib/postalCode.js": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/pricingEngine.ts": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-roles",
+   "admin-tabs",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/profiles.ts": [
+   "admin-data-export",
+   "admin-roles",
+   "admin-tabs",
+   "member-prefill-name",
+   "header-avatar"
+  ],
+  "src/lib/registration.ts": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/registrationDraft.ts": [
+   "admin-budget",
+   "admin-data-export",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none"
+  ],
+  "src/lib/registrationOptions.ts": [
+   "admin-budget",
+   "admin-cancelled-parties",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-occupancy",
+   "admin-participant-message",
+   "admin-place-picker",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-users-sort",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "galleries",
+   "header-phone",
+   "member-account-deletion",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "preview-account-picker"
+  ],
+  "src/lib/supabase.ts": [
+   "admin-budget",
+   "admin-change-history",
+   "admin-data-export",
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-editor",
+   "admin-event-venue",
+   "admin-feedback",
+   "admin-locations",
+   "admin-logistics-batch-save",
+   "admin-logistics-views",
+   "admin-participant-message",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "admin-venues",
+   "attendee-price-rounding",
+   "attendee-removal",
+   "attendees-edit",
+   "email-log",
+   "galleries",
+   "header-phone",
+   "member-account-deletion",
+   "member-arrival-default",
+   "member-cancellation",
+   "member-carpool-board",
+   "member-departure-place",
+   "member-dietary",
+   "member-pass",
+   "member-registration-confirmation",
+   "member-registration-draft",
+   "member-transport-none",
+   "preview-account-picker"
+  ],
+  "src/lib/team.ts": [
+   "admin-roles",
+   "admin-tabs"
+  ],
+  "src/lib/toasts.ts": [],
+  "src/lib/venue.js": [
+   "admin-drill-down",
+   "admin-event-create",
+   "admin-event-venue",
+   "admin-locations",
+   "admin-roles",
+   "admin-venues",
+   "galleries",
+   "member-carpool-board"
+  ],
+  "src/main.jsx": [],
+  "src/preview/TestAccounts.jsx": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-logistics-batch-save",
+   "admin-remount",
+   "admin-roles",
+   "admin-tabs",
+   "header-phone",
+   "member-account-deletion",
+   "member-carpool-board",
+   "member-registration-draft",
+   "preview-account-picker"
+  ],
+  "src/views/AboutView.jsx": [
+   "member-page-widths"
+  ],
+  "src/views/AdminView.jsx": [
+   "admin-logistics-batch-save",
+   "app-canvas"
+  ],
+  "src/views/CarpoolView.jsx": [
+   "admin-logistics-views",
+   "attendee-removal",
+   "member-arrival-default",
+   "member-carpool-board",
+   "member-departure-place"
+  ],
+  "src/views/EventDetailsView.jsx": [
+   "galleries"
+  ],
+  "src/views/HomeView.jsx": [
+   "admin-budget",
+   "admin-event-editor",
+   "admin-tabs",
+   "attendee-removal",
+   "attendees-edit",
+   "member-cancellation",
+   "member-registration-confirmation",
+   "app-canvas"
+  ],
+  "src/views/PastEditions.jsx": [
+   "member-page-widths"
+  ],
+  "src/views/RegistrationPage.jsx": [
+   "member-cancellation"
+  ],
+  "src/views/RegistrationSummary.jsx": [
+   "admin-change-history",
+   "admin-locations",
+   "admin-participant-message",
+   "attendees-edit",
+   "galleries",
+   "member-cancellation",
+   "member-departure-place"
+  ]
+ }
+}

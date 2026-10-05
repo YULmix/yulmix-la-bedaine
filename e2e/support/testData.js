@@ -22,7 +22,17 @@ export const E2E_ATTENDEES = [
   { name: 'Bob E2E', type: 'Adult', participation: 'Main', is_new_member: false }
 ];
 
+// One signed-in admin client per Node process, renewed after 20 minutes (the session lasts an
+// hour): every helper used to sign in again.
+let adminClientCache = null;
 async function adminClient() {
+  if (adminClientCache && Date.now() - adminClientCache.at < 20 * 60 * 1000) return adminClientCache.db;
+  const db = await newAdminClient();
+  adminClientCache = { at: Date.now(), db };
+  return db;
+}
+
+async function newAdminClient() {
   const url = process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !anonKey) {

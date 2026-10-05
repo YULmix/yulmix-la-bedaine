@@ -19,7 +19,8 @@
     "db:preview:reset": "node scripts/preview-db.mjs reset",
     "db:preview:push": "node scripts/preview-db.mjs push",
     "db:local:demo": "node scripts/preview-db.mjs local",
-    "db:seed:generate": "node scripts/preview-db.mjs generate"
+    "db:seed:generate": "node scripts/preview-db.mjs generate",
+    "test:e2e:affected": "node scripts/e2e-affected.mjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
