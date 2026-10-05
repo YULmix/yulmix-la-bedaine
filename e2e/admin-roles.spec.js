@@ -15,8 +15,10 @@ import {
   ORGANISER_ID,
   deleteLocations,
   addParty,
+  assignPlace,
   createAccounts,
   createThrowawayMember,
+  deleteParty,
   deleteAccounts,
   deleteThrowawayMember,
   ensureOtherEvent,
@@ -26,6 +28,7 @@ import {
   setIsAdminFlag,
   deleteVenueGalleries,
   getEditionRole,
+  getLocations,
   getParty,
   grantEditionRoles,
   revokeEditionRoles,
@@ -33,6 +36,7 @@ import {
   seedEmailLog,
   seedGallery,
   seedPlaces,
+  setPartyAnswers,
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { pickPlace } from './support/placePicker.js';
@@ -80,12 +84,12 @@ const emailProblems = page => panel(page).getByText(fr.emailProblemsTitleOne.rep
 const FINANCES = ['payment_status', 'calculated_amount_owed', 'locked_selling_price_whole_event', 'locked_ratio_main_whole'];
 const MONEY = /\d\s?\$/;
 
-// Every party the page receives, from user_parties and from edition_parties(), with the user it is
-// about: Comité must get the finances of none but their own.
+// Every row the page receives from user_parties, registration_edits and edition_parties(), with
+// the user it is about: Comité must get the finances of none but their own.
 function recordParties(page) {
   const rows = [];
   page.on('response', async response => {
-    if (!/\/rest\/v1\/(user_parties|rpc\/edition_parties)/.test(response.url())) return;
+    if (!/\/rest\/v1\/(user_parties|registration_edits|rpc\/edition_parties)/.test(response.url())) return;
     const body = await response.json().catch(() => null);
     for (const row of [body].flat()) if (row && typeof row === 'object') rows.push({ url: response.url(), row });
   });
@@ -176,6 +180,10 @@ for (const [user, level, label] of LEVELS) {
 }
 
 test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes nothing', async ({ page }) => {
+  // A place and a note on the member's party: Comité reads both (#290: through edition_parties()).
+  const [room] = await getLocations(seeded.eventId);
+  await assignPlace(room.places.find(place => place.label === 'Lit A').id, seeded.partyId, 1);
+  await setPartyAnswers(seeded.partyId, { admin_notes: 'Note E2E' });
   const received = recordParties(page);
   await loginAs(page, TEST_USERS.committee);
   await enterAdmin(page);
@@ -222,6 +230,8 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   // Logistique: every view; places, notes and messages read-only, no Save.
   await page.goto('/admin/logistics');
   await expect(panel(page).getByText(fr.logisticsNoPlaceAssigned).first()).toBeVisible();
+  await expect(panel(page).getByText('Chambre 1 · Lit A', { exact: true })).toBeVisible();
+  await expect(panel(page).getByText('Note E2E', { exact: true })).toBeVisible();
   await expect(panel(page).getByRole('combobox')).toHaveCount(0);
   await expect(panel(page).getByRole('textbox')).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: fr.save, exact: true })).toHaveCount(0);
@@ -243,11 +253,49 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
     await expectRedirected(page, path);
   }
 
-  // The parties came, and none with its finances but Comité's own (#290).
+  // « Participants »: every attendee, as before.
+  await page.goto('/admin/users/participants');
+  for (const name of ['Alice E2E', 'Bob E2E']) await expect(panel(page).getByRole('row').filter({ hasText: name })).toBeVisible();
+
+  // The parties came through edition_parties(), none with its finances; user_parties and
+  // registration_edits gave Comité (not registered here) no row at all (#290).
   expect(received.some(({ url }) => url.includes('/rpc/edition_parties'))).toBe(true);
+  expect(received.filter(({ url }) => !url.includes('/rpc/edition_parties'))).toEqual([]);
   const withFinances = received.filter(({ row }) => FINANCES.some(column => column in row));
   expect(withFinances.filter(({ row }) => row.user_id !== COMMITTEE_ID)).toEqual([]);
 });
+
+test('Comité who registered: their own Pass shows the amount; the admin list shows their party without it (#290)', async ({ page }) => {
+  const own = await addParty(COMMITTEE_ID, seeded.eventId);
+  try {
+    await loginAs(page, TEST_USERS.committee);
+    await page.goto('/');
+    const pass = page.getByRole('article', { name: fr.passLabel });
+    await expect(pass.getByText(fr.amountDue, { exact: true })).toBeVisible();
+    await expect(pass.getByText(MONEY).first()).toBeVisible();
+
+    await page.goto('/admin/users');
+    await expect(panel(page).getByRole('button', { name: 'Test Comité', exact: true })).toBeVisible();
+    await expect(panel(page).getByText(MONEY)).toHaveCount(0);
+    await expect(panel(page).getByText(fr.unpaidShort, { exact: true })).toHaveCount(0);
+  } finally {
+    await deleteParty(own);
+  }
+});
+
+// The payment changed elsewhere (another tab, another organiser): the list follows live (realtime).
+for (const [role, other] of [['organiser', 'admin'], ['admin', 'organiser']]) {
+  test(`${role}: Liste's amounts and payment, live after ${other} marks it paid elsewhere (#290)`, async ({ page }) => {
+    await loginAs(page, TEST_USERS[role]);
+    await page.goto('/admin/users');
+    await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toBeVisible();
+    await expect(panel(page).getByText(fr.amountDue)).toBeVisible();
+    await expect(panel(page).getByText(MONEY).first()).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toBeVisible();
+    expect(await rpcAs(TEST_USERS[other], 'set_payment_status', { p_party_id: seeded.partyId, p_payment_status: 'paid' })).toBeNull();
+    await expect(panel(page).getByRole('button', { name: fr.paid, exact: true })).toBeVisible({ timeout: 10000 });
+  });
+}
 
 for (const role of ['organiser', 'admin']) {
   test(`${role}: Résumé's « Groupes payés » and the profile dialog's payment and amount still show (#290)`, async ({ page }) => {
