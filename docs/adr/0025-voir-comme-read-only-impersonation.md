@@ -103,5 +103,5 @@ sequenceDiagram
   trg_refuse_when_impersonating BEFORE INSERT OR UPDATE OR DELETE ON ... FOR EACH STATEMENT
   EXECUTE FUNCTION private.refuse_when_impersonating()`); the catalog test fails otherwise.
 - **The hook is configuration, not schema.** Locally `supabase/config.toml` enables it, read at
-  `supabase start` (a running stack needs a restart). In production and Preview it is enabled in
-  the dashboard (#268); CI's `db push` doesn't do it.
+  `supabase start` (a running stack needs a restart). In production and Preview CI enables it
+  after deploying the functions (`scripts/enable-access-token-hook.sh`, #268), never by hand.
