@@ -246,6 +246,9 @@ test('the header\'s « Voir comme… »: Comité accounts, admins not choosable;
   await tab.getByRole('link', { name: fr.navAdmin }).click();
   await expect(adminNav(tab).getByRole('link', { name: fr.adminTabUsers })).toBeVisible();
   await expect(adminNav(tab).getByRole('link', { name: fr.adminTabBudget })).toHaveCount(0);
+  // Its Résumé, read through edition_parties(): no « Groupes payés » (#290).
+  await expect(tab.getByRole('main').getByText(fr.registeredGroupsStatLabel)).toBeVisible();
+  await expect(tab.getByRole('main').getByText(fr.kpiPaidGroups)).toHaveCount(0);
   await expect(banner(tab)).toBeVisible();
   await shoot(tab, 'voir-comme-tab-committee', [1440, 390, 2560]);
 

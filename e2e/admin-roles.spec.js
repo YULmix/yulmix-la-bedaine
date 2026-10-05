@@ -10,6 +10,7 @@ import { adminMain, adminNav, moreButton, openPartyDetail } from './support/admi
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,
+  COMMITTEE_ID,
   MEMBER_ID,
   ORGANISER_ID,
   deleteLocations,
@@ -75,6 +76,42 @@ const assignmentsGallery = page => page.getByRole('button', {
 const picker = page => panel(page).getByRole('list', { name: fr.teamSearchLabel });
 const emailProblems = page => panel(page).getByText(fr.emailProblemsTitleOne.replace('{count}', 1));
 
+// A party's finances (#290, ADR 0026): what Comité never receives.
+const FINANCES = ['payment_status', 'calculated_amount_owed', 'locked_selling_price_whole_event', 'locked_ratio_main_whole'];
+const MONEY = /\d\s?\$/;
+
+// Every party the page receives, from user_parties and from edition_parties(), with the user it is
+// about: Comité must get the finances of none but their own.
+function recordParties(page) {
+  const rows = [];
+  page.on('response', async response => {
+    if (!/\/rest\/v1\/(user_parties|rpc\/edition_parties)/.test(response.url())) return;
+    const body = await response.json().catch(() => null);
+    for (const row of [body].flat()) if (row && typeof row === 'object') rows.push({ url: response.url(), row });
+  });
+  return rows;
+}
+
+// E2E_SCREENSHOT_DIR: the page at each width, then back to the default.
+async function shoot(page, name, widths = [1440, 390]) {
+  if (!process.env.E2E_SCREENSHOT_DIR) return;
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+}
+
+// The profile dialog, opened from a Logistique card.
+async function openProfileFromLogistics(page, name = MEMBER_NAME) {
+  await page.goto('/admin/logistics');
+  await panel(page).getByRole('button', { name, exact: true }).first().click();
+  const dialog = page.getByRole('dialog', { name: fr.userProfileModalTitle });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: fr.userProfileEventHistory })).toBeVisible();
+  return dialog;
+}
+
 // The admin, entered from the header's « Admin » link, as a person would.
 async function enterAdmin(page) {
   await page.getByRole('link', { name: fr.navAdmin }).click();
@@ -139,20 +176,28 @@ for (const [user, level, label] of LEVELS) {
 }
 
 test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes nothing', async ({ page }) => {
+  const received = recordParties(page);
   await loginAs(page, TEST_USERS.committee);
   await enterAdmin(page);
   await expectSidebar(page, sectionNames('adminTabOverview', 'adminTabUsers', 'adminTabLogistics'));
-  // Résumé without the budget card.
+  // Résumé without the budget card, nor « Groupes payés » (#290).
   await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle })).toBeVisible();
   await expect(panel(page).getByRole('heading', { name: fr.budgetTitle, exact: true })).toHaveCount(0);
+  await expect(panel(page).getByText(fr.registeredGroupsStatLabel)).toBeVisible();
+  await expect(panel(page).getByText(fr.kpiPaidGroups)).toHaveCount(0);
+  await shoot(page, 'resume-committee', [1440, 390, 2560]);
   // Nor the emails to follow up: those are Organisateur's.
   await expect(emailProblems(page)).toHaveCount(0);
 
-  // Inscrits: the list, read-only. The payment is a tag, not a toggle.
+  // Inscrits: the list, read-only, without amounts nor payments (#290).
   await page.goto('/admin/users');
   await expect(panel(page).getByRole('button', { name: MEMBER_NAME, exact: true })).toBeVisible();
-  await expect(panel(page).getByText(fr.unpaidShort, { exact: true }).first()).toBeVisible();
+  await expect(panel(page).getByText(fr.unpaidShort, { exact: true })).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: fr.unpaidShort, exact: true })).toHaveCount(0);
+  await expect(panel(page).getByRole('button', { name: fr.paid, exact: true })).toHaveCount(0);
+  await expect(panel(page).getByText(fr.amountDue)).toHaveCount(0);
+  await expect(panel(page).getByText(MONEY)).toHaveCount(0);
+  await shoot(page, 'liste-committee', [1440, 390, 2560]);
   await expect(panel(page).getByRole('button', { name: fr.editRegistrationButton })).toHaveCount(0);
   await expect(panel(page).getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: fr.adminExportAction })).toHaveCount(0);
@@ -165,6 +210,10 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
   await expect(detail.getByRole('button', { name: fr.edit, exact: true })).toHaveCount(0);
   await expect(detail.getByText(fr.emailLogTitle)).toHaveCount(0);
   await expect(detail.getByRole('button', { name: fr.partyDetailViewProfile })).toBeVisible();
+  await expect(detail.getByText(fr.paymentColumn)).toHaveCount(0);
+  await expect(detail.getByText(fr.amountDue)).toHaveCount(0);
+  await expect(detail.getByText(MONEY)).toHaveCount(0);
+  await shoot(page, 'inscription-committee');
   expect(consoleErrors).toEqual([]);
   await detail.getByRole('button', { name: fr.close, exact: true }).click();
   // Only the list: no Historique.
@@ -181,10 +230,37 @@ test('Comité: reads Résumé, the list of Inscrits and Logistique, and changes 
     await expect(adminNav(page).getByRole('link', { name: fr[view] })).toBeVisible();
   }
 
+  // The profile dialog, from Logistique: the member's registration, without its payment or amount.
+  const profile = await openProfileFromLogistics(page);
+  await expect(profile.getByText(fr.statusRegistered, { exact: true })).toBeVisible();
+  await expect(profile.getByText(fr.unpaidShort, { exact: true })).toHaveCount(0);
+  await expect(profile.getByText(fr.paid, { exact: true })).toHaveCount(0);
+  await expect(profile.getByText(MONEY)).toHaveCount(0);
+  await shoot(page, 'profile-committee');
+  await profile.getByRole('button', { name: fr.close, exact: true }).click();
+
   for (const path of ['/admin/budget', '/admin/users/history', '/admin/events', '/admin/venues', '/admin/team', '/admin/feedback']) {
     await expectRedirected(page, path);
   }
+
+  // The parties came, and none with its finances but Comité's own (#290).
+  expect(received.some(({ url }) => url.includes('/rpc/edition_parties'))).toBe(true);
+  const withFinances = received.filter(({ row }) => FINANCES.some(column => column in row));
+  expect(withFinances.filter(({ row }) => row.user_id !== COMMITTEE_ID)).toEqual([]);
 });
+
+for (const role of ['organiser', 'admin']) {
+  test(`${role}: Résumé's « Groupes payés » and the profile dialog's payment and amount still show (#290)`, async ({ page }) => {
+    await loginAs(page, TEST_USERS[role]);
+    await page.goto('/admin/overview');
+    await expect(panel(page).getByText(fr.kpiPaidGroups)).toBeVisible();
+    await shoot(page, `resume-${role}`, [1440, 390, 2560]);
+    const profile = await openProfileFromLogistics(page);
+    await expect(profile.getByText(fr.unpaidShort, { exact: true })).toBeVisible();
+    await expect(profile.getByText(MONEY)).toBeVisible();
+    await shoot(page, `profile-${role}`);
+  });
+}
 
 test('Organisateur: plus Budget, Historique and the export; marks a payment and saves a place', async ({ page }) => {
   await loginAs(page, TEST_USERS.organiser);
