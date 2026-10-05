@@ -5,13 +5,18 @@ import { adminMain } from './support/admin.js';
 import { readFileSync } from 'node:fs';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
+  addParty,
   assignPlace,
+  createAccounts,
   deleteLocations,
+  deleteThrowawayMember,
   deleteVenueGalleries,
   galleryObjectExists,
   getEventVenue,
   getGalleryPaths,
   getLocations,
+  grantEditionRoles,
+  revokeEditionRoles,
   seedActiveEventWithMemberParty,
   seedGallery,
   seedPlaces,
@@ -25,6 +30,7 @@ test.describe.configure({ mode: 'serial' });
 
 let seeded;
 let venue;
+let extraAccounts = [];
 test.beforeEach(async () => {
   seeded = await seedActiveEventWithMemberParty();
   await deleteLocations(seeded.eventId);
@@ -32,7 +38,10 @@ test.beforeEach(async () => {
   venue = await getEventVenue(seeded.eventId);
 });
 test.afterEach(async () => {
+  for (const id of extraAccounts) await deleteThrowawayMember(id);
+  extraAccounts = [];
   if (seeded?.eventId) {
+    await revokeEditionRoles(seeded.eventId);
     await deleteLocations(seeded.eventId);
     await deleteVenueGalleries(seeded.eventId);
   }
@@ -209,4 +218,145 @@ test('at a phone width the viewer fits without scrolling the page sideways', asy
   await dialog.dispatchEvent('touchend', { touches: [], changedTouches: [{ identifier: 1, clientX: 200, clientY: y }] });
   await expect(dialog.getByText('2 / 2')).toBeVisible();
   await screenshot(page, 'gallery-viewer-phone');
+});
+
+// « Épingler le plan » (#293): the assignments gallery pinned as a strip stuck under the header
+// while the parties scroll under it, remembered on the device.
+const ASSIGNMENTS_NAME = () => `${venue.name} · ${fr.galleryVenueAssignmentsTitle}`;
+const pinToggle = page => page.getByRole('button', { name: fr.galleryPin, exact: true });
+const strip = page => page.getByRole('region', { name: fr.galleryStripLabel.replace('{name}', ASSIGNMENTS_NAME()) });
+
+// A page long enough to scroll: the member's party and three more, with places to assign.
+const seedLongPlacesPage = async (prefix) => {
+  await seedPlaces(seeded.eventId);
+  extraAccounts = await createAccounts(`${prefix}-${Date.now()}`, 3);
+  for (const id of extraAccounts) await addParty(id, seeded.eventId);
+  await seedGallery(seeded.eventId, { kind: 'assignments' }, 3);
+};
+
+// Scrolls to the bottom, then checks the strip is in view, right under the header, not under it.
+const expectStuckUnderHeader = async (page) => {
+  const scrollable = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+  expect(scrollable).toBeGreaterThan(200);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  const header = await page.getByRole('banner').boundingBox();
+  const frame = await strip(page).boundingBox();
+  expect(frame.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+  expect(frame.y).toBeLessThan(header.y + header.height + 16);
+  return frame;
+};
+
+const swipeLeft = async (page, target) => {
+  const box = await target.boundingBox();
+  const y = box.y + box.height / 2;
+  const x = box.x + box.width / 2;
+  await target.dispatchEvent('touchstart', { touches: [{ identifier: 1, clientX: x + 60, clientY: y }], changedTouches: [{ identifier: 1, clientX: x + 60, clientY: y }] });
+  await target.dispatchEvent('touchend', { touches: [], changedTouches: [{ identifier: 1, clientX: x - 60, clientY: y }] });
+};
+
+test('an admin pins the assignments plan: it stays under the header, steps, opens full screen on the same image, and is remembered', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await seedLongPlacesPage('pin-admin');
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/logistics');
+
+  const toggle = pinToggle(page);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(strip(page)).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const counter = strip(page).getByText(/^\d+ \/ \d+$/);
+  await expect(counter).toHaveText('1 / 3');
+  const shown = strip(page).getByRole('img', { name: fr.galleryImageAlt.replace('{name}', ASSIGNMENTS_NAME()).replace('{n}', 1).replace('{total}', 3) });
+  await expect.poll(() => shown.evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+
+  // About a third of the screen from sm up.
+  const frame = await expectStuckUnderHeader(page);
+  expect(frame.height).toBeGreaterThan(800 * 0.3);
+  expect(frame.height).toBeLessThan(800 * 0.4);
+  await screenshot(page, 'plan-pinned-admin-1440');
+
+  await strip(page).getByRole('button', { name: fr.galleryNext }).click();
+  await expect(counter).toHaveText('2 / 3');
+  await strip(page).getByRole('button', { name: fr.galleryPrevious }).click();
+  await strip(page).getByRole('button', { name: fr.galleryPrevious }).click();
+  await expect(counter).toHaveText('3 / 3');
+  await swipeLeft(page, strip(page));
+  await expect(counter).toHaveText('1 / 3');
+  await page.keyboard.press('ArrowRight');
+  await expect(counter).toHaveText('2 / 3');
+
+  // Full screen on the same image; Esc goes back to the strip, on the image it closed on.
+  const enlarge = strip(page).getByRole('button', { name: fr.galleryStripEnlarge.replace('{n}', 2).replace('{total}', 3) });
+  await enlarge.click();
+  const dialog = page.getByRole('dialog', { name: fr.galleryDialogLabel.replace('{name}', ASSIGNMENTS_NAME()) });
+  await expect(dialog.getByText('2 / 3')).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByText('3 / 3')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(counter).toHaveText('3 / 3');
+  await expect(strip(page).getByRole('button', { name: fr.galleryStripEnlarge.replace('{n}', 3).replace('{total}', 3) })).toBeFocused();
+
+  // Remembered; the other Logistique views don't show it.
+  await page.reload();
+  await expect(strip(page)).toBeVisible();
+  await expect(pinToggle(page)).toHaveAttribute('aria-pressed', 'true');
+  await page.goto('/admin/logistics/food');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(strip(page)).toHaveCount(0);
+  await page.goto('/admin/logistics');
+
+  // Unpinned from the strip itself, and remembered too.
+  await strip(page).getByRole('button', { name: fr.galleryUnpin }).click();
+  await expect(strip(page)).toHaveCount(0);
+  await expect(pinToggle(page)).toHaveAttribute('aria-pressed', 'false');
+  await page.reload();
+  await expect(pinToggle(page)).toBeVisible();
+  await expect(strip(page)).toHaveCount(0);
+});
+
+for (const role of ['committee', 'admin']) {
+  test(`at a phone width the pinned plan takes about a quarter of the screen, swipes, and leaves the parties usable (${role})`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedLongPlacesPage(`pin-${role}`);
+    await grantEditionRoles(seeded.eventId);
+    await loginAs(page, TEST_USERS[role]);
+    await page.goto('/admin/logistics');
+    await pinToggle(page).click();
+    await expect(strip(page).getByText('1 / 3')).toBeVisible();
+
+    const frame = await expectStuckUnderHeader(page);
+    expect(frame.height).toBeGreaterThan(844 * 0.2);
+    expect(frame.height).toBeLessThan(844 * 0.3);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    // A sideways swipe on the strip steps.
+    await swipeLeft(page, strip(page));
+    await expect(strip(page).getByText('2 / 3')).toBeVisible();
+
+    // The last party's card shows between the strip and the bottom bar; an admin's Save bar too.
+    const lastCard = adminMain(page).getByRole('listitem').filter({ has: page.getByRole('button', { name: /pin-/ }) }).last();
+    await expect(lastCard).toBeInViewport();
+    const bottomBar = await page.locator('[data-bottom-bar]').boundingBox();
+    if (role === 'admin') {
+      const save = page.getByRole('button', { name: fr.save, exact: true });
+      await expect(save).toBeInViewport();
+      const saveBox = await save.boundingBox();
+      expect(saveBox.y).toBeGreaterThan(frame.y + frame.height);
+      expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(bottomBar.y + 1);
+    }
+    await screenshot(page, `plan-pinned-${role}-390`);
+  });
+}
+
+test('without assignments images there is no pin toggle and nothing pinned, even when pinned before', async ({ page }) => {
+  await seedPlaces(seeded.eventId);
+  await page.addInitScript(() => window.localStorage.setItem('bedaine:logistics-plan-pinned', '1'));
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/logistics');
+  await expect(page.getByRole('heading', { name: fr.occupancyTitle })).toBeVisible();
+  await expect(pinToggle(page)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: new RegExp(fr.galleryStripLabel.split('{name}')[0]) })).toHaveCount(0);
 });
