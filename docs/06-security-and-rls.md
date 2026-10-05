@@ -83,7 +83,10 @@ everyone's personal data and the payment ledger.
 subscriber's `SELECT` policies per change, so over a channel an admin and an Organisateur of the
 edition get its parties' changes (amounts and payment status included), a member only their own,
 and Comité, which has no `SELECT` on the edition's parties (#290), nothing, whatever filter it
-subscribes with. Adding a table to the publication opens a delivery path governed only by that
+subscribes with. `DELETE` events are the exception, accepted: Realtime applies no RLS to them and,
+with the default replica identity (kept: `FULL` would put the old amounts in `old`), they carry the
+party's id only. An unfiltered subscription sees the ids of deleted parties, nothing else; a filtered
+one (the admin store's) gets none, so deletes aren't live. Adding a table to the publication opens a delivery path governed only by that
 table's `SELECT` policies: check them first. `src/__tests__/rlsPolicies.test.js` subscribes as each
 role and asserts it.
 
