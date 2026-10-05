@@ -535,6 +535,8 @@ test.describe('admin navigation shell', () => {
   test('desktop: Couchage keeps each count next to its type on a wide screen', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 900 });
     await openAdmin(page, '/logistics');
+    // Collapsed on a first visit (#292).
+    await panel(page).getByRole('button', { name: new RegExp(`^${fr.occupancyTitle}`) }).click();
     const row = panel(page).getByRole('row').filter({ has: page.getByRole('rowheader') }).first();
     // The texts, not the cells: a cell stretches to its neighbour.
     const [type, count] = await Promise.all([

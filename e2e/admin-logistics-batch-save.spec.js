@@ -9,6 +9,8 @@ import {
   ADMIN_ID,
   E2E_ATTENDEES,
   createParty,
+  grantEditionRoles,
+  revokeEditionRoles,
   deleteLocations,
   deleteParty,
   excludePlace,
@@ -36,12 +38,14 @@ let extraPartyId;
 test.beforeEach(async () => {
   seeded = await seedActiveEventWithMemberParty();
   places = await seedPlaces(seeded.eventId);
+  await grantEditionRoles(seeded.eventId);
   extraPartyId = await createParty(seeded.eventId, ADMIN_ID, [ZOE]);
 });
 
 test.afterEach(async () => {
   if (extraPartyId) await deleteParty(extraPartyId);
   if (seeded) {
+    await revokeEditionRoles(seeded.eventId);
     await deleteLocations(seeded.eventId);
     await teardownActiveEventWithMemberParty(seeded);
   }
@@ -198,10 +202,17 @@ const expectTotals = async (page, { placed, toPlace, capacity, overbooked }) => 
   await expect(stat(page, fr.logisticsSummaryCapacity)).toHaveText(String(capacity));
   await expect(stat(page, fr.logisticsSummaryOverbooked)).toHaveText(String(overbooked));
 };
+// The card opens collapsed (#292); the per-type table is in its detail.
+const toggle = page => summary(page).getByRole('button', { name: new RegExp(`^${fr.occupancyTitle}`) });
+const expandSummary = async (page) => {
+  if (await toggle(page).getAttribute('aria-expanded') === 'false') await toggle(page).click();
+  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
+};
 const typeRow = (page, label) => summary(page).getByRole('row').filter({ has: page.getByRole('rowheader', { name: label }) });
 
 test('the header totals follow unsaved picks and discarding; per type, requests against the event places', async ({ page }) => {
   await openLogistics(page);
+  await expandSummary(page);
   // Two beds for one each and a sofa for two; Alice and Bob gave no preference, Zoé wants the sofa.
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
   await expect(typeRow(page, fr.accommodationBed)).toContainText('0/2');
@@ -223,9 +234,50 @@ test('the header totals follow unsaved picks and discarding; per type, requests 
   await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toHaveCount(0);
 });
 
+// #292: collapsed on a first visit with the four counts on one line, remembered per device, for
+// every role that sees the view; the counts follow the draft either way.
+for (const role of ['admin', 'committee']) {
+  test(`${role}: the Couchage card opens collapsed, toggles from the keyboard and is remembered`, async ({ page }) => {
+    await loginAs(page, TEST_USERS[role]);
+    await page.goto('/admin/logistics');
+    await expect(summary(page)).toBeVisible();
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle(page)).toHaveAccessibleName(`${fr.occupancyTitle} – ${fr.logisticsSummaryShow}`);
+    // Collapsed: the four counts, no per-type table.
+    await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
+    await expect(summary(page).getByRole('table')).toHaveCount(0);
+    const box = await toggle(page).boundingBox();
+    expect(box.height, 'the header is under 44 px tall').toBeGreaterThanOrEqual(44);
+
+    await toggle(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
+    await expect(summary(page).getByRole('table')).toBeVisible();
+    await page.reload();
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
+    await expect(summary(page).getByRole('table')).toBeVisible();
+
+    await toggle(page).focus();
+    await page.keyboard.press('Space');
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
+    await page.reload();
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(summary(page).getByRole('table')).toHaveCount(0);
+  });
+}
+
+test('collapsed, the Couchage counts still follow the unsaved picks', async ({ page }) => {
+  await openLogistics(page);
+  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false');
+  await pickPlace(page, picker(page, ALICE), 'Chambre 1 · Lit A');
+  await expectTotals(page, { placed: 1, toPlace: 2, capacity: 4, overbooked: 0 });
+  await expect(summary(page).getByText(fr.logisticsSummaryUnsaved)).toBeVisible();
+});
+
 test('the header counts the event places: an excluded place leaves, a venue edit counts; saved figures match the overview', async ({ page }) => {
   await excludePlace(seeded.eventId, places['Chambre 1 · Lit B']);
   await openLogistics(page);
+  await expandSummary(page);
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 3, overbooked: 0 });
   await expect(typeRow(page, fr.accommodationBed)).toContainText('0/1');
 
@@ -233,6 +285,8 @@ test('the header counts the event places: an excluded place leaves, a venue edit
   await setPlaceCapacity(places['Salon · Sofa'], 3);
   await page.reload();
   await expectTotals(page, { placed: 0, toPlace: 3, capacity: 4, overbooked: 0 });
+  // Remembered across the reload.
+  await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
   await expect(typeRow(page, fr.accommodationSofa)).toContainText('1/3');
 
   await pickPlace(page, picker(page, ZOE.name), 'Salon · Sofa');
