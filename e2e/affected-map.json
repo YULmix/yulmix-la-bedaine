@@ -420,6 +420,9 @@
    "member-registration-draft",
    "preview-account-picker"
   ],
+  "src/hooks/useRememberedToggle.js": [
+   "admin-logistics-batch-save"
+  ],
   "src/hooks/useFitToViewport.js": [
    "admin-cancelled-parties",
    "admin-change-history",

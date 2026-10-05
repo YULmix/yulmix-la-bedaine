@@ -1,7 +1,23 @@
+import { useId } from 'react';
+import { ChevronDown } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
+import { useRememberedToggle } from '../../hooks/useRememberedToggle';
 import { Card, Stat, cx } from '../ui';
+
+// Remembered per device; the card opens collapsed.
+const OPEN_KEY = 'bedaine:logistics-summary-open';
+
+const TONES = { ok: 'text-ok', warn: 'text-warn' };
+
+// One count of the collapsed line: label then value, same markup as Stat's.
+const InlineCount = ({ label, value, tone }) => (
+  <div className="flex items-baseline gap-1.5">
+    <p className="text-sm text-muted">{label}</p>
+    <p className={cx('font-data text-base font-medium', TONES[tone] || 'text-ink')}>{value}</p>
+  </div>
+);
 
 // French counts zero in the singular: « 0 demandé », « 0 place ».
 const count = (n, key) => fr[`${key}${n <= 1 ? 'One' : 'Other'}`].replace('{count}', n);
@@ -39,18 +55,34 @@ const TypeRow = ({ icon: Icon, label, requested, capacity }) => (
 const LogisticsSummary = ({ stats, demand, hasUnsaved }) => {
   const placed = stats.locations.reduce((sum, location) => sum + location.assigned, 0);
   const capacity = stats.locations.reduce((sum, location) => sum + location.capacity, 0);
+  const [open, toggle] = useRememberedToggle(OPEN_KEY, false);
+  const bodyId = useId();
+  const placedStat = { label: fr.logisticsSummaryPlaced, value: placed };
+  const toPlaceStat = { label: fr.logisticsSummaryToPlace, value: stats.unassigned, tone: stats.unassigned ? 'warn' : 'ok' };
+  const capacityStat = { label: fr.logisticsSummaryCapacity, value: capacity };
+  const overbookedStat = { label: fr.logisticsSummaryOverbooked, value: stats.overbooked.length, tone: stats.overbooked.length ? 'warn' : undefined };
+  const figures = [placedStat, toPlaceStat, capacityStat, overbookedStat];
   return (
     <Card aria-labelledby="logistics-summary-title" className="p-5 sm:p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 id="logistics-summary-title" className="text-lg font-semibold text-ink">{fr.occupancyTitle}</h3>
-        {hasUnsaved && <p className="text-sm text-warn">{fr.logisticsSummaryUnsaved}</p>}
-      </div>
-      <div className="mt-4 grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label={fr.logisticsSummaryPlaced} value={placed} />
-        <Stat label={fr.logisticsSummaryToPlace} value={stats.unassigned} tone={stats.unassigned ? 'warn' : 'ok'} />
-        <Stat label={fr.logisticsSummaryCapacity} value={capacity} />
-        <Stat label={fr.logisticsSummaryOverbooked} value={stats.overbooked.length} tone={stats.overbooked.length ? 'warn' : undefined} />
-      </div>
+      <h3 id="logistics-summary-title" className="text-lg font-semibold text-ink">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-label={`${fr.occupancyTitle} – ${open ? fr.logisticsSummaryHide : fr.logisticsSummaryShow}`}
+          onClick={toggle}
+          className="-my-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg py-2 text-left"
+        >
+          <span>{fr.occupancyTitle}</span>
+          <ChevronDown aria-hidden="true" className={cx('size-5 shrink-0 text-faint transition-transform duration-150', open && 'rotate-180')} />
+        </button>
+      </h3>
+      {hasUnsaved && <p className="mt-1 text-sm text-warn">{fr.logisticsSummaryUnsaved}</p>}
+      {open ? (
+        <div id={bodyId} className="mt-2">
+          <div className="grid max-w-3xl grid-cols-2 gap-4 sm:grid-cols-4">
+            {figures.map(figure => <Stat key={figure.label} {...figure} />)}
+          </div>
       {/* As wide as its content, not the card: each count stays next to its type. */}
       <table className="mt-5 w-auto text-sm">
         <thead>
@@ -72,6 +104,12 @@ const LogisticsSummary = ({ stats, demand, hasUnsaved }) => {
           {demand.noPreference > 0 && <TypeRow label={fr.logisticsSummaryNoPreference} requested={demand.noPreference} />}
         </tbody>
       </table>
+        </div>
+      ) : (
+        <div id={bodyId} className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+          {figures.map(figure => <InlineCount key={figure.label} {...figure} />)}
+        </div>
+      )}
     </Card>
   );
 };
