@@ -622,30 +622,34 @@ pauses for approval, it just narrows which branch can see the secret. No databas
 needed: given only the access token, the Supabase CLI logs in through a temporary role it creates
 via the Management API.
 
-#### `SUPABASE_ACCESS_TOKEN` permissions
+#### Supabase CI tokens: `scripts/setup-supabase-token.sh`
 
-Create it as a **scoped** token (`supabase.com/dashboard/account/tokens`), resource access
-**Project → YULmix - La Bedaine** (not Organization), with exactly this set — everything else
-stays `None`, including `Backups` (this pipeline does its own dump; it doesn't use Supabase's
-PITR/restore feature):
+Don't create these tokens by hand. Supabase has no API for scoped access tokens (dashboard only),
+so one script does the tedious parts. The permissions of every CI token are listed **once**, in
+[`scripts/supabase-ci-tokens.json`](../scripts/supabase-ci-tokens.json), together with each
+project's ref, GitHub Environment and secret name (production: `SUPABASE_ACCESS_TOKEN` in
+`supabase-production`; Preview: `PREVIEW_SUPABASE_ACCESS_TOKEN` in `Preview`):
 
-| Category | Setting |
-|---|---|
-| Project Settings | Read |
-| Auth Configuration | Read-write |
-| Database | Read-write |
-| Connection Pooling | Read |
-| Migrations | Read-write |
-| API Keys | Read |
-| API Key Secrets | Read |
-| Edge Functions | Read-write |
-| Edge Function Secrets | Read |
+```sh
+scripts/setup-supabase-token.sh preview --dry-run   # print the plan, touch nothing
+scripts/setup-supabase-token.sh all                 # production, then Preview
+```
 
-Supabase tokens can't be edited after creation — getting this wrong means regenerating, so here's
-why each one is needed, traced against the CLI's own source (`supabase/cli`, not just the docs
+For each environment it prints the permissions to tick, you create the **scoped** token (resource
+access **Project → that project**, not Organization) at `supabase.com/dashboard/account/tokens` and
+paste it at a hidden prompt. It then calls the Management API once per permission, and only a
+token that passes is stored (`gh secret set --env`, through stdin). The token is never printed.
+A token with a gap is refused with the name of the missing permission.
+
+Run it for a new token, for a rotation, and when CI fails with `403 Missing required
+permission(s): …` (the file lacked a permission, or the token was made without it: fix the file if
+needed, then run the script, because tokens can't be edited after creation). `Backups` stays
+`None`: this pipeline does its own dump and doesn't use Supabase's PITR/restore feature.
+
+Why each permission in that file is needed, traced against the CLI's own source (`supabase/cli`, not just the docs
 page, which doesn't list the raw permission IDs):
 
-- **Project Settings** (`project_admin_read`) and **API Keys** + **API Key Secrets**
+- **Project Settings** (`project_admin_read`; `project_admin_write` for the hook's `PATCH /config/auth`) and **API Keys** + **API Key Secrets**
   (`api_gateway_keys_read` / `api_gateway_keys_secret_read`): `supabase link` — which `backup`,
   `migrate`, and `migration list` all run first — makes two calls that must succeed:
   `GET /v1/projects/{ref}` and `GET /v1/projects/{ref}/api-keys?reveal=true`. The `reveal=true`
@@ -684,10 +688,9 @@ page, which doesn't list the raw permission IDs):
 
 The `preview-functions` job deploys the Edge Functions to the Preview project, and the
 `preview-access-token-hook` job enables the hook there, after `preview-db` has applied the
-migrations. Both run in the GitHub environment `Preview`. Its token is a scoped token for
-**Project → Preview** with the same permission table as above, set as
-`gh secret set PREVIEW_SUPABASE_ACCESS_TOKEN --env Preview`. The hook is never enabled by hand
-in a dashboard, and never disabled while `impersonation_log` holds live sessions.
+migrations. Both run in the GitHub environment `Preview`, with the same permission list as
+production (`scripts/setup-supabase-token.sh preview`). The hook is never enabled by hand in a
+dashboard, and never disabled while `impersonation_log` holds live sessions.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.

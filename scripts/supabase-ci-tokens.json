@@ -1,0 +1,28 @@
+{
+  "_comment": "The ONE list of what each CI Supabase access token needs (scripts/setup-supabase-token.sh, docs/07-development-setup.md). Names are the dashboard's (supabase.com/dashboard/account/tokens). A token can't be edited after creation: change this file, then re-run the script to replace it.",
+  "permissions": [
+    ["Project Settings", "Read-write"],
+    ["Auth Configuration", "Read-write"],
+    ["Database", "Read-write"],
+    ["Connection Pooling", "Read"],
+    ["Migrations", "Read-write"],
+    ["API Keys", "Read"],
+    ["API Key Secrets", "Read"],
+    ["Edge Functions", "Read-write"],
+    ["Edge Function Secrets", "Read"]
+  ],
+  "environments": {
+    "production": {
+      "projectName": "YULmix - La Bedaine",
+      "projectRef": "ceacurlofmasyvhsoska",
+      "githubEnvironment": "supabase-production",
+      "secret": "SUPABASE_ACCESS_TOKEN"
+    },
+    "preview": {
+      "projectName": "Preview",
+      "projectRef": "uacfrldoiixfstigosqv",
+      "githubEnvironment": "Preview",
+      "secret": "PREVIEW_SUPABASE_ACCESS_TOKEN"
+    }
+  }
+}

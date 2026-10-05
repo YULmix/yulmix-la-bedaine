@@ -6,7 +6,8 @@
 # function, every sign-in fails with "Error running hook URI").
 #
 # Usage: SUPABASE_ACCESS_TOKEN=... scripts/enable-access-token-hook.sh <project-ref> [--disable]
-# The token needs "Auth Configuration: Read-write" and "Database: Read-write".
+# The token's permissions are listed in scripts/supabase-ci-tokens.json; create or fix it with
+# scripts/setup-supabase-token.sh.
 #
 # --disable is the emergency rollback (docs/07-development-setup.md): it refuses while a
 # « Voir comme » session is live, because the hook is what keeps that session read-only.
@@ -29,7 +30,7 @@ call() { # method path [json body]
     -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' \
     ${3:+-d "$3"}) || { echo "::error::$1 $2 on $ref: the request failed."; exit 1; }
   if [ "$status" -ge 300 ]; then
-    echo "::error::$1 $2 on $ref failed (HTTP $status). Check the token's permissions (see the header of this script)."
+    echo "::error::$1 $2 on $ref failed (HTTP $status). Check the token: scripts/setup-supabase-token.sh <env> recreates it with every permission."
     head -c 500 "$out"; echo
     exit 1
   fi
