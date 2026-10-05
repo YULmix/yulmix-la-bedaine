@@ -421,7 +421,8 @@
    "preview-account-picker"
   ],
   "src/hooks/useRememberedToggle.js": [
-   "admin-logistics-batch-save"
+   "admin-logistics-batch-save",
+   "galleries"
   ],
   "src/hooks/useFitToViewport.js": [
    "admin-cancelled-parties",
