@@ -76,10 +76,16 @@ Because the drafts live in stores, unsaved edits survive a tab switch.
 The navigation (#208) renders from the section registry, `src/lib/adminSections.ts`: each
 section's labels, icon, views, page width, marker, whether it has a slot in the phone bar, and
 the lowest role that may open it and each of its views (`minRole`, #217,
-[ADR 0023](./adr/0023-edition-roles.md)). App reads the person's role on the active event
+[ADR 0023](./adr/0023-edition-roles.md)), and for a section shown to the lower roles only, the
+highest (`maxRole`) and the route it stands in for (`standsFor`): Comité's « Participants »
+(#291, `/admin/participants`) stands in for Inscrits' « Participants », since Comité has no
+Inscrits (its « Liste » shows finances, #290). So Comité has Résumé, Participants and Logistique,
+Organisateur and admin Inscrits with its three views and no top-level Participants. App reads the person's role on the active event
 (admin, or their edition role, `src/lib/editionRoles.ts`); the shell shows only
 `sectionsFor(role)`, sends a URL the role may not open to its first section (`roleRedirect`,
-with `replace`), and gives the sections `useAdminAccess()`, whose `can(role, action)` decides
+with `replace`; a URL of a section another one stands in for goes to that one: Comité's
+`/admin/users…` to `/admin/participants`, an Organisateur's `/admin/participants` to
+`/admin/users/participants`), renders neither the page nor its header meanwhile, and gives the sections `useAdminAccess()`, whose `can(role, action)` decides
 which actions are rendered at all (the payment toggle, the god-mode edit, Logistique's Save…).
 `src/components/admin/AdminNav.jsx` draws it: from `md` up a sidebar with the current section's
 views nested under it; on phones a fixed bottom bar (`[data-bottom-bar]`) with four sections and
@@ -107,7 +113,7 @@ the Logistique views, it keeps waitlisted parties, with a « Statut » column; t
 
 Inscrits has views too, in `/admin/users/<view>` (`list` by default, `participants`, `history`), switched by
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
-old `/admin/tools/…` URLs redirect. « Participants » (#262, Comité and up) is one row per attendee of the non-cancelled parties, read-only: enum
+old `/admin/tools/…` URLs redirect. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
 values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
 are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
 `sortAttendees()` orders them. The « Historique des
@@ -151,7 +157,7 @@ Before adding a screen, answer these in the PR description. Reviewers check them
 4. **What's its URL?** `/admin/<section>/<view>` with English ids, built and parsed only by the
    admin routes module. If the screen replaces an old URL, add a redirect there.
 5. **A new section?** Add it to the section registry (`src/lib/adminSections.ts`): id, label
-   keys (full and short), icon, views, width, marker, `minRole`; then its id to the admin routes module and
+   keys (full and short), icon, views, width, marker, `minRole` (and `maxRole`/`standsFor` for a role's stand-in); then its id to the admin routes module and
    its component to `SECTION_COMPONENTS` in `src/views/AdminView.jsx`. It appears in the
    sidebar and under « Plus » on phones. Putting it in the phone bar (4 slots: Résumé, Inscrits, Logistique, Budget) is a separate decision that
    needs an organiser's approval.

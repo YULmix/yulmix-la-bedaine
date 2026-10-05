@@ -51,7 +51,10 @@ flowchart LR
   the active event. The « Admin » nav entry shows to admins and to anyone with a role on the
   active event. Sections and views are filtered by role in the section registry (ADR 0022). An
   admin URL the role doesn't allow redirects to the first section it does (replacing the history
-  entry); with no role, the existing « accès restreint » notice shows.
+  entry); with no role, the existing « accès restreint » notice shows. *Since #291 Comité's
+  sections are Résumé, Participants (a section of its own, `/admin/participants`) and Logistique:
+  no Inscrits, whose « Liste » shows finances ([ADR 0026](./0026-comite-does-not-see-finances.md));
+  Comité's Inscrits URLs land on Participants.*
 - **Only admins grant roles**, in a new admin-only section, « Équipe »: the people with a role on
   each edition, add someone by name or email (registered for the edition or not), change or
   remove their role. Every grant, change and removal is logged (who, to whom, which role and

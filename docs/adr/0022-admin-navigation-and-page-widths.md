@@ -40,6 +40,9 @@ flowchart TD
 - **Seven flat sections, no groups:** Résumé, Inscrits, Logistique, Budget, Événements, Sites,
   Retours. Grouping them (« Cette édition » / « Configuration ») and merging some (Budget into
   Résumé, Sites into Événements) were both rejected: they hide sections without saving a tap.
+  *Since #291 Comité's navigation is Résumé, Participants, Logistique: « Participants » is a
+  section for Comité only, standing in for Inscrits, which Comité doesn't open
+  ([ADR 0023](./0023-edition-roles.md), [ADR 0026](./0026-comite-does-not-see-finances.md)).*
 - **« Outils » is dissolved, and nothing becomes a catch-all again.** The change history is
   Inscrits' « Historique » view, because it logs registrations. The data export is an « Exporter »
   action in the Inscrits header, because it exports registrations. The feedback inbox is its own
@@ -49,7 +52,7 @@ flowchart TD
   left sidebar lists the sections, and the active section's views are nested under it. There are
   no view pills on desktop.
 - **Phone (< `md`).** A bottom bar in the thumb zone shows Résumé, Inscrits, Logistique and
-  Budget, plus « Plus », a bottom sheet with Événements, Sites and Retours. A section's views
+  Budget (Comité: Résumé, Participants, Logistique, #291), plus « Plus », a bottom sheet with Événements, Sites and Retours. A section's views
   show as the shared `ViewTabs` pills under its header. Markers (unsaved draft, unresolved
   feedback) show on the bar item, or on « Plus » when the marked section is behind it.
 - **One section registry** declares each section's id, labels, icon, views, page width and
