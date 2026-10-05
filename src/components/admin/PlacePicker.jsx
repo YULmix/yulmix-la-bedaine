@@ -78,7 +78,8 @@ const PlacePicker = ({ id, label, options, value, onChange, disabled, describedB
         onClick={() => !open && openAt(0)}
         onBlur={close}
         onKeyDown={onKeyDown}
-        className="pr-9 font-data disabled:cursor-not-allowed disabled:opacity-60"
+        // A dropdown until it has focus (the list open, typing filters): only then a text cursor.
+        className="cursor-pointer pr-9 font-data focus:cursor-text disabled:cursor-not-allowed disabled:opacity-60"
       />
       <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
 
