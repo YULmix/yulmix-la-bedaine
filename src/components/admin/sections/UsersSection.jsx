@@ -17,6 +17,7 @@ import { ChangeHistory } from '../ChangeHistory';
 import ExportDialog from '../ExportDialog';
 import { ConfirmDialog, EmptyState } from '../../ui';
 import NoActiveEvent from './NoActiveEvent';
+import { openVoirComme } from '../../../lib/voirComme';
 import SectionStatus from './SectionStatus';
 
 // Inscrits (#195, #209): « Liste », the active event's parties, cancelled ones included, and
@@ -26,7 +27,7 @@ import SectionStatus from './SectionStatus';
 // shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list,
 // Organisateur also marks payments, and only an admin edits a registration (the admin flag is in « Équipe »).
 const UsersList = ({ addToast }) => {
-  const { role } = useAdminAccess();
+  const { role, isAdmin } = useAdminAccess();
   const canEdit = can(role, 'editRegistration');
   const { activeEvent } = useEvents();
   const { parties, loading, error } = useAdminParties(activeEvent?.id);
@@ -76,6 +77,7 @@ const UsersList = ({ addToast }) => {
         onClose={() => setViewingId(null)}
         onViewProfile={setProfile}
         onEdit={canEdit ? party => { setViewingId(null); setEditingParty(party); } : undefined}
+        onViewAs={isAdmin ? profile => openVoirComme(profile.id) : undefined}
         showEmailLog={can(role, 'emailLog')}
       />
       <UserProfileDialog profile={profile} onClose={() => setProfile(null)} />

@@ -1,4 +1,4 @@
-import { MessageSquareText, Pencil } from 'lucide-react';
+import { Eye, MessageSquareText, Pencil } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatCurrency, formatDateTime } from '../../lib/format';
 import { amountOwedOf } from '../../lib/adminStats';
@@ -12,6 +12,7 @@ import {
 import { AttendeeList, InfoBlock, RegistrationInputs } from '../RegistrationDetails';
 import { Button, Card, Dialog, Tag } from '../ui';
 import PartyEmailLog from './PartyEmailLog';
+import { canViewAs } from '../../lib/voirComme';
 
 const Fact = ({ label, children }) => (
   <div className="min-w-0">
@@ -24,8 +25,11 @@ const Fact = ({ label, children }) => (
 // role doesn't allow isn't there (#217): « Modifier » (the god-mode editor) is the admin's
 // `onEdit`, the email log `showEmailLog` (Organisateur and above; email_log's RLS refuses Comité).
 // `party` null is closed. The member's profile and history open from « Voir le profil ».
-const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, showEmailLog }) => {
+// « Voir comme » (#267) is the admin's `onViewAs`, offered on a registrant who isn't an admin nor
+// deleted: it opens the member's read-only session in a new tab.
+const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, onViewAs, showEmailLog }) => {
   const profile = party?.profiles || {};
+  const viewAs = onViewAs && canViewAs(profile) ? onViewAs : null;
   const cancelled = party ? !isActiveRegistration(party) : false;
   const isPaid = party?.payment_status === PAYMENT_STATUS.PAID;
   return (
@@ -34,11 +38,21 @@ const PartyDetailDialog = ({ party, onClose, onViewProfile, onEdit, showEmailLog
       onClose={onClose}
       size="lg"
       title={fr.partyDetailTitle}
-      footer={party && onEdit && (
-        <Button onClick={() => onEdit(party)}>
-          <Pencil aria-hidden="true" className="size-4.5" strokeWidth={2} />
-          {fr.edit}
-        </Button>
+      footer={party && (onEdit || viewAs) && (
+        <>
+          {viewAs && (
+            <Button variant="secondary" onClick={() => viewAs(profile)}>
+              <Eye aria-hidden="true" className="size-4.5" strokeWidth={2} />
+              {fr.voirCommeAction}
+            </Button>
+          )}
+          {onEdit && (
+            <Button onClick={() => onEdit(party)}>
+              <Pencil aria-hidden="true" className="size-4.5" strokeWidth={2} />
+              {fr.edit}
+            </Button>
+          )}
+        </>
       )}
     >
       {party && (

@@ -18,6 +18,7 @@ import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
 import { useEvents } from './lib/events';
 import { fetchMyEditionRoles, roleOn } from './lib/editionRoles';
+import { useVoirComme } from './hooks/useVoirComme';
 
 const signInWithGoogle = async () => {
   try {
@@ -110,6 +111,9 @@ function App() {
   // need the active event (/inscription, /event-details) must not decide "no event" before the
   // events query has answered.
   const { activeEvent, otherEvents, loading: eventsLoading } = useEvents();
+  // A « Voir comme » tab (#267): no « refresh the page » banner there (a reload ends the session,
+  // and dismissing it would write the admin's localStorage).
+  const voirComme = useVoirComme();
   const eventsLoaded = !eventsLoading;
 
   // Fetch admin status for current user (matches DB is_admin() function logic)
@@ -227,7 +231,7 @@ function App() {
   return (
     <div className="flex min-h-dvh flex-col bg-night text-ink">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-80 focus:rounded-control focus:bg-neon focus:px-4 focus:py-2 focus:text-night">{fr.skipToContent}</a>
-      <ResolutionBanner isAuthenticated={isAuthenticated} />
+      {!voirComme && <ResolutionBanner isAuthenticated={isAuthenticated} />}
       <Header
         isAuthenticated={isAuthenticated}
         setIsAuthenticated={setIsAuthenticated}

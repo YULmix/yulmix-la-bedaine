@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, History, Search, UserMinus, UsersRound } from 'lucide-react';
+import { ChevronDown, Eye, History, Search, UserMinus, UsersRound } from 'lucide-react';
 import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
 import { refreshEvents, useEvents } from '../../../lib/events';
@@ -10,6 +10,8 @@ import {
   matchesPerson, mergeTeamLog, personLabel, searchPeople, setEditionRole
 } from '../../../lib/team';
 import { formatHistoryTimestamp } from '../../../lib/changeHistory';
+import { formatEventTime } from '../../../lib/eventTime';
+import { listVoirCommeLog } from '../../../lib/voirComme';
 import { useToasts } from '../../../hooks/useToasts';
 import { Button, Card, ConfirmDialog, EmptyState, Field, Input, Notice, Select, Skeleton, Tag, Toggle } from '../../ui';
 import { EVENT_STATUS } from '../AdminEvents';
@@ -81,6 +83,61 @@ const ListSkeleton = () => (
     <Skeleton className="h-12 rounded-control" />
   </div>
 );
+
+// « Voir comme » (#267, ADR 0025): who viewed the app as whom, when, and how it ended. Every
+// edition: a session isn't about one. Newest first.
+const VOIR_COMME_STATES = {
+  active: { tone: 'warn', label: 'voirCommeLogActive', at: entry => entry.expiresAt },
+  ended: { tone: 'neutral', label: 'voirCommeLogEnded', at: entry => entry.endedAt },
+  expired: { tone: 'neutral', label: 'voirCommeLogExpired', at: entry => entry.expiresAt },
+  unopened: { tone: 'bad', label: 'voirCommeLogUnopened', at: () => null }
+};
+
+const VoirCommeLog = () => {
+  const [log, setLog] = useState({ entries: null, error: null });
+  const [reloads, setReloads] = useState(0);
+
+  useEffect(() => {
+    let current = true;
+    listVoirCommeLog(supabase)
+      .then(entries => { if (current) setLog({ entries, error: null }); })
+      .catch(error => { if (current) setLog({ entries: null, error: error.message }); });
+    return () => { current = false; };
+  }, [reloads]);
+
+  return (
+    <Card className="p-5 sm:p-6" aria-labelledby="team-voir-comme-title">
+      <h2 id="team-voir-comme-title" className="text-lg font-semibold text-ink">{fr.voirCommeLogTitle}</h2>
+      <p className="text-sm text-faint">{fr.voirCommeLogHint}</p>
+      {log.error ? (
+        <Notice tone="bad" className="mt-4"
+          action={<Button variant="secondary" size="sm" onClick={() => setReloads(n => n + 1)}>{fr.retry}</Button>}>
+          {log.error}
+        </Notice>
+      ) : !log.entries ? <ListSkeleton /> : log.entries.length === 0 ? (
+        <EmptyState icon={Eye} title={fr.voirCommeLogEmpty} className="py-8" />
+      ) : (
+        <ol className="mt-3 divide-y divide-line" aria-labelledby="team-voir-comme-title">
+          {log.entries.map(entry => {
+            const state = VOIR_COMME_STATES[entry.state];
+            const at = state.at(entry);
+            return (
+              <li key={entry.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-3">
+                <div className="min-w-0 flex-1 basis-56">
+                  <p className="text-sm text-ink [overflow-wrap:anywhere]">
+                    {fr.voirCommeLogLine.replace('{admin}', personLabel(entry.admin)).replace('{person}', personLabel(entry.target))}
+                  </p>
+                  <p className="mt-0.5 font-data text-xs text-faint">{formatHistoryTimestamp(entry.startedAt)}</p>
+                </div>
+                <Tag tone={state.tone}>{fr[state.label].replace('{time}', at ? formatEventTime(at) : '')}</Tag>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Card>
+  );
+};
 
 // The accounts with their level, listed before anything is typed (the edition's registrants unless
 // the filter is off), narrowed as the admin types, to give the chosen role to one. Past the cap
@@ -345,6 +402,8 @@ const TeamSection = () => {
           </ol>
         )}
       </Card>
+
+      <VoirCommeLog />
 
       <ConfirmDialog
         open={!!pendingRemoval}

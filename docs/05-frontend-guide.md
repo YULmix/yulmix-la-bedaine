@@ -17,6 +17,7 @@ no component library.
 | `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
 | `/a-propos` | `AboutView` | None |
+| `/voir-comme/:memberId` | A « Voir comme » tab (#267): `VoirCommeTab` opens the member's read-only session, then moves to `/` and runs the whole app on it | The `impersonate` Edge Function (admins only, non-admin targets) and the database (read-only); see « Voir comme » below |
 
 `ProtectedRoute` (`src/App.jsx`) renders a skeleton while auth resolves, redirects
 unauthenticated users to `/`, and shows an "Accès réservé aux administrateurs" panel for
@@ -202,7 +203,7 @@ that lists accounts with their level before anything is typed (« Inscrits seule
 default; past `PEOPLE_LIST_CAP` accounts it searches on the server instead), granting Comité,
 Organisateur or Admin (`set_edition_role()`, `admin_set_is_admin()`; Admin asks first, it applies
 to every edition), and a log that merges `admin_role_log` into the edition's role log
-(`mergeTeamLog`). The Inscrits list has no admin checkbox.
+(`mergeTeamLog`), then the « Voir comme » log (#267). The Inscrits list has no admin checkbox.
 
 The **budget** (`src/lib/budget.ts`, #195): an event's `event_budgets` row and the Budget
 editor's draft, per event, through `useBudget(eventId)`; Résumé and Budget read the same entry.
@@ -278,6 +279,64 @@ sequenceDiagram
 The fallback duplicates the root-admin email in the client bundle (`src/App.jsx:41`). Harmless
 (the email is not a secret and RLS re-checks everything server-side), but it is a second copy of a
 rule that should live in one place.
+
+### « Voir comme »: a second Supabase client (#267, ADR 0025)
+
+An admin opens a member's real, read-only session in a new tab, from « Voir comme » in Inscrits'
+« Inscription » dialog (`PartyDetailDialog`, `onViewAs`) or from « Voir comme… » in the header's
+menu (`VoirCommePicker`, the shared `AccountPicker` of #269, admin rows and oneself disabled). Both
+call `openVoirComme(id)` (`src/lib/voirComme.ts`): `window.open('/voir-comme/<id>')`, the target
+id only, never a token.
+
+```mermaid
+sequenceDiagram
+  participant A as Admin tab (localStorage session)
+  participant T as « Voir comme » tab
+  participant F as impersonate function
+  A->>T: window.open /voir-comme/<id>
+  Note over T: src/lib/supabase.ts marks the tab (sessionStorage)<br/>and builds its client on sessionStorage, own key
+  T->>T: reads the admin's stored session (JSON, no client)
+  T->>F: start (admin's token, target id)
+  F-->>T: member's session, session_id, ends_at
+  T->>T: setSession on the tab's client, URL → /
+  Note over T: the whole app runs on it, banner in the header
+  T->>F: end (the session's own token): « Quitter », or keepalive on pagehide
+```
+
+- **Which client.** `src/lib/supabase.ts` decides once, when it loads: in a tab opened on
+  `/voir-comme/…` (marked in sessionStorage, so the mark survives the URL moving on) `supabase` is
+  a client with `storage: sessionStorage` and its own `storageKey`. Every module keeps importing
+  `supabase` as before and gets the member's session in that tab, the admin's everywhere else. The
+  admin's session (localStorage, supabase-js's default key `ADMIN_SESSION_STORAGE_KEY`) is read as
+  plain JSON to start, never through a client: a client would refresh an expired token and could
+  rotate or wipe the admin's session in every tab (#267 review). An access token ending within a
+  minute isn't used: the tab asks the admin to come back to the app's tab (which renews it when it
+  is in front) and to « Réessayer ».
+- **The shell** (`src/components/VoirCommeTab.jsx`, wrapping `App` in `main.jsx`) starts or resumes
+  the session, provides `useVoirComme()` (null in ordinary tabs), and shows a page of its own while
+  starting, on a refusal (the function's code, mapped in `dbErrors.ts`, with « Réessayer »), and
+  once the session is over (« Fermer l'onglet », « Revenir à mon compte »).
+- **The banner** is in the sticky header (`VoirCommeBanner`): « Vous voyez l'app comme {nom} ·
+  lecture seule · N min restantes · Quitter », the time read from `ends_at` (the log row's end,
+  not the response's `expires_at`, which Auth doesn't lower).
+- **The end.** « Quitter » (and the menu's « Se déconnecter », renamed « Quitter » there) calls
+  `end` with the session's own access token, then signs out **locally** only, and closes the tab.
+  At `ends_at`, or when Auth refuses the refresh, the tab says the session is over. Leaving the
+  page (closing **or reloading** the tab, typing a URL) sends `end` as a `keepalive` request on
+  `pagehide` and marks the stored session as left, so a reload shows « terminée » instead of
+  reusing it: in-app links keep the session, a full page load ends it. Where the request can't go
+  out, the row stays « En cours » until its 30 minutes are up and only the hook refuses the session
+  (ADR 0025); the next « Voir comme » on that member isn't refused (only an unclaimed row blocks
+  one, for 60 seconds). A page restored from the bfcache after leaving shows « terminée » too.
+  Known edges: a reload while « Ouverture… » starts a second session and leaves the first open,
+  unused, until it expires; a duplicated tab copies sessionStorage and shares the session (closing
+  either ends it; the other reads until its access token's `exp`, writes refused).
+- **Not offered in that tab:** « Supprimer mon compte », the Preview account switcher,
+  « Voir comme… », and the « refresh the page » banner (`ResolutionBanner`). Never a global
+  `signOut()` or `updateUser()`: those write Auth, which the read-only trigger doesn't cover.
+- Any write the database refuses shows `read_only_impersonation`'s French message like any other
+  error. « Équipe » lists the sessions (`listVoirCommeLog`): who, whom, when, and « En cours,
+  jusqu'à », « Quittée à », « Expirée à » or « Pas ouverte ».
 
 ## Localisation (fr-CA)
 

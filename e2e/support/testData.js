@@ -729,3 +729,41 @@ export async function saveBudgetLines(eventId, lines) {
   const db = await adminClient();
   check(await db.from('event_budgets').upsert({ event_id: eventId, lines }), 'seed budget lines');
 }
+
+// « Voir comme » (#267, ADR 0025): impersonation_log is written by the impersonate Edge Function
+// with the service role only; the specs read it, hold a member's pending slot, and end what is
+// left open, the same way.
+function serviceDb() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) throw new Error('E2E_SUPABASE_SERVICE_ROLE_KEY missing; see playwright.config.js');
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/.test(url)) {
+    throw new Error(`Refusing to write impersonation_log against non-local Supabase URL ${url}`);
+  }
+  return createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+// The rows on a target, newest first.
+export async function getImpersonationLog(targetId) {
+  return check(
+    await serviceDb().from('impersonation_log').select('*').eq('target_id', targetId).order('started_at', { ascending: false }),
+    'read impersonation_log'
+  );
+}
+
+// A pending row (no session yet), as a start in progress leaves it: the next start on that
+// member is refused (impersonation_target_pending) for 60 seconds.
+export async function insertPendingImpersonation(adminId, targetId) {
+  return check(
+    await serviceDb().from('impersonation_log').insert({ admin_id: adminId, target_id: targetId }).select('id').single(),
+    'insert pending impersonation'
+  ).id;
+}
+
+// Ends every row still open (cleanup).
+export async function endOpenImpersonations() {
+  check(
+    await serviceDb().from('impersonation_log').update({ ended_at: new Date().toISOString() }).is('ended_at', null),
+    'end open impersonations'
+  );
+}

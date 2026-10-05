@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Car, ChevronDown, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
+import { Car, ChevronDown, Eye, Info, LogOut, MessageSquareWarning, ShieldCheck, Sparkles, UserX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import fr from '../locales/fr.json';
 import { initials } from '../lib/eventDisplay';
@@ -13,6 +13,9 @@ import yulmixLogo from '../assets/YULmix_App.png';
 import { ADMIN_ROOT } from '../lib/adminRoutes';
 import { getAccessLevelLabel } from '../lib/registrationOptions';
 import { CANVAS_CLASS } from '../lib/pageWidth';
+import { useVoirComme } from '../hooks/useVoirComme';
+import { VoirCommeBanner } from './VoirCommeTab';
+import VoirCommePicker from './VoirCommePicker';
 
 // Preview-only account switcher (#105). __PREVIEW_TOOLS__ is a build-time constant (vite.config.js):
 // false in production builds, which then drop these imports and the whole chunk.
@@ -70,8 +73,13 @@ const navLinkClass = ({ isActive }) => cx(
 // `canOpenAdmin`: an admin, or someone with a role on the active event (#217); `isAdmin` is the
 // account's own flag. `level`: their role on the active event ('admin' | 'organiser' | 'committee'
 // | null), shown as a ring on the avatar and a label in the menu (#260).
+// In a « Voir comme » tab (#267) the header carries the banner, « Se déconnecter » is « Quitter »
+// (ending that session only, never a global sign-out), and nothing that writes to Auth or switches
+// account is offered: no « Supprimer mon compte », no Preview account switcher, no « Voir comme… ».
 const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdmin = isAdmin, level = null, isDeleted = false, onOpenFeedback }) => {
   const menu = useMenu();
+  const voirComme = useVoirComme();
+  const [pickingViewAs, setPickingViewAs] = useState(false);
   // The header's height, as --header-height on the root, for what sticks under it (the admin
   // sidebar): 4rem, plus the test-account banner on previews.
   const headerRef = useRef(null);
@@ -114,6 +122,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
   };
 
   const handleSignOut = async () => {
+    if (voirComme) {
+      menu.setOpen(false);
+      voirComme.quit();
+      return;
+    }
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -155,7 +168,8 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
 
   return (
     <header ref={headerRef} className="sticky top-0 z-30 border-b border-line bg-night/85 backdrop-blur-md">
-      {TestAccountMarker && isAuthenticated && (
+      {voirComme && <VoirCommeBanner />}
+      {TestAccountMarker && isAuthenticated && !voirComme && (
         <Suspense fallback={null}><TestAccountMarker email={user?.email} /></Suspense>
       )}
       {/* The app's canvas: the logo lines up with the page's left edge (the admin sidebar's too). */}
@@ -243,13 +257,19 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
                       {fr.reportProblem}
                     </button>
                   )}
-                  {TestAccountMenuItem && (
+                  {!voirComme && !isDeleted && isAdmin && (
+                    <button role="menuitem" onClick={() => { menu.setOpen(false); setPickingViewAs(true); }} className={MENU_ITEM}>
+                      <Eye aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
+                      {fr.voirCommeMenuItem}
+                    </button>
+                  )}
+                  {TestAccountMenuItem && !voirComme && (
                     <Suspense fallback={null}>
                       <TestAccountMenuItem className={MENU_ITEM} onSelect={() => { menu.setOpen(false); setSwitchingAccount(true); }} />
                     </Suspense>
                   )}
                   <div className="my-1 h-px bg-line" />
-                  {!isDeleted && (
+                  {!isDeleted && !voirComme && (
                     <button role="menuitem" onClick={() => { menu.setOpen(false); setConfirmingDelete(true); }} className={cx(MENU_ITEM, 'text-muted')}>
                       <UserX aria-hidden="true" className="size-5 text-faint" strokeWidth={1.75} />
                       {fr.deleteAccount}
@@ -257,7 +277,7 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
                   )}
                   <button role="menuitem" onClick={handleSignOut} className={cx(MENU_ITEM, 'text-bad')}>
                     <LogOut aria-hidden="true" className="size-5" strokeWidth={1.75} />
-                    {fr.signOut}
+                    {voirComme ? fr.voirCommeQuit : fr.signOut}
                   </button>
                 </>
               )}
@@ -266,7 +286,11 @@ const Header = ({ isAuthenticated, setIsAuthenticated, user, isAdmin, canOpenAdm
         </div>
       </div>
 
-      {TestAccountPicker && switchingAccount && (
+      {isAdmin && !voirComme && pickingViewAs && (
+        <VoirCommePicker open onClose={() => setPickingViewAs(false)} currentUserId={user?.id} />
+      )}
+
+      {TestAccountPicker && switchingAccount && !voirComme && (
         <Suspense fallback={null}>
           <TestAccountPicker
             open
