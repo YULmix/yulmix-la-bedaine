@@ -2,8 +2,9 @@
 // sidebar, the phone bottom bar, « Plus », the page header and the phone ViewTabs all render from
 // it, so adding a section or a view is one entry here (and its component in the admin shell).
 // The URLs are the admin routes module's (src/lib/adminRoutes.ts); the ids are the same.
-// Each section and view also says the lowest role that may open it (#217, ADR 0023): the
-// navigation shows a role only what it allows, and the shell sends it away from the rest.
+// Each section and view also says the lowest role that may open it (#217, ADR 0023), and a section
+// may say the highest (#291: Comité's top-level « Participants »): the navigation shows a role only
+// what it allows, and the shell sends it away from the rest.
 import {
   Banknote, BedDouble, CalendarRange, Car, ClipboardList, HandHeart, History, Inbox,
   LayoutDashboard, List, MapPin, MessageSquareText, Users, UsersRound, Utensils
@@ -54,6 +55,14 @@ export interface AdminSectionEntry {
   marker?: SectionMarker;
   /** The lowest role that may open it (ADR 0023); its views may ask for more. */
   minRole: AccessRole;
+  /** The highest role that sees it (#291): above it, the role opens `standsFor` instead. */
+  maxRole?: AccessRole;
+  /**
+   * The route this section stands in for, for the roles it is shown to (#291): a role that may
+   * open this section is sent here from that route's section, and one that may not, from here to
+   * that route.
+   */
+  standsFor?: AdminRoute;
 }
 
 // Comité reads every Logistique view, places included (ADR 0023).
@@ -66,9 +75,10 @@ const LOGISTICS_VIEWS: Record<LogisticsView, Omit<AdminViewEntry<LogisticsView>,
 };
 
 // The change history is Organisateur's, like the exports.
+// Inscrits is Organisateur's and above (#291): Comité has « Participants » as a section instead.
 const USERS_VIEWS: Record<UsersView, Omit<AdminViewEntry<UsersView>, 'id'>> = {
-  list: { labelKey: 'usersViewList', icon: List, width: 'dense', minRole: 'committee' },
-  participants: { labelKey: 'usersViewParticipants', icon: Users, width: 'dense', minRole: 'committee' },
+  list: { labelKey: 'usersViewList', icon: List, width: 'dense', minRole: 'organiser' },
+  participants: { labelKey: 'usersViewParticipants', icon: Users, width: 'dense', minRole: 'organiser' },
   history: { labelKey: 'usersViewHistory', icon: History, width: 'dense', minRole: 'organiser' }
 };
 
@@ -80,7 +90,13 @@ const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
   overview: { labelKey: 'adminTabOverview', shortKey: 'adminTabOverviewShort', icon: LayoutDashboard, inBar: true, views: [], width: 'dense', minRole: 'committee' },
   users: {
     labelKey: 'adminTabUsers', shortKey: 'adminTabUsersShort', icon: ClipboardList, inBar: true,
-    views: viewsOf(USERS_VIEW_IDS, USERS_VIEWS), viewsLabelKey: 'usersViewsLabel', width: 'dense', minRole: 'committee'
+    views: viewsOf(USERS_VIEW_IDS, USERS_VIEWS), viewsLabelKey: 'usersViewsLabel', width: 'dense', minRole: 'organiser'
+  },
+  // Comité's only (#291): Inscrits' « Participants », as a section of its own. No « Liste »: Comité
+  // doesn't see the finances it shows (#290).
+  participants: {
+    labelKey: 'adminTabParticipants', shortKey: 'adminTabParticipantsShort', icon: Users, inBar: true, views: [], width: 'dense',
+    minRole: 'committee', maxRole: 'committee', standsFor: { section: 'users', view: 'participants' }
   },
   logistics: {
     labelKey: 'adminTabLogistics', shortKey: 'adminTabLogisticsShort', icon: BedDouble, inBar: true,
@@ -99,7 +115,7 @@ const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
 /** Every section, in the routes module's order (the sidebar's and « Plus »'s). */
 export const ADMIN_SECTION_ENTRIES: readonly AdminSectionEntry[] = ADMIN_SECTIONS.map(id => ({ id, ...SECTIONS[id] }));
 
-/** The phone bottom bar's sections, then the ones under « Plus ». */
+/** The phone bottom bar's sections, then the ones under « Plus » (for an admin: AdminNav filters a role's). */
 export const BAR_SECTIONS = ADMIN_SECTION_ENTRIES.filter(section => section.inBar);
 export const MORE_SECTIONS = ADMIN_SECTION_ENTRIES.filter(section => !section.inBar);
 
@@ -129,7 +145,7 @@ export const sectionsFor = (role: AccessRole | null | undefined): readonly Admin
   if (!role) return [];
   if (!sectionsByRole.has(role)) {
     sectionsByRole.set(role, ADMIN_SECTION_ENTRIES
-      .filter(section => hasRole(role, section.minRole))
+      .filter(section => hasRole(role, section.minRole) && (!section.maxRole || hasRole(section.maxRole, role)))
       .map(section => ({ ...section, views: section.views.filter(view => hasRole(role, view.minRole)) })));
   }
   return sectionsByRole.get(role)!;
@@ -148,8 +164,14 @@ export const mayOpen = (route: AdminRoute, role: AccessRole | null | undefined):
  */
 export const roleRedirect = (route: AdminRoute, role: AccessRole | null | undefined): AdminRoute | null => {
   if (!role || mayOpen(route, role)) return null;
-  const first = sectionsFor(role)[0];
-  return first ? adminRoute(first.id) : null;
+  const sections = sectionsFor(role);
+  // A section standing in for this one (Comité: Inscrits → « Participants », #291)...
+  const standIn = sections.find(section => section.standsFor?.section === route.section);
+  if (standIn) return adminRoute(standIn.id);
+  // ...or the route a stand-in this role doesn't get stands for (Organisateur: → Inscrits › Participants).
+  const original = sectionEntry(route.section).standsFor;
+  if (original && mayOpen(original, role)) return original;
+  return sections[0] ? adminRoute(sections[0].id) : null;
 };
 
 /**

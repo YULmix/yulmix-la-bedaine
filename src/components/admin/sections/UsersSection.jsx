@@ -12,7 +12,7 @@ import AdminUserManagement from '../AdminUserManagement';
 import PartyDetailDialog from '../PartyDetailDialog';
 import PartyEditDialog from '../PartyEditDialog';
 import UserProfileDialog from '../UserProfileDialog';
-import ParticipantsView from '../ParticipantsView';
+import ParticipantsSection from './ParticipantsSection';
 import { ChangeHistory } from '../ChangeHistory';
 import ExportDialog from '../ExportDialog';
 import { ConfirmDialog, EmptyState } from '../../ui';
@@ -20,13 +20,15 @@ import NoActiveEvent from './NoActiveEvent';
 import { openVoirComme } from '../../../lib/voirComme';
 import SectionStatus from './SectionStatus';
 
-// Inscrits (#195, #209): « Liste », the active event's parties, cancelled ones included, and
+// Inscrits (#195, #209), Organisateur and above (#291): « Liste », the active event's parties,
+// cancelled ones included, « Participants » (ParticipantsSection, Comité's own section), and
 // « Historique », the change history of an event's registrations (/admin/users/history). The
 // header's « Exporter » is on the list only: the history has its own export buttons. The list owns its dialogs: the payment confirmation, a
 // member's profile, the god-mode editor. Payment changes reload the parties from the
-// shared store. What the role doesn't allow isn't there (#217, ADR 0023): Comité reads the list
-// without amounts nor payments (#290, ADR 0026),
-// Organisateur also marks payments, and only an admin edits a registration (the admin flag is in « Équipe »).
+// shared store. What the role doesn't allow isn't there (#217, ADR 0023): Organisateur marks
+// payments, only an admin edits a registration (the admin flag is in « Équipe »). The list still
+// hides finances from a role that may not see them (#290, ADR 0026), though Comité no longer
+// opens it (#291).
 const UsersList = ({ addToast }) => {
   const { role, isAdmin } = useAdminAccess();
   const canEdit = can(role, 'editRegistration');
@@ -115,16 +117,6 @@ const HistoryView = ({ addToast }) => {
     : <EmptyState icon={History} title={fr.changeHistoryEmpty} />;
 };
 
-// Comité reads the attendees as it reads the list (RLS); the view is read-only.
-const ParticipantsPage = () => {
-  const { role } = useAdminAccess();
-  const { activeEvent } = useEvents();
-  const { activeParties, loading, error } = useAdminParties(activeEvent?.id, role);
-  if (!activeEvent) return <NoActiveEvent />;
-  if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={() => refreshAdminParties(activeEvent.id)} />;
-  return <ParticipantsView parties={activeParties} />;
-};
-
 const UsersSection = ({ view }) => {
   const { addToast } = useToasts(1699);
   const { role } = useAdminAccess();
@@ -133,7 +125,7 @@ const UsersSection = ({ view }) => {
   return (
     <>
       {activeEvent && view === 'list' && can(role, 'exportData') && <ExportDialog event={activeEvent} parties={activeParties} addToast={addToast} />}
-      {view === 'history' ? <HistoryView addToast={addToast} /> : view === 'participants' ? <ParticipantsPage /> : <UsersList addToast={addToast} />}
+      {view === 'history' ? <HistoryView addToast={addToast} /> : view === 'participants' ? <ParticipantsSection /> : <UsersList addToast={addToast} />}
     </>
   );
 };

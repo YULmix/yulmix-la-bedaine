@@ -346,6 +346,11 @@
    "attendees-edit",
    "member-registration-confirmation"
   ],
+  "src/components/admin/sections/ParticipantsSection.jsx": [
+   "admin-data-export",
+   "admin-roles",
+   "voir-comme"
+  ],
   "src/components/admin/sections/SectionStatus.jsx": [
    "admin-tabs"
   ],
