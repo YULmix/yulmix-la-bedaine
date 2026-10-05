@@ -413,9 +413,8 @@ jobs:
         env:
           PREVIEW_DB_URL: ${{ secrets.PREVIEW_DB_URL }}
 
-  # Preview's counterpart of `functions`: the Edge Functions and the custom access token hook
-  # (« Voir comme », ADR 0025) on the Preview project, after its database has the migrations.
-  # No email trigger setup: Preview sends no real email.
+  # Preview's counterpart of `functions`: the Edge Functions on the Preview project, after its
+  # database has the migrations. No email trigger setup: Preview sends no real email.
   preview-functions:
     name: Deploy Edge Functions to Preview
     needs: [changes, preview-db]
@@ -440,6 +439,35 @@ jobs:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
       - run: supabase functions deploy --project-ref "$PREVIEW_SUPABASE_PROJECT_REF"
+
+  # The custom access token hook (« Voir comme », ADR 0025) is Auth configuration, not schema:
+  # `db push` never sets it, and a reset of the database leaves it as it was. So this job enables
+  # it as code, on EVERY push to main (and by hand with "Run workflow" on main): the call is
+  # idempotent, so a hook switched off in a dashboard is repaired by the next push. It is its own
+  # job, after the migrations only: a failure here (a token without Auth Configuration:
+  # Read-write) blocks nothing else, and a failed function deploy doesn't block it. The script
+  # refuses when the project's database lacks the hook function.
+  # Never enable or disable the hook by hand; see docs/07-development-setup.md.
+  preview-access-token-hook:
+    name: Enable the access token hook (Preview)
+    needs: [changes, preview-db]
+    if: >-
+      !cancelled()
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+      && needs.changes.result == 'success'
+      && (needs.preview-db.result == 'success' || needs.preview-db.result == 'skipped')
+      && (github.event_name == 'workflow_dispatch'
+          || needs.changes.outputs.migrations != 'true' || needs.preview-db.result == 'success')
+    runs-on: ubuntu-latest
+    environment: Preview
+    concurrency:
+      group: preview-db-reset
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.PREVIEW_SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Enable the custom access token hook
         run: scripts/enable-access-token-hook.sh "$PREVIEW_SUPABASE_PROJECT_REF"
@@ -489,10 +517,6 @@ jobs:
       # verify_jwt per function comes from supabase/config.toml.
       - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
 
-      # The function exists in production once `migrate` has run (this job needs it).
-      - name: Enable the custom access token hook
-        run: scripts/enable-access-token-hook.sh "$SUPABASE_PROJECT_REF"
-
       - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Point the email trigger at the function
@@ -500,6 +524,28 @@ jobs:
           supabase db query --linked "INSERT INTO private.settings (key, value)
             VALUES ('email_function_url', 'https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/send-party-email')
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+
+  # Production's counterpart of preview-access-token-hook (same rules; touches only the hook fields).
+  production-access-token-hook:
+    name: Enable the access token hook (production)
+    needs: [changes, migrate]
+    if: >-
+      !cancelled()
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+      && needs.changes.result == 'success'
+      && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+      && (github.event_name == 'workflow_dispatch'
+          || needs.changes.outputs.migrations != 'true' || needs.migrate.result == 'success')
+    runs-on: ubuntu-latest
+    environment: supabase-production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable the custom access token hook
+        run: scripts/enable-access-token-hook.sh "$SUPABASE_PROJECT_REF"
 
   # Runs on every push to main that touches more than docs/**Markdown, migration
   # or not. The explicit condition is needed because GitHub skips a job whose
