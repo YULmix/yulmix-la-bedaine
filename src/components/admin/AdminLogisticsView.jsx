@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BedDouble, CircleAlert, MessageSquareText, TriangleAlert } from 'lucide-react';
+import { BedDouble, CircleAlert, MessageSquareText, Pin, TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { ACCOMMODATION_OPTIONS, BED_REASON_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
 import { byBedPriority, placeOccupancy, placeOptions } from '../../lib/places';
 import { computePlaceStats, placeDemandByType } from '../../lib/adminStats';
 import { VENUE_GALLERY_KINDS, fetchVenueGallery } from '../../lib/galleries';
-import GalleryButton from '../Gallery';
-import { Card, EmptyState, Notice, Tag, Textarea, cx } from '../ui';
+import GalleryButton, { GalleryStrip } from '../Gallery';
+import { useRememberedToggle } from '../../hooks/useRememberedToggle';
+import { Button, Card, EmptyState, Notice, Tag, Textarea, cx } from '../ui';
 import { FilterPills } from './AdminUserManagement';
 import PlacePicker from './PlacePicker';
 import LogisticsSummary from './LogisticsSummary';
@@ -31,7 +32,9 @@ const FILTERS = [
 // at the bottom (#150);
 // `logisticsErrors` holds why a party's save was refused. `places` are the event's, from
 // the event places module (`available`, #193); with none, there is nothing to assign until they're defined (Événements tab).
-// The venue's assignments gallery (#177) is in the page header's actions.
+// The venue's assignments gallery (#177) is in the page header's actions, with « Épingler le
+// plan » (#293): pinned, the gallery shows as a strip stuck at the top while the parties scroll
+// under it. Remembered per device (PIN_KEY), for every venue; with no image, nothing is pinned.
 // `readOnly` (Comité, #217): the saved places and texts, without pickers, fields or Save.
 const ReadOnlyText = ({ label, value }) => (
   <div className="mt-4">
@@ -41,6 +44,8 @@ const ReadOnlyText = ({ label, value }) => (
     </p>
   </div>
 );
+
+const PIN_KEY = 'bedaine:logistics-plan-pinned';
 
 const PlacesView = ({
   readOnly = false,
@@ -69,6 +74,7 @@ const PlacesView = ({
   const demand = useMemo(() => placeDemandByType(parties, places), [parties, places]);
   const venueId = venue?.id;
   const [gallery, setGallery] = useState({ venueId: null, images: [] });
+  const [pinned, togglePinned] = useRememberedToggle(PIN_KEY, false);
 
   useEffect(() => {
     if (!venueId) return undefined;
@@ -79,12 +85,22 @@ const PlacesView = ({
     return () => { current = false; };
   }, [venueId]);
 
+  const galleryImages = gallery.venueId === venueId ? gallery.images : [];
+  const galleryName = venue?.name ? `${venue.name} · ${fr.galleryVenueAssignmentsTitle}` : fr.galleryVenueAssignmentsTitle;
+
   return (
     <section className="space-y-4">
+      {pinned && <GalleryStrip images={galleryImages} name={galleryName} onUnpin={togglePinned} />}
       <p className="max-w-prose text-muted">{fr.logisticsViewDescription}</p>
       <AdminHeaderActions>
-        <GalleryButton images={gallery.venueId === venueId ? gallery.images : []}
-          name={venue?.name ? `${venue.name} · ${fr.galleryVenueAssignmentsTitle}` : fr.galleryVenueAssignmentsTitle} size="sm" />
+        {galleryImages.length > 0 && (
+          <Button variant="secondary" size="sm" aria-pressed={pinned} onClick={togglePinned}
+            className={cx('min-h-11', pinned && 'border-neon text-neon')}>
+            <Pin aria-hidden="true" className={cx('size-4', pinned && 'fill-current')} strokeWidth={1.75} />
+            {fr.galleryPin}
+          </Button>
+        )}
+        <GalleryButton images={galleryImages} name={galleryName} size="sm" />
       </AdminHeaderActions>
 
       {places.length === 0
