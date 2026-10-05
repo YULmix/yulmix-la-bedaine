@@ -62,8 +62,10 @@ COMMENT ON FUNCTION private.party_event_id(uuid) IS
 
 REVOKE ALL ON FUNCTION private.edition_team_reads_party(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION private.party_event_id(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION private.edition_team_reads_party(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION private.party_event_id(uuid) TO authenticated;
+-- service_role too: functions in private get no default grant, and the service role reads
+-- attendee_places (send-party-email embeds it), whose security_invoker body calls party_event_id().
+GRANT EXECUTE ON FUNCTION private.edition_team_reads_party(uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.party_event_id(uuid) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------------------------------------
 -- The money: Organisateur and above.
@@ -84,10 +86,13 @@ CREATE POLICY "Registration Edits: Organisateur and above read the history" ON p
 -- What the edition team (Comité and above) still reads directly.
 
 -- Next to "Attendees: read with their party" (own party, admin, Organisateur and above through
--- user_parties). #237's restrictive policy still hides removed attendees.
+-- user_parties). #237's restrictive policy still hides removed attendees. The uncorrelated
+-- EXISTS on one's own edition_roles rows runs once per query (an InitPlan), so a member or an
+-- admin (who hold none) never pays the per-row definer call.
 CREATE POLICY "Attendees: Edition team reads its edition's" ON public.attendees
     FOR SELECT TO authenticated
-    USING (private.edition_team_reads_party(party_id));
+    USING ((SELECT EXISTS (SELECT 1 FROM public.edition_roles r WHERE r.user_id = (SELECT auth.uid())))
+           AND private.edition_team_reads_party(party_id));
 
 DROP POLICY "Party Admin Notes: Edition team reads its edition's" ON public.party_admin_notes;
 CREATE POLICY "Party Admin Notes: Edition team reads its edition's" ON public.party_admin_notes

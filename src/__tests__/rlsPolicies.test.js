@@ -3345,6 +3345,9 @@ describe('🪜 edition roles: member < Comité < Organisateur < admin (#217, ADR
         .toEqual([{ attendee_id: attendeeA, event_id: EVENT_A, place_id: placeId }]);
       expect(await ok(clients.otherCommittee.from('attendee_places').select('attendee_id').eq('attendee_id', attendeeA))).toEqual([]);
       expect(await ok(clients.member.from('attendee_places').select('attendee_id').eq('attendee_id', attendeeA))).toEqual([]);
+      // The service role (send-party-email embeds the place) can run the view's helper too.
+      expect(await ok(adminClient.from('user_parties').select('id, attendees(name, place:attendee_places(place_id, event_id))').eq('id', partyA).single()))
+        .toEqual({ id: partyA, attendees: [{ name: 'Ann', place: { place_id: placeId, event_id: EVENT_A } }] });
       // ...but no amount through the profile's history (user_event_history reads user_parties as the caller).
       expect(await ok(clients.committee.from('user_event_history').select('party_id').eq('party_id', partyA))).toEqual([]);
     } finally {
