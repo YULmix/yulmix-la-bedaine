@@ -343,6 +343,12 @@ end of `SERIAL_ENTRIES` in `playwright.config.js`. The chain of `dependencies` a
 `device` to `'Desktop Chrome'`). Never add a hand-written project to `projects`: that is what made
 every branch conflict (#244).
 
+**Seeded `email_log` rows.** Seeding a party makes the database call `send-party-email`
+asynchronously, and the sender claims a row (`pending`) before it patches it to `dry_run`. A row seeded
+in between would become `dry_run` and `my_party_emails()` would hide it. So `seedEmailLog` first waits
+(bounded, 8 s) for the sender's row to exist and not be `pending`, then upserts. Seed through it, never
+by writing `email_log` directly (#298).
+
 **Running fewer specs.** The whole suite is ~250 tests and takes several minutes, because every spec
 shares one active event and so they run one at a time. While iterating on a change, run only the
 specs that can see it:

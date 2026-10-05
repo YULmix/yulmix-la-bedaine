@@ -18,6 +18,7 @@ import {
   deleteParty,
   deleteThrowawayMember,
   endOpenImpersonations,
+  getEmailLog,
   getImpersonationLog,
   getParty,
   grantEditionRoles,
@@ -87,7 +88,9 @@ test('admin: the member\'s own app in a new tab, read-only, while the admin tab 
   await shoot(page, 'inscription-dialog-admin');
 
   // The banner, on every page of the tab, and no token in the URL.
-  await expect(banner(tab)).toContainText(fr.voirCommeBannerViewing.replace('{name}', MEMBER_NAME));
+  // The first start of the run is cold (Vite compiles the route, impersonate boots, GoTrue issues the
+  // session): the start's own budget, not the 5 s default. Measured ~2 s after a reset (#298).
+  await expect(banner(tab)).toContainText(fr.voirCommeBannerViewing.replace('{name}', MEMBER_NAME), { timeout: 30_000 });
   await expect(banner(tab)).toContainText(fr.voirCommeReadOnly);
   await expect(banner(tab)).toContainText(fr.voirCommeMinutesLeft.replace('{minutes}', '30'));
   expect(new URL(tab.url()).pathname).toBe('/');
@@ -96,6 +99,8 @@ test('admin: the member\'s own app in a new tab, read-only, while the admin tab 
   // The member's Pass and « Courriels », no « Admin ».
   await expect(tab.getByRole('article', { name: fr.passLabel })).toBeVisible();
   await expect(tab.getByRole('heading', { name: fr.emailsTitle })).toBeVisible();
+  // The seeded row kept its status once send-party-email settled (#298): it never turned dry_run.
+  expect((await getEmailLog(seeded.partyId)).find(row => row.template === 'registration').status).toBe('sent');
   await expect(tab.getByRole('link', { name: fr.navAdmin })).toHaveCount(0);
   await shoot(tab, 'voir-comme-tab-member');
   // In-app navigation keeps the session (a reload or a typed URL ends it, see below).

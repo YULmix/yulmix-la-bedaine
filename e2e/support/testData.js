@@ -574,6 +574,26 @@ export async function getProfile(userId) {
   return check(await db.from('profiles').select('deleted_at').eq('id', userId).single(), 'read e2e profile');
 }
 
+// The party seed sets off send-party-email asynchronously (#298). It claims a row (`pending`), then
+// PATCHes that row by id to `dry_run`/`sent`/`failed`. A seed that lands between the two is turned
+// into `dry_run` and my_party_emails() hides it. So wait, bounded, until the sender has written its
+// row and left none `pending`; if nothing shows up (no email_function_url, nothing sent) go on.
+async function waitForEmailWorkToSettle(db, partyId, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const rows = check(await db.from('email_log').select('status').eq('party_id', partyId), 'read email_log');
+    if (rows.length > 0 && rows.every(row => row.status !== 'pending')) return;
+    if (Date.now() >= deadline) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
+// The email_log rows of a party (service role), for specs that check what the sender left.
+export async function getEmailLog(partyId) {
+  const db = await adminClient();
+  return check(await db.from('email_log').select('template,status').eq('party_id', partyId), 'read email_log');
+}
+
 // email_log is written only by the send-party-email Edge Function, with the service role (#12).
 // Specs stand in for it the same way (#93). Upserts on (party_id, template), so a row the local
 // function may have written for the seeded party is replaced, not duplicated.
@@ -585,6 +605,7 @@ export async function seedEmailLog(partyId, rows) {
     throw new Error(`Refusing to seed email_log against non-local Supabase URL ${url}`);
   }
   const db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  await waitForEmailWorkToSettle(db, partyId);
   check(
     await db.from('email_log').upsert(rows.map(row => ({ party_id: partyId, ...row })), { onConflict: 'party_id,template' }),
     'seed email_log'
