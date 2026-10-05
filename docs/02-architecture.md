@@ -147,7 +147,14 @@ The admin sections read module stores in `src/lib` (#195). The active event's pa
 the admin parties store (`src/lib/adminParties.ts`), which subscribes to Realtime for
 `user_parties` filtered by `event_id` while a section shows them and re-fetches the whole list on
 any change. Comité reads them through `rpc('edition_parties')` instead, without their finances and
-without Realtime ([ADR 0026](./adr/0026-comite-does-not-see-finances.md)). Writes go through the data modules (`parties.ts`, `profiles.ts`, `events.ts`); granting
+without Realtime ([ADR 0026](./adr/0026-comite-does-not-see-finances.md)).
+
+The `supabase_realtime` publication holds one table, `user_parties` (#296), the only one the app
+subscribes to: **it must contain every table the app subscribes to**, or the channel subscribes
+fine and never fires (it was empty until #296). A new subscription needs a migration adding its
+table. Realtime delivers a change only to subscribers who may `SELECT` the row, so who gets which
+party is decided by the table's policies, not by the client's filter. `DELETE` events can't be
+filtered, so a deleted party shows on the next reload or `refresh()`. Writes go through the data modules (`parties.ts`, `profiles.ts`, `events.ts`); granting
 admin must go through `rpc('admin_set_is_admin')` (`setIsAdmin`) because direct `UPDATE` on
 `profiles.is_admin` is revoked.
 

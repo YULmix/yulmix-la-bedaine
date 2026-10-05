@@ -198,7 +198,7 @@ The **admin parties** (`src/lib/adminParties.ts`, #195): an event's parties as t
 them, in one cache per event that Résumé, Inscrits, Logistique, Budget and the exports share
 through `useAdminParties(eventId, role)` (`parties`, cancelled ones included, and `activeParties`). An
 entry loads for its first screen, on `refreshAdminParties(eventId)` after a write, and on any
-change to the event's `user_parties` rows (a Realtime channel, open only while a screen watches).
+change to the event's `user_parties` rows (a Realtime channel, open only while a screen watches; inserts and updates only, a delete shows on the next load).
 For Comité (`!can(role, 'seeFinances')`, #290, [ADR 0026](./adr/0026-comite-does-not-see-finances.md))
 it loads through `listEditionParties()` (`edition_parties()`): no amounts nor payment status, and
 no Realtime channel. A screen that shows money checks `can(role, 'seeFinances')`; `AdminParty`'s

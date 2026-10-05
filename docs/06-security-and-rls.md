@@ -77,6 +77,16 @@ flowchart TD
 Three independent layers for the same rule. That is appropriate: admin access is the keys to
 everyone's personal data and the payment ledger.
 
+## Realtime follows the SELECT policies (#296)
+
+`user_parties` is the one table in the `supabase_realtime` publication. Realtime checks each
+subscriber's `SELECT` policies per change, so over a channel an admin and an Organisateur of the
+edition get its parties' changes (amounts and payment status included), a member only their own,
+and Comité, which has no `SELECT` on the edition's parties (#290), nothing, whatever filter it
+subscribes with. Adding a table to the publication opens a delivery path governed only by that
+table's `SELECT` policies: check them first. `src/__tests__/rlsPolicies.test.js` subscribes as each
+role and asserts it.
+
 ## Policy matrix
 
 Derived from production's schema as captured in the baseline migration
