@@ -205,7 +205,8 @@ An admin can open the app in a member's **real** session to see exactly what tha
 - **Not covered by the trigger:** Supabase Auth's own endpoints (`updateUser()`, a global
   `signOut()`) write `auth.*`, not our tables. The impersonated tab must not offer them (#267).
 - The hook is enabled locally by `supabase/config.toml`; in production and Preview CI enables it
-  (`scripts/enable-access-token-hook.sh`, #268).
+  (`scripts/enable-access-token-hook.sh`, #268), never by hand; rollback is in
+  [Development setup](./07-development-setup.md#-voir-comme--edge-function-impersonate).
 
 The `impersonate` Edge Function (#266, `supabase/functions/impersonate/`) mints the session; it
 adds no rule the database doesn't already hold, and it hands over nothing the database didn't mark:

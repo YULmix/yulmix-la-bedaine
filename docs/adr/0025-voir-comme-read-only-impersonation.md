@@ -104,4 +104,4 @@ sequenceDiagram
   EXECUTE FUNCTION private.refuse_when_impersonating()`); the catalog test fails otherwise.
 - **The hook is configuration, not schema.** Locally `supabase/config.toml` enables it, read at
   `supabase start` (a running stack needs a restart). In production and Preview CI enables it
-  after deploying the functions (`scripts/enable-access-token-hook.sh`, #268), never by hand.
+  by its own job (`scripts/enable-access-token-hook.sh`, #268), never by hand.

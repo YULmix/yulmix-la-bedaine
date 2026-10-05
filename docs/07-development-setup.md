@@ -401,9 +401,21 @@ small proxy that sends `/auth/v1/*` to that container and the rest to the stack 
 verified).
 
 Production: CI deploys it with the other functions (`supabase functions deploy`, job **Deploy
-Edge Functions**); it needs no secret of its own. The same job then enables the custom access token hook
-(`scripts/enable-access-token-hook.sh`, #268); without it the function is useless. Preview has
-its own job, `preview-functions`.
+Edge Functions**); it needs no secret of its own. The custom access token hook, without which the
+function is useless, is enabled by its own job, **Enable the access token hook (production)**,
+on every push to main (idempotent; also "Run workflow" on main). It calls
+`scripts/enable-access-token-hook.sh` (#268), which first checks that `public.custom_access_token_hook`
+exists in the database and touches only the two hook fields of the auth config. Preview has
+`preview-functions` and **Enable the access token hook (Preview)**.
+
+**Emergency rollback** (every sign-in fails after enabling, e.g. "Error running hook URI"): run
+`SUPABASE_ACCESS_TOKEN=… scripts/enable-access-token-hook.sh <project-ref> --disable` locally. It
+refuses while `impersonation_log` has a live session (`ended_at is null and expires_at > now()`),
+since the hook is what keeps that session read-only. Fix the cause, then let CI enable the hook
+again (the next push to main, or "Run workflow"). Resetting Preview from a branch without the
+« Voir comme » migration (`db:preview:reset`, "Reset Preview DB") drops the hook function while the
+hook is still on, and breaks Preview sign-in until the hook is disabled or Preview is reset from
+`main`.
 
 ## Transactional email (Edge Function)
 
@@ -653,7 +665,8 @@ page, which doesn't list the raw permission IDs):
   a connection, rather than needing a stored database password.
 - **Auth Configuration** (`auth_config_write`): `scripts/enable-access-token-hook.sh` enables the
   « Voir comme » custom access token hook with `PATCH /v1/projects/{ref}/config/auth`
-  ([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md), #268) and reads it back.
+  ([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md), #268) and reads it back. It first
+  checks the hook function exists through `POST /v1/projects/{ref}/database/query` (Database).
 - **Edge Functions** (`Read-write`) and **Edge Function Secrets** (`Read`,
   `edge_functions_secrets_read`): the **Deploy Edge Functions** job
   ([ADR 0016](./adr/0016-edge-function-for-transactional-email.md)) runs `supabase functions
@@ -669,8 +682,9 @@ page, which doesn't list the raw permission IDs):
 
 #### Preview: `PREVIEW_SUPABASE_ACCESS_TOKEN`
 
-The `preview-functions` job deploys the Edge Functions to the Preview project and enables the
-hook there, after `preview-db` has applied the migrations. Its token is a scoped token for
+The `preview-functions` job deploys the Edge Functions to the Preview project, and the
+`preview-access-token-hook` job enables the hook there, after `preview-db` has applied the
+migrations. Both run in the GitHub environment `Preview`. Its token is a scoped token for
 **Project → Preview** with the same permission table as above, set as
 `gh secret set PREVIEW_SUPABASE_ACCESS_TOKEN --env Preview`. The hook is never enabled by hand
 in a dashboard, and never disabled while `impersonation_log` holds live sessions.
