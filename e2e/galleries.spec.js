@@ -234,16 +234,26 @@ const seedLongPlacesPage = async (prefix) => {
   await seedGallery(seeded.eventId, { kind: 'assignments' }, 3);
 };
 
-// Scrolls to the bottom, then checks the strip is in view, right under the header, not under it.
+// Scrolls the parties to their end (the last card's bottom at the screen's), then checks the strip
+// is in view, right under the header, not under it. The parties' end, not the page's: below them
+// come the footer and the end of the strip's section, which a sticky element leaves with.
 const expectStuckUnderHeader = async (page) => {
   const scrollable = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
   expect(scrollable).toBeGreaterThan(200);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const lastParty = adminMain(page).locator('section > ul > li').last();
+  await expect(lastParty).toBeVisible();
+  await lastParty.evaluate(card => card.scrollIntoView({ block: 'end' }));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
-  const header = await page.getByRole('banner').boundingBox();
+  // Measured together and polled: the test-account line is lazy-loaded into the header, which
+  // then grows, and --header-height follows it one ResizeObserver callback later.
+  const gap = async () => {
+    const header = await page.getByRole('banner').boundingBox();
+    const box = await strip(page).boundingBox();
+    return box.y - (header.y + header.height);
+  };
+  await expect.poll(gap).toBeGreaterThanOrEqual(-1);
+  expect(await gap()).toBeLessThan(16);
   const frame = await strip(page).boundingBox();
-  expect(frame.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
-  expect(frame.y).toBeLessThan(header.y + header.height + 16);
   return frame;
 };
 
