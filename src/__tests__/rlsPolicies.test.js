@@ -4205,3 +4205,144 @@ describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () =
     expect(party).toEqual({ payment_status: 'unpaid', message_to_participants: null });
   });
 });
+
+describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', () => {
+  jest.setTimeout(60000);
+
+  const EVENT = 'a0000000-a000-a000-a000-a00000002961';
+  const OTHER_EVENT = 'a0000000-a000-a000-a000-a00000002962';
+  const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
+  const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitFor = async (condition, ms = 15000) => {
+    for (const end = Date.now() + ms; Date.now() < end && !condition(); ) await pause(250);
+  };
+
+  const users = {};
+  const parties = {};
+  const clients = {};
+  const channels = [];
+  // What each subscriber received: this edition's parties' changes (and any DELETE, which can't be told apart).
+  const received = {};
+  let admin;
+
+  const createUser = async (label) => {
+    const email = `rls-296-${label}-${Date.now()}@test.local`;
+    const { data, error } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (error) throw error;
+    return { id: data.user.id, email };
+  };
+
+  // Subscribes and waits until the server confirms it. `filter` as the admin store sets it, or none.
+  const listen = async (label, filter) => {
+    received[label] = [];
+    // Realtime must hold the user's token, not the anon key, or RLS shows it nothing.
+    await clients[label].realtime.setAuth((await clients[label].auth.getSession()).data.session.access_token);
+    await new Promise((resolve) => {
+      const channel = clients[label].channel(`rls-296-${label}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'user_parties', ...(filter ? { filter } : {}) },
+          (payload) => { if (payload.eventType === 'DELETE' || payload.new?.event_id === EVENT) received[label].push(payload); })
+        .subscribe((status) => { if (status === 'SUBSCRIBED') resolve(); }); // errors retry: Realtime is slow to start after a db reset
+      channels.push([clients[label], channel]);
+    });
+  };
+
+  beforeAll(async () => {
+    admin = await signIn('admin@test.local');
+    for (const label of ['memberA', 'memberB', 'otherOrganiser']) {
+      users[label] = await createUser(label);
+      clients[label] = await signIn(users[label].email);
+    }
+    clients.admin = admin;
+    clients.organiser = await signIn('organiser@test.local');
+    clients.committee = await signIn('committee@test.local');
+    clients.committeeUnfiltered = await signIn('committee@test.local');
+    await ok(admin.from('events').upsert([EVENT, OTHER_EVENT].map((id) => ({ id, theme: `Realtime ${id.slice(-1)}`, status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375 }))));
+    for (const label of ['memberA', 'memberB']) {
+      parties[label] = (await saveOk(admin, EVENT, [person(label)], { userId: users[label].id })).id;
+    }
+    // Comité is registered too: it reads its own party, never the edition's (a positive control).
+    parties.committee = (await saveOk(admin, EVENT, [person('committee')], { userId: COMMITTEE_ID })).id;
+    await ok(admin.rpc('set_edition_role', { p_event_id: EVENT, p_user_id: COMMITTEE_ID, p_role: 'committee' }));
+    await ok(admin.rpc('set_edition_role', { p_event_id: OTHER_EVENT, p_user_id: users.otherOrganiser.id, p_role: 'organiser' }));
+    await ok(admin.rpc('set_edition_role', { p_event_id: EVENT, p_user_id: ORGANISER_ID, p_role: 'organiser' }));
+
+    clients.otherOrganiser = await signIn(users.otherOrganiser.email);
+    await listen('admin', `event_id=eq.${EVENT}`);
+    await listen('organiser', `event_id=eq.${EVENT}`);
+    await listen('committee', `event_id=eq.${EVENT}`);
+    await listen('committeeUnfiltered');
+    await listen('otherOrganiser', `event_id=eq.${EVENT}`);
+    await listen('memberA');
+    await listen('memberB');
+  });
+
+  afterAll(async () => {
+    for (const [client, channel] of channels) await client.removeChannel(channel);
+    await admin.from('edition_roles').delete().in('event_id', [EVENT, OTHER_EVENT]);
+    await admin.from('user_parties').delete().in('event_id', [EVENT, OTHER_EVENT]);
+    await admin.from('events').update({ status: 'DRAFT' }).in('id', [EVENT, OTHER_EVENT]);
+    for (const user of Object.values(users)) await adminClient.auth.admin.deleteUser(user.id);
+  });
+
+  test('supabase_realtime publishes user_parties and nothing else', async () => {
+    const pool = new pg.Client({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' });
+    await pool.connect();
+    try {
+      const { rows } = await pool.query("SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime'");
+      expect(rows).toEqual([{ tablename: 'user_parties' }]);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  test('each subscriber receives the changes its SELECT policy shows it, and no other', async () => {
+    // Right after a db reset Realtime may take a while to serve changes, so touch a party until
+    // the admin sees one, then start from nothing received.
+    for (let tries = 0; tries < 30 && received.admin.length === 0; tries++) {
+      await ok(admin.rpc('set_payment_status', { p_party_id: parties.memberA, p_payment_status: 'unpaid' }));
+      await pause(1000);
+    }
+    expect(received.admin.length).toBeGreaterThan(0);
+    await pause(2000);
+    for (const label of Object.keys(received)) received[label] = [];
+    // A payment on each party, set by an admin (an update).
+    for (const party of [parties.memberA, parties.memberB, parties.committee]) {
+      await ok(admin.rpc('set_payment_status', { p_party_id: party, p_payment_status: 'paid' }));
+    }
+
+    const ids = (label) => [...new Set(received[label].filter((payload) => payload.eventType !== 'DELETE').map((payload) => payload.new.id))].sort();
+    const sorted = (...list) => list.sort();
+    const everyone = sorted(parties.memberA, parties.memberB, parties.committee);
+    // Wait for the four who should receive, then let the others' (absent) events have time to show.
+    await waitFor(() => ids('admin').length === 3 && ids('organiser').length === 3 && ids('memberA').length === 1 && ids('memberB').length === 1);
+    await pause(1500);
+    // Admin and Organisateur: the whole edition.
+    expect(ids('admin')).toEqual(everyone);
+    expect(ids('organiser')).toEqual(everyone);
+    // A member: their own party, never another's.
+    expect(ids('memberA')).toEqual([parties.memberA]);
+    expect(ids('memberB')).toEqual([parties.memberB]);
+    // Comité reads only its own party, not the edition's: with the store's filter or without.
+    expect(ids('committee')).toEqual([parties.committee]);
+    expect(ids('committeeUnfiltered')).toEqual([parties.committee]);
+    // An Organisateur of another edition gets nothing, even subscribed to this edition's filter.
+    expect(received.otherOrganiser).toEqual([]);
+    expect(received.organiser[0].new).toHaveProperty('payment_status');
+  });
+
+  test('a deleted party reaches no filtered channel; an unfiltered one gets its id only (accepted, #296)', async () => {
+    for (const label of Object.keys(received)) received[label] = [];
+    await ok(admin.from('user_parties').delete().eq('id', parties.memberB));
+    await waitFor(() => received.memberA.length > 0);
+    await pause(1500);
+    // Supabase can't filter DELETE: filtered channels get none, so deletes aren't live in the admin store.
+    for (const label of ['admin', 'organiser', 'committee', 'otherOrganiser']) expect(received[label]).toEqual([]);
+    // Without a filter, Realtime applies no RLS to DELETE: the id, no amount, whoever subscribes.
+    for (const label of ['memberA', 'committeeUnfiltered']) {
+      expect(received[label].map((payload) => payload.old)).toEqual([{ id: parties.memberB }]);
+    }
+  });
+});
