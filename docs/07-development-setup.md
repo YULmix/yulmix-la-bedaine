@@ -402,8 +402,7 @@ verified).
 
 Production: CI deploys it with the other functions (`supabase functions deploy`, job **Deploy
 Edge Functions**); it needs no secret of its own. It is useless there until the hook is enabled in
-the dashboard (#268). Preview: each PR deploys its functions there and CI enables Preview's hook
-(job **Deploy Edge Functions to Preview**, see [Deploying](#deploying)).
+the dashboard (#268).
 
 ## Transactional email (Edge Function)
 
@@ -430,9 +429,8 @@ supabase secrets set --project-ref ceacurlofmasyvhsoska RESEND_API_KEY=re_...
 
 Use a Resend "Sending access" key restricted to `yulmix.com`. Optional overrides, same command:
 `EMAIL_FROM` (default `La Bédaine <bedaine@yulmix.com>`) and `SITE_URL` (default
-`https://www.yulmix.com/`). Preview never sends: it has no key (PRs deploy the function there, see [Deploying](#deploying),
-so a call would only record a dry run), and its seeded function URL points at a host that only
-exists in the local stack.
+`https://www.yulmix.com/`). Preview never sends: it has no key, no deployed function, and its seeded function URL points at
+a host that only exists in the local stack.
 
 ## Environment files
 
@@ -458,32 +456,6 @@ Preview's data. If Preview holds a migration `main` doesn't have (after a reset 
 whose migration hasn't merged), the push is refused and the job resets Preview from `main`
 instead; its summary says so. The job never blocks production: nothing waits on it. If it
 fails, the next push to `main` retries it.
-
-**Edge Functions on Preview.** On every pull request from this repository (not doc-only), the
-**Deploy Edge Functions to Preview** job deploys the PR's `supabase/functions/` to Preview, so its
-Vercel preview can call them (« Voir comme » needs `impersonate`). **Preview is shared: it runs
-the functions of the last PR deployed there**, whatever preview deployment you are looking at.
-Push to your PR again (or re-run that job) before testing a function on its preview. Production's
-functions deploy only from `main`, as before. The job needs the `PREVIEW_SUPABASE_ACCESS_TOKEN`
-repo secret ([permissions below](#preview_supabase_access_token-permissions)); until it is set,
-the job warns and skips.
-
-The same job enables the custom access token hook on Preview's Auth
-([ADR 0025](./adr/0025-voir-comme-read-only-impersonation.md)), without which every « Voir
-comme » fails with `impersonation_not_marked`. It sets only the hook's two fields through the
-Management API (`PATCH /v1/projects/<ref>/config/auth`), never the rest of Auth's config:
-`supabase config push` would push all of `supabase/config.toml` (local site URL, redirect URLs,
-providers) over Preview's, so it is not used. It does so only once Preview's database has
-`public.custom_access_token_hook` callable by `supabase_auth_admin` (with the hook on and the
-function missing, every sign-in fails), and never turns the hook off. Production's Auth config is
-never touched by CI (#268).
-
-To enable it by hand instead (once, e.g. if the token lacks the Auth permission): Supabase
-dashboard → project **YULmix - La Bedaine (Preview)** → **Authentication** → **Hooks** →
-**Add hook** → **Customize Access Token (JWT) Claims** → hook type **Postgres**, schema
-`public`, function `custom_access_token_hook` → **Create hook** (enabled). Check first, in the SQL
-editor, that `select has_function_privilege('supabase_auth_admin',
-'public.custom_access_token_hook(jsonb)', 'EXECUTE');` returns `true`.
 
 ### Resetting the Preview database
 
@@ -689,24 +661,6 @@ page, which doesn't list the raw permission IDs):
   Management API call. Kept anyway since `supabase migration repair` (used for the one-time
   history-repair step, see [Database migrations](#database-migrations)) is a plausible future
   need and it's a low-risk permission to hold.
-
-#### `PREVIEW_SUPABASE_ACCESS_TOKEN` permissions
-
-A second scoped token, for the **Deploy Edge Functions to Preview** job. Unlike
-`SUPABASE_ACCESS_TOKEN` it is a **repo** secret (pull-request runs must read it), so it must be
-scoped to **Project → YULmix - La Bedaine (Preview)** only, never production or the organization:
-anyone who can push a branch here could use it. Everything `None` except:
-
-| Category | Setting | Why |
-|---|---|---|
-| Project Settings | Read | `supabase functions deploy` reads the project |
-| Edge Functions | Read-write | `supabase functions deploy --project-ref uacfrldoiixfstigosqv` |
-| Auth (configuration) | Read-write | read, then `PATCH`, the two hook fields of Preview's Auth config |
-
-Set it with `gh secret set PREVIEW_SUPABASE_ACCESS_TOKEN` (run locally, never pasted to an AI
-assistant). If the dashboard names the Auth permission differently, pick the one granting read and
-write of the Auth configuration; if the hook step then fails with a 403, enable the hook by hand
-([Deploying](#deploying)) and the deploy step still works.
 
 After changing the Supabase project or the production domain, re-check the OAuth redirect URLs —
 a mismatch there is the classic "sign-in loops back to the home page signed out" symptom.
