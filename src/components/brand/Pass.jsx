@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import fr from '../../locales/fr.json';
 import { formatCurrency } from '../../lib/format';
 import { formatEventDates, formatHeadcountBreakdown, plural } from '../../lib/eventDisplay';
 import { PAYMENT_STATUS } from '../../lib/registrationOptions';
-import { cx } from '../ui';
+import { Button, Dialog, cx } from '../ui';
+import PaymentDetails from '../PaymentDetails';
+import interacLogo from '../../assets/interac-logo.svg';
 
 // Deterministic bar widths from the registration id, echoing the YULmix barcode mark.
 // Decorative only: aria-hidden, and the id itself is printed next to it in mono.
@@ -46,7 +48,8 @@ export const getStamp = (registration, isIntent) => {
 // Signature element (DESIGN.md): the member's registration as a wristband / ticket stub.
 // Body on the left (event, group), stub on the right (amount, stamp, action); stacked on phones
 // with the tear line running horizontally.
-const Pass = ({ registration, event, isIntent = false, animateStamp = false, action }) => {
+const Pass = ({ registration, event, isIntent = false, animateStamp = false, action, payerName = '' }) => {
+  const [payOpen, setPayOpen] = useState(false);
   const attendees = registration.attendees || [];
   const stamp = getStamp(registration, isIntent);
   const dates = formatEventDates(event);
@@ -100,6 +103,20 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
         </div>
         {stamp.tone === 'waitlist' && <p className="text-sm text-muted">{fr.waitlistedMessage}</p>}
         {stamp.tone === 'unpaid' && <p className="text-sm text-muted">{fr.passUnpaidHint}</p>}
+        {stamp.tone === 'unpaid' && (
+          <>
+            <Button variant="secondary" onClick={() => setPayOpen(true)} className="w-full border-neon/60 text-neon">
+              <img src={interacLogo} alt="" className="size-8 shrink-0" />
+              {fr.paymentHowTo}
+            </Button>
+            <Dialog open={payOpen} onClose={() => setPayOpen(false)} title={fr.paymentHowTo} size="sm">
+              <div className="space-y-4 p-5 text-sm sm:p-6">
+                <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-16" />
+                <PaymentDetails stacked name={payerName} />
+              </div>
+            </Dialog>
+          </>
+        )}
         {action && <div className="mt-auto">{action}</div>}
       </div>
     </article>

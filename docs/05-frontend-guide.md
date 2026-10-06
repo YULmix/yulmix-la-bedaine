@@ -404,7 +404,8 @@ type, radii, motion, voice) and the screens are specified in
   `ChipGroup`, `Toggle`, `Tag`, `Card`, `Dialog`, `ConfirmDialog`, `Notice`, `EmptyState`,
   `Skeleton`...). Dialogs are native `<dialog>` elements; never `window.confirm` / `alert`.
 - Brand pieces (`PosterHeader`, `PhaseTrack`, `Pass`) are in `src/components/brand/`.
-- Icons: `lucide-react` only. Fonts are self-hosted via `@fontsource-variable/archivo` and
+- Icons: `lucide-react` only, with one exception: the official Interac logo (`src/assets/interac-logo.svg`,
+  from interac.ca) on the pass's « Comment payer ». Fonts are self-hosted via `@fontsource-variable/archivo` and
   `@fontsource-variable/jetbrains-mono`.
 - Dark theme only.
 

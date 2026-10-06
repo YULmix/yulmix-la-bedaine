@@ -12,13 +12,14 @@ import {
   teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { readFileSync } from 'node:fs';
+import { INTERAC_RECIPIENT, interacMessage } from '../supabase/functions/_shared/interac.ts';
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
 
 // Every test reseeds the one shared active event.
 test.describe.configure({ mode: 'serial' });
 
-const ORGANISERS_EMAIL = 'yulmixalabedaine@gmail.com';
+const ORGANISERS_EMAIL = INTERAC_RECIPIENT;
 
 let seeded;
 test.afterEach(async () => {
@@ -87,7 +88,7 @@ test('a new registration shows it is saving, then confirms with how to pay, befo
   await expect(done.getByText(fr.registrationSuccessPaymentText)).toBeVisible();
   await expect(done.getByText(Number(owed).toFixed(2).replace('.', ','))).toBeVisible();
   await expect(done.getByText(ORGANISERS_EMAIL)).toBeVisible();
-  await expect(done.getByText(fr.registrationSuccessPaymentNoteValue.replace('{name}', 'Test Member'))).toBeVisible();
+  await expect(done.getByText(interacMessage('Test Member'))).toBeVisible();
 
   // The member moves on when they choose to.
   await done.getByRole('button', { name: fr.registrationSuccessCta }).click();

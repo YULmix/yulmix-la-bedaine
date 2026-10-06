@@ -10,6 +10,7 @@ import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhas
 import { describeChanges, memberHistoryEdits } from '../lib/editHistory';
 import { AttendeeList, InfoBlock, RegistrationInputs } from '../components/RegistrationDetails';
 import Pass from '../components/brand/Pass';
+import { useAccountName } from '../hooks/useAccountName';
 import MyPartyEmails from '../components/MyPartyEmails';
 import GalleryButton from '../components/Gallery';
 import { Button, Card, ConfirmDialog } from '../components/ui';
@@ -18,6 +19,7 @@ import { EDITABLE_REGISTRATION_STATUSES } from '../lib/registrationOptions';
 // Home page, registered state: the pass (signature), then the group, logistics, requests and edit
 // history. What matters most (am I in, what do I owe) is on the pass; details follow.
 const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEdit, onCancelled, onError }) => {
+  const payerName = useAccountName(registration);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [editHistory, setEditHistory] = useState([]);
@@ -85,6 +87,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
         event={event}
         isIntent={isIntent}
         animateStamp={animateStamp}
+        payerName={payerName}
         action={(
           <Button onClick={onEdit} className="w-full">
             <Pencil aria-hidden="true" className="size-4.5" strokeWidth={2} />

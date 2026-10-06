@@ -21,14 +21,13 @@ import {
   type Recipient,
   type Template
 } from './emails.ts';
+import { INTERAC_RECIPIENT } from '../_shared/interac.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'La Bédaine <bedaine@yulmix.com>';
 const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://www.yulmix.com/';
-// Organisers' inbox: the reply-to address and the Interac recipient named in the emails.
-const ORGANISERS_EMAIL = 'yulmixalabedaine@gmail.com';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -65,7 +64,7 @@ async function send(to: string, template: Template, email: ReturnType<typeof ren
     body: JSON.stringify({
       from: EMAIL_FROM,
       to: [to],
-      reply_to: ORGANISERS_EMAIL,
+      reply_to: INTERAC_RECIPIENT,
       subject: email.subject,
       text: email.text,
       html: email.html
@@ -90,7 +89,7 @@ async function handle(partyId: string) {
 
   const logged = await rest<LogRow[]>(`email_log?party_id=eq.${partyId}&select=id,template`);
   const due = dueTemplates(party, party.events, logged.map(row => row.template));
-  const context = buildContext(party, party.events, party.profiles, { siteUrl: SITE_URL, interacEmail: ORGANISERS_EMAIL });
+  const context = buildContext(party, party.events, party.profiles, { siteUrl: SITE_URL });
 
   const results = [];
   for (const template of due) {
