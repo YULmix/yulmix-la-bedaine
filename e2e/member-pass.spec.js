@@ -9,6 +9,9 @@ import { INTERAC_RECIPIENT, interacMessage } from '../supabase/functions/_shared
 
 const fr = JSON.parse(readFileSync(new URL('../src/locales/fr.json', import.meta.url), 'utf-8'));
 
+// Each test reseeds the one shared active event.
+test.describe.configure({ mode: 'serial' });
+
 let seeded;
 test.afterEach(async () => {
   await teardownActiveEventWithMemberParty(seeded ?? {});
