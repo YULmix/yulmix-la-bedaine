@@ -7,6 +7,12 @@ import { PAYMENT_STATUS } from '../../lib/registrationOptions';
 
 jest.mock('../../lib/toasts', () => ({ notify: jest.fn() }));
 
+// jsdom has no modal <dialog>.
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function close() { this.removeAttribute('open'); };
+});
+
 const event = { theme: 'Test Party' };
 const registration = (overrides = {}) => ({
   id: 'a0000000-0000-0000-0000-000000000090',
@@ -47,12 +53,12 @@ describe('Pass amount label', () => {
 
 // #301: « Comment payer » is for the unpaid tone only, closed until the member opens it.
 describe('Pass « Comment payer »', () => {
-  test('an unpaid pass has it closed, with the recipient and the message built from the payer name', () => {
-    const { container } = render(<Pass registration={registration()} event={event} payerName="Ann Roy" />);
-    const details = container.querySelector('details');
-    expect(details).not.toBeNull();
-    expect(details.open).toBe(false);
-    expect(screen.getByText(fr.paymentHowTo)).toBeInTheDocument();
+  test('an unpaid pass has a button that opens the pop-up with the hint, recipient and message', () => {
+    render(<Pass registration={registration()} event={event} payerName="Ann Roy" />);
+    expect(screen.queryByText(INTERAC_RECIPIENT)).not.toBeInTheDocument();
+    expect(screen.queryByText(fr.passUnpaidHint)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
+    expect(screen.getByText(fr.passUnpaidHint)).toBeInTheDocument();
     expect(screen.getByAltText(fr.paymentInteracLogoAlt)).toBeInTheDocument();
     expect(screen.getByText(INTERAC_RECIPIENT)).toBeInTheDocument();
     expect(screen.getByText(interacMessage('Ann Roy'))).toBeInTheDocument();
@@ -64,7 +70,7 @@ describe('Pass « Comment payer »', () => {
     ['intent', {}, true]
   ])('a %s pass does not have it', (_tone, overrides, isIntent) => {
     render(<Pass registration={registration(overrides)} event={event} isIntent={isIntent} payerName="Ann Roy" />);
-    expect(screen.queryByText(fr.paymentHowTo)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: fr.paymentHowTo })).not.toBeInTheDocument();
     expect(screen.queryByText(INTERAC_RECIPIENT)).not.toBeInTheDocument();
   });
 
@@ -72,6 +78,7 @@ describe('Pass « Comment payer »', () => {
     const writeText = jest.fn().mockResolvedValue();
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<Pass registration={registration()} event={event} payerName="Ann" />);
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
     fireEvent.click(screen.getByRole('button', { name: fr.paymentCopyRecipient }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(INTERAC_RECIPIENT));
     await waitFor(() => expect(notify).toHaveBeenCalledWith(fr.paymentRecipientCopied, 'success'));
@@ -81,6 +88,7 @@ describe('Pass « Comment payer »', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: jest.fn().mockRejectedValue(new Error('denied')) }, configurable: true });
     jest.spyOn(console, 'error').mockImplementation(() => {});
     render(<Pass registration={registration()} event={event} payerName="Ann" />);
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
     fireEvent.click(screen.getByRole('button', { name: fr.paymentCopyRecipient }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith(fr.copyError, 'error'));
   });

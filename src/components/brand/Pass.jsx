@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import fr from '../../locales/fr.json';
 import { formatCurrency } from '../../lib/format';
 import { formatEventDates, formatHeadcountBreakdown, plural } from '../../lib/eventDisplay';
 import { PAYMENT_STATUS } from '../../lib/registrationOptions';
-import { cx } from '../ui';
+import { Button, Dialog, cx } from '../ui';
 import PaymentDetails from '../PaymentDetails';
 import interacLogo from '../../assets/interac-logo.svg';
 
@@ -49,6 +49,7 @@ export const getStamp = (registration, isIntent) => {
 // Body on the left (event, group), stub on the right (amount, stamp, action); stacked on phones
 // with the tear line running horizontally.
 const Pass = ({ registration, event, isIntent = false, animateStamp = false, action, payerName = '' }) => {
+  const [payOpen, setPayOpen] = useState(false);
   const attendees = registration.attendees || [];
   const stamp = getStamp(registration, isIntent);
   const dates = formatEventDates(event);
@@ -101,15 +102,20 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
           </span>
         </div>
         {stamp.tone === 'waitlist' && <p className="text-sm text-muted">{fr.waitlistedMessage}</p>}
-        {stamp.tone === 'unpaid' && <p className="text-sm text-muted">{fr.passUnpaidHint}</p>}
         {stamp.tone === 'unpaid' && (
-          <details className="group text-sm">
-            <summary className="flex min-h-11 cursor-pointer items-center gap-3 font-semibold text-ink">
-              <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-6 shrink-0" />
+          <>
+            <Button variant="secondary" onClick={() => setPayOpen(true)} className="w-full border-neon/60 text-neon">
+              <img src={interacLogo} alt="" className="size-8 shrink-0" />
               {fr.paymentHowTo}
-            </summary>
-            <PaymentDetails stacked name={payerName} className="mt-2" />
-          </details>
+            </Button>
+            <Dialog open={payOpen} onClose={() => setPayOpen(false)} title={fr.paymentHowTo} size="sm">
+              <div className="space-y-4 p-5 text-sm sm:p-6">
+                <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-16" />
+                <p className="text-muted">{fr.passUnpaidHint}</p>
+                <PaymentDetails stacked name={payerName} />
+              </div>
+            </Dialog>
+          </>
         )}
         {action && <div className="mt-auto">{action}</div>}
       </div>

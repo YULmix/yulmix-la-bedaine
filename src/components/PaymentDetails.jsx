@@ -1,6 +1,6 @@
 import { Copy } from 'lucide-react';
 import fr from '../locales/fr.json';
-import { Button, cx } from './ui';
+import { cx } from './ui';
 import { notify } from '../lib/toasts';
 import {
   INTERAC_RECIPIENT,
@@ -37,10 +37,15 @@ const PaymentDetails = ({ name, amount, className, stacked = false }) => (
       <Row stacked={stacked} label={fr.registrationSuccessPaymentRecipient}>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="select-all [overflow-wrap:anywhere]">{INTERAC_RECIPIENT}</span>
-          <Button variant="secondary" size="sm" onClick={copyRecipient} aria-label={fr.paymentCopyRecipient}>
+          <button
+            type="button"
+            onClick={copyRecipient}
+            aria-label={fr.paymentCopyRecipient}
+            title={fr.paymentCopyRecipient}
+            className="grid size-9 shrink-0 place-items-center rounded-control border border-edge text-muted hover:bg-raised hover:text-ink"
+          >
             <Copy aria-hidden="true" className="size-4" strokeWidth={1.75} />
-            {fr.paymentCopy}
-          </Button>
+          </button>
         </span>
       </Row>
       <Row stacked={stacked} label={fr.registrationSuccessPaymentNote}>{interacMessage(name)}</Row>
