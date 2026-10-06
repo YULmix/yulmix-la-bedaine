@@ -108,7 +108,7 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
               <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-6 shrink-0" />
               {fr.paymentHowTo}
             </summary>
-            <PaymentDetails name={payerName} className="mt-2" />
+            <PaymentDetails stacked name={payerName} className="mt-2" />
           </details>
         )}
         {action && <div className="mt-auto">{action}</div>}
