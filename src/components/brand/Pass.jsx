@@ -102,6 +102,7 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
           </span>
         </div>
         {stamp.tone === 'waitlist' && <p className="text-sm text-muted">{fr.waitlistedMessage}</p>}
+        {stamp.tone === 'unpaid' && <p className="text-sm text-muted">{fr.passUnpaidHint}</p>}
         {stamp.tone === 'unpaid' && (
           <>
             <Button variant="secondary" onClick={() => setPayOpen(true)} className="w-full border-neon/60 text-neon">
@@ -111,7 +112,6 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
             <Dialog open={payOpen} onClose={() => setPayOpen(false)} title={fr.paymentHowTo} size="sm">
               <div className="space-y-4 p-5 text-sm sm:p-6">
                 <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-16" />
-                <p className="text-muted">{fr.passUnpaidHint}</p>
                 <PaymentDetails stacked name={payerName} />
               </div>
             </Dialog>

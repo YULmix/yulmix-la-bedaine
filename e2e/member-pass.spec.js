@@ -54,12 +54,11 @@ test('an unpaid pass has a « Comment payer » button opening the Interac detail
   const pass = memberPage.getByRole('article', { name: fr.passLabel });
   const howTo = pass.getByRole('button', { name: fr.paymentHowTo });
   await expect(howTo).toBeVisible();
-  await expect(pass.getByText(fr.passUnpaidHint)).toBeHidden();
+  await expect(pass.getByText(fr.passUnpaidHint)).toBeVisible();
   await expect(pass.getByText(INTERAC_RECIPIENT)).toBeHidden();
 
   await howTo.click();
   const popup = memberPage.getByRole('dialog', { name: fr.paymentHowTo });
-  await expect(popup.getByText(fr.passUnpaidHint)).toBeVisible();
   await expect(popup.getByText(INTERAC_RECIPIENT)).toBeVisible();
   await expect(popup.getByText(interacMessage('Test Member'))).toBeVisible();
   await expect(popup.getByRole('img', { name: fr.paymentInteracLogoAlt })).toBeVisible();

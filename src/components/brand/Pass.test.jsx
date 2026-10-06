@@ -56,9 +56,8 @@ describe('Pass « Comment payer »', () => {
   test('an unpaid pass has a button that opens the pop-up with the hint, recipient and message', () => {
     render(<Pass registration={registration()} event={event} payerName="Ann Roy" />);
     expect(screen.queryByText(INTERAC_RECIPIENT)).not.toBeInTheDocument();
-    expect(screen.queryByText(fr.passUnpaidHint)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
     expect(screen.getByText(fr.passUnpaidHint)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
     expect(screen.getByAltText(fr.paymentInteracLogoAlt)).toBeInTheDocument();
     expect(screen.getByText(INTERAC_RECIPIENT)).toBeInTheDocument();
     expect(screen.getByText(interacMessage('Ann Roy'))).toBeInTheDocument();
@@ -82,6 +81,16 @@ describe('Pass « Comment payer »', () => {
     fireEvent.click(screen.getByRole('button', { name: fr.paymentCopyRecipient }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(INTERAC_RECIPIENT));
     await waitFor(() => expect(notify).toHaveBeenCalledWith(fr.paymentRecipientCopied, 'success'));
+  });
+
+  test('the message has its own copy button', async () => {
+    const writeText = jest.fn().mockResolvedValue();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<Pass registration={registration()} event={event} payerName="Ann" />);
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentHowTo }));
+    fireEvent.click(screen.getByRole('button', { name: fr.paymentCopyMessage }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(interacMessage('Ann')));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(fr.paymentMessageCopied, 'success'));
   });
 
   test('a rejected clipboard write shows an error toast', async () => {
