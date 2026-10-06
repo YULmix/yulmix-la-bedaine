@@ -4,6 +4,8 @@ import { formatCurrency } from '../../lib/format';
 import { formatEventDates, formatHeadcountBreakdown, plural } from '../../lib/eventDisplay';
 import { PAYMENT_STATUS } from '../../lib/registrationOptions';
 import { cx } from '../ui';
+import PaymentDetails from '../PaymentDetails';
+import interacLogo from '../../assets/interac-logo.svg';
 
 // Deterministic bar widths from the registration id, echoing the YULmix barcode mark.
 // Decorative only: aria-hidden, and the id itself is printed next to it in mono.
@@ -46,7 +48,7 @@ export const getStamp = (registration, isIntent) => {
 // Signature element (DESIGN.md): the member's registration as a wristband / ticket stub.
 // Body on the left (event, group), stub on the right (amount, stamp, action); stacked on phones
 // with the tear line running horizontally.
-const Pass = ({ registration, event, isIntent = false, animateStamp = false, action }) => {
+const Pass = ({ registration, event, isIntent = false, animateStamp = false, action, payerName = '' }) => {
   const attendees = registration.attendees || [];
   const stamp = getStamp(registration, isIntent);
   const dates = formatEventDates(event);
@@ -100,6 +102,15 @@ const Pass = ({ registration, event, isIntent = false, animateStamp = false, act
         </div>
         {stamp.tone === 'waitlist' && <p className="text-sm text-muted">{fr.waitlistedMessage}</p>}
         {stamp.tone === 'unpaid' && <p className="text-sm text-muted">{fr.passUnpaidHint}</p>}
+        {stamp.tone === 'unpaid' && (
+          <details className="group text-sm">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-3 font-semibold text-ink">
+              <img src={interacLogo} alt={fr.paymentInteracLogoAlt} className="size-6 shrink-0" />
+              {fr.paymentHowTo}
+            </summary>
+            <PaymentDetails name={payerName} className="mt-2" />
+          </details>
+        )}
         {action && <div className="mt-auto">{action}</div>}
       </div>
     </article>

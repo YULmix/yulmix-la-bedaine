@@ -79,6 +79,10 @@
   "src/components/MyPartyEmails.jsx": [
    "email-log"
   ],
+  "src/components/PaymentDetails.jsx": [
+   "member-pass",
+   "member-registration-confirmation"
+  ],
   "src/components/RegistrationConfirmation.jsx": [
    "member-registration-confirmation",
    "member-registration-draft"
@@ -394,6 +398,10 @@
   "src/components/ui/index.jsx": [
    "admin-event-venue"
   ],
+  "src/hooks/useAccountName.js": [
+   "member-pass",
+   "member-registration-confirmation"
+  ],
   "src/hooks/useAdminAccess.js": [
    "admin-logistics-batch-save",
    "admin-roles",
@@ -425,10 +433,6 @@
    "member-registration-draft",
    "preview-account-picker"
   ],
-  "src/hooks/useRememberedToggle.js": [
-   "admin-logistics-batch-save",
-   "galleries"
-  ],
   "src/hooks/useFitToViewport.js": [
    "admin-cancelled-parties",
    "admin-change-history",
@@ -449,6 +453,10 @@
    "attendees-edit",
    "member-cancellation",
    "member-registration-confirmation"
+  ],
+  "src/hooks/useRememberedToggle.js": [
+   "admin-logistics-batch-save",
+   "galleries"
   ],
   "src/hooks/useToasts.js": [
    "admin-budget",
@@ -821,10 +829,6 @@
   ],
   "src/lib/logisticsDraft.js": [
    "admin-logistics-batch-save"
-  ],
-  "src/lib/organisers.js": [
-   "member-registration-confirmation",
-   "member-registration-draft"
   ],
   "src/lib/pageWidth.ts": [
    "admin-budget",

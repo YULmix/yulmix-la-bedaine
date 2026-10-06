@@ -76,8 +76,7 @@ Deno.test('amounts and dates use the fr-CA formats', () => {
 });
 
 const context = buildContext(party(), event, { email: 'leonie@example.com', full_name: 'Léonie Carré' }, {
-  siteUrl: 'https://www.yulmix.com/',
-  interacEmail: 'yulmixalabedaine@gmail.com'
+  siteUrl: 'https://www.yulmix.com/'
 });
 
 Deno.test('the confirmation carries the dues, Interac details, venue and attendees', () => {
@@ -116,7 +115,7 @@ Deno.test('HTML keeps accents, escapes user text and links the app', () => {
 });
 
 Deno.test('the name falls back to the first attendee, then the email', () => {
-  const settings = { siteUrl: 'x', interacEmail: 'y' };
+  const settings = { siteUrl: 'x' };
   assert.equal(buildContext(party(), event, { email: 'a@b.c', full_name: null }, settings).fullName, 'Léonie Carré');
   assert.equal(buildContext(party({ attendees: [] }), event, { email: 'a@b.c', full_name: ' ' }, settings).fullName, 'a@b.c');
 });

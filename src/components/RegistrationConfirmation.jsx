@@ -4,32 +4,20 @@ import { getStamp } from './brand/Pass';
 import { Button, Card, Notice } from './ui';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
-import { ORGANISERS_EMAIL } from '../lib/organisers';
-
-const PaymentRow = ({ label, children }) => (
-  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-4">
-    <dt className="text-muted sm:w-28 sm:shrink-0">{label}</dt>
-    <dd className="min-w-0 break-words font-data text-ink">{children}</dd>
-  </div>
-);
+import PaymentDetails from './PaymentDetails';
+import { useAccountName } from '../hooks/useAccountName';
 
 // What the member does next, from the same decision as the pass's stamp so the two can't
 // disagree: an intent or waitlisted party is told not to pay yet, a paid one has nothing to do.
 const NextStep = ({ tone, registration }) => {
+  const name = useAccountName(registration);
   if (tone === 'intent') return <Notice tone="info" icon={Hourglass} title={fr.registrationSuccessNextStep}>{fr.registrationSuccessIntentNext}</Notice>;
   if (tone === 'waitlist') return <Notice tone="warn" icon={Hourglass} title={fr.registrationSuccessNextStep}>{fr.registrationSuccessWaitlistText}</Notice>;
   if (tone === 'paid') return <Notice tone="ok" icon={CheckCircle2} title={fr.registrationSuccessNextStep}>{fr.registrationSuccessPaidText}</Notice>;
   return (
     <Notice tone="warn" icon={Wallet} title={fr.registrationSuccessNextStep}>
       <p>{fr.registrationSuccessPaymentText}</p>
-      <dl className="mt-3 space-y-2">
-        <PaymentRow label={fr.registrationSuccessPaymentAmount}>{formatCurrency(registration.calculated_amount_owed || 0)}</PaymentRow>
-        <PaymentRow label={fr.registrationSuccessPaymentRecipient}><span className="select-all">{ORGANISERS_EMAIL}</span></PaymentRow>
-        <PaymentRow label={fr.registrationSuccessPaymentNote}>
-          {fr.registrationSuccessPaymentNoteValue.replace('{name}', registration.attendees?.[0]?.name || '')}
-        </PaymentRow>
-      </dl>
-      <p className="mt-3 text-faint">{fr.registrationSuccessPaymentSecurity}</p>
+      <PaymentDetails className="mt-3" name={name} amount={formatCurrency(registration.calculated_amount_owed || 0)} />
     </Notice>
   );
 };

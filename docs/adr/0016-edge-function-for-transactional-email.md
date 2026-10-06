@@ -74,7 +74,8 @@ flowchart LR
   PR like a migration, and its Deno tests run in the build job.
 - **Sender identity.** Mail is sent from an address on `yulmix.com` with Reply-To
   `yulmixalabedaine@gmail.com`. The Gmail address still appears in the body as the Interac
-  recipient.
+  recipient. The Interac details live once, in `supabase/functions/_shared/interac.ts`, read by the
+  templates and by the app (the pass's « Comment payer », the confirmation screen).
 - **Code in Deno.** Edge Functions run Deno, unlike the Node/Vite app. Sending is one `fetch`, so no
   Resend SDK is needed. The fr-CA templates live with the function, not in `src/locales/fr.json`,
   which only the SPA reads.

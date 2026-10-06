@@ -4,6 +4,14 @@
 // Copy comes from the email models in issue #12, in Quebec French. It lives here rather than in
 // src/locales/fr.json because only the SPA bundles that file.
 
+import {
+  INTERAC_RECIPIENT,
+  INTERAC_SECURITY_ANSWER,
+  INTERAC_SECURITY_QUESTION,
+  interacMessage,
+  interacPayerName
+} from '../_shared/interac.ts';
+
 export type Template = 'registration' | 'waitlist' | 'promotion' | 'payment' | 'accommodation';
 
 export interface Attendee {
@@ -111,7 +119,6 @@ export interface EmailContext {
   venueAddress: string | null;
   attendeeNames: string[];
   siteUrl: string;
-  interacEmail: string;
 }
 
 export interface RenderedEmail {
@@ -123,9 +130,9 @@ export interface RenderedEmail {
 const SIGNATURE: Paragraph = ['YULmix - L’équipe de La Bédaine'];
 
 const interac = (c: EmailContext): Paragraph => [
-  `Destinataire : ${c.interacEmail}`,
-  `Message / Note : Inscription Bédaine - ${c.fullName}`,
-  '(Si une question de sécurité est requise : Question : Événement | Réponse : Bedaine)'
+  `Destinataire : ${INTERAC_RECIPIENT}`,
+  `Message / Note : ${interacMessage(c.fullName)}`,
+  `(Si une question de sécurité est requise : Question : ${INTERAC_SECURITY_QUESTION} | Réponse : ${INTERAC_SECURITY_ANSWER})`
 ];
 
 function details(c: EmailContext): Paragraph {
@@ -226,19 +233,18 @@ export function buildContext(
   party: Party,
   event: EventInfo,
   recipient: Recipient,
-  settings: { siteUrl: string; interacEmail: string }
+  settings: { siteUrl: string }
 ): EmailContext {
   const attendeeNames = (party.attendees ?? [])
     .map(a => (typeof a.name === 'string' ? a.name.trim() : ''))
     .filter(Boolean);
   return {
-    fullName: recipient.full_name?.trim() || attendeeNames[0] || recipient.email,
+    fullName: interacPayerName(recipient.full_name, attendeeNames, recipient.email),
     eventTheme: event.theme,
     amount: formatAmount(party.calculated_amount_owed),
     eventDate: formatDate(event.event_start_date),
     venueAddress: event.venue?.address?.trim() || null,
     attendeeNames,
-    siteUrl: settings.siteUrl,
-    interacEmail: settings.interacEmail
+    siteUrl: settings.siteUrl
   };
 }
