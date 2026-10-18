@@ -7,7 +7,6 @@ import {
   isActiveRegistration,
   transportKindOf
 } from './registrationOptions';
-import { placeOccupancy } from './places';
 
 // Aggregates for the admin overview, derived from each party's attendees (ADR 0018: nothing about
 // attendees is stored on the party).
@@ -101,28 +100,37 @@ const confirmedParties = allParties => allParties.filter(party => isActiveRegist
  * @param {Array} places the event's places it uses, from the event places module (`available`)
  * @param {object} [changes] unsaved Logistique place changes (logisticsDraft.js), over the saved places
  * @returns {{ locations: Array, unassigned: number, overbooked: Array }} each location with its
- *   capacity and assigned, and its places with their `assigned` count.
+ *   capacity and assigned, and its places with their `assigned` count and their `occupants`
+ *   (`{ id, name, type }`, grouped by party in list order; as many as `assigned`).
  */
 export const computePlaceStats = (allParties, places, changes = {}) => {
   const parties = confirmedParties(allParties);
-  const occupancy = placeOccupancy(parties, changes);
+  const placeOf = (party, attendee) => {
+    const pending = changes[party.id]?.places?.[attendee.id];
+    return pending !== undefined ? pending : attendee.place?.place_id;
+  };
+  // Who each place holds (#303), in party order then attendee order; its `assigned` is their count.
+  const occupantsOf = new Map();
+  parties.forEach(party => (party.attendees || []).forEach(attendee => {
+    const placeId = placeOf(party, attendee);
+    if (!placeId) return;
+    if (!occupantsOf.has(placeId)) occupantsOf.set(placeId, []);
+    occupantsOf.get(placeId).push({ id: attendee.id, name: attendee.name || '', type: attendee.type });
+  }));
   const locations = [];
   places.forEach(place => {
-    const assigned = occupancy.get(place.id) || 0;
+    const occupants = occupantsOf.get(place.id) || [];
+    const assigned = occupants.length;
     // Event places come in display order, a location's places together.
     let location = locations.at(-1);
     if (location?.id !== place.locationId) {
       location = { id: place.locationId, name: place.locationName, capacity: 0, assigned: 0, places: [] };
       locations.push(location);
     }
-    location.places.push({ ...place, assigned });
+    location.places.push({ ...place, assigned, occupants });
     location.capacity += place.capacity;
     location.assigned += assigned;
   });
-  const placeOf = (party, attendee) => {
-    const pending = changes[party.id]?.places?.[attendee.id];
-    return pending !== undefined ? pending : attendee.place?.place_id;
-  };
   const unassigned = parties.reduce((count, party) => count + (party.attendees || []).filter(attendee => !placeOf(party, attendee)).length, 0);
   const overbooked = locations.flatMap(location => location.places).filter(place => place.assigned > place.capacity);
   return { locations, unassigned, overbooked };

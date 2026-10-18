@@ -1,9 +1,9 @@
 import { TriangleAlert } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { plural } from '../../lib/eventDisplay';
-import { ACCOMMODATION_OPTIONS, getOptionLabel } from '../../lib/registrationOptions';
+import { ACCOMMODATION_OPTIONS, getAttendeeTypeLabel, getOptionLabel } from '../../lib/registrationOptions';
 import { ACCOMMODATION_ICONS } from '../accommodationIcons';
-import { Card, Notice, Tag, cx } from '../ui';
+import { Card, Notice, Popover, Tag, cx } from '../ui';
 
 // A place's chip says at a glance whether it has room: outlined in green while it does, greyed
 // out once full, amber when overbooked.
@@ -13,15 +13,46 @@ const chipTone = ({ assigned, capacity }) => {
   return { chip: 'border-ok/40 text-ink', count: 'text-ok' };
 };
 
+const CHIP = 'inline-flex items-center gap-1.5 rounded-full border py-0.5 pr-2.5 pl-2 text-sm';
+
+// Who sleeps there (#303): the place and its count, then one line per occupant, by party.
+const Occupants = ({ place }) => (
+  <>
+    <p className="font-semibold text-ink">
+      {fr.occupantsTitle.replace('{place}', place.label).replace('{taken}', place.assigned).replace('{capacity}', place.capacity)}
+    </p>
+    <ul className="mt-1 space-y-0.5 text-muted">
+      {place.occupants.map(occupant => (
+        <li key={occupant.id} className="break-words">
+          {fr.occupantLine.replace('{name}', occupant.name || fr.participantFallback).replace('{type}', getAttendeeTypeLabel(occupant.type))}
+        </li>
+      ))}
+    </ul>
+  </>
+);
+
+// An occupied place's chip is a button that shows its occupants; an empty one is plain.
 const PlaceChip = ({ place }) => {
   const Icon = ACCOMMODATION_ICONS[place.type];
   const tone = chipTone(place);
-  return (
-    <li className={cx('inline-flex items-center gap-1.5 rounded-full border py-0.5 pr-2.5 pl-2 text-sm', tone.chip)}>
+  const body = (
+    <>
       {Icon && <Icon aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={2} />}
       <span className="sr-only">{`${getOptionLabel(ACCOMMODATION_OPTIONS, place.type)}, `}</span>
       {place.label}
       <span className={cx('font-data text-xs', tone.count)}>{`${place.assigned}/${place.capacity}`}</span>
+    </>
+  );
+  if (!place.occupants?.length) return <li className={cx(CHIP, tone.chip)}>{body}</li>;
+  return (
+    <li className="inline-flex">
+      <Popover
+        content={<Occupants place={place} />}
+        data-place-chip={place.id}
+        className={cx(CHIP, tone.chip, 'cursor-default transition duration-150 hover:border-neon/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon')}
+      >
+        {body}
+      </Popover>
     </li>
   );
 };

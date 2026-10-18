@@ -132,6 +132,45 @@ describe('computePlaceStats with unsaved Logistique changes (#166)', () => {
   });
 });
 
+describe('computePlaceStats occupants (#303)', () => {
+  const places = [
+    { id: 'bedA', label: 'Lit A', type: 'bed', capacity: 1, locationId: 'l1', locationName: 'Chambre 2' },
+    { id: 'floor', label: 'Matelas', type: 'floor', capacity: 2, locationId: 'l1', locationName: 'Chambre 2' },
+    { id: 'sofa', label: 'Canapé', type: 'sofa', capacity: 1, locationId: 'l2', locationName: 'Salon' }
+  ];
+  const person = (id, type, placeId, name = id.toUpperCase()) => ({ id, name, type, place: placeId ? { place_id: placeId } : null });
+  const parties = [
+    { id: 'a', attendees: [person('a1', 'Adult', 'floor'), person('a2', 'Kid', 'bedA')] },
+    { id: 'b', attendees: [person('b1', 'Teenager', 'floor', ''), person('b2', 'Adult', 'bedA')] },
+    { id: 'w', is_waitlisted: true, attendees: [person('w1', 'Adult', 'sofa')] },
+    { id: 'c', status: 'cancelled', attendees: [person('c1', 'Adult', 'sofa')] }
+  ];
+  const occupantsOf = (stats, placeId) => stats.locations.flatMap(l => l.places).find(p => p.id === placeId).occupants;
+
+  test('each place lists who it holds, grouped by party in list order, as many as assigned', () => {
+    const stats = computePlaceStats(parties, places);
+    expect(occupantsOf(stats, 'floor')).toEqual([
+      { id: 'a1', name: 'A1', type: 'Adult' },
+      { id: 'b1', name: '', type: 'Teenager' }
+    ]);
+    // Overbooked: every occupant is listed.
+    expect(occupantsOf(stats, 'bedA').map(o => o.id)).toEqual(['a2', 'b2']);
+    stats.locations.flatMap(l => l.places).forEach(place => expect(place.occupants).toHaveLength(place.assigned));
+  });
+
+  test('waitlisted and cancelled parties hold no place; an empty place has no occupants', () => {
+    expect(occupantsOf(computePlaceStats(parties, places), 'sofa')).toEqual([]);
+  });
+
+  test('a pending change moves the attendee to the new place', () => {
+    const stats = computePlaceStats(parties, places, { a: { places: { a1: 'sofa' } }, b: { places: { b2: null } } });
+    expect(occupantsOf(stats, 'sofa')).toEqual([{ id: 'a1', name: 'A1', type: 'Adult' }]);
+    expect(occupantsOf(stats, 'floor').map(o => o.id)).toEqual(['b1']);
+    expect(occupantsOf(stats, 'bedA').map(o => o.id)).toEqual(['a2']);
+    expect(stats.unassigned).toBe(1);
+  });
+});
+
 describe('placeDemandByType (#166)', () => {
   // The event's places after its overrides (the event places module's `available`): an excluded place is simply absent.
   const places = [

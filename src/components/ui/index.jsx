@@ -1,7 +1,8 @@
 // Shared UI primitives. Every visual value comes from the tokens in src/index.css, which are
 // derived from the locked design language in .ulpi/design/DESIGN.md. Build screens out of these
 // instead of re-styling raw elements, so the same control never looks different in two places.
-import { useEffect, useId, useRef } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Loader2, Minus, Plus, X } from 'lucide-react';
 import fr from '../../locales/fr.json';
 
@@ -374,3 +375,123 @@ export const ViewPanel = ({ idPrefix, value, children, className }) => (
     {children}
   </div>
 );
+
+// ---------------------------------------------------------------------------------------------
+// Popover (#303): a button that shows a small bubble of read-only content. Hover and keyboard
+// focus open it (desktop), a tap toggles it (touch); it closes on leave, blur, Escape and a tap
+// outside, and only one is open at a time. The bubble is portalled to <body> with fixed
+// positioning, so no overflow-hidden ancestor clips it, and is kept inside the viewport.
+
+let closeOpenPopover = null;
+const POPOVER_GAP = 6;
+const POPOVER_MARGIN = 8;
+
+export const Popover = ({ content, children, className, bubbleClassName, ...props }) => {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState(null);
+  const triggerRef = useRef(null);
+  const bubbleRef = useRef(null);
+  const closeTimer = useRef(null);
+  const pointerType = useRef(null);
+  const id = useId();
+
+  const close = useCallback(() => {
+    clearTimeout(closeTimer.current);
+    setOpen(false);
+    setPosition(null);
+  }, []);
+  const show = () => {
+    clearTimeout(closeTimer.current);
+    if (closeOpenPopover !== close) closeOpenPopover?.();
+    closeOpenPopover = close;
+    setOpen(true);
+  };
+  // Leaving the chip for the bubble keeps it open.
+  const closeSoon = () => {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(close, 120);
+  };
+
+  useEffect(() => () => {
+    clearTimeout(closeTimer.current);
+    if (closeOpenPopover === close) closeOpenPopover = null;
+  }, [close]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const place = () => {
+      const trigger = triggerRef.current?.getBoundingClientRect();
+      const bubble = bubbleRef.current;
+      if (!trigger || !bubble) return;
+      const width = document.documentElement.clientWidth;
+      const height = window.innerHeight;
+      const left = Math.min(Math.max(trigger.left + trigger.width / 2 - bubble.offsetWidth / 2, POPOVER_MARGIN), width - bubble.offsetWidth - POPOVER_MARGIN);
+      const below = trigger.bottom + POPOVER_GAP;
+      const above = trigger.top - POPOVER_GAP - bubble.offsetHeight;
+      const top = below + bubble.offsetHeight > height - POPOVER_MARGIN && above >= POPOVER_MARGIN ? above : below;
+      setPosition({ left: Math.max(left, POPOVER_MARGIN), top });
+    };
+    place();
+    const onPointer = (event) => {
+      if (!triggerRef.current?.contains(event.target) && !bubbleRef.current?.contains(event.target)) close();
+    };
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, close]);
+
+  const isTouch = () => pointerType.current === 'touch' || pointerType.current === 'pen';
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={open}
+        aria-describedby={open ? id : undefined}
+        className={className}
+        onPointerDown={(event) => { pointerType.current = event.pointerType; }}
+        onPointerEnter={(event) => { if (event.pointerType === 'mouse') show(); }}
+        onPointerLeave={(event) => { if (event.pointerType === 'mouse') closeSoon(); }}
+        // A tap focuses before it clicks: the click decides, so the tap doesn't open then close.
+        onFocus={() => { if (!isTouch()) show(); }}
+        onBlur={close}
+        onClick={() => {
+          if (isTouch() || pointerType.current === null) (open ? close() : show());
+          else show();
+          pointerType.current = null;
+        }}
+        {...props}
+      >
+        {children}
+      </button>
+      {open && createPortal(
+        <div
+          ref={bubbleRef}
+          id={id}
+          role="tooltip"
+          onPointerEnter={(event) => { if (event.pointerType === 'mouse') show(); }}
+          onPointerLeave={(event) => { if (event.pointerType === 'mouse') closeSoon(); }}
+          // Clicking the bubble doesn't blur the trigger (which would close it).
+          onMouseDown={(event) => event.preventDefault()}
+          style={position ? { left: position.left, top: position.top } : { left: 0, top: 0, visibility: 'hidden' }}
+          className={cx(
+            'fixed z-50 w-max max-w-[min(20rem,calc(100vw-1rem))] rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink shadow-pop',
+            bubbleClassName
+          )}
+        >
+          {content}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
