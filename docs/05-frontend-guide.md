@@ -402,7 +402,10 @@ type, radii, motion, voice) and the screens are specified in
   palette colors like `bg-blue-600`.
 - Build screens from the primitives in `src/components/ui/` (`Button`, `Field`, `Input`,
   `ChipGroup`, `Toggle`, `Tag`, `Card`, `Dialog`, `ConfirmDialog`, `Notice`, `EmptyState`,
-  `Skeleton`...). Dialogs are native `<dialog>` elements; never `window.confirm` / `alert`.
+  `Skeleton`, `Popover`...). Dialogs are native `<dialog>` elements; never `window.confirm` / `alert`.
+  `Popover` is a button with a small read-only bubble (hover and focus open it, a tap toggles it;
+  portalled to `<body>`, so a card never clips it; it opens above the button, so it doesn't hide what
+  is read next, and below only when there's no room above), e.g. who sleeps in a Couchage place (#303).
 - Brand pieces (`PosterHeader`, `PhaseTrack`, `Pass`) are in `src/components/brand/`.
 - Icons: `lucide-react` only, with one exception: the official Interac logo (`src/assets/interac-logo.svg`,
   from interac.ca) on the pass's « Comment payer ». Fonts are self-hosted via `@fontsource-variable/archivo` and
