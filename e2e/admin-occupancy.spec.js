@@ -87,25 +87,19 @@ test('an event without places shows no occupancy', async ({ page }) => {
   await expect(panel(page).getByRole('heading', { name: fr.kpiTiersTitle, exact: true })).toBeVisible();
   await expect(occupancy(page)).toHaveCount(0);
 });
-
-// Who sleeps where (#303): an occupied chip shows its occupants in a bubble.
+// Who sleeps where (#303): the card's icon-only toggle lists each place's occupants under its chip,
+// remembered on this device, off the first time.
+// The Couchage card itself (the overview's own section holds it, and the money figures).
+const card = page => occupancy(page).last();
 const MONEY = /\d\s?\$/;
-const placeButton = (page, label) => occupancy(page).getByRole('button').filter({ hasText: label });
-const bubble = page => page.getByRole('tooltip');
+const toggle = page => card(page).getByRole('button', { name: fr.occupantsToggle });
 const line = name => fr.occupantLine.replace('{name}', name).replace('{type}', 'Adulte');
-
-// E2E_SCREENSHOT_DIR: the page with the bubble open, at each width.
-async function shoot(page, name, widths) {
-  if (!process.env.E2E_SCREENSHOT_DIR) return;
-  const before = page.viewportSize();
-  for (const width of widths) {
-    await page.setViewportSize({ width, height: 900 });
-    await placeButton(page, 'Lit A').hover();
-    await expect(bubble(page)).toBeVisible();
-    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/couchage-bubble-${name}-${width}.png`, animations: 'disabled' });
+const occupantsOf = (page, label) => chip(page, 'Chambre 1', label).getByRole('listitem');
+const shot = async (page, name) => {
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    await card(page).screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/couchage-${name}.png`, animations: 'disabled' });
   }
-  await page.setViewportSize(before);
-}
+};
 
 // Both of the member's attendees in the one-person Lit A: overbooked, so it lists both.
 async function seedOccupiedLitA() {
@@ -115,74 +109,68 @@ async function seedOccupiedLitA() {
   await assignPlace(ids['Chambre 1 · Lit A'], seeded.partyId, 2);
 }
 
-async function expectLitABubble(page) {
-  await expect(bubble(page)).toBeVisible();
-  await expect(bubble(page)).toContainText(fr.occupantsTitle.replace('{place}', 'Lit A').replace('{taken}', 2).replace('{capacity}', 1));
-  await expect(bubble(page).getByRole('listitem')).toHaveText([line(ALICE), line(BOB)]);
-  await expect(bubble(page).getByText(MONEY)).toHaveCount(0);
+async function expectNamesShown(page) {
+  await expect(toggle(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect(occupantsOf(page, 'Lit A')).toHaveText([line(ALICE), line(BOB)]);
+  await expect(chip(page, 'Chambre 1', 'Lit A')).toContainText('2/1');
+  // An empty place: its chip, no names.
+  await expect(chip(page, 'Chambre 1', 'Lit B')).toContainText('0/1');
+  await expect(occupantsOf(page, 'Lit B')).toHaveCount(0);
+  await expect(card(page).getByText(MONEY)).toHaveCount(0);
 }
 
-test('as admin, hovering an occupied chip shows who sleeps there; leaving, or Escape after focus, closes it', async ({ page }) => {
+test('as admin, the toggle lists who sleeps in each place, and the page remembers it', async ({ page }) => {
   await seedOccupiedLitA();
   await loginAs(page, TEST_USERS.admin);
   await page.goto('/admin');
 
-  const litA = placeButton(page, 'Lit A');
-  await litA.hover();
-  await expectLitABubble(page);
-  await expect(litA).toHaveAttribute('aria-expanded', 'true');
-  await expect(litA).toHaveAccessibleDescription(new RegExp(ALICE));
-  await shoot(page, 'admin', [1440, 2560]);
-  await page.mouse.move(0, 0);
-  await expect(bubble(page)).toHaveCount(0);
+  // Off the first time: the chips, no names, nothing to hover.
+  await expect(toggle(page)).toHaveAttribute('aria-pressed', 'false');
+  await expect(chip(page, 'Chambre 1', 'Lit A')).toContainText('2/1');
+  await expect(card(page).getByText(ALICE)).toHaveCount(0);
+  await expect(card(page).getByRole('button')).toHaveCount(1);
+  await shot(page, 'off-admin-1440');
 
-  // Keyboard: the chip before it, then Tab.
-  await occupancy(page).getByRole('heading', { name: fr.occupancyTitle }).click();
-  await litA.focus();
-  await page.keyboard.press('Shift+Tab');
-  await expect(bubble(page)).toHaveCount(0);
-  await page.keyboard.press('Tab');
-  await expect(litA).toBeFocused();
-  await expectLitABubble(page);
-  await page.keyboard.press('Escape');
-  await expect(bubble(page)).toHaveCount(0);
+  await toggle(page).click();
+  await expectNamesShown(page);
+  await expect(card(page).getByRole('button')).toHaveCount(1);
+  await shot(page, 'on-admin-1440');
 
-  // An empty place is a plain chip: not a button, no bubble.
-  await expect(placeButton(page, 'Lit B')).toHaveCount(0);
-  await chip(page, 'Chambre 1', 'Lit B').hover();
-  await expect(bubble(page)).toHaveCount(0);
+  await page.reload();
+  await expectNamesShown(page);
+
+  await toggle(page).click();
+  await expect(card(page).getByText(ALICE)).toHaveCount(0);
+  await page.reload();
+  await expect(toggle(page)).toHaveAttribute('aria-pressed', 'false');
+  await expect(card(page).getByText(ALICE)).toHaveCount(0);
 });
 
-test('as Comité, the same bubble with the same names, and no amounts', async ({ page }) => {
+test('as Comité, the same toggle and names, and no amounts', async ({ page }) => {
   await seedOccupiedLitA();
   await grantEditionRoles(seeded.eventId);
   await loginAs(page, TEST_USERS.committee);
   await page.goto('/admin/overview');
 
-  await placeButton(page, 'Lit A').hover();
-  await expectLitABubble(page);
-  await shoot(page, 'committee', [1440]);
+  await toggle(page).click();
+  await expectNamesShown(page);
+  await shot(page, 'on-committee-1440');
 });
 
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('tapping an occupied chip opens its bubble inside the screen; tapping outside closes it', async ({ page }) => {
+  test('the names show in one column, with nothing overflowing sideways', async ({ page }) => {
     await seedOccupiedLitA();
     await loginAs(page, TEST_USERS.admin);
     await page.goto('/admin');
 
-    await placeButton(page, 'Lit A').tap();
-    await expectLitABubble(page);
-    const box = await bubble(page).boundingBox();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    await toggle(page).tap();
+    await expectNamesShown(page);
+    const [litA, litB] = await Promise.all(['Lit A', 'Lit B'].map(label => chip(page, 'Chambre 1', label).boundingBox()));
+    expect(litB.x).toBe(litA.x);
+    expect(litB.y).toBeGreaterThan(litA.y + litA.height - 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-    if (process.env.E2E_SCREENSHOT_DIR) {
-      await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/couchage-bubble-admin-390.png`, animations: 'disabled' });
-    }
-
-    await occupancy(page).getByRole('heading', { name: fr.occupancyTitle }).tap();
-    await expect(bubble(page)).toHaveCount(0);
+    await shot(page, 'on-admin-390');
   });
 });
