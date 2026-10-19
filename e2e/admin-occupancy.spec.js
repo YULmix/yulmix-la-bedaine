@@ -114,6 +114,12 @@ async function seedOccupiedLitA() {
   await assignPlace(ids['Chambre 1 · Lit A'], seeded.partyId, 2);
 }
 
+// On a desktop the bubble opens above its chip, so it doesn't cover the rows read next.
+async function expectAboveChip(page, label) {
+  const [tip, chipBox] = await Promise.all([bubble(page).boundingBox(), placeButton(page, label).boundingBox()]);
+  expect(tip.y + tip.height).toBeLessThanOrEqual(chipBox.y);
+}
+
 async function expectLitABubble(page) {
   await expect(bubble(page)).toBeVisible();
   // The occupants only (no header repeating the chip), each with their type's pill.
@@ -133,6 +139,7 @@ test('as admin, hovering an occupied chip shows who sleeps there; leaving, or Es
   const litA = placeButton(page, 'Lit A');
   await litA.hover();
   await expectLitABubble(page);
+  await expectAboveChip(page, 'Lit A');
   await expect(litA).toHaveAttribute('aria-expanded', 'true');
   await expect(litA).toHaveAccessibleDescription(new RegExp(ALICE));
   await shoot(page, 'admin', [1440, 2560]);
@@ -164,6 +171,7 @@ test('as Comité, the same bubble with the same names, and no amounts', async ({
 
   await placeButton(page, 'Lit A').hover();
   await expectLitABubble(page);
+  await expectAboveChip(page, 'Lit A');
   await shoot(page, 'committee', [1440]);
 });
 

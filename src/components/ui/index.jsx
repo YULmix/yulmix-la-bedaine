@@ -380,7 +380,8 @@ export const ViewPanel = ({ idPrefix, value, children, className }) => (
 // Popover (#303): a button that shows a small bubble of read-only content. Hover and keyboard
 // focus open it (desktop), a tap toggles it (touch); it closes on leave, blur, Escape and a tap
 // outside, and only one is open at a time. The bubble is portalled to <body> with fixed
-// positioning, so no overflow-hidden ancestor clips it, and is kept inside the viewport.
+// positioning, so no overflow-hidden ancestor clips it, and is kept inside the viewport. It opens
+// above the trigger, below only when there's no room above.
 
 let closeOpenPopover = null;
 const POPOVER_GAP = 6;
@@ -428,7 +429,9 @@ export const Popover = ({ content, children, className, bubbleClassName, ...prop
       const left = Math.min(Math.max(trigger.left + trigger.width / 2 - bubble.offsetWidth / 2, POPOVER_MARGIN), width - bubble.offsetWidth - POPOVER_MARGIN);
       const below = trigger.bottom + POPOVER_GAP;
       const above = trigger.top - POPOVER_GAP - bubble.offsetHeight;
-      const top = below + bubble.offsetHeight > height - POPOVER_MARGIN && above >= POPOVER_MARGIN ? above : below;
+      // Above the trigger (organiser, #303): below, it would hide what the eye reads next. Below
+      // only when there is no room above and there is below.
+      const top = above >= POPOVER_MARGIN || below + bubble.offsetHeight > height - POPOVER_MARGIN ? above : below;
       setPosition({ left: Math.max(left, POPOVER_MARGIN), top });
     };
     place();
