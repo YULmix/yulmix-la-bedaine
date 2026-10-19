@@ -908,8 +908,6 @@
   "occupancyUnassignedOne": "{count} personne sans place",
   "occupancyUnassignedOther": "{count} personnes sans place",
   "occupancyAllPlaced": "Tout le monde a une place",
-  "occupantsToggle": "Qui dort où",
-  "occupantLine": "{name} · {type}",
   "overbookedTitleOne": "{count} place dépasse sa capacité",
   "overbookedTitleOther": "{count} places dépassent leur capacité",
   "overbookedPlace": "{location}, {place} : {taken} personnes pour {capacity}",
