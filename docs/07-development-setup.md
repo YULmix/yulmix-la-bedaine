@@ -738,3 +738,7 @@ a mismatch there is the classic "sign-in loops back to the home page signed out"
   developer's own config.
 - Individual contributors may have their own local agent skill installs (e.g. under `.agents/` or
   `.claude/`) — these are personal tooling, gitignored, and not part of the project's conventions.
+- **[`docs/agent-workflow.md`](./agent-workflow.md)** — the shared configuration of the organiser's
+  agent fleet (installed per developer under `.claude/`, [ADR 0027](./adr/0027-central-agent-fleet-with-project-overrides.md)):
+  how agents verify, review and file work here, the local database lock, and where this project
+  overrides the generic agents. Its section headings are read by the agents; keep them stable.
