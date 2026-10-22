@@ -18,6 +18,7 @@ It documents the system **as it actually is today**, not only as it was specifie
 | 9 | [Contributing](./08-contributing.md) | Branching, reviews, conventions, how to work with agents |
 | 10 | [Live environment audit](./11-live-environment.md) | What Supabase and Vercel actually look like today, verified read-only, with open questions |
 | 11 | [Decision records](./adr/) | Why the system is shaped the way it is |
+| 12 | [Agent workflow](./agent-workflow.md) | How the agent fleet verifies, reviews and files work here, and its project overrides |
 
 ## Where defects and work items live
 

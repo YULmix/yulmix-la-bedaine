@@ -122,3 +122,13 @@ When interviewing the user, if you're a claude model, use AskUserQuestion
 ## Deployment
 
 Production runs on **Vercel** (`vercel.json`).
+
+## Agent workflow
+
+If you run the agents-dev-fleet (a private, personal toolkit: supervisor, developer,
+code reviewer, scoper…), it is installed per developer under the gitignored `.claude/`; its
+project-specific configuration (validation, local database lock, tracker conventions, review
+triggers, model selection, and the overrides of the generic agents) is shared, in
+[docs/agent-workflow.md](docs/agent-workflow.md). Read it before working as one of those agents. Its
+"Hard rules for implementers" bind every agent, including: never open a visible window on the
+user's desktop; UI checks run headless. Only the supervisor and the scoper write to the tracker.
