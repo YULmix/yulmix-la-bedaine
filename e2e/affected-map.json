@@ -47,6 +47,7 @@
    "header-avatar"
   ],
   "src/components/EventFacts.jsx": [
+   "member-event-info",
    "member-pass"
   ],
   "src/components/EventModal.jsx": [

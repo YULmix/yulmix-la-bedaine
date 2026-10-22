@@ -1,4 +1,4 @@
-import { CalendarDays, Clock, ExternalLink, MapPin, Phone, ScrollText, Users } from 'lucide-react';
+import { CalendarDays, Clock, ExternalLink, MapPin, Phone, ScrollText } from 'lucide-react';
 import fr from '../locales/fr.json';
 import { eventAddress, getGoogleMapsUrl } from '../lib/venue';
 import { formatEventDates } from '../lib/eventDisplay';
@@ -36,7 +36,6 @@ const EventFacts = ({ event, venueGallery }) => {
           </Fact>
         )}
         {event.duration_days > 0 && <Fact icon={Clock} label={fr.eventDurationTitle}>{event.duration_days} {fr.daysSuffix}</Fact>}
-        {event.max_attendees > 0 && <Fact icon={Users} label={fr.eventDurationCapacityTitle}>{event.max_attendees} {fr.participantsSuffix}</Fact>}
       </dl>
 
       {event.points_of_contact && (
