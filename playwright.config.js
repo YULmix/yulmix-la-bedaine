@@ -1,29 +1,18 @@
-import { execSync } from 'node:child_process';
 import { defineConfig, devices } from '@playwright/test';
+import { readStatusEnv, resolveStack, viteDevPort } from './scripts/lib/stack.js';
 
-const PORT = 5173;
+// A worktree runs against its own stack and its own Vite port (npm run stack:up, #312); the main
+// checkout without a stack keeps the default Supabase stack and 5173. resolveStack throws in a
+// worktree that has no stack rather than falling onto someone else's.
+const stack = resolveStack();
+const PORT = viteDevPort(stack);
 const BASE_URL = `http://localhost:${PORT}`;
 
 // Must run synchronously here, not in globalSetup: Playwright starts `webServer`
 // before globalSetup runs, so setting process.env there is too late for the dev
 // server Vite spawns below to pick up VITE_SUPABASE_*.
 function loadLocalSupabaseEnv() {
-  let output;
-  try {
-    output = execSync('supabase status -o env', { encoding: 'utf-8' });
-  } catch (error) {
-    throw new Error(
-      'Local Supabase is not running. Start it first with `supabase start` (or ' +
-      '`supabase db reset` for a guaranteed-fresh database with the seeded test users), ' +
-      'then re-run the e2e tests.\n' + error.message
-    );
-  }
-
-  const env = {};
-  for (const line of output.split('\n')) {
-    const match = line.match(/^([A-Z_]+)="(.*)"$/);
-    if (match) env[match[1]] = match[2];
-  }
+  const env = readStatusEnv(stack);
   if (!env.API_URL || !env.ANON_KEY) {
     throw new Error('`supabase status -o env` did not return API_URL/ANON_KEY as expected.');
   }
@@ -187,6 +176,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --port ' + PORT + ' --strictPort',
     url: BASE_URL,
+    // The port belongs to the worktree's slot, so a server found on it is this worktree's own.
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
     env: supabaseEnv

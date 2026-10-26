@@ -32,7 +32,16 @@ const isoDay = (offsetDays) => {
 // would be read as UTC midnight: the evening before in Toronto.
 const startsIn = (offsetDays) => `${isoDay(offsetDays)} 00:00 America/Toronto`;
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+// The stack under test comes from the environment (jest.rls.config.js reads it from the worktree's
+// own stack, #312), never from a default port that could be another worktree's database.
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+if (!SUPABASE_URL) {
+  throw new Error('VITE_SUPABASE_URL is required: run `npm run test:rls` (it reads the local stack) or set it in .env.test');
+}
+const localDbUrl = () => {
+  if (!process.env.SUPABASE_DB_URL) throw new Error('SUPABASE_DB_URL is required: run `npm run test:rls` (it reads the local stack)');
+  return process.env.SUPABASE_DB_URL;
+};
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -1296,7 +1305,7 @@ describe('⏫ capacity change promotes the waiting list (#247)', () => {
   });
 
   // Two real superuser connections with explicit transactions (PostgREST can't hold one open).
-  const DB_URL = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+  const DB_URL = localDbUrl();
   const connect = async () => {
     expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(DB_URL).hostname);
     const client = new pg.Client({ connectionString: DB_URL });
@@ -1562,7 +1571,7 @@ describe('🗑️ removed attendees (#237)', () => {
 
   // What clients can't see: the rows as stored, read as the superuser (local only).
   const dbQuery = async (sql, params = []) => {
-    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    const dbUrl = localDbUrl();
     expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
     const client = new pg.Client({ connectionString: dbUrl });
     await client.connect();
@@ -1976,7 +1985,7 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
   // #202: two real connections with explicit transactions (PostgREST can't hold one open).
   // The second statement must wait for the first transaction, then see its commit and be refused.
   test('two concurrent assignments to one place do not block each other', async () => {
-    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    const dbUrl = localDbUrl();
     expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
     const [ann, bob] = await attendeesOf(memberParty.id);
     const bed = await addPlace(await addLocation('Chambre 12'), 'Lit A');
@@ -2003,7 +2012,7 @@ describe('🛏️ venues, locations, places and assignments (#113, #145)', () =>
 
   test('a concurrent assignment and exclusion of one place serialise: the second to commit is refused', async () => {
     // Superuser connections (they bypass RLS): the triggers are what's under test. Local only.
-    const dbUrl = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    const dbUrl = localDbUrl();
     expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
     const [ann, bob] = await attendeesOf(memberParty.id);
     const locationId = await addLocation('Chambre 11');
@@ -3812,7 +3821,7 @@ describe('🎭 « Voir comme »: read-only impersonation (#265, ADR 0025)', () =
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
   const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
-  const DB_URL = process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+  const DB_URL = localDbUrl();
   // Supabase Auth's own role, which calls the hook (local password: postgres).
   const AUTH_DB_URL = (() => { const url = new URL(DB_URL); url.username = 'supabase_auth_admin'; return url.toString(); })();
   const READ_ONLY = 'read_only_impersonation';
@@ -4281,6 +4290,9 @@ describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', ()
 
   afterAll(async () => {
     for (const [client, channel] of channels) await client.removeChannel(channel);
+    // removeChannel leaves a deferred "disconnect when empty" timer on each client, which keeps
+    // Jest's process alive after the run (#323): disconnect the sockets now.
+    for (const [client] of channels) await client.realtime.disconnect();
     await admin.from('edition_roles').delete().in('event_id', [EVENT, OTHER_EVENT]);
     await admin.from('user_parties').delete().in('event_id', [EVENT, OTHER_EVENT]);
     await admin.from('events').update({ status: 'DRAFT' }).in('id', [EVENT, OTHER_EVENT]);
@@ -4288,7 +4300,7 @@ describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', ()
   });
 
   test('supabase_realtime publishes user_parties and nothing else', async () => {
-    const pool = new pg.Client({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' });
+    const pool = new pg.Client({ connectionString: localDbUrl() });
     await pool.connect();
     try {
       const { rows } = await pool.query("SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime'");

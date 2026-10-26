@@ -48,3 +48,6 @@ supabase/.temp/
 
 # Generated demo seed (scripts/preview-db.mjs), rebuilt on every run
 /supabase/seeds/preview.generated.sql
+
+# Per-worktree local Supabase stack (scripts/stack.mjs, #312): generated workdir and state
+/.stack/
