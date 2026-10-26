@@ -59,7 +59,8 @@ sequenceDiagram
   answered isn't readable by an admin by any path. After the close, named answers carry their
   author (id, party, name, email) and times; anonymous answers carry their texts only.
 - **The levée.** `private.event_feedback_levee()` runs once per event, in the `BEFORE UPDATE`
-  trigger on `events` (under the event row's lock), in one transaction with setting the marker: at
+  trigger on `events` (holding the event's advisory lock exclusively, see below), in one
+  transaction with setting the marker: at
   archival, at any update of the event once its close date has passed (or that puts it there), and,
   through a no-op update, at the first call of any of the three functions after the close date. It
   re-inserts each anonymous answer as a new row (fresh random id, the event and the texts only), all
@@ -76,10 +77,22 @@ sequenceDiagram
   named answer", and the database can't say whether there was an anonymous one. Any record of
   "this member answered anonymously" would identify the author of a lone anonymous answer (kept
   under the threshold) to the database owner, and shrink the candidate set for the others.
-- **A save and the levée never cross.** `submit_event_feedback()` holds the event row `FOR SHARE`
-  while it checks the window and writes; the levée is an update of that row. A save in flight
-  commits first and is published, or the save waits and reads the marker. One save at a time per
-  member and event (a transaction advisory lock), so two first saves can't create two answers.
+- **A save and the levée never cross.** `submit_event_feedback()` holds a transaction-level
+  advisory lock on the event, shared, while it checks the window and writes; the levée takes it
+  exclusively before it reads the answers. Saves don't wait for each other; a save in flight
+  commits first and is published, or the save waits for the levée and reads the marker. One save
+  at a time per member and event (a second, exclusive advisory lock), so two first saves can't
+  create two answers.
+- **A save writes or locks no row a client can read.** PostgREST returns the system columns
+  (`xmin`, `xmax`, `ctid`) to anyone who may read a row, the anon key included, and a row lock
+  writes the locking transaction's id into `xmax`. A `FOR SHARE` on the event, or a foreign key's
+  check (`FOR KEY SHARE` on the referenced row), would show anyone polling `events`, and admins
+  polling the member's `profiles` and `user_parties` rows, who saved and when. So the lock is an
+  advisory one, and the two tables have **no foreign key to `events`, `profiles` or
+  `user_parties`**: the save checks the event and the party itself (events are never deleted), and
+  `AFTER DELETE` triggers on `profiles` and `user_parties` do the `SET NULL`, the party one under
+  the event's exclusive lock so that a save in flight from that party is cleared too. Advisory locks
+  show only in `pg_locks`, which no API exposes.
 - **An answer belongs to its author and its event, not to the party** (kept from the first design's
   review). Admins can change a `user_parties` row's owner or event, or delete it. The link's
   `author_id` and `event_id` are fixed at the first write (a trigger), `party_id` only records the
@@ -119,8 +132,11 @@ Not fixed, by the organiser's decision on #315:
   they control and has them answer anonymously can pad the count past 3 and narrow the candidates.
 - **Changing the functions.** Anyone who changes them could capture authors; every change is a
   reviewed migration in the public repository.
-- **Dead tuples.** The window's rows and their earlier versions stay on disk until vacuum, readable
-  only with superuser access to the storage.
+- **Dead tuples and heap slots.** The window's rows and their earlier versions stay on disk until
+  vacuum, readable only with superuser access to the storage. While the window is open, the owner
+  can also see where the rows sit in the heap (`ctid`): an anonymous row between two named ones was
+  written between them. That is owner-only and adds nothing to the request logs the owner already
+  has; the levée's new rows don't keep those positions.
 
 ## Options considered
 

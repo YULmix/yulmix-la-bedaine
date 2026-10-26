@@ -4371,7 +4371,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   const LAZY = 'a0000000-a000-a000-a000-a00000003154'; // its close date passes with no update: the first call closes it
   const ARCH2 = 'a0000000-a000-a000-a000-a00000003155'; // archived with 2 anonymous answers
   const SHORT = 'a0000000-a000-a000-a000-a00000003156'; // an admin shortens feedback_days into the past
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT];
+  const RACE = 'a0000000-a000-a000-a000-a00000003157'; // concurrent saves and an archival
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4456,6 +4457,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer']) await register(label, LAZY, users[label].id);
     for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, ARCH2, users[label].id);
     await register('Anon1', SHORT, users.Anon1.id);
+    for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, RACE, users[label].id);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${OPEN}`]]);
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
@@ -4464,7 +4466,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // Started 10 days ago for 3 days: the last day was 8 days ago, the window opened 7 days ago
     // and closes at the end of the day in 6 days (last day + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
@@ -4634,6 +4636,31 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     await expect(write('00000000-0000-0000-0000-00000000dead', {})).rejects.toThrow('read_only_impersonation');
   });
 
+  // PostgREST returns the system columns to anyone who can read a row, and a row lock (FOR SHARE, a
+  // foreign key's FOR KEY SHARE) writes the locker's transaction id into xmax: a save must leave
+  // every row a client can read untouched, or polling them shows who saved and when.
+  test('a save leaves the xmin, xmax and ctid of every row a client reads unchanged (events, profile, party)', async () => {
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    const system = 'id, xmin, xmax, ctid';
+    const read = async () => ({
+      anonEvent: await ok(anon.from('events').select(system).eq('id', OPEN)),
+      adminEvent: await ok(clients.admin.from('events').select(system).eq('id', OPEN)),
+      adminProfile: await ok(clients.admin.from('profiles').select(system).eq('id', users.Mover.id)),
+      adminParty: await ok(clients.admin.from('user_parties').select(system).eq('id', parties[`Mover:${OPEN}`])),
+      ownProfile: await ok(clients.Mover.from('profiles').select(system).eq('id', users.Mover.id)),
+      ownParty: await ok(clients.Mover.from('user_parties').select(system).eq('id', parties[`Mover:${OPEN}`]))
+    });
+    const before = await read();
+    for (const rows of Object.values(before)) expect(rows).toEqual([expect.objectContaining({ xmin: expect.any(String), xmax: expect.any(String) })]);
+    expect(before.anonEvent).toEqual(before.adminEvent);
+
+    await ok(submit(clients.Mover, OPEN, { schedule: 'Mover: première version' }, true)); // a first save inserts the link
+    expect(await read()).toEqual(before);
+    await ok(submit(clients.Mover, OPEN, { schedule: 'Mover: deuxième version' }, false)); // an edit, switched to named
+    expect(await read()).toEqual(before);
+    expect((await stored(OPEN)).filter((row) => row.author_id === users.Mover.id)).toHaveLength(1);
+  });
+
   // The first design's review: an admin can change a party's owner or event, or delete it. The
   // answer stays its author's and its event's, so none of it reads, changes or moves an answer.
   test('an answer keeps its author and event whatever an admin does to the party', async () => {
@@ -4676,7 +4703,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // And the admin's read never moved: still nothing before the close.
     expect(await ok(answersOf(clients.admin, OPEN))).toEqual(adminBefore);
 
-    // Nor can any later code move an answer or its link (author and party go null only by their foreign key).
+    // Nor can any later code move an answer or its link (author and party go null only by the delete triggers).
     const id = before[0].id;
     for (const [table, column, value] of [
       ['event_feedback', 'event_id', FUTURE],
@@ -4920,13 +4947,64 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     expect(functions.map((row) => row.name)).toEqual([
       'event_feedback_answers(uuid)',
       'my_event_feedback(uuid)',
+      // The delete triggers that clear a link's author and party: they read nothing out.
+      'private.event_feedback_forget_party()',
+      'private.event_feedback_forget_profile()',
       'private.event_feedback_levee(uuid)',
       'submit_event_feedback(uuid,jsonb,boolean)'
     ]);
   });
 
-  // Last: it archives OPEN. A save in flight holds the event row; the archival waits for it, then
-  // publishes what it saved.
+  // Save vs levée: a save holds the event's advisory lock shared, the levée exclusive. Two saves
+  // don't wait for each other; the archival waits for both and publishes them; a save that comes
+  // after the archival started waits for it and is refused.
+  test('concurrent saves don\'t block each other; the archival waits for both, and a later save is refused', async () => {
+    const sessions = {};
+    const pending = (promise) => Promise.race([
+      promise.then(() => 'done', () => 'failed'), new Promise((resolve) => setTimeout(() => resolve('pending'), 800))
+    ]);
+    const open = async (label) => {
+      const client = new pg.Client({ connectionString: DB_URL });
+      await client.connect();
+      sessions[label] = client;
+      await client.query('begin');
+      await client.query('set local role authenticated');
+      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: users[label].id, role: 'authenticated' })]);
+      return client;
+    };
+    const save = (label, text, isAnonymous) => sessions[label].query('select public.submit_event_feedback($1, $2, $3)',
+      [RACE, JSON.stringify({ other: text }), isAnonymous]);
+    try {
+      await open('Anon1');
+      await open('Anon2');
+      await open('Named');
+      await save('Anon1', 'Race anonyme 1', true);
+      // The second save, the first still uncommitted, isn't blocked.
+      expect(await pending(save('Anon2', 'Race anonyme 2', true))).toBe('done');
+
+      const archive = db.query("update public.events set status = 'ARCHIVED' where id = $1", [RACE]);
+      expect(await pending(archive)).toBe('pending');
+      // A save started after the archival waits for it.
+      const late = save('Named', 'Race nommé, trop tard', false);
+      expect(await pending(late)).toBe('pending');
+
+      await sessions.Anon1.query('commit');
+      expect(await pending(archive)).toBe('pending'); // still waiting for the second save
+      await sessions.Anon2.query('commit');
+      await archive;
+      await expect(late).rejects.toThrow('event_feedback_closed');
+      await sessions.Named.query('rollback');
+    } finally {
+      for (const client of Object.values(sessions)) await client.end();
+    }
+    expect((await eventRow(RACE)).feedback_closed_at).not.toBeNull();
+    const rows = await stored(RACE);
+    expect(rows.map((row) => row.other).sort()).toEqual(['Race anonyme 1', 'Race anonyme 2']);
+    expect(rows.every((row) => row.is_anonymous && row.author_id === null && row.party_id === null)).toBe(true);
+  });
+
+  // Last: it archives OPEN. A save in flight holds the event's lock; the archival waits for it,
+  // then publishes what it saved.
   test('a save in flight when the event is archived is published, not left with its author link', async () => {
     const member = new pg.Client({ connectionString: DB_URL });
     await member.connect();

@@ -22,6 +22,10 @@
 --     order; with 0, 1 or 2 the admin's read is identical.
 --   * No client role holds any privilege on the two tables (admins and service_role included);
 --     RLS is on with no policy. The SECURITY DEFINER functions below are the only way in.
+--   * A save writes or locks no row a client can read: PostgREST returns the system columns
+--     (xmin, xmax, ctid) to anyone who can read a row, and a row lock writes the locker's
+--     transaction id into xmax. So no foreign key to events, profiles or user_parties (delete
+--     triggers do their SET NULL), and save vs levée is a transaction-level advisory lock.
 --   * An answer's author and event are fixed at its first write, never follow the party (an admin
 --     may change a party's owner or event, or delete it: none of it reads, moves or removes an
 --     answer; see the review of the first design in ADR 0029).
@@ -83,7 +87,10 @@ WHERE private.event_feedback_due(e);
 -- The answers: texts and choice, nothing about who or when.
 CREATE TABLE public.event_feedback (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id uuid NOT NULL REFERENCES public.events (id) ON DELETE CASCADE,
+    -- No foreign key to events, on purpose: its check locks the event row (FOR KEY SHARE), which
+    -- writes the saving transaction's id into events.xmax, a column any client reads through the
+    -- API. The save checks the event exists; events are never deleted (prevent_event_delete).
+    event_id uuid NOT NULL,
     welcome text,
     party_music text,
     safety text,
@@ -132,9 +139,13 @@ CREATE TABLE public.event_feedback_authors (
     feedback_id uuid PRIMARY KEY,
     event_id uuid NOT NULL,
     -- Null only once the profile is hard-deleted (as impersonation_log): the answer stays.
-    author_id uuid REFERENCES public.profiles (id) ON DELETE SET NULL,
+    -- No foreign key, as event_id above: its check would lock the member's profile row and write
+    -- the save's transaction id into profiles.xmax, readable by admins. The save writes auth.uid();
+    -- trg_event_feedback_forget_profile does the ON DELETE SET NULL.
+    author_id uuid,
     -- The registration it was written from; null once that party is deleted: the answer stays.
-    party_id uuid REFERENCES public.user_parties (id) ON DELETE SET NULL,
+    -- No foreign key either (user_parties.xmax); trg_event_feedback_forget_party sets it null.
+    party_id uuid,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT event_feedback_authors_feedback_fkey FOREIGN KEY (feedback_id, event_id)
@@ -142,7 +153,7 @@ CREATE TABLE public.event_feedback_authors (
     CONSTRAINT event_feedback_one_per_author UNIQUE (event_id, author_id)
 );
 
--- The foreign keys' SET NULL looks rows up by party and by author.
+-- The delete triggers' SET NULL looks rows up by party and by author.
 CREATE INDEX event_feedback_authors_party_id_idx ON public.event_feedback_authors (party_id);
 CREATE INDEX event_feedback_authors_author_id_idx ON public.event_feedback_authors (author_id);
 
@@ -170,7 +181,7 @@ CREATE TRIGGER trg_refuse_when_impersonating
 -- Only SECURITY DEFINER code writes these tables; these keep a later function from breaking the
 -- rules by mistake. Once the event's post-mortem has closed nothing is added or edited: an answer
 -- stays on its event, and a link keeps its answer, event, author and party (author and party
--- may only become null, through their foreign key's ON DELETE SET NULL).
+-- may only become null, through the profile and party delete triggers below).
 CREATE FUNCTION private.enforce_event_feedback_rules()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -192,7 +203,7 @@ BEGIN
            OR (NEW.party_id IS DISTINCT FROM OLD.party_id AND NEW.party_id IS NOT NULL) THEN
             RAISE EXCEPTION USING MESSAGE = 'event_feedback_invalid', ERRCODE = 'check_violation';
         END IF;
-        -- The foreign keys' SET NULL is the one change a link takes after the close.
+        -- The delete triggers' SET NULL is the one change a link takes after the close.
         RETURN NEW;
     END IF;
 
@@ -215,12 +226,27 @@ CREATE TRIGGER trg_enforce_event_feedback_rules
 -- ---------------------------------------------------------------------------------------------
 -- The levée and the close.
 
+-- Save vs levée: a transaction-level advisory lock on the event, shared by the saves (they don't
+-- wait for each other) and exclusive for the levée and the delete triggers below. Unlike a row
+-- lock (FOR SHARE, or a foreign key's FOR KEY SHARE), it writes nothing to any row: no client can
+-- see that a save is under way or when one happened (events.xmax is readable through the API).
+CREATE FUNCTION private.event_feedback_lock_key(p_event_id uuid)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT hashtextextended('event_feedback_levee:' || p_event_id, 0);
+$$;
+
+REVOKE ALL ON FUNCTION private.event_feedback_lock_key(uuid) FROM PUBLIC;
+
 -- The levée: publishes an event's answers at its close. Each anonymous answer is re-inserted as a
 -- new row (a fresh random id, the event and the texts only), all of them in random order, and its
 -- window row is deleted, which deletes its author link (ON DELETE CASCADE). Nothing is left that
 -- ties an anonymous text to its author, party, window id or times, nor a physical position that
 -- reflects the order they were written in. Named answers stay as they are, with their link.
--- Called only by the events trigger below, which holds the event's row lock and sets the marker.
+-- Called only by the events trigger below, which holds the event's lock exclusively and sets the marker.
 CREATE FUNCTION private.event_feedback_levee(p_event_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -246,9 +272,11 @@ REVOKE ALL ON FUNCTION private.event_feedback_levee(uuid) FROM PUBLIC;
 -- BEFORE UPDATE on events. A client (an admin's update) never writes feedback_closed_at. When the
 -- marker is still null and the event is due to close, before or after this update (archived, or
 -- an ACTIVE event past its close date, or a new feedback_days or start date that puts it there),
--- it runs the levée and sets the marker, in this transaction, under this row's lock: a concurrent
--- submit_event_feedback() holds the row FOR SHARE, so it either commits first (and its answer is
--- published) or reads the marker. The marker is the true close: the scheduled close when it has
+-- it runs the levée and sets the marker, in this transaction. It first takes the event's lock
+-- (event_feedback_lock_key) exclusively: a submit_event_feedback() in flight holds it shared, so
+-- the levée waits for it to commit and its next statement (a new snapshot, READ COMMITTED)
+-- publishes that answer; a save that comes later waits for this transaction and reads the marker.
+-- The marker is the true close: the scheduled close when it has
 -- passed, otherwise now. Once set, nothing runs again (un-archiving, a new offset).
 -- SECURITY DEFINER: an admin's update runs as authenticated, which can't touch the tables.
 CREATE FUNCTION private.close_event_feedback_on_event_update()
@@ -262,6 +290,7 @@ BEGIN
         RAISE EXCEPTION USING MESSAGE = 'event_feedback_close_locked', ERRCODE = '42501';
     END IF;
     IF OLD.feedback_closed_at IS NULL AND (private.event_feedback_due(OLD) OR private.event_feedback_due(NEW)) THEN
+        PERFORM pg_advisory_xact_lock(private.event_feedback_lock_key(NEW.id));
         PERFORM private.event_feedback_levee(NEW.id);
         NEW.feedback_closed_at := LEAST((private.event_feedback_dates(OLD)).closes_at, now());
     END IF;
@@ -314,6 +343,51 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION private.close_event_feedback_if_due(uuid) FROM PUBLIC;
+
+-- ---------------------------------------------------------------------------------------------
+-- What the missing foreign keys did: a hard-deleted profile or party leaves its answers, without
+-- the author or the registration (ON DELETE SET NULL). Each takes the event's lock exclusively
+-- first, so a save in flight from that party commits before the link is cleared (and a later one
+-- finds no party). A party deleted along with its owner's profile clears the author too, if the
+-- profile is already gone, whichever of the two triggers runs first.
+-- SECURITY DEFINER: an admin's delete runs as authenticated, which can't touch the table.
+CREATE FUNCTION private.event_feedback_forget_party()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(private.event_feedback_lock_key(OLD.event_id));
+    UPDATE public.event_feedback_authors a
+    SET party_id = NULL,
+        author_id = CASE WHEN EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = a.author_id) THEN a.author_id END
+    WHERE a.party_id = OLD.id;
+    RETURN NULL;
+END;
+$$;
+
+CREATE FUNCTION private.event_feedback_forget_profile()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE public.event_feedback_authors a SET author_id = NULL WHERE a.author_id = OLD.id;
+    RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.event_feedback_forget_party() FROM PUBLIC;
+REVOKE ALL ON FUNCTION private.event_feedback_forget_profile() FROM PUBLIC;
+
+CREATE TRIGGER trg_event_feedback_forget_party
+    AFTER DELETE ON public.user_parties
+    FOR EACH ROW EXECUTE FUNCTION private.event_feedback_forget_party();
+CREATE TRIGGER trg_event_feedback_forget_profile
+    AFTER DELETE ON public.profiles
+    FOR EACH ROW EXECUTE FUNCTION private.event_feedback_forget_profile();
 
 -- ---------------------------------------------------------------------------------------------
 -- Helpers.
@@ -446,9 +520,11 @@ BEGIN
     PERFORM private.event_feedback_check_event(p_event_id);
     PERFORM private.close_event_feedback_if_due(p_event_id);
 
-    -- Hold the event row while writing: the levée (an update of the row) waits for this save to
-    -- commit and publishes it, or this reads the marker it set.
-    PERFORM 1 FROM public.events e WHERE e.id = p_event_id FOR SHARE;
+    -- Hold the event's lock (shared) while writing: the levée waits for this save to commit and
+    -- publishes it, or this waits for the levée and reads the marker it set. Not a row lock: that
+    -- would write this transaction's id into events.xmax, which any client reads. Nothing below
+    -- writes or locks a row a client can read (the tables have no foreign key to one).
+    PERFORM pg_advisory_xact_lock_shared(private.event_feedback_lock_key(p_event_id));
     SELECT * INTO v_window FROM private.event_feedback_window(p_event_id);
 
     SELECT * INTO v_party FROM private.event_feedback_party(p_event_id);

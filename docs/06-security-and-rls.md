@@ -197,7 +197,10 @@ Notes on specific choices:
   (`author_id = auth.uid()`), never matched on the party, so an admin's owner change, event move or
   delete of a party neither reads, overwrites, moves nor removes an answer. In « Voir comme »,
   `my_event_feedback()` gives the same result whether the member has a named answer, an anonymous
-  one or none, and `submit_event_feedback()` refuses the session before any other check. The RLS
+  one or none, and `submit_event_feedback()` refuses the session before any other check. A save
+  writes and locks no row a client can read (PostgREST returns `xmin`, `xmax` and `ctid` to anyone
+  who reads a row): save vs levée is an advisory lock, and the tables have no foreign key to
+  `events`, `profiles` or `user_parties`. The RLS
   suite (« post-mortem feedback ») checks each of these, including an owner-level scan of every
   table after the levée, and lists every function that reads the tables. The accepted limits
   (the owner during the window, request logs, backups, the candidate set) are in the ADR.

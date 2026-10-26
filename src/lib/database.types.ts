@@ -457,22 +457,7 @@ export type Database = {
           schedule?: string | null
           welcome?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "event_feedback_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "event_feedback_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "user_event_history"
-            referencedColumns: ["event_id"]
-          },
-        ]
+        Relationships: []
       }
       event_feedback_authors: {
         Row: {
@@ -501,39 +486,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "event_feedback_authors_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "event_feedback_authors_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "user_event_history"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "event_feedback_authors_feedback_fkey"
             columns: ["feedback_id", "event_id"]
             isOneToOne: false
             referencedRelation: "event_feedback"
             referencedColumns: ["id", "event_id"]
-          },
-          {
-            foreignKeyName: "event_feedback_authors_party_id_fkey"
-            columns: ["party_id"]
-            isOneToOne: false
-            referencedRelation: "user_event_history"
-            referencedColumns: ["party_id"]
-          },
-          {
-            foreignKeyName: "event_feedback_authors_party_id_fkey"
-            columns: ["party_id"]
-            isOneToOne: false
-            referencedRelation: "user_parties"
-            referencedColumns: ["id"]
           },
         ]
       }
