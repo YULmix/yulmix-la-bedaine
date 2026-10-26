@@ -742,8 +742,8 @@ RLS no longer shows it `user_parties`.
 
 The « bilan » ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): after an event, each
 member registered on it may leave one answer, a free text per category, named or anonymous.
-Admins read nothing before the feedback closes; at the close the « levée » publishes the answers
-and erases the author link of every anonymous one. Migration `20261026043829_event_feedback.sql`.
+Admins read no answer before the feedback closes, only its counts (#345); at the close the « levée » publishes the answers
+and erases the author link of every anonymous one. Migrations `20261026043829_event_feedback.sql`, `20261026230000_feedback_counts.sql` (counts).
 
 | Table / column / function | What it is |
 |---|---|
@@ -755,6 +755,7 @@ and erases the author link of every anonymous one. Migration `20261026043829_eve
 | `submit_event_feedback(event, answers, is_anonymous)` | `SECURITY DEFINER`. Creates or replaces the caller's answer while the window is open, named or anonymous (switchable): `answers` is an object keyed by category (string or null; trimmed, blank = not answered); an edit replaces the whole answer. Returns `{ answers, is_anonymous, created_at, updated_at }`. Refuses `not_authenticated`, `read_only_impersonation` (« Voir comme », before any other check), `event_not_found` (also a DRAFT event, for non-admins), `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed`, `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{category}`, `event_feedback_too_long` `{category, max}`, `event_feedback_empty`, in that order |
 | `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, closes_on, closes_at, closed_at, answer, answer_hidden }`: whether the caller may answer, the window (`not_yet`, `open`, `closed`), its first and last Toronto day, the closing instant, the marker, and the caller's answer (before the close, named or anonymous; after it, a named one only, since an anonymous one has no author any more). In « Voir comme », `answer` is always null and `answer_hidden` true, and nothing else depends on the answer |
 | `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité and Organisateur included). `{ closed, closes_on, closes_at, closed_at, named, anonymous }`. Before the close `named` and `anonymous` are null. After it, `named` lists `{ answers, author: { user_id, party_id, full_name, email } \| null, created_at, updated_at }` oldest first (author null once the profile is hard-deleted), and `anonymous` lists `{ answers }` in random (id) order when there are at least 3, otherwise `[]` |
+| `event_feedback_counts(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité, Organisateur and « Voir comme » included), before and after the close (#345). `{ closed, closes_on, eligible, signed, anonymous, total }`: `eligible` the registrations neither cancelled nor waitlisted, `signed` the named answers, `anonymous` the anonymous ones (the caller's own included) only when there are at least 3 besides the caller's own, found by its author link before the close (otherwise null), `total` signed + anonymous, null while anonymous is. No text, author, id or time |
 | `private.event_feedback_levee(event)` | The levée: re-inserts the event's anonymous answers with fresh ids, in random order, and deletes their window rows and links. Called only by `trg_close_event_feedback` |
 
 - **Eligible**: the owner of a `registered` or `pending`, non-waitlisted registration on the event,
@@ -765,7 +766,7 @@ and erases the author link of every anonymous one. Migration `20261026043829_eve
   one without a start date, is `not_yet` and never closes by date.
 - **The close** happens in `trg_close_event_feedback` (`BEFORE UPDATE` on `events`): at archival,
   at an update once the close date has passed or that moves it into the past, or at the first call
-  of one of the three functions after the close date (a no-op update of the event). It runs the
+  of one of the functions above after the close date (a no-op update of the event). It runs the
   levée and sets the marker in the same transaction. After it nothing is added or edited
   (`trg_enforce_event_feedback_rules`, `event_feedback_closed`), whoever writes.
 - **An answer belongs to who wrote it and to its event, not to the party.** Admins can change a

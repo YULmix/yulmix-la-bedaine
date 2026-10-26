@@ -1245,6 +1245,7 @@ export type Database = {
       edition_parties: { Args: { p_event_id: string }; Returns: Json }
       edition_role: { Args: { p_event_id: string }; Returns: string }
       event_feedback_answers: { Args: { p_event_id: string }; Returns: Json }
+      event_feedback_counts: { Args: { p_event_id: string }; Returns: Json }
       event_places: {
         Args: { p_event_id: string }
         Returns: {

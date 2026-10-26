@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { FEEDBACK_CATEGORIES } from './eventFeedback';
-import { answerCounts, authorLabel, groupByCategory } from './eventFeedbackAdmin';
+import { answerCounts, authorLabel, fetchEventFeedbackCounts, groupByCategory, toFeedbackCounts } from './eventFeedbackAdmin';
 
 // event_feedback_answers()'s shape (#315, ADR 0029).
 const author = (name, email = `${name.toLowerCase()}@test.local`) => ({ user_id: `id-${name}`, party_id: `party-${name}`, full_name: name, email });
@@ -64,5 +64,47 @@ describe('authorLabel', () => {
     expect(authorLabel(author('Alice'))).toBe('Alice');
     expect(authorLabel({ ...author('Alice'), full_name: ' ' })).toBe('alice@test.local');
     expect(authorLabel(null)).toBe(fr.adminBilanDeletedAuthor);
+  });
+});
+
+// event_feedback_counts()'s shape (#345, ADR 0029).
+describe('toFeedbackCounts', () => {
+  const counts = { closed: false, closes_on: '2026-11-08', eligible: 12, signed: 4, anonymous: 3, total: 7 };
+
+  test('the database\'s counts as they are', () => {
+    expect(toFeedbackCounts(counts)).toEqual(counts);
+  });
+
+  test('anonymous under the threshold: anonymous and total null', () => {
+    expect(toFeedbackCounts({ ...counts, anonymous: null, total: null })).toEqual({ ...counts, anonymous: null, total: null });
+    // Never a total without the anonymous count, whatever the payload says.
+    expect(toFeedbackCounts({ ...counts, anonymous: null, total: 6 }).total).toBeNull();
+  });
+
+  test('only the known fields are kept', () => {
+    const leaky = { ...counts, author: 'Eve', created_at: '2026-10-12', ids: ['secret-id'] };
+    expect(Object.keys(toFeedbackCounts(leaky)).sort()).toEqual(['anonymous', 'closed', 'closes_on', 'eligible', 'signed', 'total']);
+  });
+
+  test('a missing payload reads as nothing yet', () => {
+    expect(toFeedbackCounts(null)).toEqual({ closed: false, closes_on: null, eligible: 0, signed: 0, anonymous: null, total: null });
+  });
+});
+
+describe('fetchEventFeedbackCounts', () => {
+  const clientReturning = (result) => ({ rpc: jest.fn().mockResolvedValue(result) });
+
+  test('calls event_feedback_counts with the event', async () => {
+    const client = clientReturning({ data: { closed: true, closes_on: null, eligible: 3, signed: 1, anonymous: null, total: null }, error: null });
+    await expect(fetchEventFeedbackCounts(client, 'event-1')).resolves.toEqual(
+      { closed: true, closes_on: null, eligible: 3, signed: 1, anonymous: null, total: null });
+    expect(client.rpc).toHaveBeenCalledWith('event_feedback_counts', { p_event_id: 'event-1' });
+  });
+
+  test('an error throws in French', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const client = clientReturning({ data: null, error: { message: 'boom', code: 'XX000' } });
+    await expect(fetchEventFeedbackCounts(client, 'event-1')).rejects.toThrow(fr.adminBilanLoadError);
+    console.error.mockRestore();
   });
 });
