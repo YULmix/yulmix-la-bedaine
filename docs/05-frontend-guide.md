@@ -16,7 +16,7 @@ no component library.
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
 | `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
-| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Bilan de l'édition »: the eight comments, named or anonymous, with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close a named answer read-only or one neutral message (no answer and an anonymous one look the same), and in « Voir comme » the same hidden state whatever the member answered |
+| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Votre retour sur l'édition »: one card per category, each with a comment signed by default, a « Privé » switch and the other kind addable beside it (never more than two, #355), with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close the signed comments read-only or one neutral message (no comment and private ones only look the same), and in « Voir comme » the same hidden state whatever the member answered |
 | `/a-propos` | `AboutView` | None |
 | `/voir-comme/:memberId` | A « Voir comme » tab (#267): `VoirCommeTab` opens the member's read-only session, then moves to `/` and runs the whole app on it | The `impersonate` Edge Function (admins only, non-admin targets) and the database (read-only); see « Voir comme » below |
 
@@ -130,8 +130,8 @@ ones as « Anonyme » in the order the database returns them (never re-sorted, n
 the DOM; their React key is their index in that random order). Since #354 the database returns items,
 signed live and private once released: until the section's rework (#356) `shownCounts()` maps
 `event_feedback_counts()` to the dashboard's figures (members with a signed item, private items once
-released, no total), and until the form's (#355) `BilanPage` edits one set of texts, all signed or all
-private, through `legacyAnswer()` / `itemsFromAnswers()`. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
+released, no total). `BilanPage` edits the member's items as drafts (`draftsFrom()`, `itemsFromDrafts()` in
+`src/lib/eventFeedback.ts`, #355) and always sends the whole set. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
 values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
 are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
 `sortAttendees()` orders them. The « Historique des
@@ -446,7 +446,7 @@ navigate home after a save without one of the two. `Button` shows a spinner whil
 
 **The bilan keeps no copy of an answer (#316).** `BilanPage` holds the unsaved text in React
 state only: it survives a tab refocus because the route doesn't remount (#139), but nothing of it
-goes to `sessionStorage`, a URL, a log or analytics, so an anonymous answer leaves nothing on the
+goes to `sessionStorage`, a URL, a log or analytics, so a private comment leaves nothing on the
 device ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). The window's dates and state
 come from `my_event_feedback()`, never computed in the browser (`src/lib/eventFeedback.ts` only
 maps its result to the page's state).

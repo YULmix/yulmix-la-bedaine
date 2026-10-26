@@ -887,3 +887,12 @@ export async function submitFeedbackAs(user, eventId, answers, isPrivate = false
     : Object.entries(answers).map(([category, text]) => ({ category, private: isPrivate, text }));
   return check(await db.rpc('submit_event_feedback', { p_event_id: eventId, p_items: items }), 'submit bilan');
 }
+
+// What an admin reads of an event's retours (event_feedback_answers(), #354): signed items live,
+// private ones once released. Throws on a refusal.
+export async function feedbackAnswersAs(user, eventId) {
+  const db = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await db.auth.signInWithPassword(user);
+  if (error) throw new Error(`sign-in as ${user.email} failed: ${error.message}`);
+  return check(await db.rpc('event_feedback_answers', { p_event_id: eventId }), 'read bilan answers');
+}
