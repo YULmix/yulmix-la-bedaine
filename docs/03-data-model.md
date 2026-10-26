@@ -683,21 +683,32 @@ RLS no longer shows it `user_parties`.
 ## Post-mortem feedback (#315)
 
 The « bilan » ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): after an event, each
-registration may leave one answer, a free text per category, anonymous if its owner chooses.
+member registered on it may leave one answer, a free text per category, anonymous if they choose.
 Migration `20261026043829_event_feedback.sql`.
 
 | Table / function | What it is |
 |---|---|
-| `event_feedback` | One row per party (`UNIQUE (party_id)`, `ON DELETE CASCADE` like the party's other rows; nothing else deletes one). Eight nullable texts, `welcome`, `party_music`, `safety`, `lodging`, `food`, `communications`, `schedule`, `other` (« Accueil », « Party + musique », « Sécurité », « Hébergement », « Nourriture », « Communications », « Horaire », « Autres »): NULL is "not answered", a stored text has a non-space character and at most 5000 characters, at least one is answered (CHECKs). `is_anonymous`, `created_at`, `updated_at`. **No client privilege at all** (admins and `service_role` included), RLS on without a policy: only the three functions below read or write it |
-| `submit_event_feedback(event, answers, is_anonymous)` | `SECURITY DEFINER`. Creates or replaces the caller's answer: `answers` is an object keyed by category (string or null; trimmed, blank = not answered), and an edit replaces the whole answer. Refuses `not_authenticated`, `event_not_found`, `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed` (archived), `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{category}` (unknown key, not a string), `event_feedback_too_long` `{category, max}` and `event_feedback_empty`, in that order |
-| `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, answer, answer_hidden }`: whether the caller may answer, the window (`open`, `not_yet`, `closed`), the day it opens, and their own answer (`answers`, `is_anonymous`, times) or null. In a « Voir comme » session `answer` is always null and `answer_hidden` true. A DRAFT event is `event_not_found` for non-admins |
-| `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`, Comité and Organisateur included). Every answer of the event: `is_anonymous`, `answers`, `author` (`user_id`, `party_id`, `full_name`, `email`) and the times for a named answer; for an anonymous one `author` and the times are null and there is no id. Named answers first (oldest first), then the anonymous ones in random (id) order |
+| `event_feedback` | One row per member per event (`UNIQUE (event_id, author_id)`). `event_id` (`ON DELETE CASCADE`), `author_id` (`profiles`, `ON DELETE SET NULL`) and `party_id` (the registration it was written from, `user_parties`, `ON DELETE SET NULL`) are set at the first write and never change after (`trg_enforce_event_feedback_fixed` refuses it with `event_feedback_invalid`), except to null through their foreign key. Eight nullable texts, `welcome`, `party_music`, `safety`, `lodging`, `food`, `communications`, `schedule`, `other` (« Accueil », « Party + musique », « Sécurité », « Hébergement », « Nourriture », « Communications », « Horaire », « Autres »): NULL is "not answered", a stored text has a non-space character and at most 5000 characters, at least one is answered (CHECKs). `is_anonymous`, `created_at`, `updated_at`. **No client privilege at all** (admins and `service_role` included), RLS on without a policy: only the three functions below read or write it |
+| `submit_event_feedback(event, answers, is_anonymous)` | `SECURITY DEFINER`. Creates or replaces the caller's answer (`author_id = auth.uid()`): `answers` is an object keyed by category (string or null; trimmed, blank = not answered), and an edit replaces the whole answer, keeping its event, author and party. Refuses `not_authenticated`, `read_only_impersonation` (a « Voir comme » session, before any other check), `event_not_found` (also a DRAFT event, for non-admins), `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed` (archived), `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{category}` (unknown key, not a string), `event_feedback_too_long` `{category, max}` and `event_feedback_empty`, in that order |
+| `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, answer, answer_hidden }`: whether the caller may answer, the window (`open`, `not_yet`, `closed`), the day it opens, and the answer they wrote (`author_id`, whichever party it came from: `answers`, `is_anonymous`, times) or null. In a « Voir comme » session `answer` is always null and `answer_hidden` true. A DRAFT event is `event_not_found` for non-admins |
+| `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`, Comité and Organisateur included). Every answer stored for the event (`event_id`): `is_anonymous`, `answers`, `author` (the stored `author_id` as `user_id`, `party_id`, `full_name`, `email`; null once the profile is hard-deleted) and the times for a named answer; for an anonymous one `author` and the times are null and there is no id. Named answers first (oldest first), then the anonymous ones in random (id) order |
 
 - **Eligible**: the owner of a `registered` or `pending`, non-waitlisted registration on the event,
   with an active account. An admin answers only for their own registration.
 - **The window** opens on the day after the event's last day, i.e. on the start's Toronto day +
   `duration_days` (the same "event is over" as elsewhere, #149), and closes when the event is
   archived. A DRAFT event, or one without a start date, is `not_yet`.
+- **An answer belongs to who wrote it and to its event, not to the party.** Admins can change a
+  party's owner or event, or delete it (`user_parties` admin policies); none of that moves an
+  answer. The previous owner still reads their answer (and, no longer registered, can't edit it);
+  the new owner writes their own, a second row from the same party. A moved party leaves its
+  answer on the original event. A deleted party leaves it there too, `party_id` null, anonymous or
+  not as written ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)).
+- **Account deletion** (`delete_my_account()`, a soft delete) leaves answers as they are, like the
+  member's registrations and history: a named answer keeps its author (the profile stays, with
+  `deleted_at`), an anonymous one stays anonymous, since no output ever gives its `author_id`.
+  The deleted member no longer reads their own (`is_account_active()`). Only a hard-deleted profile
+  (not something the app does) nulls `author_id`, and the text stays, unattributed.
 - Nothing here writes `user_parties`, so the registration rules (close date, freeze) don't apply
   to answers.
 

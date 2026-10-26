@@ -181,15 +181,20 @@ Notes on specific choices:
   `set_place_override()` also refuses an archived event up front
   (`event_layout_frozen`), even for a write that would change nothing. `anon` can run none of them.
 - **Post-mortem answers stay anonymous by construction** (#315,
-  [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). `event_feedback` holds `party_id`, which
-  leads to `user_parties.user_id` and the profile, so no client role may read it at all: RLS is on
-  with no policy and every grant is revoked. Its three `SECURITY DEFINER` functions name their
+  [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). `event_feedback` holds `author_id` and
+  `party_id`, which lead to the profile, so no client role may read it at all: RLS is on
+  with no policy and every grant is revoked. An answer's author and event are fixed at its first
+  write and matched on (`author_id = auth.uid()`, `event_id`), never on the party, so an admin
+  changing a party's owner or event, or deleting it, neither reads, overwrites, moves nor removes
+  the answer (otherwise each would reveal an anonymous author). Its three `SECURITY DEFINER` functions name their
   output; `event_feedback_answers()` (account admins only) gives an anonymous answer's texts and
   nothing else: no author, party, row id nor time, and after the named ones in random order. A
   « Voir comme » session would show the member's own answer, so `my_event_feedback()` hides it
-  there (and whether there is one). The RLS suite (« post-mortem feedback ») checks that nothing in
-  the admin's result names an anonymous author, that every role is refused the table directly and
-  through an embed, and that no view and no other function reads it.
+  there (and whether there is one), and `submit_event_feedback()` refuses it before any other
+  check. The RLS suite (« post-mortem feedback ») checks that nothing in the admin's result names
+  an anonymous author, that every role is refused the table directly and through an embed, that no
+  view and no other function reads it, and that an admin's owner change, event move and delete of
+  the party leave the answer where it was.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

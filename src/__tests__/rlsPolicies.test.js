@@ -4468,8 +4468,9 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     const { rows } = await db.query('select count(*)::int as n from public.event_feedback where party_id = $1', [parties[`member:${OVER}`]]);
     expect(rows[0].n).toBe(1);
     // The unique constraint, not just the function, makes a second row impossible.
-    await expect(db.query('insert into public.event_feedback (party_id, other) values ($1, $2)', [parties[`member:${OVER}`], 'Bis']))
-      .rejects.toThrow(/event_feedback_one_per_party/);
+    await expect(db.query('insert into public.event_feedback (event_id, author_id, party_id, other) values ($1, $2, $3, $4)',
+      [OVER, MEMBER_ID, parties[`member:${OVER}`], 'Bis']))
+      .rejects.toThrow(/event_feedback_one_per_author/);
   });
 
   test('refused with a coded error: before the window, after archival, empty, cancelled, waitlisted, not registered', async () => {
@@ -4492,6 +4493,15 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     expectCode(await submit(clients.Outsider, OVER, text), 'event_feedback_not_eligible', { reason: 'not_registered' });
     expect(await ok(mine(clients.Waitlisted, OVER))).toMatchObject({ eligible: false, reason: 'waitlisted', answer: null });
     expectCode(await submit(clients.member, '00000000-0000-0000-0000-00000000dead', text), 'event_not_found');
+    // A DRAFT event is not found by non-admins, from either function.
+    await db.query("update public.events set status = 'DRAFT' where id = $1", [FUTURE]);
+    try {
+      expectCode(await submit(clients.member, FUTURE, text), 'event_not_found');
+      expectCode(await mine(clients.member, FUTURE), 'event_not_found');
+      expect(await ok(mine(clients.admin, FUTURE))).toMatchObject({ window: 'not_yet' });
+    } finally {
+      await db.query("update public.events set status = 'ACTIVE' where id = $1", [FUTURE]);
+    }
 
     const anon = createClient(SUPABASE_URL, ANON_KEY);
     for (const call of [submit(anon, OVER, text), mine(anon, OVER), answersOf(anon, OVER)]) {
@@ -4613,5 +4623,72 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     expect(seen.out).toEqual({ eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), answer: null, answer_hidden: true });
     await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', [OVER, JSON.stringify({ other: 'Admin was here' })]))
       .rejects.toThrow('read_only_impersonation');
+    // Refused before any other check answers: an empty answer, an unknown event.
+    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', [OVER, '{}']))
+      .rejects.toThrow('read_only_impersonation');
+    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', ['00000000-0000-0000-0000-00000000dead', '{}']))
+      .rejects.toThrow('read_only_impersonation');
+  });
+
+  // Review of #315: an admin can change a party's owner or event, or delete it. The answer stays
+  // its author's and its event's (ADR 0029), so none of it reveals or changes an anonymous answer.
+  // Last: it deletes the Anonymous party.
+  test("an answer keeps its author and event whatever an admin does to the party", async () => {
+    const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
+    const SECRET = 'Anonyme: sécurité';
+    const carries = (list) => list.filter((answer) => answer.answers.safety === SECRET);
+    const storedRow = async () => (await db.query(
+      'select event_id, author_id, party_id, is_anonymous, safety from public.event_feedback where author_id = $1 and event_id = $2',
+      [users.Anonymous.id, OVER])).rows;
+    const before = await storedRow();
+    expect(before).toEqual([{ event_id: OVER, author_id: users.Anonymous.id, party_id: parties.Anonymous, is_anonymous: true, safety: SECRET }]);
+
+    // 1. The admin makes the party theirs: they don't read the answer, and their submit writes their own.
+    await ok(clients.admin.from('user_parties').update({ user_id: ADMIN_ID }).eq('id', parties.Anonymous));
+    try {
+      expect((await ok(clients.admin.from('user_parties').select('user_id').eq('id', parties.Anonymous)))[0].user_id).toBe(ADMIN_ID);
+      expect(await ok(mine(clients.admin, OVER))).toMatchObject({ eligible: true, reason: null, answer: null });
+      const own = await ok(submit(clients.admin, OVER, { other: 'Admin was here' }, false));
+      expect(own.answers.safety).toBeNull();
+      expect(own.answers.other).toBe('Admin was here');
+      expect(await storedRow()).toEqual(before);
+      // The member, no longer the party's owner, still reads their own answer and can't write.
+      expect(await ok(mine(clients.Anonymous, OVER))).toMatchObject({
+        eligible: false, reason: 'not_registered', answer: { is_anonymous: true, answers: { safety: SECRET } }
+      });
+      const list = await ok(answersOf(clients.admin, OVER));
+      expect(carries(list)).toEqual([expect.objectContaining({ is_anonymous: true, author: null })]);
+      expect(JSON.stringify(carries(list))).not.toContain(parties.Anonymous);
+    } finally {
+      await db.query('delete from public.event_feedback where author_id = $1', [ADMIN_ID]);
+      await ok(clients.admin.from('user_parties').update({ user_id: users.Anonymous.id }).eq('id', parties.Anonymous));
+    }
+
+    // 2. The admin moves the party to another event: the answer stays on its own.
+    await ok(clients.admin.from('user_parties').update({ event_id: FUTURE }).eq('id', parties.Anonymous));
+    try {
+      expect((await ok(clients.admin.from('user_parties').select('event_id').eq('id', parties.Anonymous)))[0].event_id).toBe(FUTURE);
+      expect(carries(await ok(answersOf(clients.admin, OVER)))).toHaveLength(1);
+      expect(carries(await ok(answersOf(clients.admin, FUTURE)))).toEqual([]);
+      expect(await storedRow()).toEqual(before);
+    } finally {
+      await ok(clients.admin.from('user_parties').update({ event_id: OVER }).eq('id', parties.Anonymous));
+    }
+
+    // 3. The admin deletes the party: the answer is kept on its event, still anonymous.
+    await ok(clients.admin.from('user_parties').delete().eq('id', parties.Anonymous));
+    expect(await ok(clients.admin.from('user_parties').select('id').eq('id', parties.Anonymous))).toEqual([]);
+    expect(await storedRow()).toEqual([{ ...before[0], party_id: null }]);
+    const list = await ok(answersOf(clients.admin, OVER));
+    expect(carries(list)).toEqual([{
+      is_anonymous: true, answers: expect.objectContaining({ safety: SECRET }), author: null, created_at: null, updated_at: null
+    }]);
+    expect(JSON.stringify(list)).not.toContain(users.Anonymous.id);
+
+    // Nor can any later code move an answer: its event, author and party stay (null only by their foreign key).
+    for (const [column, value] of [['event_id', FUTURE], ['author_id', ADMIN_ID], ['party_id', parties.Named]]) {
+      await expect(db.query(`update public.event_feedback set ${column} = $1 where author_id = $2`, [value, users.Anonymous.id]))
+        .rejects.toThrow('event_feedback_invalid');
+    }
   });
 });

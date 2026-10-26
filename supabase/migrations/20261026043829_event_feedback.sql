@@ -1,7 +1,8 @@
 -- #315 (epic #309): post-mortem feedback on an event, « bilan ». No UI here.
 --
---   * event_feedback: one answer per registration (party), written by its owner. Eight optional
---     free texts, one per category, at least one non-blank; is_anonymous chosen per answer.
+--   * event_feedback: one answer per member per event, written by the owner of a registration
+--     (party) on it. Eight optional free texts, one per category, at least one non-blank;
+--     is_anonymous chosen per answer.
 --   * The window: opens the day after the event's last day (Toronto day of event_start_date +
 --     duration_days, as "the event is over" everywhere else, #149) and closes when the event is
 --     archived. A DRAFT event, or one without a start date, has no open window.
@@ -13,14 +14,23 @@
 --     everything that could lead back to the author of an anonymous answer: the party, the
 --     author, the row's id and its timestamps (which could be matched against other activity),
 --     and anonymous answers come after the named ones in a random (id) order. A table-level
---     SELECT for admins, even through a view, would hand them party_id, and with it
---     user_parties.user_id and the profile.
+--     SELECT for admins, even through a view, would hand them the author.
+--   * An answer's author and event are fixed at its first write (author_id, event_id) and never
+--     follow the party: an admin may change a party's owner or event, or delete it (their
+--     user_parties write policies), and an answer that followed the party would let them read or
+--     overwrite it (owner changed to themselves), or find its author by moving or deleting parties
+--     and watching it leave the event's list (review of #315, ADR 0029). Ownership is matched on
+--     author_id = auth.uid(); the list filters on event_id; party_id is only a record of the
+--     registration it was written from, set to null if that party is deleted. A trigger keeps the
+--     three from changing, except to null when what they point at is hard-deleted.
 --   * « Voir comme » (ADR 0025) runs in the member's real session, so the member's own read hides
 --     their answer, and whether they have one, when the JWT carries impersonated_by: otherwise an
 --     admin could open a member's session to learn who wrote an anonymous answer. Writes are
---     already refused there by the read-only trigger, attached below.
---   * No hard deletes (ADR 0024): nothing deletes an answer; it goes with its party, like the
---     party's other rows, only when an admin deletes the party.
+--     refused there: by the read-only trigger, attached below, and first thing in
+--     submit_event_feedback(), so that no other check answers first.
+--   * No hard deletes (ADR 0024): nothing deletes an answer. A deleted party leaves it on its
+--     event; delete_my_account() (a soft delete) leaves it as written, anonymous or not. Only a
+--     hard-deleted event takes its answers with it.
 --
 -- Independent from the registration freeze (#314): nothing here writes user_parties.
 
@@ -29,7 +39,11 @@
 
 CREATE TABLE public.event_feedback (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    party_id uuid NOT NULL REFERENCES public.user_parties (id) ON DELETE CASCADE,
+    event_id uuid NOT NULL REFERENCES public.events (id) ON DELETE CASCADE,
+    -- Null only once the profile is hard-deleted (as impersonation_log): the answer stays.
+    author_id uuid REFERENCES public.profiles (id) ON DELETE SET NULL,
+    -- The registration it was written from; null once that party is deleted: the answer stays.
+    party_id uuid REFERENCES public.user_parties (id) ON DELETE SET NULL,
     welcome text,
     party_music text,
     safety text,
@@ -41,7 +55,7 @@ CREATE TABLE public.event_feedback (
     is_anonymous boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT event_feedback_one_per_party UNIQUE (party_id),
+    CONSTRAINT event_feedback_one_per_author UNIQUE (event_id, author_id),
     -- NULL = not answered; a stored text is never blank (has a non-space character), and stays reasonably short.
     CONSTRAINT event_feedback_texts_valid CHECK (
         (welcome IS NULL OR (welcome ~ '\S' AND char_length(welcome) <= 5000))
@@ -58,8 +72,18 @@ CREATE TABLE public.event_feedback (
     )
 );
 
+-- The foreign keys' SET NULL looks rows up by party and by author.
+CREATE INDEX event_feedback_party_id_idx ON public.event_feedback (party_id);
+CREATE INDEX event_feedback_author_id_idx ON public.event_feedback (author_id);
+
 COMMENT ON TABLE public.event_feedback IS
-    'Post-mortem answers (« bilan », #315): one per registration, by its owner, while the event is over and not archived. No client privilege: read and written only through submit_event_feedback(), my_event_feedback() and event_feedback_answers(), which keep anonymous answers anonymous.';
+    'Post-mortem answers (« bilan », #315): one per member per event, by the owner of a registration on it, while the event is over and not archived. No client privilege: read and written only through submit_event_feedback(), my_event_feedback() and event_feedback_answers(), which keep anonymous answers anonymous.';
+COMMENT ON COLUMN public.event_feedback.event_id IS
+    'Fixed at the first write: moving the party to another event leaves the answer here (ADR 0029).';
+COMMENT ON COLUMN public.event_feedback.author_id IS
+    'Who wrote it, fixed at the first write: the answer is theirs whoever owns the party later (ADR 0029). Never returned for an anonymous answer.';
+COMMENT ON COLUMN public.event_feedback.party_id IS
+    'The registration it was written from, fixed at the first write; null once that party is deleted, the answer kept. Never returned for an anonymous answer.';
 COMMENT ON COLUMN public.event_feedback.welcome IS '« Accueil »';
 COMMENT ON COLUMN public.event_feedback.party_music IS '« Party + musique »';
 COMMENT ON COLUMN public.event_feedback.safety IS '« Sécurité »';
@@ -79,6 +103,34 @@ REVOKE ALL ON TABLE public.event_feedback FROM PUBLIC, anon, authenticated, serv
 CREATE TRIGGER trg_refuse_when_impersonating
     BEFORE INSERT OR UPDATE OR DELETE ON public.event_feedback
     FOR EACH STATEMENT EXECUTE FUNCTION private.refuse_when_impersonating();
+
+-- An answer is written with its event, author and party, and keeps them: an update may only set
+-- author_id or party_id to null (their foreign key's ON DELETE SET NULL). Only SECURITY DEFINER
+-- code writes the table; this keeps a later function from moving an answer by mistake.
+CREATE FUNCTION private.enforce_event_feedback_fixed()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.author_id IS NULL OR NEW.party_id IS NULL THEN
+            RAISE EXCEPTION USING MESSAGE = 'event_feedback_invalid', ERRCODE = 'check_violation';
+        END IF;
+    ELSIF NEW.event_id IS DISTINCT FROM OLD.event_id
+          OR (NEW.author_id IS DISTINCT FROM OLD.author_id AND NEW.author_id IS NOT NULL)
+          OR (NEW.party_id IS DISTINCT FROM OLD.party_id AND NEW.party_id IS NOT NULL) THEN
+        RAISE EXCEPTION USING MESSAGE = 'event_feedback_invalid', ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enforce_event_feedback_fixed() FROM PUBLIC;
+
+CREATE TRIGGER trg_enforce_event_feedback_fixed
+    BEFORE INSERT OR UPDATE ON public.event_feedback
+    FOR EACH ROW EXECUTE FUNCTION private.enforce_event_feedback_fixed();
 
 -- ---------------------------------------------------------------------------------------------
 -- Helpers.
@@ -180,10 +232,18 @@ BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION USING MESSAGE = 'not_authenticated', ERRCODE = '42501';
     END IF;
+    -- « Voir comme » is read-only (ADR 0025). The table's trigger would refuse the write too, but
+    -- only after the checks below: refuse first, so nothing else answers an impersonated session.
+    IF COALESCE(auth.jwt() ? 'impersonated_by', false) THEN
+        RAISE EXCEPTION USING MESSAGE = 'read_only_impersonation', ERRCODE = '42501';
+    END IF;
 
-    -- One row of nulls for an unknown event (a function with OUT parameters, not a set).
+    -- One row of nulls for an unknown event (a function with OUT parameters, not a set). A DRAFT
+    -- event is the admins' only (events' SELECT policy): not found for anyone else, as in
+    -- my_event_feedback().
     SELECT * INTO v_window FROM private.event_feedback_window(p_event_id);
-    IF v_window.state IS NULL THEN
+    IF v_window.state IS NULL OR (NOT public.is_admin()
+                     AND EXISTS (SELECT 1 FROM public.events e WHERE e.id = p_event_id AND e.status = 'DRAFT')) THEN
         RAISE EXCEPTION USING MESSAGE = 'event_not_found', ERRCODE = 'P0002';
     END IF;
 
@@ -226,14 +286,17 @@ BEGIN
         RAISE EXCEPTION USING MESSAGE = 'event_feedback_empty', ERRCODE = 'check_violation';
     END IF;
 
-    -- The unique constraint keeps it to one row per party, also between two concurrent saves.
+    -- The caller's own answer on the event, whichever party it was written from: matched on the
+    -- stored author, never on the party's current owner (ADR 0029). The unique constraint keeps it
+    -- to one row, also between two concurrent saves. An edit keeps the event, author and party.
     INSERT INTO public.event_feedback AS f
-        (party_id, welcome, party_music, safety, lodging, food, communications, schedule, other, is_anonymous)
-    VALUES (v_party.party_id,
+        (event_id, author_id, party_id,
+         welcome, party_music, safety, lodging, food, communications, schedule, other, is_anonymous)
+    VALUES (p_event_id, auth.uid(), v_party.party_id,
             v_texts ->> 'welcome', v_texts ->> 'party_music', v_texts ->> 'safety', v_texts ->> 'lodging',
             v_texts ->> 'food', v_texts ->> 'communications', v_texts ->> 'schedule', v_texts ->> 'other',
             COALESCE(p_is_anonymous, false))
-    ON CONFLICT ON CONSTRAINT event_feedback_one_per_party DO UPDATE
+    ON CONFLICT ON CONSTRAINT event_feedback_one_per_author DO UPDATE
         SET welcome = EXCLUDED.welcome,
             party_music = EXCLUDED.party_music,
             safety = EXCLUDED.safety,
@@ -255,7 +318,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.submit_event_feedback(uuid, jsonb, boolean) IS
-    'Creates or replaces the caller''s post-mortem answer for the event (#315): owner of a registered or pending, non-waitlisted registration, while the window is open. Codes: not_authenticated, event_not_found, event_feedback_not_eligible {reason}, event_feedback_not_open {opens_on}, event_feedback_closed, event_feedback_invalid {category}, event_feedback_too_long {category, max}, event_feedback_empty.';
+    'Creates or replaces the caller''s post-mortem answer for the event (#315): owner of a registered or pending, non-waitlisted registration, while the window is open. The answer is the caller''s (author_id), whoever owns the party later. Codes: not_authenticated, read_only_impersonation, event_not_found (also a DRAFT event, for non-admins), event_feedback_not_eligible {reason}, event_feedback_not_open {opens_on}, event_feedback_closed, event_feedback_invalid {category}, event_feedback_too_long {category, max}, event_feedback_empty.';
 
 -- The caller's side of the event's post-mortem: whether they may answer and when, and their answer.
 --   { eligible, reason, window: 'open'|'not_yet'|'closed', opens_on, answer, answer_hidden }
@@ -287,7 +350,9 @@ BEGIN
 
     SELECT * INTO v_party FROM private.event_feedback_party(p_event_id);
 
-    IF NOT v_hidden AND v_party.party_id IS NOT NULL AND public.is_account_active() THEN
+    -- The caller's own answer: the one they wrote (author_id), not the one written from a party
+    -- they own now, which an admin can reassign to themselves (ADR 0029).
+    IF NOT v_hidden AND public.is_account_active() THEN
         SELECT jsonb_build_object(
                    'answers', private.event_feedback_answers_of(f),
                    'is_anonymous', f.is_anonymous,
@@ -295,7 +360,7 @@ BEGIN
                    'updated_at', f.updated_at)
         INTO v_answer
         FROM public.event_feedback f
-        WHERE f.party_id = v_party.party_id;
+        WHERE f.event_id = p_event_id AND f.author_id = auth.uid();
     END IF;
 
     RETURN jsonb_build_object(
@@ -344,11 +409,13 @@ BEGIN
                        jsonb_build_object(
                            'is_anonymous', false,
                            'answers', private.event_feedback_answers_of(f),
-                           'author', jsonb_build_object(
-                               'user_id', up.user_id,
-                               'party_id', up.id,
+                           -- The stored author and party, never the party's current owner or event.
+                           -- Null once the profile is hard-deleted.
+                           'author', CASE WHEN f.author_id IS NOT NULL THEN jsonb_build_object(
+                               'user_id', f.author_id,
+                               'party_id', f.party_id,
                                'full_name', p.full_name,
-                               'email', p.email),
+                               'email', p.email) END,
                            'created_at', f.created_at,
                            'updated_at', f.updated_at)
                    END
@@ -356,9 +423,9 @@ BEGIN
                             CASE WHEN NOT f.is_anonymous THEN f.created_at END,
                             f.id)
         FROM public.event_feedback f
-        JOIN public.user_parties up ON up.id = f.party_id
-        LEFT JOIN public.profiles p ON p.id = up.user_id
-        WHERE up.event_id = p_event_id
+        LEFT JOIN public.profiles p ON p.id = f.author_id
+        -- The event it was written for: moving or deleting a party changes nothing here.
+        WHERE f.event_id = p_event_id
     ), '[]'::jsonb);
 END;
 $$;

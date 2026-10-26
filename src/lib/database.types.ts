@@ -419,14 +419,16 @@ export type Database = {
       }
       event_feedback: {
         Row: {
+          author_id: string | null
           communications: string | null
           created_at: string
+          event_id: string
           food: string | null
           id: string
           is_anonymous: boolean
           lodging: string | null
           other: string | null
-          party_id: string
+          party_id: string | null
           party_music: string | null
           safety: string | null
           schedule: string | null
@@ -434,14 +436,16 @@ export type Database = {
           welcome: string | null
         }
         Insert: {
+          author_id?: string | null
           communications?: string | null
           created_at?: string
+          event_id: string
           food?: string | null
           id?: string
           is_anonymous?: boolean
           lodging?: string | null
           other?: string | null
-          party_id: string
+          party_id?: string | null
           party_music?: string | null
           safety?: string | null
           schedule?: string | null
@@ -449,14 +453,16 @@ export type Database = {
           welcome?: string | null
         }
         Update: {
+          author_id?: string | null
           communications?: string | null
           created_at?: string
+          event_id?: string
           food?: string | null
           id?: string
           is_anonymous?: boolean
           lodging?: string | null
           other?: string | null
-          party_id?: string
+          party_id?: string | null
           party_music?: string | null
           safety?: string | null
           schedule?: string | null
@@ -465,16 +471,44 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "event_feedback_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_feedback_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "event_feedback_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_feedback_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["event_id"]
+          },
+          {
             foreignKeyName: "event_feedback_party_id_fkey"
             columns: ["party_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "user_event_history"
             referencedColumns: ["party_id"]
           },
           {
             foreignKeyName: "event_feedback_party_id_fkey"
             columns: ["party_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "user_parties"
             referencedColumns: ["id"]
           },
