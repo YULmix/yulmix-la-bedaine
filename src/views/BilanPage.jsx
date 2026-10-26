@@ -193,12 +193,9 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
     submitEvent.preventDefault();
     setJustSaved(false);
     const items = itemsFromDrafts(drafts);
-    // Nothing written and nothing saved: nothing to send. With saved comments, an empty form is
-    // sent: the save replaces the whole set, so it removes them all (#354).
-    if (items.length === 0 && saved.length === 0) {
-      setError(fr.dbErrorEventFeedbackEmpty);
-      return;
-    }
+    // Nothing written and nothing saved: the button is disabled, nothing to send. With saved
+    // comments, an empty form is sent: the save replaces the whole set, so it removes them all (#354).
+    if (items.length === 0 && saved.length === 0) return;
     setSaving(true);
     setError(null);
     try {
@@ -215,6 +212,7 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   };
 
   const unsaved = draftsUnsaved(drafts, saved);
+  const nothingToSend = saved.length === 0 && itemsFromDrafts(drafts).length === 0;
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
@@ -233,7 +231,7 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-faint">{fr.bilanEditableUntil.replace('{date}', formatDate(feedback.closes_on))}</p>
-        <Button type="submit" loading={saving} className="sm:shrink-0">
+        <Button type="submit" loading={saving} disabled={nothingToSend} className="sm:shrink-0">
           {saved.length > 0 ? fr.bilanSubmitEdit : fr.bilanSubmit}
         </Button>
       </div>
