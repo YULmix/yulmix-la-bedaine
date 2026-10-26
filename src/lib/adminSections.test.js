@@ -104,7 +104,7 @@ describe('what each role may open (#217, ADR 0023)', () => {
       expect(sectionsFor(role).map(section => section.id)).not.toContain('bilan');
       expect(roleRedirect(adminRoute('bilan'), role)).toEqual(adminRoute('overview'));
     }
-    expect(adminPage(adminRoute('bilan'))).toMatchObject({ section: { id: 'bilan' }, view: null, drillDown: false, width: 'narrow' });
+    expect(adminPage(adminRoute('bilan'))).toMatchObject({ section: { id: 'bilan' }, view: null, drillDown: false, width: 'dense' });
   });
 
   test('mayOpen checks the section and the view', () => {

@@ -1,9 +1,12 @@
-// The admin « Bilan » section (#317) over the database's event_feedback_answers() (#315, ADR 0029):
-// before the close only its date (the payload has no answer and no count); after it the answers
-// grouped by category, named ones with their author, anonymous ones as « Anonyme » in the
-// database's order, with nothing in the page or the payload that leads back to their authors; the
-// neutral line when the database shows no anonymous answer (0 and 2 here; 1 is the same `[]`);
-// an empty event, the loading and error states; Comité and Organisateur don't get the section.
+// The admin « Bilan » section (#317) over the database's event_feedback_counts() (#345/#346) and
+// event_feedback_answers() (#315, ADR 0029). The counts dashboard (#346): before the close the
+// counts and the close date only (no text, author or time, on screen or in a payload; the answers
+// aren't even asked for), « moins de 3 » and the signed rate below 3 anonymous answers, 0 answers,
+// no eligible registration, no reload by itself. After the close the same dashboard, consistent
+// with the answers below it, grouped by category, named ones with their author, anonymous ones as
+// « Anonyme » in the database's order, with nothing in the page or the payload that leads back to
+// their authors; none listed when the database shows none (2 here; 0 and 1 are the same `[]`); an
+// empty event, the loading and error states; Comité and Organisateur don't get the section.
 //
 // Each test has its own fresh event (a bilan's close is final, so the shared e2e event can't be
 // reused), made the active one: the spec runs in its own serial project.
@@ -66,28 +69,46 @@ async function anonymousAnswers(eventId, count, answers) {
 }
 
 const answersBox = page => page.getByTestId('bilan-answers');
+const dashboard = page => page.getByTestId('bilan-dashboard');
 const category = (page, name) => adminMain(page).getByRole('region', { name });
 const isAnswersCall = response => response.url().includes('/rpc/event_feedback_answers');
+const categoryName = c => fr[{ welcome: 'bilanCategoryWelcome', party_music: 'bilanCategoryPartyMusic', safety: 'bilanCategorySafety', lodging: 'bilanCategoryLodging', food: 'bilanCategoryFood', communications: 'bilanCategoryCommunications', schedule: 'bilanCategorySchedule', other: 'bilanCategoryOther' }[c]];
+const isCountsCall = response => response.url().includes('/rpc/event_feedback_counts');
+const forEvent = (isCall, eventId) => response => isCall(response) && (response.request().postData() ?? '').includes(eventId);
+// A figure cell of the dashboard, by its label.
+const cell = (page, label) => dashboard(page).locator('div.bg-surface').filter({ has: page.getByText(label, { exact: true }) });
+
+// The dashboard's three figures: signed, anonymous (a number, or « moins de 3 »), and the rate
+// with its label (« Taux de réponse » or « Taux de réponse (signées) ») over `eligible`.
+async function expectCounts(page, { signed, anonymous, rate, eligible }) {
+  const hidden = anonymous === null;
+  await expect(cell(page, fr.adminBilanCountsSigned)).toHaveText(fr.adminBilanCountsSigned + signed + fr.adminBilanCountsSignedHint);
+  await expect(cell(page, fr.adminBilanCountsAnonymous)).toHaveText(fr.adminBilanCountsAnonymous
+    + (hidden ? fr.adminBilanCountsAnonymousHidden + fr.adminBilanCountsAnonymousHiddenHint : anonymous + fr.adminBilanCountsAnonymousHint));
+  const rateLabel = hidden ? fr.adminBilanCountsRateSigned : fr.adminBilanCountsRate;
+  const onEligible = eligible === 1 ? fr.adminBilanCountsEligibleOne : fr.adminBilanCountsEligible.replace('{n}', eligible);
+  await expect(cell(page, rateLabel)).toHaveText(`${rateLabel}${rate} %${onEligible}`);
+  await expect(dashboard(page).getByRole('img'))
+    .toHaveAccessibleName((hidden ? fr.adminBilanCountsBarSigned : fr.adminBilanCountsBarAll).replace('{rate}', rate));
+}
 // The French date the page shows for a 'YYYY-MM-DD' (src/lib/format.js formatDate).
 const frenchDate = day => {
   const [y, m, d] = day.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('fr-CA', { year: 'numeric', month: 'long', day: 'numeric' });
 };
 
-// Opens the section on an event, by its picker, and returns event_feedback_answers()'s payload.
-async function openBilan(page, eventId) {
-  const first = page.waitForResponse(isAnswersCall);
+// Opens the section on an event, by its picker, and returns the payloads of event_feedback_counts()
+// and, after the close, event_feedback_answers() (null before it: the page doesn't ask).
+async function openBilan(page, eventId, { closed = true } = {}) {
+  const counts = page.waitForResponse(forEvent(isCountsCall, eventId));
+  const answers = closed ? page.waitForResponse(forEvent(isAnswersCall, eventId)) : null;
   await page.goto('/admin/bilan');
   await expect(page.getByRole('heading', { level: 1, name: fr.adminTabBilan })).toBeVisible();
-  let response = await first;
   const picker = adminMain(page).getByLabel(fr.adminBilanEventLabel);
-  if (await picker.inputValue() !== eventId) {
-    const next = page.waitForResponse(r => isAnswersCall(r) && (r.request().postData() ?? '').includes(eventId));
-    await picker.selectOption(eventId);
-    response = await next;
-  }
-  await expect(answersBox(page)).not.toHaveAttribute('data-state', 'loading');
-  return response.json();
+  if (await picker.inputValue() !== eventId) await picker.selectOption(eventId);
+  const payload = { counts: await (await counts).json(), answers: answers && await (await answers).json() };
+  await expect(answersBox(page)).toHaveAttribute('data-state', closed ? 'closed' : 'not_closed');
+  return payload;
 }
 
 async function shoot(page, name) {
@@ -103,7 +124,7 @@ async function shoot(page, name) {
   await page.setViewportSize({ width: 1280, height: 720 });
 }
 
-test('admin, before the close: only the close date; no answer and no count, on screen or in the payload', async ({ page }) => {
+test('admin, before the close: the counts and the close date; no text, author or time, on screen or in a payload', async ({ page }) => {
   const event = await seedEvent();
   await submitFeedbackAs(TEST_USERS.member, event.eventId, { welcome: 'Accueil secret avant clôture' }, false);
   await anonymousAnswers(event.eventId, 3, i => ({ food: `Repas anonyme ${i}` }));
@@ -111,28 +132,80 @@ test('admin, before the close: only the close date; no answer and no count, on s
   page.on('request', request => {
     if (request.url().includes('/rest/v1/user_parties') && request.method() === 'HEAD') counted.push(request.url());
   });
+  let answersCalled = false;
+  let countsCalls = 0;
+  page.on('request', request => {
+    if (isAnswersCall(request)) answersCalled = true;
+    if (isCountsCall(request)) countsCalls += 1;
+  });
   await loginAs(page, TEST_USERS.admin);
 
   // Through the navigation, as an admin would.
   await page.goto('/admin/overview');
   await expect(sectionLink(page, fr.adminTabOverview)).toBeVisible();
-  const answered = page.waitForResponse(isAnswersCall);
+  const counted$ = page.waitForResponse(isCountsCall);
   await openSection(page, fr.adminTabBilan);
   await expect(page).toHaveURL(/\/admin\/bilan$/);
-  const payload = await (await answered).json();
+  const payload = await (await counted$).json();
 
-  expect(payload).toMatchObject({ closed: false, closed_at: null, named: null, anonymous: null });
-  expect(Object.keys(payload).sort()).toEqual(['anonymous', 'closed', 'closed_at', 'closes_at', 'closes_on', 'named']);
-  expect(JSON.stringify(payload)).not.toMatch(/Accueil secret|Repas anonyme/);
-
+  // Counts only: the member's signed answer and the three anonymous ones, on four registrations.
+  expect(payload).toEqual({ closed: false, closes_on: expect.any(String), eligible: 4, signed: 1, anonymous: 3, total: 4 });
   await expect(answersBox(page)).toHaveAttribute('data-state', 'not_closed');
-  await expect(answersBox(page)).toHaveText(
-    fr.adminBilanNotClosedTitle + fr.adminBilanNotClosedMessage.replace('{date}', frenchDate(payload.closes_on))
-  );
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsTitle);
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsBeforeClose);
+  await expectCounts(page, { signed: 1, anonymous: 3, rate: 100, eligible: 4 });
+  await expect(answersBox(page)).toContainText(fr.adminBilanNotClosedTitle);
+  await expect(answersBox(page)).toContainText(fr.adminBilanNotClosedMessage.replace('{date}', frenchDate(payload.closes_on)));
   await expect(adminMain(page)).not.toContainText('Accueil secret');
-  await expect(adminMain(page)).not.toContainText(fr.adminBilanNamedCount.split('{named}')[0]);
+  await expect(adminMain(page)).not.toContainText('Repas anonyme');
+  // No time anywhere in the section: the close date is its only date.
+  await expect(answersBox(page)).not.toContainText(/\d{1,2}[:h]\d{2}/);
+  await expect(answersBox(page).locator('time')).toHaveCount(0);
+  expect(answersCalled).toBe(false);
   expect(counted).toEqual([]);
-  await shoot(page, 'bilan-not-closed-admin');
+
+  // No polling: once loaded (twice in dev, React's StrictMode), nothing asks again by itself.
+  const loaded = countsCalls;
+  expect(loaded).toBeGreaterThan(0);
+  await page.waitForTimeout(3000);
+  expect(countsCalls).toBe(loaded);
+  await shoot(page, 'bilan-before-ge3-admin');
+});
+
+test('admin, before the close with two anonymous answers: « moins de 3 », the signed rate only, and no total in the payload', async ({ page }) => {
+  const event = await seedEvent();
+  await submitFeedbackAs(TEST_USERS.member, event.eventId, { welcome: 'Signé' }, false);
+  await anonymousAnswers(event.eventId, 2, i => ({ food: `Repas anonyme ${i}` }));
+  // A fourth registration that didn't answer: 1 signed on 4 = 25 %.
+  const silent = await createThrowawayMember('bilan-silent');
+  throwaways.push(silent);
+  await addParty(silent.id, event.eventId);
+  await loginAs(page, TEST_USERS.admin);
+
+  const { counts } = await openBilan(page, event.eventId, { closed: false });
+  expect(counts).toMatchObject({ closed: false, eligible: 4, signed: 1, anonymous: null, total: null });
+  await expectCounts(page, { signed: 1, anonymous: null, rate: 25, eligible: 4 });
+  await expect(cell(page, fr.adminBilanCountsRate)).toHaveCount(0);
+  await shoot(page, 'bilan-before-lt3-admin');
+});
+
+test('admin, before the close: no answer yet, then no eligible registration', async ({ page }) => {
+  const event = await seedEvent();
+  await loginAs(page, TEST_USERS.admin);
+  const { counts } = await openBilan(page, event.eventId, { closed: false });
+  expect(counts).toMatchObject({ eligible: 1, signed: 0, anonymous: null, total: null });
+  await expectCounts(page, { signed: 0, anonymous: null, rate: 0, eligible: 1 });
+  await shoot(page, 'bilan-before-empty-admin');
+
+  // Without its one registration: the card and its tag, a sentence, no figure and no bar.
+  await teardownFeedbackEvent({ partyId: event.partyId });
+  const again = await openBilan(page, event.eventId, { closed: false });
+  expect(again.counts).toMatchObject({ eligible: 0, signed: 0 });
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsNoEligible);
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsBeforeClose);
+  await expect(dashboard(page).getByRole('img')).toHaveCount(0);
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsSigned);
+  await shoot(page, 'bilan-before-noeligible-admin');
 });
 
 test('admin, after the close: named answers with their author, anonymous ones as « Anonyme » in the database\'s order, nothing leading back to their authors', async ({ page }) => {
@@ -148,7 +221,8 @@ test('admin, after the close: named answers with their author, anonymous ones as
   await closeFeedback(event.eventId);
   await loginAs(page, TEST_USERS.admin);
 
-  const payload = await openBilan(page, event.eventId);
+  const { counts, answers: payload } = await openBilan(page, event.eventId);
+  expect(counts).toMatchObject({ closed: true, eligible: 4, signed: 1, anonymous: 3, total: 4 });
   expect(payload.closed).toBe(true);
   expect(payload.named).toHaveLength(1);
   expect(payload.anonymous).toHaveLength(3);
@@ -160,11 +234,14 @@ test('admin, after the close: named answers with their author, anonymous ones as
   }
 
   await expect(answersBox(page)).toHaveAttribute('data-state', 'closed');
-  // The counts: named vs. registrations (the member and the three), and the anonymous ones shown.
-  const summary = page.getByTestId('bilan-summary');
-  await expect(summary).toContainText(fr.adminBilanNamedCount.replace('{named}', 1).replace('{registrations}', 4));
-  await expect(summary).toContainText(fr.adminBilanAnonymousCount.replace('{n}', 3));
-  await expect(summary).not.toContainText(fr.adminBilanAnonymousHidden);
+  // The dashboard, closed on its date: the answers listed below, on the four registrations.
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsClosedOn.split('{date}')[0]);
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsBeforeClose);
+  await expectCounts(page, { signed: 1, anonymous: 3, rate: 100, eligible: 4 });
+  await expect(answersBox(page).getByText(fr.adminBilanNotClosedTitle)).toHaveCount(0);
+  // Every category, in order.
+  await expect(adminMain(page).locator('h2[id^="bilan-category-"]'))
+    .toHaveText(['welcome', 'party_music', 'safety', 'lodging', 'food', 'communications', 'schedule', 'other'].map(categoryName));
 
   // Accueil: the named answer with its author, then the three anonymous ones, in the payload's order.
   const welcome = category(page, fr.bilanCategoryWelcome);
@@ -189,22 +266,20 @@ test('admin, after the close: named answers with their author, anonymous ones as
   await shoot(page, 'bilan-closed-admin');
 });
 
-test('admin, after the close with two anonymous answers: the neutral line, and none of them in the payload', async ({ page }) => {
+test('admin, after the close with two anonymous answers: « moins de 3 », and none of them in the payload', async ({ page }) => {
   const event = await seedEvent();
   await submitFeedbackAs(TEST_USERS.member, event.eventId, { lodging: 'Chalet parfait' }, false);
   await anonymousAnswers(event.eventId, 2, i => ({ lodging: `Hébergement anonyme ${i}` }));
   await closeFeedback(event.eventId);
   await loginAs(page, TEST_USERS.admin);
 
-  const payload = await openBilan(page, event.eventId);
+  const { counts, answers: payload } = await openBilan(page, event.eventId);
   expect(payload).toMatchObject({ closed: true, anonymous: [] });
+  expect(counts).toMatchObject({ closed: true, eligible: 3, signed: 1, anonymous: null, total: null });
   expect(JSON.stringify(payload)).not.toContain('Hébergement anonyme');
-  const summary = page.getByTestId('bilan-summary');
-  await expect(summary).toContainText(fr.adminBilanNamedCount.replace('{named}', 1).replace('{registrations}', 3));
-  await expect(summary).toContainText(fr.adminBilanAnonymousHidden);
-  await expect(summary).not.toContainText(fr.adminBilanAnonymousCount.split('{n}')[0]);
+  await expectCounts(page, { signed: 1, anonymous: null, rate: 33, eligible: 3 });
   await expect(category(page, fr.bilanCategoryLodging).getByRole('listitem')).toHaveText(['Test Member' + 'Chalet parfait']);
-  await expect(adminMain(page)).not.toContainText(fr.adminBilanAnonymous, { exact: true });
+  await expect(adminMain(page).getByText(fr.adminBilanAnonymous, { exact: true })).toHaveCount(0);
   await shoot(page, 'bilan-two-anonymous-admin');
 });
 
@@ -217,7 +292,7 @@ test('admin: an event without answers, then loading and error states, in French'
   let release;
   const held = new Promise(resolve => { release = resolve; });
   let fail = true;
-  await page.route('**/rpc/event_feedback_answers', async route => {
+  await page.route('**/rpc/event_feedback_counts', async route => {
     await held;
     if (fail) await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'boom', code: 'XX000' }) });
     else await route.fallback();
@@ -234,10 +309,9 @@ test('admin: an event without answers, then loading and error states, in French'
   fail = false;
   await answersBox(page).getByRole('button', { name: fr.retry }).click();
   await expect(answersBox(page)).toHaveAttribute('data-state', 'closed');
-  // No answer: the empty state, and the same neutral line as with one or two anonymous answers.
+  // No answer: the empty state, and the dashboard's zeros (« moins de 3 » as with one or two).
   await expect(answersBox(page)).toContainText(fr.adminBilanEmptyTitle);
-  await expect(page.getByTestId('bilan-summary')).toContainText(fr.adminBilanAnonymousHidden);
-  await expect(page.getByTestId('bilan-summary')).toContainText(fr.adminBilanNamedCount.replace('{named}', 0).replace('{registrations}', 1));
+  await expectCounts(page, { signed: 0, anonymous: null, rate: 0, eligible: 1 });
   await expect(category(page, fr.bilanCategoryWelcome)).toHaveCount(0);
   await shoot(page, 'bilan-empty-admin');
 });
@@ -249,7 +323,7 @@ for (const role of ['committee', 'organiser']) {
     await closeFeedback(event.eventId);
     await grantEditionRoles(event.eventId);
     let called = false;
-    page.on('request', request => { if (isAnswersCall(request)) called = true; });
+    page.on('request', request => { if (isAnswersCall(request) || isCountsCall(request)) called = true; });
     await loginAs(page, TEST_USERS[role]);
 
     await page.goto('/admin/overview');
@@ -264,6 +338,8 @@ for (const role of ['committee', 'organiser']) {
 
     const error = await rpcAs(TEST_USERS[role], 'event_feedback_answers', { p_event_id: event.eventId });
     expect(error?.message).toBe('admin_only');
+    const countsError = await rpcAs(TEST_USERS[role], 'event_feedback_counts', { p_event_id: event.eventId });
+    expect(countsError?.message).toBe('admin_only');
   });
 }
 

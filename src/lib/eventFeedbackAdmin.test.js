@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { FEEDBACK_CATEGORIES } from './eventFeedback';
-import { answerCounts, authorLabel, fetchEventFeedbackCounts, groupByCategory, toFeedbackCounts } from './eventFeedbackAdmin';
+import { authorLabel, fetchEventFeedbackCounts, groupByCategory, responseRate, shownCounts, toFeedbackCounts } from './eventFeedbackAdmin';
 
 // event_feedback_answers()'s shape (#315, ADR 0029).
 const author = (name, email = `${name.toLowerCase()}@test.local`) => ({ user_id: `id-${name}`, party_id: `party-${name}`, full_name: name, email });
@@ -51,11 +51,35 @@ describe('groupByCategory', () => {
   });
 });
 
-describe('answerCounts', () => {
-  test('named and shown anonymous answers after the close; zero otherwise', () => {
-    expect(answerCounts(closed)).toEqual({ named: 2, anonymous: 3 });
-    expect(answerCounts({ ...closed, anonymous: [] })).toEqual({ named: 2, anonymous: 0 });
-    expect(answerCounts({ ...closed, closed: false, named: null, anonymous: null })).toEqual({ named: 0, anonymous: 0 });
+// After the close the counts follow the answers shown; eligible and the close from the counts.
+describe('shownCounts', () => {
+  const counts = { closed: true, closes_on: '2026-10-20', eligible: 12, signed: 9, anonymous: 9, total: 18 };
+
+  test('after the close: the named and anonymous answers listed, and their total', () => {
+    expect(shownCounts(counts, closed)).toEqual({ ...counts, signed: 2, anonymous: 3, total: 5 });
+  });
+
+  test('after the close with no anonymous answer shown: « moins de 3 », no total', () => {
+    expect(shownCounts(counts, { ...closed, anonymous: [] })).toEqual({ ...counts, signed: 2, anonymous: null, total: null });
+    expect(shownCounts(counts, { ...closed, named: [], anonymous: null })).toEqual({ ...counts, signed: 0, anonymous: null, total: null });
+  });
+
+  test('before the close: the counts as they are', () => {
+    const before = { ...counts, closed: false, anonymous: null, total: null };
+    expect(shownCounts(before, null)).toBe(before);
+    expect(shownCounts(before, { ...closed, closed: false, named: null, anonymous: null })).toBe(before);
+  });
+});
+
+describe('responseRate', () => {
+  const base = { closed: false, closes_on: null, eligible: 86, signed: 23, anonymous: null, total: null };
+  test('signed only while the total is hidden, all answers once it is shown', () => {
+    expect(responseRate(base)).toBe(27);
+    expect(responseRate({ ...base, signed: 31, anonymous: 12, total: 43 })).toBe(50);
+  });
+  test('0 without eligible registrations, never above 100', () => {
+    expect(responseRate({ ...base, eligible: 0 })).toBe(0);
+    expect(responseRate({ ...base, eligible: 2, signed: 1, anonymous: 3, total: 4 })).toBe(100);
   });
 });
 

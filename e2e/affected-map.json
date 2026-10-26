@@ -213,6 +213,9 @@
   "src/components/admin/BilanAnswers.jsx": [
    "admin-bilan"
   ],
+  "src/components/admin/BilanDashboard.jsx": [
+   "admin-bilan"
+  ],
   "src/components/admin/ChangeHistory.jsx": [
    "admin-change-history",
    "admin-data-export",

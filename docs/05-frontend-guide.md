@@ -116,15 +116,19 @@ the Logistique views, it keeps waitlisted parties, with a « Statut » column; t
 
 Inscrits has views too, in `/admin/users/<view>` (`list` by default, `participants`, `history`), switched by
 the shell like Logistique's; the feedback inbox is its own section, `/admin/feedback` (Retours), and the
-old `/admin/tools/…` URLs redirect. « Bilan » (`/admin/bilan`, #317, `BilanSection` and `BilanAnswers`
-over `src/lib/eventFeedbackAdmin.ts`) is an account admin's only (Comité and Organisateur don't get it,
-and `event_feedback_answers()` refuses them, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): an
-edition picker, then before the close only its date, and after it the answers grouped by the eight
-categories, named ones with their author, anonymous ones as « Anonyme » in the order the database
-returns them (never re-sorted, no id, date or attribute in the DOM; their React key is their index in
-that random order). « Réponses signées : n sur m inscriptions » (m counts the registrations neither
-cancelled nor waitlisted, read only after the close); the anonymous count only when the database shows
-them, otherwise one neutral line, the same for 0, 1 or 2. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
+old `/admin/tools/…` URLs redirect. « Bilan » (`/admin/bilan`, #317/#346, `BilanSection`, `BilanDashboard`
+and `BilanAnswers` over `src/lib/eventFeedbackAdmin.ts`) is an account admin's only (Comité and
+Organisateur don't get it, and `event_feedback_counts()` and `event_feedback_answers()` refuse them,
+[ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): an edition picker, then the « Réponses reçues »
+dashboard (signed, anonymous or « moins de 3 », the response rate over the eligible registrations, signed
+only while the anonymous count is hidden, one bar; loaded with the page, on a change of edition and on
+« Réessayer » only: no polling, Realtime, animation or time). Before the close the page is narrow and
+shows only that and the close date; after it the answers take the full width
+([ADR 0022's amendment](./adr/0022-admin-navigation-and-page-widths.md#amendment-346-bilan-is-dense-but-narrow-before-the-close)),
+one tinted card per category in a grid of up to three columns, named ones with their author, anonymous
+ones as « Anonyme » in the order the database returns them (never re-sorted, no id, date or attribute in
+the DOM; their React key is their index in that random order). After the close the dashboard's counts are
+those of the answers shown (`shownCounts()`). « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
 values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
 are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
 `sortAttendees()` orders them. The « Historique des
