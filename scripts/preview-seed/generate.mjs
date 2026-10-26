@@ -69,6 +69,50 @@ const FEEDBACK = [
   'Ce serait pratique de pouvoir télécharger la liste des participants de ma chambre.',
   'La page met du temps à charger sur mon vieux téléphone.'
 ];
+// Post-mortem « retours » (#357), a few short texts per category (the keys are the app's
+// FEEDBACK_CATEGORIES, checked in options.test.js).
+const FEEDBACK_ITEMS = {
+  welcome: [
+    'L\'accueil était chaleureux, on s\'est senti attendus dès l\'arrivée.',
+    'Un peu de monde à l\'arrivée du vendredi, il manquait quelqu\'un à la table des bracelets.',
+    'Super équipe d\'accueil, merci pour le café.'
+  ],
+  party_music: [
+    'La soirée du samedi était parfaite, le DJ a bien lu la foule.',
+    'Un peu fort dans le chalet à minuit, pas facile de se parler.',
+    'Plus de musique de danse en après-midi, s\'il vous plaît!'
+  ],
+  safety: [
+    'Le sentier vers le lac manquait de lumière le soir.',
+    'On s\'est senti en sécurité, merci pour l\'équipe des premiers soins.',
+    'Il faudrait un point de rencontre clair en cas d\'urgence.'
+  ],
+  lodging: [
+    'Les chambres étaient propres, mais il manquait des prises près des lits.',
+    'La cour pour les tentes était géniale, mais très humide le matin.',
+    'Plus de crochets et de tablettes dans les chambres, ce serait pratique.'
+  ],
+  food: [
+    'Les repas étaient délicieux, bravo à toute la cuisine!',
+    'Peu d\'options sans gluten le samedi midi.',
+    'Les files pour le souper étaient longues, prévoir un deuxième service.'
+  ],
+  communications: [
+    'Les courriels avant l\'événement étaient clairs.',
+    'On a su tard où se garer, une info plus tôt aurait aidé.',
+    'Le groupe de covoiturage a été très utile.'
+  ],
+  schedule: [
+    'Le brunch du dimanche était trop tôt pour une soirée aussi tardive.',
+    'Bon équilibre entre les activités et le temps libre.',
+    'Le départ du dimanche était un peu serré pour le ménage.'
+  ],
+  other: [
+    'Merci à tous les bénévoles, on se reverra l\'an prochain!',
+    'Prévoir des sacs à ordures supplémentaires près de la cour.',
+    'Le site était magnifique, on y retourne avec plaisir.'
+  ]
+};
 // Budget lines (event_budgets, admin-only, #109): category, description, share of the total cost.
 const COST_CATEGORIES = [
   ['Chalet', 'Location du chalet', 0.55],
@@ -80,6 +124,9 @@ const COST_CATEGORIES = [
 
 const ACTIVE_EVENT_START_DAYS = 56; // about 8 weeks out
 const ACTIVE_REG_OPENED_DAYS_AGO = 14;
+// The just-ended edition (#357): it started this many days ago and lasts 3 days, so it is over
+// and its retour window (14 days by default) is open.
+const RECENT_EVENT_START_DAYS_AGO = 6;
 const REG_CLOSE_WEEKS = 2; // so the close date is ~6 weeks away and nothing is locked
 
 // ---------------------------------------------------------------------------------------------
@@ -89,7 +136,8 @@ export const DEFAULT_CONFIG = {
   seed: 20260927,
   members: 40,
   activeEvent: { registrations: 25, maxAttendees: 70, sellingPrice: 260, paidShare: 0.5 },
-  pastEvents: { count: 2, registrationsEach: 15, sellingPrice: 220 },
+  pastEvents: { count: 2, registrationsEach: 15, sellingPrice: 220, feedback: { signedAuthors: 8, privateAuthors: 4 } },
+  recentEvent: { registrations: 16, sellingPrice: 220, feedback: { signedAuthors: 8, privateAuthors: 2 } },
   parties: { minSize: 1, maxSize: 4, newMemberShare: 0.15, teenShare: 0.2, kidShare: 0.2 },
   emails: { failed: 2, pending: 1, promotedShare: 0.1 }
 };
@@ -99,7 +147,7 @@ const RESEND_ERROR = '422 {"statusCode":422,"message":"Invalid `to` field. The e
 
 export function validateConfig(config) {
   const errors = [];
-  const { members, activeEvent, pastEvents, parties } = config;
+  const { members, activeEvent, pastEvents, recentEvent, parties } = config;
   const isInt = (value, min) => Number.isInteger(value) && value >= min;
   const isShare = (value) => typeof value === 'number' && value >= 0 && value <= 1;
   if (!isInt(config.seed, 0)) errors.push('seed must be a non-negative integer');
@@ -114,6 +162,22 @@ export function validateConfig(config) {
   if (!isInt(pastEvents?.registrationsEach, 0)) errors.push('pastEvents.registrationsEach must be a non-negative integer');
   if (pastEvents?.registrationsEach > members + 1) errors.push('pastEvents.registrationsEach can be at most members + 1');
   if (!(pastEvents?.sellingPrice > 0)) errors.push('pastEvents.sellingPrice must be > 0');
+  // Retours (#357): the closed edition is the latest past one (Test Member is one of its signed
+  // authors), the open one leaves Test Member free to try the form, so it can't author there.
+  if (pastEvents?.count > 0) {
+    const f = pastEvents.feedback;
+    if (!isInt(f?.signedAuthors, 0) || !isInt(f?.privateAuthors, 0)) errors.push('pastEvents.feedback.signedAuthors and privateAuthors must be non-negative integers');
+    else if (f.signedAuthors + f.privateAuthors > pastEvents.registrationsEach) errors.push('pastEvents.feedback authors can be at most pastEvents.registrationsEach');
+    else if (f.signedAuthors < 1 && f.privateAuthors > 0) errors.push('pastEvents.feedback needs signedAuthors >= 1 (Test Member signs)');
+  }
+  if (recentEvent) {
+    if (!isInt(recentEvent.registrations, 0)) errors.push('recentEvent.registrations must be a non-negative integer');
+    if (recentEvent.registrations > members + 1) errors.push('recentEvent.registrations can be at most members + 1');
+    if (!(recentEvent.sellingPrice > 0)) errors.push('recentEvent.sellingPrice must be > 0');
+    const f = recentEvent.feedback;
+    if (!isInt(f?.signedAuthors, 0) || !isInt(f?.privateAuthors, 0)) errors.push('recentEvent.feedback.signedAuthors and privateAuthors must be non-negative integers');
+    else if (f.signedAuthors + f.privateAuthors > recentEvent.registrations - 1) errors.push('recentEvent.feedback authors can be at most recentEvent.registrations - 1');
+  }
   if (!isInt(parties?.minSize, 1) || !isInt(parties?.maxSize, parties?.minSize ?? 1)) {
     errors.push('parties.minSize must be >= 1 and parties.maxSize >= parties.minSize');
   }
@@ -247,12 +311,13 @@ function generateDeparture(faker) {
   };
 }
 
-function generateEvent(faker, { id, theme, active, startDays, sellingPrice, maxAttendees }) {
+function generateEvent(faker, { id, theme, active, startDays, sellingPrice, maxAttendees, status = active ? 'ACTIVE' : 'ARCHIVED' }) {
   const totalCost = Math.round(sellingPrice * faker.number.int({ min: 30, max: 40 }) / 100) * 100;
   return {
     id,
     theme,
     active,
+    status,
     description: faker.helpers.arrayElement(DESCRIPTIONS),
     venue: `${faker.number.int({ min: 100, max: 3999 })} chemin du Lac, ${faker.helpers.arrayElement(TOWNS)}, QC`,
     startDays,
@@ -330,13 +395,66 @@ export function generatePreviewSeed(config = DEFAULT_CONFIG, seedOverride) {
     daysAgo: faker.number.int({ min: 1, max: 20 })
   }));
 
-  return renderSql({ seed, config, members, activeEvent, pastEvents, registrations, feedback, emailAccounts });
+  // The just-ended edition and the retours (#357), generated last so adding them leaves the rest
+  // of the seeded data as it was. ACTIVE but not the active edition: its retour window is open.
+  let recentEvent = null;
+  if (config.recentEvent) {
+    recentEvent = generateEvent(faker, {
+      id: faker.string.uuid(),
+      theme: `${usedThemes[(config.pastEvents.count + 1) % usedThemes.length]} ${new Date(Date.now() - RECENT_EVENT_START_DAYS_AGO * 86400000).getFullYear()}`,
+      active: false,
+      status: 'ACTIVE',
+      startDays: -RECENT_EVENT_START_DAYS_AGO,
+      sellingPrice: config.recentEvent.sellingPrice,
+      maxAttendees: 0
+    });
+    for (const registrant of pickRegistrants(faker, members, config.recentEvent.registrations, testMember)) {
+      registrations.push({ event: recentEvent, userId: registrant.id, daysAgo: -(recentEvent.regStartDays + faker.number.int({ min: 1, max: 30 })),
+        ...generateParty(faker, { member: registrant, partiesConfig: config.parties, paid: true }) });
+    }
+  }
+  const eventFeedback = [];
+  if (recentEvent) {
+    eventFeedback.push({ event: recentEvent, closed: false,
+      items: generateEventFeedback(faker, registrations, recentEvent, config.recentEvent.feedback, false) });
+  }
+  if (pastEvents.length) {
+    eventFeedback.push({ event: pastEvents[0], closed: true,
+      items: generateEventFeedback(faker, registrations, pastEvents[0], config.pastEvents.feedback, true) });
+  }
+
+  return renderSql({ seed, config, members, activeEvent, pastEvents, recentEvent, registrations, feedback, eventFeedback, emailAccounts });
+}
+
+// The retours of one edition: `signedAuthors` members who each sign one to three categories, then
+// `privateAuthors` others who each leave one private item (so a private author is no signed one).
+// Test Member signs on the closed edition and writes nothing on the open one, so the form there is
+// free to try.
+function generateEventFeedback(faker, registrations, event, { signedAuthors, privateAuthors }, includeTestMember) {
+  const registrants = registrations.filter((r) => r.event === event).map((r) => r.userId);
+  const others = faker.helpers.shuffle(registrants.filter((id) => id !== TEST_MEMBER_ID));
+  const testSigns = includeTestMember && signedAuthors > 0;
+  const signedOthers = others.slice(0, signedAuthors - (testSigns ? 1 : 0));
+  const signed = testSigns ? [TEST_MEMBER_ID, ...signedOthers] : signedOthers;
+  const privateOnes = others.slice(signedOthers.length, signedOthers.length + privateAuthors);
+  const items = [];
+  const text = (category) => faker.helpers.arrayElement(FEEDBACK_ITEMS[category]);
+  for (const userId of signed) {
+    for (const category of faker.helpers.arrayElements(OPTION_VALUES.feedbackCategories, { min: 1, max: 3 })) {
+      items.push({ userId, category, private: false, text: text(category) });
+    }
+  }
+  for (const userId of privateOnes) {
+    const category = faker.helpers.arrayElement(OPTION_VALUES.feedbackCategories);
+    items.push({ userId, category, private: true, text: text(category) });
+  }
+  return items;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Rendering
 
-function renderSql({ seed, config, members, activeEvent, pastEvents, registrations, feedback, emailAccounts }) {
+function renderSql({ seed, config, members, activeEvent, pastEvents, recentEvent, registrations, feedback, eventFeedback, emailAccounts }) {
   const out = [];
   out.push(`-- GENERATED by scripts/preview-seed/generate.mjs (seed ${seed}) from supabase/preview-seed.json.
 -- Fake demo data, never for production. Do not edit: change the config and regenerate.
@@ -366,7 +484,7 @@ WHERE u.id IN (${members.map((m) => `${lit(m.id)}`).join(', ')});
   }
 
   // Past events first: only_one_active_event allows any number of inactive ones.
-  const events = [...pastEvents, activeEvent];
+  const events = [...pastEvents, ...(recentEvent ? [recentEvent] : []), activeEvent];
   // One venue per address, named after its town; archived unless the active event is there.
   const venues = [...new Set(events.map((e) => e.venue))].map((address) => ({
     address,
@@ -379,19 +497,19 @@ WHERE u.id IN (${members.map((m) => `${lit(m.id)}`).join(', ')});
 INSERT INTO public.venues (name, address, lat, lng, archived_at) VALUES
 ${venues.map((v) => `  (${lit(v.name)}, ${lit(v.address)}, ${v.coordinates.join(', ')}, ${v.archived ? 'now()' : 'NULL'})`).join(',\n')};
 `);
-  out.push(`-- Events: ${pastEvents.length} archived + 1 active (registration open, event in ${ACTIVE_EVENT_START_DAYS} days)
+  out.push(`-- Events: ${pastEvents.length} archived${recentEvent ? ' + 1 just ended (retour window open)' : ''} + 1 active (registration open, event in ${ACTIVE_EVENT_START_DAYS} days)
 INSERT INTO public.events (
   id, theme, description, venue_id, duration_days, points_of_contact,
   z_intent_months, x_reg_close_weeks, reg_start_date, event_start_date,
   status, is_active, is_reg_open, selling_price_whole_event, max_attendees,
-  external_links, instructions, created_at
+  external_links, instructions, created_at, feedback_member_visible
 ) VALUES
 ${events.map((e) => `  (${lit(e.id)}, ${lit(e.theme)}, ${lit(e.description)}, (SELECT id FROM public.venues WHERE address = ${lit(e.venue)}), 3,
    'Inscriptions (Simon), Bénévolat (Dave), Nourriture (Melina), Stationnement (Khaled), Premiers soins (Mach)',
    2, ${REG_CLOSE_WEEKS}, ${eventAtExpr(e.regStartDays, '12:00')}, ${eventAtExpr(e.startDays, '18:00')},
-   ${lit(e.active ? 'ACTIVE' : 'ARCHIVED')}, ${e.active}, ${e.active}, ${e.sellingPrice}, ${e.maxAttendees},
+   ${lit(e.status)}, ${e.active}, ${e.active}, ${e.sellingPrice}, ${e.maxAttendees},
    ${jsonb([{ label: 'Liste d\'achats', url: 'https://example.com/bedaine/liste-achats' }])}, ${lit(e.instructions)},
-   now() + make_interval(days => ${e.regStartDays - 16}))`).join(',\n')};
+   now() + make_interval(days => ${e.regStartDays - 16}), ${!e.active})`).join(',\n')};
 
 -- Budgets (total_cost is computed by the event_budgets trigger)
 INSERT INTO public.event_budgets (event_id, lines) VALUES
@@ -508,6 +626,10 @@ SELECT private.freeze_event_layout(id) FROM public.events WHERE status = 'ARCHIV
     out.push('');
   }
 
+  for (const { event, closed, items } of eventFeedback) {
+    if (items.length) out.push(renderEventFeedback(event, closed, items));
+  }
+
   if (registrations.length) {
     out.push(renderEmailLog(activeEvent, registrations, emailAccounts));
   }
@@ -548,6 +670,59 @@ CREATE TRIGGER preview_new_accounts_are_admins
 `);
 
   return out.join('\n');
+}
+
+// The retours of one edition (#357). Open: each author saves through submit_event_feedback(), the
+// app's own write path, as that member (so the release rule runs as it does for real). Closed:
+// written as they are after the levée, and the close marker set last (the tables refuse a write
+// once it is set): signed items with their author link, private items with none, in random
+// order, and the release marker when 3 different members wrote one.
+function renderEventFeedback(event, closed, items) {
+  const out = [`-- Retours on ${event.theme} (${closed ? 'closed: signed items with their author, private items without' : 'window open: saved by each member'})`];
+  if (!closed) {
+    const byAuthor = new Map();
+    for (const item of items) byAuthor.set(item.userId, [...(byAuthor.get(item.userId) ?? []), { category: item.category, private: item.private, text: item.text }]);
+    for (const [userId, authorItems] of byAuthor) {
+      out.push(`SELECT set_config('request.jwt.claims', ${lit(JSON.stringify({ sub: userId, role: 'authenticated' }))}, false);`);
+      out.push(`SELECT FROM public.submit_event_feedback(${lit(event.id)}, ${jsonb(authorItems)});`);
+    }
+    out.push(`SELECT set_config('request.jwt.claims', '', false);`);
+    return out.join('\n') + '\n';
+  }
+  const signed = items.filter((i) => !i.private);
+  const privateItems = items.filter((i) => i.private);
+  // An archived edition was closed by the first update of its row (the levée, on nothing): open it
+  // again, without triggers, to write what the levée would have left.
+  out.push(`ALTER TABLE public.events DISABLE TRIGGER USER;
+UPDATE public.events SET feedback_closed_at = NULL WHERE id = ${lit(event.id)};
+ALTER TABLE public.events ENABLE TRIGGER USER;
+CREATE TEMP TABLE seed_signed_items AS
+SELECT gen_random_uuid() AS id, v.user_id, v.category, v.body
+FROM (VALUES
+${signed.map((i) => `  (${lit(i.userId)}::uuid, ${lit(i.category)}, ${lit(i.text)})`).join(',\n')}
+) AS v(user_id, category, body);
+INSERT INTO public.event_feedback_items (id, event_id, category, body, is_private)
+SELECT id, ${lit(event.id)}, category, body, false FROM seed_signed_items;
+INSERT INTO public.event_feedback_item_authors (item_id, event_id, category, is_private, author_id, party_id)
+SELECT s.id, ${lit(event.id)}, s.category, false, s.user_id, p.id
+FROM seed_signed_items s
+JOIN public.user_parties p ON p.user_id = s.user_id AND p.event_id = ${lit(event.id)};
+DROP TABLE seed_signed_items;`);
+  if (privateItems.length) {
+    out.push(`INSERT INTO public.event_feedback_items (event_id, category, body, is_private)
+SELECT ${lit(event.id)}, v.category, v.body, true
+FROM (VALUES
+${privateItems.map((i) => `  (${lit(i.category)}, ${lit(i.text)})`).join(',\n')}
+) AS v(category, body)
+ORDER BY random();`);
+    if (new Set(privateItems.map((i) => i.userId)).size >= 3) {
+      out.push(`INSERT INTO private.event_feedback_releases (event_id) VALUES (${lit(event.id)});`);
+    }
+  }
+  out.push(`ALTER TABLE public.events DISABLE TRIGGER USER;
+UPDATE public.events e SET feedback_closed_at = (private.event_feedback_dates(e)).closes_at WHERE e.id = ${lit(event.id)};
+ALTER TABLE public.events ENABLE TRIGGER USER;`);
+  return out.join('\n') + '\n';
 }
 
 // The email history each party would have after send-party-email's dueTemplates()
