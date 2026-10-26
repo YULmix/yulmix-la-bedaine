@@ -294,8 +294,12 @@ sequenceDiagram
 - **The save sets the member's whole set.** `submit_event_feedback(event, items)` with
   `items = [{ category, private, text }]` (`private` false when missing: **signed by default**).
   A pair left out is deleted, its link with it; a kept pair keeps its item id (its text is
-  updated); a blank text is no item; at least one item is required (`event_feedback_empty`); a
-  duplicate pair is refused (`event_feedback_duplicate {category, private}`). Same doors, order of
+  updated); a blank text is no item; a duplicate pair is refused
+  (`event_feedback_duplicate {category, private}`). **An empty set deletes all the member's
+  items** (with none stored, it changes nothing): private items are deletable until the close, so
+  a member whose only item is private can remove it. The old `event_feedback_empty` refusal is
+  gone. The set is replaced whole, so a client must always send the member's full current set: a
+  stale second tab that saves a partial set deletes what the other tab added. Same doors, order of
   checks and advisory locks as before. Members edit or delete their items, signed or private,
   until the close, after the release too. ADR 0024 exception, widened: a member's save deletes the
   items they leave out.

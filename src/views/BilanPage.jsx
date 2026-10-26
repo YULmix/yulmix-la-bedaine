@@ -107,7 +107,8 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
     setJustSaved(false);
-    // The database refuses it too (event_feedback_empty); this saves the round trip.
+    // The one-answer form refuses an empty retour itself. The database accepts an empty set and
+    // deletes all the member's items (#354); the item form (#355) uses that for « Supprimer ».
     if (!hasAnyAnswer(answers)) {
       setError(fr.dbErrorEventFeedbackEmpty);
       return;
