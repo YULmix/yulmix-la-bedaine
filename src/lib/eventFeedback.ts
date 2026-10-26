@@ -224,6 +224,8 @@ export type FeedbackState = 'not_yet' | 'open' | 'closed';
 
 export interface FeedbackWindow {
   state: FeedbackState;
+  /** The first Toronto day one may answer (the event's first day), as a local-midnight Date; null without a start date or a valid offset. */
+  opensOn: Date | null;
   /** The last Toronto day one may answer, as a local-midnight Date; null without a start date or a valid offset. */
   closesOn: Date | null;
   /** The instant the feedback closes by date: the start of the next Toronto day. */
@@ -272,9 +274,11 @@ export const getFeedbackWindow = (event: FeedbackEvent | null | undefined, now: 
   let closesOn = null;
   let closesAt = null;
   let opensAt = null;
+  let opensOn = null;
   if (start && days != null && days >= 1) {
     // Opens on the first day; closes at the end of "last day + feedback_days" (the day after the last day is day 0).
     opensAt = midnight(start);
+    opensOn = localDay(start);
     const afterLast = plusDays(start, duration);
     closesOn = localDay(plusDays(afterLast, days - 1));
     closesAt = midnight(plusDays(afterLast, days));
@@ -285,7 +289,7 @@ export const getFeedbackWindow = (event: FeedbackEvent | null | undefined, now: 
     if (closesAt.getTime() <= now.getTime()) state = 'closed';
     else if (opensAt.getTime() <= now.getTime()) state = 'open';
   }
-  return { state, closesOn, closesAt, closedOn: closedOn ? localDay(closedOn) : null };
+  return { state, opensOn, closesOn, closesAt, closedOn: closedOn ? localDay(closedOn) : null };
 };
 
 /** True when saving `after` closes the feedback for good while `before` still has it not closed. */

@@ -3,9 +3,7 @@ import { NotebookPen } from 'lucide-react';
 import fr from '../../../locales/fr.json';
 import { supabase } from '../../../lib/supabase';
 import { refreshEvents, useEvents } from '../../../lib/events';
-import { formatDate } from '../../../lib/format';
-import { eventDay } from '../../../lib/eventTime';
-import { fetchEventFeedbackAnswers, fetchEventFeedbackCounts } from '../../../lib/eventFeedbackAdmin';
+import { bilanStatus, fetchEventFeedbackAnswers, fetchEventFeedbackCounts } from '../../../lib/eventFeedbackAdmin';
 import { Button, EmptyState, Field, Notice, Select, Skeleton } from '../../ui';
 import BilanAnswers from '../BilanAnswers';
 import BilanDashboard from '../BilanDashboard';
@@ -70,9 +68,7 @@ const BilanSection = () => {
   const result = shown?.result;
   const closed = !!result?.closed;
   const closesOn = result?.closes_on ?? shown?.counts?.closes_on;
-  const status = closed
-    ? fr.adminBilanCountsClosedOn.replace('{date}', formatDate(eventDay(result.closed_at)))
-    : closesOn ? fr.adminBilanCountsOpenUntil.replace('{date}', formatDate(closesOn)) : fr.adminBilanCountsOpen;
+  const status = bilanStatus({ closed, closedAt: result?.closed_at, closesOn, event: events.find(e => e.id === eventId) });
 
   return (
     <div className="space-y-6">

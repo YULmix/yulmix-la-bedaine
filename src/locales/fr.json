@@ -1119,6 +1119,7 @@
   "adminBilanNoEvents": "Aucune édition pour l'instant.",
   "adminBilanLoadError": "Impossible de charger les réponses du bilan.",
   "adminBilanCountsTitle": "Réponses reçues",
+  "adminBilanCountsOpensOn": "S'ouvre le {date}",
   "adminBilanCountsOpenUntil": "Ouvert jusqu'au {date}",
   "adminBilanCountsOpen": "Ouvert",
   "adminBilanCountsClosedOn": "Clos le {date}",

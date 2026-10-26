@@ -286,6 +286,19 @@ test('admin, before and after the close: signed comments live, private ones from
   await shoot(page, 'bilan-closed-admin');
 });
 
+test('admin, before the event\'s first day: the tag says when the retours open, not « Ouvert jusqu\'au »', async ({ page }) => {
+  // Starts in 3 days (Toronto), so the window opens then.
+  const event = await seedEvent({ startDaysAgo: -3 });
+  await loginAs(page, TEST_USERS.admin);
+  const payload = await openBilan(page, event.eventId);
+  const opensOn = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsOpensOn.replace('{date}', frenchDate(opensOn)));
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsOpenUntil.split('{date}')[0]);
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsClosedOn.split('{date}')[0]);
+  expect(payload.counts.closed).toBe(false);
+  await shoot(page, 'bilan-not-yet-admin');
+});
+
 test('admin, closed without a release: the private comments stay hidden for good, « moins de 3 »', async ({ page }) => {
   const event = await seedEvent();
   const [a, b] = await registered(event.eventId, ['Annie Lavoie', 'Bruno Côté']);
