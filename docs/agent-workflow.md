@@ -161,6 +161,10 @@ Needs review (any of): a migration; an RLS policy; a `SECURITY DEFINER` function
 constraint; pricing or payment; auth or roles; concurrency. Not reviewed, whatever the size: UI,
 copy, docs, tests, refactors without schema.
 
+**Low-risk migration**: one that only drops objects nothing calls any more (no new or changed
+function, policy, trigger, constraint or column). It is still reviewed, but the developer runs the full
+verification straight away, while the review runs; a rework round reruns only what its change touches.
+
 Reviewer checklist, in priority order:
 1. **Enforcement lives in Postgres.** RLS: can a member read or write another member's rows? Does an
    admin-only path work for a non-admin? Edition roles (Comité, Organisateur, [ADR 0023](./adr/0023-edition-roles.md),
@@ -260,11 +264,19 @@ stay as installed.
   branch Preview matches, and don't push a second one until the organiser says the first is tested.
   No migration in the PR → skip.
 - **Never merge**, even with `land.sh` available: merging applies migrations to production.
+- **Keep optional cleanups out of urgent fixes.** Dropping a now-unused function, column or file is
+  its own issue, filed after the fix ships: in the fix it turns a UI change into a reviewed migration
+  with the full database verification (#308).
 
 ### Developer
 
 - A `review: yes` round still runs the cheap checks and the specs it added or changed under the
-  lock before reporting; the full verification (whole e2e suite, `test:rls`) comes after review.
+  lock before reporting; the full verification (whole e2e suite, `test:rls`) comes after review,
+  except for a low-risk migration (see "Review"), which runs it in parallel with the review.
+- **Waiting on a long command** (the e2e suite, `test:rls`, `db:local:demo`): run it with the Bash
+  tool's `run_in_background` and wait for its completion notice. Never poll with `pgrep -f <text>` (it
+  matches the polling shell itself, whose command line holds the same text, and never ends) or an
+  `until` loop on a log file. Lost #308 about 13 minutes.
 
 ### Code reviewer
 
