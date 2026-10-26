@@ -298,6 +298,9 @@ stay as installed.
   tool's `run_in_background` and wait for its completion notice. Never poll with `pgrep -f <text>` (it
   matches the polling shell itself, whose command line holds the same text, and never ends) or an
   `until` loop on a log file. Lost #308 about 13 minutes.
+- **Screenshots go to a fresh directory** (`<worktree root>/screenshots/<N>-$(date +%s)/`); never
+  `rm` a glob outside your worktree (`rm -f ../screenshots/<N>/*`). Claude Code flags it as a dangerous
+  rm, holds a permission prompt for two minutes, then denies it: #343 stalled three times on it.
 
 ### Code reviewer
 
