@@ -5,12 +5,12 @@ import type { ErrorLike } from './dbErrors';
 import type { Database } from './database.types';
 import { FEEDBACK_CATEGORIES } from './eventFeedback';
 import type { FeedbackCategory } from './eventFeedback';
-import { REGISTRATION_STATUS } from './registrationOptions';
 
 // The admin « Bilan » section (#317): an event's post-mortem answers, over the database's
-// event_feedback_answers() (#315, ADR 0029). The database decides everything: admins only, nothing
-// before the close (no answer, no count), the anonymous answers only when there are 3 or more,
-// texts only, in random order. This module only groups what it returns by category.
+// event_feedback_answers() (#315, ADR 0029) and event_feedback_counts() (#345). The database
+// decides everything: admins only, no answer before the close (counts only), the anonymous answers
+// only when there are 3 or more, texts only, in random order. This module only groups what it
+// returns by category and shapes the counts.
 //
 // Privacy (ADR 0029, zero ways to link an anonymous answer to its author): an anonymous answer
 // is kept as its texts only, in the order the database returned them (never re-sorted), with no
@@ -74,12 +74,6 @@ export const groupByCategory = (result: EventFeedbackAnswers | null | undefined)
   }));
 };
 
-/** The counts the section shows after the close: named answers, and the anonymous ones (0 when not shown). */
-export const answerCounts = (result: EventFeedbackAnswers | null | undefined): { named: number; anonymous: number } => ({
-  named: result?.closed ? (result.named ?? []).length : 0,
-  anonymous: result?.closed ? (result.anonymous ?? []).length : 0
-});
-
 // Logs the error's code and detail only.
 const failure = (context: string, error: unknown, fallback: string): Error => {
   const { message, code, details, hint } = (error ?? {}) as ErrorLike & { code?: string; hint?: string };
@@ -139,15 +133,19 @@ export const fetchEventFeedbackCounts = async (client: Client, eventId: string):
 };
 
 /**
- * The event's registrations that may answer: neither cancelled nor waitlisted (#315's eligibility).
- * A count only, read after the close.
+ * The counts the section shows after the close, consistent with the answers shown: signed is the
+ * named answers listed, anonymous the anonymous ones listed (null when the database shows none,
+ * that is fewer than 3: « moins de 3 »), total their sum. `eligible` and the close come from
+ * event_feedback_counts(). Before the close, the counts as they are.
  */
-export const fetchEligibleRegistrationCount = async (client: Client, eventId: string): Promise<number> => {
-  const { count, error } = await client.from('user_parties')
-    .select('id', { count: 'exact', head: true })
-    .eq('event_id', eventId)
-    .neq('status', REGISTRATION_STATUS.CANCELLED)
-    .not('is_waitlisted', 'is', true);
-  if (error) throw failure('Error counting the registrations', error, fr.adminBilanLoadError);
-  return count ?? 0;
+export const shownCounts = (counts: EventFeedbackCounts, answers: EventFeedbackAnswers | null | undefined): EventFeedbackCounts => {
+  if (!counts.closed || !answers?.closed) return counts;
+  const signed = (answers.named ?? []).length;
+  const listed = (answers.anonymous ?? []).length;
+  const anonymous = listed > 0 ? listed : null;
+  return { ...counts, signed, anonymous, total: anonymous === null ? null : signed + anonymous };
 };
+
+/** The response rate shown, in whole percent of the eligible registrations (0 to 100): all answers once their total is shown, else the signed ones only. */
+export const responseRate = ({ eligible, signed, total }: EventFeedbackCounts): number =>
+  eligible > 0 ? Math.min(100, Math.max(0, Math.round(((total ?? signed) / eligible) * 100))) : 0;

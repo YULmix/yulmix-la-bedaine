@@ -72,6 +72,9 @@ flowchart TD
   Résumé was first planned narrow, as a summary. Reviewing #208 (October 2026) showed that its
   cards side by side cramp the figures in `3xl` and leave the rest of a wide screen empty, so
   it's dense.
+
+  *Amended by #346 (October 2026): « Bilan » is dense, but narrow before its close.* See the
+  amendment below.
 - **One container.** From `md` up, the sidebar and the page share one centred container
   (`max-w-screen-2xl`), and the app header uses the same width on admin pages, so the logo
   lines up with the sidebar and the account menu with the page's right edge. The sidebar stays
@@ -95,3 +98,20 @@ flowchart TD
   width it has, and which switcher reaches it.
 - `.ulpi/design/redesign.md` §2 describes the information architecture this replaces, and
   points here.
+
+## Amendment (#346): « Bilan » is dense, but narrow before the close
+
+« Bilan » was narrow: free texts to read. Its approved redesign (#346, the organiser, 2026-10-26)
+shows the answers after the close as one tinted card per category in a grid of up to three columns,
+because one narrow column of eight cards wasted most of a wide screen and made a long scroll. So:
+
+- the registry declares Bilan **dense**;
+- **before the close** the section narrows itself to `max-w-3xl` (it holds only the counts and the
+  close date, a narrow page's content);
+- **after the close** the answers take the page's full width: one column, two from a `3xl`
+  container, three from `6xl` (container queries, like a dashboard here), read left to right then
+  down, the cards of a row stretched to the same height. The counts above them stay `max-w-3xl`.
+
+The section is the one place where the width depends on the data. It is not a third width: the
+shell still applies one of the two, and the section narrows its own content within it.
+
