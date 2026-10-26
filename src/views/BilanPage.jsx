@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, EyeOff, LockKeyhole, MessageSquareText, RotateCw, UserX } from 'lucide-react';
 import PosterHeader from '../components/brand/PosterHeader';
-import { Button, Card, ChipGroup, EmptyState, Field, Notice, Skeleton, Textarea } from '../components/ui';
+import FeedbackCategoryCard from '../components/FeedbackCategoryCard';
+import { Button, Card, ChipGroup, EmptyState, Notice, Skeleton, Textarea } from '../components/ui';
 import fr from '../locales/fr.json';
 import { supabase } from '../lib/supabase';
 import { formatDate } from '../lib/format';
 import {
   FEEDBACK_CATEGORIES,
   answersFrom,
-  categoryLabel,
   feedbackPageState,
   fetchMyEventFeedback,
   hasAnyAnswer,
@@ -55,16 +55,38 @@ const WhoSees = ({ closesOn }) => (
   </div>
 );
 
+// The member's own signed answer after the close: the categories answered, as the same cards as the
+// form's (#352), read-only.
 const ReadOnlyAnswer = ({ answer }) => (
-  <dl className="space-y-4">
+  <div className="space-y-4">
     {FEEDBACK_CATEGORIES.filter(category => answer.answers?.[category]).map(category => (
-      <div key={category}>
-        <dt className="text-sm font-semibold text-muted">{categoryLabel(category)}</dt>
-        <dd className="mt-1 whitespace-pre-line text-ink [overflow-wrap:anywhere]">{answer.answers[category]}</dd>
-      </div>
+      <FeedbackCategoryCard key={category} category={category} titleId={`bilan-answer-${category}`} titleAs="h3">
+        <div className="p-3 sm:p-4">
+          <p className="rounded-control bg-raised px-4 py-3 whitespace-pre-line text-ink [overflow-wrap:anywhere]">{answer.answers[category]}</p>
+        </div>
+      </FeedbackCategoryCard>
     ))}
-  </dl>
+  </div>
 );
+
+// One category of the form: its card, the title being the textarea's label (#352).
+const CategoryField = ({ category, value, onChange }) => {
+  const id = useId();
+  return (
+    <FeedbackCategoryCard category={category} titleAs="label" titleProps={{ htmlFor: id }} region={false}>
+      <div className="p-3 sm:p-4">
+        <Textarea
+          id={id}
+          rows={3}
+          maxLength={MAX_LENGTH}
+          value={value}
+          onChange={changeEvent => onChange(changeEvent.target.value)}
+          className="min-h-24"
+        />
+      </div>
+    </FeedbackCategoryCard>
+  );
+};
 
 const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   const saved = feedback.answer;
@@ -107,21 +129,9 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
-      <div className="space-y-5">
+      <div className="space-y-4">
         {FEEDBACK_CATEGORIES.map(category => (
-          <Field key={category} label={categoryLabel(category)}>
-            {({ id, describedBy }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                rows={3}
-                maxLength={MAX_LENGTH}
-                value={answers[category]}
-                onChange={changeEvent => setAnswer(category, changeEvent.target.value)}
-                className="min-h-24"
-              />
-            )}
-          </Field>
+          <CategoryField key={category} category={category} value={answers[category]} onChange={text => setAnswer(category, text)} />
         ))}
       </div>
 

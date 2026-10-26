@@ -1,12 +1,13 @@
-import { BedDouble, Clock, HeartHandshake, Megaphone, MessageSquare, Music, NotebookPen, ShieldCheck, Utensils } from 'lucide-react';
+import { NotebookPen } from 'lucide-react';
 import fr from '../../locales/fr.json';
-import { categoryLabel } from '../../lib/eventFeedback';
 import { groupByCategory } from '../../lib/eventFeedbackAdmin';
-import { Card, EmptyState, Tag, cx } from '../ui';
+import { EmptyState, Tag, cx } from '../ui';
+import FeedbackCategoryCard from '../FeedbackCategoryCard';
 
 // The « Bilan » section's answers after the close (#317, restyled by #346): the eight categories,
 // each a card with a tinted header (icon, title, count), its named answers (author and text) and
-// its anonymous ones (« Anonyme » and text). `result` is event_feedback_answers()'s (ADR 0029).
+// its anonymous ones (« Anonyme » and text). The card itself is FeedbackCategoryCard, shared with
+// the member's retour page (#352). `result` is event_feedback_answers()'s (ADR 0029).
 // The counts above them are BilanDashboard's.
 //
 // Layout (#346, approved): a grid that reads left to right, then down: one column, two from a
@@ -18,39 +19,15 @@ import { Card, EmptyState, Tag, cx } from '../ui';
 // key is their index in that random order within the category, which says nothing about who
 // wrote them or when.
 
-const ICONS = {
-  welcome: HeartHandshake,
-  party_music: Music,
-  safety: ShieldCheck,
-  lodging: BedDouble,
-  food: Utensils,
-  communications: Megaphone,
-  schedule: Clock,
-  other: MessageSquare
-};
-
-// The categories' colours, cycling in display order.
-const TONES = [
-  { head: 'tint-neon', chip: 'bg-neon text-night', text: 'text-neon' },
-  { head: 'tint-info', chip: 'bg-info text-night', text: 'text-info' },
-  { head: 'tint-ok', chip: 'bg-ok text-night', text: 'text-ok' },
-  { head: 'tint-warn', chip: 'bg-warn text-night', text: 'text-warn' }
-];
-
-const CategoryCard = ({ group, tone }) => {
-  const titleId = `bilan-category-${group.category}`;
+const CategoryCard = ({ group }) => {
   const count = group.named.length + group.anonymous.length;
-  const Icon = ICONS[group.category] ?? MessageSquare;
   return (
-    <Card className="flex flex-col overflow-hidden" aria-labelledby={titleId}>
-      <div className={cx('flex items-center gap-3 border-b border-line px-5 py-3.5', tone.head)}>
-        <span className={cx('grid size-9 shrink-0 place-items-center rounded-control', tone.chip)}>
-          <Icon aria-hidden="true" className="size-5" strokeWidth={2} />
-        </span>
-        <h2 id={titleId} className="min-w-0 flex-1 text-lg font-semibold text-ink">{categoryLabel(group.category)}</h2>
-        <span className={cx('font-data text-sm font-medium', tone.text)}>{count}</span>
-      </div>
-      {count === 0 ? (
+    <FeedbackCategoryCard
+      category={group.category}
+      titleId={`bilan-category-${group.category}`}
+      aside={tone => <span className={cx('font-data text-sm font-medium', tone.text)}>{count}</span>}
+    >
+      {tone => (count === 0 ? (
         <p className="p-5 text-sm text-faint">{fr.adminBilanCategoryEmpty}</p>
       ) : (
         <ul className="space-y-2.5 p-3 sm:p-4">
@@ -67,8 +44,8 @@ const CategoryCard = ({ group, tone }) => {
             </li>
           ))}
         </ul>
-      )}
-    </Card>
+      ))}
+    </FeedbackCategoryCard>
   );
 };
 
@@ -79,7 +56,7 @@ const BilanAnswers = ({ result }) => {
   return (
     <div className="@container">
       <div className="grid gap-4 @3xl:grid-cols-2 @6xl:grid-cols-3">
-        {groups.map((group, index) => <CategoryCard key={group.category} group={group} tone={TONES[index % TONES.length]} />)}
+        {groups.map(group => <CategoryCard key={group.category} group={group} />)}
       </div>
     </div>
   );

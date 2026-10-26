@@ -242,6 +242,10 @@ test('admin, after the close: named answers with their author, anonymous ones as
   // Every category, in order.
   await expect(adminMain(page).locator('h2[id^="bilan-category-"]'))
     .toHaveText(['welcome', 'party_music', 'safety', 'lodging', 'food', 'communications', 'schedule', 'other'].map(categoryName));
+  // Their colours cycle in that order, the same as on the member's retour form (#352).
+  const tints = await adminMain(page).locator('h2[id^="bilan-category-"]')
+    .evaluateAll(titles => titles.map(title => title.parentElement.className.match(/\btint-\w+/)?.[0]));
+  expect(tints).toEqual(['tint-neon', 'tint-info', 'tint-ok', 'tint-warn', 'tint-neon', 'tint-info', 'tint-ok', 'tint-warn']);
 
   // Accueil: the named answer with its author, then the three anonymous ones, in the payload's order.
   const welcome = category(page, fr.bilanCategoryWelcome);
