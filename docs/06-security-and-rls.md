@@ -127,7 +127,8 @@ Notes on specific choices:
   and event), so the UPDATE policy lets a member act on their own cancelled row. After the
   registration close date, the close-date trigger refuses a member's cancellation. From the
   event's start, the member can change nothing at all on the registration, not even register again
-  (#314); admins, an Organisateur's payment and logistics writes and the service role pass.
+  (#314); admins, an Organisateur's payment and logistics writes, the first-price cascade of
+  `apply_event_pricing()` and the service role pass.
 - **`is_admin` is protected by triggers, not by column privileges.** `authenticated` holds table-level
   `UPDATE` on `profiles`. The old `schema.sql` had a `REVOKE UPDATE (is_admin)`, but a column-level
   revoke can't narrow a table-level grant, so it did nothing. The real guards are

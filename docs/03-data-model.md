@@ -622,6 +622,11 @@ Who still writes after the start:
   on the party's event and mark the party in `bedaine.organiser_party`
   ([ADR 0023](./adr/0023-edition-roles.md)); the trigger lets that party through, like
   `protect_admin_only_party_fields()` does;
+- the first-price cascade: when `apply_event_pricing()` (Organisateur and above) gives an event its
+  first price, `trg_lock_unpriced_registrations_on_first_price` updates that event's unpriced
+  parties, and `lock_unpriced_registrations_on_first_price()` marks the event in
+  `bedaine.pricing_event` around that update, which the trigger lets through. It only runs from an
+  update of `events`, which members can't do;
 - the service role, migrations and direct database sessions (`seed.sql`, the demo seed), whose JWT
   role isn't `authenticated`/`anon`.
 
@@ -722,9 +727,11 @@ transaction:
 
 1. It refuses, changing nothing, if the member has an active registration (`registered` or
    `pending`) for an event that isn't over and whose [registration close date](#registration-close-date)
-   has passed. The amount owed stays owed. It also refuses for the root admin. Refusals are
-   raised as codes, not French text: `account_deletion_locked` (with `details` =
-   `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
+   has passed, or that has [started](#registration-frozen-from-the-start) (#314), whatever its close
+   date: a close date on the start day itself (`x_reg_close_weeks` 0) or none (null) would
+   otherwise let the cancellation reach the freeze. The amount owed stays owed. It also refuses for
+   the root admin. Refusals are raised as codes, not French text: `account_deletion_locked` (with
+   `details` = `{"event", "close_date"}`, the close date, or the start day when there is none), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
    maps them to `fr.json` through `src/lib/dbErrors.ts`.
 2. It cancels the member's active registrations for events still to come, meaning not archived
    and not over (the start's Toronto day + `duration_days`). This is the same soft status change as a

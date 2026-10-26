@@ -22,11 +22,23 @@
 --     caller on the party's event and mark the party in bedaine.organiser_party (ADR 0023) for
 --     protect_admin_only_party_fields(); the same mark lets them through here. A client can't set
 --     it (PostgREST exposes no set_config).
+--   * the first-price cascade: when an event gets its first price (apply_event_pricing(), an
+--     Organisateur and above), trg_lock_unpriced_registrations_on_first_price updates that event's
+--     unpriced parties. lock_unpriced_registrations_on_first_price() (redefined below) marks the
+--     event in bedaine.pricing_event around its UPDATE; the freeze lets that event's parties
+--     through. It only runs from an UPDATE of events, which members can't do (RLS).
 --
 -- Error: registration_frozen, DETAIL {"start_date": <instant>} (ADR 0021).
 --
 -- save_registration() is copied from 20261003222508_soft_delete_attendees.sql (its latest
 -- definition); the only change is the registration_frozen check after attendees_required.
+-- lock_unpriced_registrations_on_first_price() is copied from
+-- 20260928193752_lock_price_per_registration.sql; the only change is the bedaine.pricing_event mark.
+--
+-- delete_my_account() is copied from 20260930044216_event_schedule_timestamptz.sql; the only change
+-- is that it also refuses (account_deletion_locked) from the event's start, since cancelling is no
+-- longer possible then. Without it, an event whose close date is the start day (x_reg_close_weeks
+-- 0) or that has none (null) would reach the cancel UPDATE and fail with registration_frozen.
 
 CREATE FUNCTION private.registration_started(p_event_id uuid)
 RETURNS boolean
@@ -89,6 +101,11 @@ AS $$
 BEGIN
     -- An Organisateur's set_payment_status() / save_logistics() on this party (see above).
     IF TG_OP = 'UPDATE' AND current_setting('bedaine.organiser_party', true) = OLD.id::text THEN
+        RETURN NEW;
+    END IF;
+    -- The first-price cascade on this party's event (see above).
+    IF TG_OP = 'UPDATE' AND current_setting('bedaine.pricing_event', true) = OLD.event_id::text
+       AND NEW.event_id = OLD.event_id THEN
         RETURN NEW;
     END IF;
 
@@ -227,4 +244,86 @@ BEGIN
 
     RETURN v_party;
 END;
-$function$
+$function$;
+
+CREATE OR REPLACE FUNCTION public.lock_unpriced_registrations_on_first_price()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- #314: the freeze from the event's start lets this cascade through (see above).
+    PERFORM set_config('bedaine.pricing_event', NEW.id::text, true);
+    UPDATE public.user_parties
+    SET locked_selling_price_whole_event = NULL
+    WHERE event_id = NEW.id
+      AND locked_selling_price_whole_event IS NULL
+      AND payment_status IS DISTINCT FROM 'paid';
+    PERFORM set_config('bedaine.pricing_event', '', true);
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.delete_my_account()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_today date := private.toronto_day(now());
+    v_locked record;
+BEGIN
+    -- Errors are stable English codes (MESSAGE) with their parameters as JSON (DETAIL); the app
+    -- maps them to French in src/lib/dbErrors.js. No user-facing text lives in the database.
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING MESSAGE = 'not_authenticated';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM public.profiles WHERE id = v_uid AND email = 'yulmixalabedaine@gmail.com') THEN
+        RAISE EXCEPTION USING MESSAGE = 'root_admin_cannot_be_deleted';
+    END IF;
+
+    -- Already deleted: nothing left to do.
+    IF EXISTS (SELECT 1 FROM public.profiles WHERE id = v_uid AND deleted_at IS NOT NULL) THEN
+        RETURN;
+    END IF;
+
+    -- "Still to come": not archived, and not over (start day + duration, in Toronto days). An
+    -- event with no start date has no close date either, so it never locks. #314: from the
+    -- event's start it locks whatever the close date (none, or the start day itself); the date
+    -- shown is then the start day when there is no close date.
+    SELECT e.theme,
+           COALESCE(private.toronto_day(e.event_start_date) - (e.x_reg_close_weeks * 7),
+                    private.toronto_day(e.event_start_date)) AS close_date INTO v_locked
+    FROM public.user_parties up
+    JOIN public.events e ON e.id = up.event_id
+    WHERE up.user_id = v_uid
+      AND up.status IN ('registered', 'pending')
+      AND e.status IS DISTINCT FROM 'ARCHIVED'
+      AND e.event_start_date IS NOT NULL
+      AND private.toronto_day(e.event_start_date) + COALESCE(e.duration_days, 1) > v_today
+      AND (now() >= e.event_start_date
+           OR (e.x_reg_close_weeks IS NOT NULL
+               AND v_today > private.toronto_day(e.event_start_date) - (e.x_reg_close_weeks * 7)))
+    LIMIT 1;
+
+    IF FOUND THEN
+        RAISE EXCEPTION USING
+            MESSAGE = 'account_deletion_locked',
+            DETAIL = json_build_object('event', v_locked.theme, 'close_date', v_locked.close_date)::text;
+    END IF;
+
+    UPDATE public.user_parties up
+    SET status = 'cancelled'
+    FROM public.events e
+    WHERE e.id = up.event_id
+      AND up.user_id = v_uid
+      AND up.status IN ('registered', 'pending')
+      AND e.status IS DISTINCT FROM 'ARCHIVED'
+      AND (e.event_start_date IS NULL OR private.toronto_day(e.event_start_date) + COALESCE(e.duration_days, 1) > v_today);
+
+    UPDATE public.profiles SET deleted_at = now() WHERE id = v_uid;
+END;
+$$;

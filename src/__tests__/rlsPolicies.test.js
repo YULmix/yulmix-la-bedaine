@@ -4377,10 +4377,11 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
 
   // The event starting at `start` (an instant, or null), with no close-date lock of its own
   // before it (x_reg_close_weeks 0), and no registration on it.
-  const setStart = async (start) => {
+  // duration_days 3: an event started an hour ago is never over yet, even right after midnight.
+  const setStart = async (start, closeWeeks = 0) => {
     const { error } = await adminAuthClient.from('events').upsert({
       id: FROZEN_EVENT_ID, theme: 'Frozen Test', status: 'ACTIVE', is_active: false,
-      event_start_date: start, x_reg_close_weeks: 0
+      event_start_date: start, x_reg_close_weeks: closeWeeks, duration_days: 3
     });
     if (error) throw error;
   };
@@ -4415,8 +4416,14 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
     if (error) throw error;
   });
 
+  const createdUserIds = [];
+
   afterAll(async () => {
     await clearParties();
+    for (const id of createdUserIds) {
+      const { error } = await adminClient.auth.admin.deleteUser(id);
+      if (error) throw error;
+    }
     await adminAuthClient.from('edition_roles').delete().eq('event_id', FROZEN_EVENT_ID);
     await adminAuthClient.from('events').update({ status: 'DRAFT' }).eq('id', FROZEN_EVENT_ID);
   });
@@ -4506,6 +4513,52 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
     const row = await partyOf(party.id);
     expect(row.payment_status).toBe('paid');
     expect(row.message_to_participants).toBe('Bienvenue');
+  });
+
+  test("after the start, an Organisateur's first price locks the unpriced parties (apply_event_pricing)", async () => {
+    const party = await registeredThenStarted();
+    const { error: unprice } = await adminAuthClient.from('events')
+      .update({ selling_price_whole_event: null }).eq('id', FROZEN_EVENT_ID);
+    expect(unprice).toBeNull();
+    expect((await partyOf(party.id)).locked_selling_price_whole_event).toBeNull();
+
+    // trg_lock_unpriced_registrations_on_first_price updates the event's unpriced parties: the
+    // freeze lets that cascade through rather than rolling the price back.
+    const { error } = await organiserClient.rpc('apply_event_pricing', {
+      p_event_id: FROZEN_EVENT_ID, p_selling_price_whole_event: 250, p_ratio_main_whole: 0.6
+    });
+    expect(error).toBeNull();
+    const { data: event } = await adminAuthClient.from('events').select('selling_price_whole_event').eq('id', FROZEN_EVENT_ID).single();
+    expect(Number(event.selling_price_whole_event)).toBe(250);
+    expect(Number((await partyOf(party.id)).locked_selling_price_whole_event)).toBe(250);
+
+    // The mark is cleared after the cascade: the member is still frozen in the same session.
+    expectFrozen((await memberClient.from('user_parties').update({ message_to_organizers: 'late' }).eq('id', party.id)).error);
+  });
+
+  test.each([
+    ['on the start day (x_reg_close_weeks 0)', 0],
+    ['with no close date (x_reg_close_weeks null)', null]
+  ])('during the weekend, deleting the account is refused with account_deletion_locked, %s', async (_label, closeWeeks) => {
+    await clearParties();
+    await setStart(hoursFromNow(1), closeWeeks);
+    const email = `del314-${closeWeeks ?? 'null'}-${Date.now()}@test.local`;
+    const { data, error: createError } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (createError) throw createError;
+    createdUserIds.push(data.user.id);
+    const client = await signIn(email);
+    const party = await saveOk(client, FROZEN_EVENT_ID, [adult('Del')]);
+    const start = hoursFromNow(-1);
+    await setStart(start, closeWeeks);
+
+    const { error } = await client.rpc('delete_my_account');
+    expect(error?.message).toBe('account_deletion_locked');
+    // The close date, or the start day when there is none: the start's Toronto day either way.
+    const startDay = new Date(start).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+    expect(JSON.parse(error.details)).toEqual({ event: 'Frozen Test', close_date: startDay });
+    expect((await partyOf(party.id)).status).toBe('registered');
+    const { data: profile } = await adminAuthClient.from('profiles').select('deleted_at').eq('id', data.user.id).single();
+    expect(profile.deleted_at).toBeNull();
   });
 
   test('after the start, direct database sessions (seed.sql, the demo seed) and service-role claims still write', async () => {
