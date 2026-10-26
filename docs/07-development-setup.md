@@ -299,7 +299,8 @@ regardless of whether Supabase was even reachable.
 With the environment issue fixed, `npm run test:rls` fails cleanly on `ECONNREFUSED` in this repo
 today — the honest failure, because no Supabase instance is running here. To make it actually pass:
 
-1. A local Supabase: `supabase start` (or `supabase db reset` for a fresh one with the seeded
+1. A local Supabase: `supabase start` (in a git worktree: `npm run stack:up`, then
+   `npm run stack:cli -- db reset`, see [Per-worktree local stack](#per-worktree-local-stack); or `supabase db reset` for a fresh one with the seeded
    `member@test.local` / `admin@test.local` users). It uses the committed `supabase/config.toml`
    and applies `supabase/migrations/`, so the local schema matches production's.
 2. Nothing to configure: `jest.rls.config.js` reads the URL, anon key and service-role key from
@@ -344,7 +345,9 @@ time (not in `globalSetup` — Playwright starts `webServer` before `globalSetup
 late for Vite to pick up `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) and fails with a clear error
 if Supabase isn't running.
 
-1. A local Supabase: `supabase start`, or `supabase db reset` for a guaranteed-fresh database —
+1. A local Supabase: `supabase start`, or `supabase db reset` for a guaranteed-fresh database (in a
+   git worktree, `npm run stack:up` and `npm run stack:cli -- db reset`, see
+   [Per-worktree local stack](#per-worktree-local-stack)) —
    `supabase start` alone can resume from a cached snapshot that predates a recent migration or
    reseed.
 2. `npx playwright install chromium` once, to download the browser (~300 MB; not part of
@@ -405,7 +408,7 @@ user, then hands the session to the page before the app loads (no second page lo
 `testData.js` admin client signs in once, not once per helper call.
 
 **When the suite fails for reasons that look unrelated, reset the local database first**
-(`supabase db reset`, always safe locally). Interrupted runs leave throwaway members and parties
+(`supabase db reset`, or `npm run stack:cli -- db reset` in a worktree; always safe locally). Interrupted runs leave throwaway members and parties
 behind, and the preview seed (`scripts/preview-seed`) must never be applied locally: its trigger
 makes every new account an admin. `createThrowawayMember()` refuses to go on when it sees that,
 with a message saying to reset.
@@ -770,5 +773,5 @@ a mismatch there is the classic "sign-in loops back to the home page signed out"
   `.claude/`) — these are personal tooling, gitignored, and not part of the project's conventions.
 - **[`docs/agent-workflow.md`](./agent-workflow.md)** — the shared configuration of the organiser's
   agent fleet (installed per developer under `.claude/`, [ADR 0027](./adr/0027-central-agent-fleet-with-project-overrides.md)):
-  how agents verify, review and file work here, the local database lock, and where this project
+  how agents verify, review and file work here, their per-worktree local stacks, and where this project
   overrides the generic agents. Its section headings are read by the agents; keep them stable.
