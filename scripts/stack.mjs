@@ -11,7 +11,7 @@
 // See docs/07-development-setup.md ("Per-worktree local stack"). The main checkout needs none of
 // this: with no stack generated it keeps using the default `supabase start` stack.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { join } from 'node:path';
 import {
@@ -69,7 +69,8 @@ async function up() {
   mkdirSync(join(REPO_ROOT, 'supabase', 'seeds'), { recursive: true });
   for (const name of LINKED) {
     const link = join(supabaseDir, name);
-    rmSync(link, { force: true, recursive: true });
+    // unlink, not rmSync: a link left by a renamed worktree dangles, and rmSync skips those.
+    try { unlinkSync(link); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     symlinkSync(join(REPO_ROOT, 'supabase', name), link);
   }
   const template = readFileSync(join(REPO_ROOT, 'supabase', 'config.toml'), 'utf8');
