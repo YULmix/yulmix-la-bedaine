@@ -62,8 +62,10 @@ flowchart LR
   deletion); none of those writes reaches an answer, and no read gives an anonymous answer's
   author. Anonymity is per answer and the respondent can change it: making a named
   answer anonymous later doesn't erase what an admin already read. With very few answers, the
-  texts themselves (or the count of named versus anonymous ones) may give someone away; the
-  database can't prevent that. The database owner and direct connections (migrations, backups)
+  texts themselves (or the count of named versus anonymous ones) may give someone away; so may
+  polling `event_feedback_answers()`: an anonymous answer that appears or changes between two
+  polls can be matched against other activity at that time (a sign-in, a registration edit),
+  although the result carries no time. The database can't prevent either. The database owner and direct connections (migrations, backups)
   still see everything.
 
 ## Options considered

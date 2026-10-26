@@ -4439,6 +4439,8 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
       // Back ahead of their close date, or the registrations can't go.
       await db.query("update public.events set status = 'ACTIVE', event_start_date = $2 where id = any($1::uuid[])", [EVENT_IDS, startsIn(60)]);
       await db.query('delete from public.user_parties where event_id = any($1::uuid[])', [EVENT_IDS]);
+      // Answers outlive their parties (ADR 0029): only a direct session removes them, for a rerun.
+      await db.query('delete from public.event_feedback where event_id = any($1::uuid[])', [EVENT_IDS]);
       await db.query("update public.events set status = 'DRAFT' where id = any($1::uuid[])", [EVENT_IDS]);
       for (const user of Object.values(users)) await adminClient.auth.admin.deleteUser(user.id);
     } finally {
@@ -4689,6 +4691,60 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     for (const [column, value] of [['event_id', FUTURE], ['author_id', ADMIN_ID], ['party_id', parties.Named]]) {
       await expect(db.query(`update public.event_feedback set ${column} = $1 where author_id = $2`, [value, users.Anonymous.id]))
         .rejects.toThrow('event_feedback_invalid');
+    }
+  });
+
+  // A hard-deleted profile (an Auth user deleted from the dashboard; the app only soft-deletes)
+  // nulls author_id and party_id through their foreign keys: the texts stay, unattributed.
+  test('a hard-deleted account leaves its answers, named and anonymous, with no author', async () => {
+    const tag = `Supprimé ${Date.now()}`;
+    const gone = { Gone1: await createUser('Gone1'), Gone2: await createUser('Gone2') };
+    const goneParties = {};
+    try {
+      for (const [label, user] of Object.entries(gone)) {
+        await db.query('update public.profiles set full_name = $2 where id = $1', [user.id, user.name]);
+        goneParties[label] = (await saveOk(clients.admin, OVER, [person(label)], { userId: user.id })).id;
+      }
+      await ok(submit(await signIn(gone.Gone1.email), OVER, { food: `${tag}: nommé` }, false));
+      await ok(submit(await signIn(gone.Gone2.email), OVER, { food: `${tag}: anonyme` }, true));
+      const ofGone = (list) => list.filter((answer) => answer.answers.food?.startsWith(tag));
+      expect(ofGone(await ok(answersOf(clients.admin, OVER))).find((answer) => !answer.is_anonymous).author)
+        .toMatchObject({ user_id: gone.Gone1.id, party_id: goneParties.Gone1 });
+
+      // A registration past its close date can't be deleted by anyone but an admin
+      // (registration_cancel_locked), Auth's cascade included: move the event ahead for the delete.
+      await db.query('update public.events set event_start_date = $2 where id = $1', [OVER, startsIn(60)]);
+      try {
+        for (const user of Object.values(gone)) {
+          const { error } = await adminClient.auth.admin.deleteUser(user.id);
+          if (error) throw error;
+        }
+      } finally {
+        await db.query('update public.events set event_start_date = $2 where id = $1', [OVER, startsIn(-10)]);
+      }
+      expect((await db.query('select count(*)::int as n from public.profiles where id = any($1::uuid[])',
+        [[gone.Gone1.id, gone.Gone2.id]])).rows[0].n).toBe(0);
+
+      const { rows } = await db.query(
+        'select is_anonymous, author_id, party_id, food from public.event_feedback where starts_with(food, $1) order by is_anonymous', [tag]);
+      expect(rows).toEqual([
+        { is_anonymous: false, author_id: null, party_id: null, food: `${tag}: nommé` },
+        { is_anonymous: true, author_id: null, party_id: null, food: `${tag}: anonyme` }
+      ]);
+
+      const list = ofGone(await ok(answersOf(clients.admin, OVER)));
+      expect(list).toEqual([
+        { is_anonymous: false, answers: expect.objectContaining({ food: `${tag}: nommé` }), author: null,
+          created_at: expect.any(String), updated_at: expect.any(String) },
+        { is_anonymous: true, answers: expect.objectContaining({ food: `${tag}: anonyme` }), author: null,
+          created_at: null, updated_at: null }
+      ]);
+      const text = JSON.stringify(list);
+      for (const secret of Object.values(gone).flatMap((user) => [user.id, user.email, user.name]).concat(Object.values(goneParties))) {
+        expect(text).not.toContain(secret);
+      }
+    } finally {
+      for (const user of Object.values(gone)) await adminClient.auth.admin.deleteUser(user.id);
     }
   });
 });
