@@ -4359,14 +4359,21 @@ describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', ()
   });
 });
 
-describe('📝 post-mortem feedback: one answer per registration, admins read, anonymity holds (#315)', () => {
-  jest.setTimeout(60000);
+// #315, ADR 0029: post-mortem answers. Members write until the close; admins read nothing before
+// it; at the close the levée publishes the answers and erases every link between an anonymous
+// answer and its author.
+describe('📝 post-mortem feedback: true anonymity, nothing before the close, the levée (#315)', () => {
+  jest.setTimeout(90000);
 
-  const OVER = 'a0000000-a000-a000-a000-a00000003151'; // ended 7 days ago: the window is open
+  const OPEN = 'a0000000-a000-a000-a000-a00000003151'; // ended a week ago, closes in 6 days
   const FUTURE = 'a0000000-a000-a000-a000-a00000003152'; // starts in 30 days: not yet
-  const ARCHIVED = 'a0000000-a000-a000-a000-a00000003153'; // ended, then archived: closed
-  const EVENT_IDS = [OVER, FUTURE, ARCHIVED];
+  const ARCHIVED = 'a0000000-a000-a000-a000-a00000003153'; // ended, archived before anyone answered
+  const LAZY = 'a0000000-a000-a000-a000-a00000003154'; // its close date passes with no update: the first call closes it
+  const ARCH2 = 'a0000000-a000-a000-a000-a00000003155'; // archived with 2 anonymous answers
+  const SHORT = 'a0000000-a000-a000-a000-a00000003156'; // an admin shortens feedback_days into the past
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
   const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
   const DB_URL = localDbUrl();
@@ -4382,6 +4389,9 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     expect(result.error?.message).toBe(code);
     if (details) expect(JSON.parse(result.error.details)).toEqual(details);
   };
+  const noAnswers = {
+    welcome: null, party_music: null, safety: null, lodging: null, food: null, communications: null, schedule: null, other: null
+  };
 
   let db;
   const users = {}; // throwaway accounts: { id, email, name }
@@ -4393,8 +4403,33 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     const { data, error } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
     if (error) throw error;
     const name = `Rls315 ${label} Person`;
+    await db.query('update public.profiles set full_name = $2 where id = $1', [data.user.id, name]);
     return { id: data.user.id, email, name };
   };
+  const register = async (label, eventId, userId) => {
+    parties[`${label}:${eventId}`] = (await saveOk(clients.admin, eventId, [person(label)], { userId })).id;
+  };
+  const eventRow = async (eventId) =>
+    (await db.query('select status, feedback_days, feedback_closed_at from public.events where id = $1', [eventId])).rows[0];
+  // The rows as the database owner sees them.
+  const stored = async (eventId) => (await db.query(`
+    select f.id, f.is_anonymous, f.welcome, f.party_music, f.safety, f.lodging, f.food, f.communications, f.schedule, f.other,
+           a.author_id, a.party_id
+    from public.event_feedback f left join public.event_feedback_authors a on a.feedback_id = f.id
+    where f.event_id = $1 order by f.id`, [eventId])).rows;
+  // A statement in a member's session, as PostgREST would run it; rolled back.
+  const asSession = async (claims, sql, params) => {
+    await db.query('begin');
+    try {
+      await db.query('set local role authenticated');
+      await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: 'authenticated', ...claims })]);
+      return (await db.query(sql, params)).rows[0];
+    } finally {
+      await db.query('rollback');
+    }
+  };
+  const voirComme = async (userId, eventId) => (await asSession(
+    { sub: userId, impersonated_by: ADMIN_ID }, 'select public.my_event_feedback($1) as out', [eventId])).out;
 
   beforeAll(async () => {
     expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(DB_URL).hostname);
@@ -4404,43 +4439,49 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     clients.member = await signIn('member@test.local');
     clients.committee = await signIn('committee@test.local');
     clients.organiser = await signIn('organiser@test.local');
-    for (const label of ['Anonymous', 'Named', 'Cancelled', 'Waitlisted', 'Outsider']) {
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer', 'Cancelled', 'Waitlisted', 'Outsider', 'Mover']) {
       users[label] = await createUser(label);
       clients[label] = await signIn(users[label].email);
-      await db.query('update public.profiles set full_name = $2 where id = $1', [users[label].id, users[label].name]);
     }
 
     // Registrations are made while every event is ahead, then the dates move.
     await ok(clients.admin.from('events').upsert(EVENT_IDS.map((id) => ({
       id, theme: `Bilan ${id.slice(-1)}`, status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375,
-      reg_start_date: startsIn(-90), event_start_date: startsIn(60), duration_days: 3
+      reg_start_date: startsIn(-90), event_start_date: startsIn(60), duration_days: 3, feedback_days: 14
     }))));
-    for (const eventId of EVENT_IDS) {
-      parties[`member:${eventId}`] = (await saveOk(clients.admin, eventId, [person('Mo')], { userId: MEMBER_ID })).id;
+    for (const eventId of [OPEN, FUTURE, ARCHIVED]) await register('member', eventId, MEMBER_ID);
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer', 'Cancelled', 'Waitlisted', 'Mover']) {
+      await register(label, OPEN, users[label].id);
     }
-    for (const label of ['Anonymous', 'Named', 'Cancelled', 'Waitlisted']) {
-      parties[label] = (await saveOk(clients.admin, OVER, [person(label)], { userId: users[label].id })).id;
-    }
-    await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties.Cancelled]);
-    await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties.Waitlisted]);
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer']) await register(label, LAZY, users[label].id);
+    for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, ARCH2, users[label].id);
+    await register('Anon1', SHORT, users.Anon1.id);
+    await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
+    await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${OPEN}`]]);
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
-      await ok(clients.admin.rpc('set_edition_role', { p_event_id: OVER, p_user_id: userId, p_role: role }));
+      await ok(clients.admin.rpc('set_edition_role', { p_event_id: OPEN, p_user_id: userId, p_role: role }));
     }
-    // Started 10 days ago for 3 days: its last day was a week ago.
+    // Started 10 days ago for 3 days: the last day was 8 days ago, the window opened 7 days ago
+    // and closes at the end of the day in 6 days (last day + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OVER, ARCHIVED], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
-    await db.query("update public.events set status = 'ARCHIVED' where id = $1", [ARCHIVED]);
+    await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
 
   afterAll(async () => {
     try {
       await clients.admin.from('edition_roles').delete().in('event_id', EVENT_IDS);
-      // Back ahead of their close date, or the registrations can't go.
-      await db.query("update public.events set status = 'ACTIVE', event_start_date = $2 where id = any($1::uuid[])", [EVENT_IDS, startsIn(60)]);
-      await db.query('delete from public.user_parties where event_id = any($1::uuid[])', [EVENT_IDS]);
       // Answers outlive their parties (ADR 0029): only a direct session removes them, for a rerun.
       await db.query('delete from public.event_feedback where event_id = any($1::uuid[])', [EVENT_IDS]);
+      // The close is final for everyone, the owner included: only with the triggers off can the
+      // marker go. Back ahead of their close date too, or the registrations can't go.
+      await db.query('begin');
+      await db.query('set local session_replication_role = replica');
+      await db.query(`update public.events set status = 'ACTIVE', feedback_closed_at = null, feedback_days = 14,
+        reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])`, [EVENT_IDS, startsIn(-90), startsIn(60)]);
+      await db.query('commit');
+      await db.query('delete from public.user_parties where event_id = any($1::uuid[])', [EVENT_IDS]);
       await db.query("update public.events set status = 'DRAFT' where id = any($1::uuid[])", [EVENT_IDS]);
       for (const user of Object.values(users)) await adminClient.auth.admin.deleteUser(user.id);
     } finally {
@@ -4448,54 +4489,65 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     }
   });
 
-  test('a member creates, then edits, their one answer while the window is open', async () => {
-    expect(await ok(mine(clients.member, OVER))).toEqual({
-      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), answer: null, answer_hidden: false
+  test('a member creates, edits and switches named ↔ anonymous their one answer while the window is open', async () => {
+    const seen = await ok(mine(clients.member, OPEN));
+    expect(seen).toEqual({
+      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), closes_on: isoDay(6),
+      closes_at: expect.any(String), closed_at: null, answer: null, answer_hidden: false
+    });
+    // The close is the end of the Toronto day "last day + feedback_days".
+    const { rows: [{ at_midnight }] } = await db.query(
+      "select $1::timestamptz = ($2::date::timestamp at time zone 'America/Toronto') as at_midnight", [seen.closes_at, isoDay(7)]);
+    expect(at_midnight).toBe(true);
+
+    const first = await ok(submit(clients.member, OPEN, { welcome: '  Accueil chaleureux\n', food: '' }));
+    expect(first).toEqual({
+      answers: { ...noAnswers, welcome: 'Accueil chaleureux' }, is_anonymous: false,
+      created_at: expect.any(String), updated_at: expect.any(String)
     });
 
-    const first = await ok(submit(clients.member, OVER, { welcome: '  Accueil chaleureux\n', food: '' }));
-    expect(first.answers).toEqual({
-      welcome: 'Accueil chaleureux', party_music: null, safety: null, lodging: null,
-      food: null, communications: null, schedule: null, other: null
-    });
-    expect(first.is_anonymous).toBe(false);
-
-    const second = await ok(submit(clients.member, OVER, { food: 'Trop de chips', other: null }, true));
-    expect(second.answers.welcome).toBeNull(); // an edit replaces the whole answer
-    expect(second.answers.food).toBe('Trop de chips');
+    const second = await ok(submit(clients.member, OPEN, { food: 'Trop de chips', other: null }, true));
+    expect(second.answers).toEqual({ ...noAnswers, food: 'Trop de chips' }); // an edit replaces the whole answer
     expect(second.is_anonymous).toBe(true);
     expect(second.created_at).toBe(first.created_at);
+    expect((await ok(mine(clients.member, OPEN))).answer).toEqual(second);
 
-    expect((await ok(mine(clients.member, OVER))).answer).toEqual(second);
-    const { rows } = await db.query('select count(*)::int as n from public.event_feedback where party_id = $1', [parties[`member:${OVER}`]]);
-    expect(rows[0].n).toBe(1);
-    // The unique constraint, not just the function, makes a second row impossible.
-    await expect(db.query('insert into public.event_feedback (event_id, author_id, party_id, other) values ($1, $2, $3, $4)',
-      [OVER, MEMBER_ID, parties[`member:${OVER}`], 'Bis']))
-      .rejects.toThrow(/event_feedback_one_per_author/);
+    const third = await ok(submit(clients.member, OPEN, { food: 'Trop de chips' }, false));
+    expect(third.is_anonymous).toBe(false);
+    const rows = (await stored(OPEN)).filter((row) => row.author_id === MEMBER_ID);
+    expect(rows).toEqual([expect.objectContaining({ is_anonymous: false, food: 'Trop de chips', party_id: parties[`member:${OPEN}`] })]);
+
+    // The unique constraint, not just the function, makes a second answer impossible.
+    const { rows: [extra] } = await db.query("insert into public.event_feedback (event_id, other) values ($1, 'Bis') returning id", [OPEN]);
+    try {
+      await expect(db.query('insert into public.event_feedback_authors (feedback_id, event_id, author_id, party_id) values ($1, $2, $3, $4)',
+        [extra.id, OPEN, MEMBER_ID, parties[`member:${OPEN}`]])).rejects.toThrow(/event_feedback_one_per_author/);
+    } finally {
+      await db.query('delete from public.event_feedback where id = $1', [extra.id]);
+    }
   });
 
-  test('refused with a coded error: before the window, after archival, empty, cancelled, waitlisted, not registered', async () => {
+  test('refused with a coded error: before the window, after the close, empty, cancelled, waitlisted, not registered', async () => {
     const text = { other: 'Quelque chose' };
     expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(33) });
     expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ eligible: true, window: 'not_yet', opens_on: isoDay(33) });
     expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
-    expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed' });
+    expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed', closed_at: expect.any(String) });
 
     for (const empty of [{}, { welcome: '', food: '   ', other: '\n\t ' }, { schedule: null }]) {
-      expectCode(await submit(clients.member, OVER, empty), 'event_feedback_empty');
+      expectCode(await submit(clients.member, OPEN, empty), 'event_feedback_empty');
     }
-    expectCode(await submit(clients.member, OVER, { rating: '5' }), 'event_feedback_invalid', { category: 'rating' });
-    expectCode(await submit(clients.member, OVER, { food: 5 }), 'event_feedback_invalid', { category: 'food' });
-    expectCode(await submit(clients.member, OVER, ['food']), 'event_feedback_invalid');
-    expectCode(await submit(clients.member, OVER, { food: 'x'.repeat(5001) }), 'event_feedback_too_long', { category: 'food', max: 5000 });
+    expectCode(await submit(clients.member, OPEN, { rating: '5' }), 'event_feedback_invalid', { category: 'rating' });
+    expectCode(await submit(clients.member, OPEN, { food: 5 }), 'event_feedback_invalid', { category: 'food' });
+    expectCode(await submit(clients.member, OPEN, ['food']), 'event_feedback_invalid');
+    expectCode(await submit(clients.member, OPEN, { food: 'x'.repeat(5001) }), 'event_feedback_too_long', { category: 'food', max: 5000 });
 
-    expectCode(await submit(clients.Cancelled, OVER, text), 'event_feedback_not_eligible', { reason: 'cancelled' });
-    expectCode(await submit(clients.Waitlisted, OVER, text), 'event_feedback_not_eligible', { reason: 'waitlisted' });
-    expectCode(await submit(clients.Outsider, OVER, text), 'event_feedback_not_eligible', { reason: 'not_registered' });
-    expect(await ok(mine(clients.Waitlisted, OVER))).toMatchObject({ eligible: false, reason: 'waitlisted', answer: null });
+    expectCode(await submit(clients.Cancelled, OPEN, text), 'event_feedback_not_eligible', { reason: 'cancelled' });
+    expectCode(await submit(clients.Waitlisted, OPEN, text), 'event_feedback_not_eligible', { reason: 'waitlisted' });
+    expectCode(await submit(clients.Outsider, OPEN, text), 'event_feedback_not_eligible', { reason: 'not_registered' });
+    expect(await ok(mine(clients.Waitlisted, OPEN))).toMatchObject({ eligible: false, reason: 'waitlisted', answer: null });
     expectCode(await submit(clients.member, '00000000-0000-0000-0000-00000000dead', text), 'event_not_found');
-    // A DRAFT event is not found by non-admins, from either function.
+    // A DRAFT event is not found by non-admins, from any function.
     await db.query("update public.events set status = 'DRAFT' where id = $1", [FUTURE]);
     try {
       expectCode(await submit(clients.member, FUTURE, text), 'event_not_found');
@@ -4506,246 +4558,401 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     }
 
     const anon = createClient(SUPABASE_URL, ANON_KEY);
-    for (const call of [submit(anon, OVER, text), mine(anon, OVER), answersOf(anon, OVER)]) {
+    for (const call of [submit(anon, OPEN, text), mine(anon, OPEN), answersOf(anon, OPEN)]) {
       expect((await call).error).not.toBeNull();
     }
-
-    const { rows } = await db.query(
-      'select count(*)::int as n from public.event_feedback where party_id = any($1::uuid[])',
-      [[parties.Cancelled, parties.Waitlisted, parties[`member:${FUTURE}`], parties[`member:${ARCHIVED}`]]]
-    );
+    const { rows } = await db.query('select count(*)::int as n from public.event_feedback where event_id = any($1::uuid[])', [[FUTURE, ARCHIVED]]);
     expect(rows[0].n).toBe(0);
   });
 
-  test("nobody writes or reads the table directly, so no one reaches someone else's registration", async () => {
+  test('nobody reads or writes the two tables directly, through an embed either', async () => {
     for (const role of ['member', 'committee', 'organiser', 'admin', 'Outsider']) {
       const client = clients[role];
-      expect((await client.from('event_feedback').select('*')).error?.code).toBe('42501');
-      expect((await client.from('event_feedback').insert({ party_id: parties.Named, other: 'Forgé' })).error?.code).toBe('42501');
-      expect((await client.from('event_feedback').update({ other: 'Forgé' }).eq('party_id', parties.Named)).error?.code).toBe('42501');
-      expect((await client.from('event_feedback').delete().eq('party_id', parties.Named)).error?.code).toBe('42501');
-      // Nor through an embed from the registration.
-      expect((await client.from('user_parties').select('id, event_feedback(*)').eq('event_id', OVER)).error).not.toBeNull();
+      for (const table of ['event_feedback', 'event_feedback_authors']) {
+        expect((await client.from(table).select('*')).error?.code).toBe('42501');
+        expect((await client.from(table).insert({ event_id: OPEN })).error?.code).toBe('42501');
+        expect((await client.from(table).update({ event_id: OPEN }).eq('event_id', OPEN)).error?.code).toBe('42501');
+        expect((await client.from(table).delete().eq('event_id', OPEN)).error?.code).toBe('42501');
+      }
+      expect((await client.from('user_parties').select('id, event_feedback_authors(*)').eq('event_id', OPEN)).error).not.toBeNull();
+      expect((await client.from('events').select('id, event_feedback(*)').eq('id', OPEN)).error).not.toBeNull();
     }
     // The service role neither: the functions are the only way in.
-    expect((await adminClient.from('event_feedback').select('*')).error).not.toBeNull();
+    for (const table of ['event_feedback', 'event_feedback_authors']) {
+      expect((await adminClient.from(table).select('*')).error).not.toBeNull();
+    }
+    const { rows } = await db.query(`
+      select c.relname, c.relrowsecurity, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies,
+             has_table_privilege('authenticated', c.oid, 'SELECT, INSERT, UPDATE, DELETE') as auth,
+             has_table_privilege('service_role', c.oid, 'SELECT, INSERT, UPDATE, DELETE') as service,
+             has_table_privilege('anon', c.oid, 'SELECT, INSERT, UPDATE, DELETE') as anon
+      from pg_class c where c.oid in ('public.event_feedback'::regclass, 'public.event_feedback_authors'::regclass) order by 1`);
+    expect(rows).toEqual(['event_feedback', 'event_feedback_authors'].map((relname) => ({
+      relname, relrowsecurity: true, policies: 0, auth: false, service: false, anon: false
+    })));
+    const { rows: published } = await db.query(
+      "select count(*)::int as n from pg_publication_tables where tablename in ('event_feedback', 'event_feedback_authors')");
+    expect(published[0].n).toBe(0);
   });
 
-  test('an admin reads every answer; an anonymous one carries no author id, name, email, party, row id nor time', async () => {
-    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité', lodging: 'Anonyme: dodo' }, true));
-    await ok(submit(clients.Named, OVER, { party_music: 'Nommé: musique' }, false));
-
-    const all = await ok(answersOf(clients.admin, OVER));
-    expect(all).toHaveLength(3); // the member's (anonymous since the first test), Anonymous's and Named's
-
-    const named = all.filter((answer) => !answer.is_anonymous);
-    expect(named).toEqual([{
-      is_anonymous: false,
-      answers: expect.objectContaining({ party_music: 'Nommé: musique' }),
-      author: { user_id: users.Named.id, party_id: parties.Named, full_name: users.Named.name, email: users.Named.email },
-      created_at: expect.any(String),
-      updated_at: expect.any(String)
-    }]);
-    // Named first, then the anonymous ones.
-    expect(all.map((answer) => answer.is_anonymous)).toEqual([false, true, true]);
-
-    const anonymous = all.filter((answer) => answer.is_anonymous);
-    expect(anonymous.map((answer) => Object.keys(answer).sort()))
-      .toEqual([0, 1].map(() => ['answers', 'author', 'created_at', 'is_anonymous', 'updated_at']));
-    for (const answer of anonymous) {
-      expect(answer).toMatchObject({ author: null, created_at: null, updated_at: null });
+  test('before the close an admin reads no answer and no count, and nothing changes when a member writes', async () => {
+    for (const role of ['member', 'committee', 'organiser', 'Named']) {
+      expectCode(await answersOf(clients[role], OPEN), 'admin_only');
     }
-    expect(anonymous.map((answer) => answer.answers.safety)).toContain('Anonyme: sécurité');
+    const before = await ok(answersOf(clients.admin, OPEN));
+    expect(before).toEqual({
+      closed: false, closes_on: isoDay(6), closes_at: expect.any(String), closed_at: null, named: null, anonymous: null
+    });
+    await ok(submit(clients.Named, OPEN, { party_music: 'Nommé: musique' }, false));
+    await ok(submit(clients.Anon2, OPEN, { safety: 'Anonyme 2: sécurité' }, true));
+    expect(await ok(answersOf(clients.admin, OPEN))).toEqual(before);
+    expect((await eventRow(OPEN)).feedback_closed_at).toBeNull();
 
-    // Nothing that identifies the anonymous authors appears anywhere in what the admin gets.
-    const { rows } = await db.query('select id from public.event_feedback where party_id = any($1::uuid[])',
-      [[parties.Anonymous, parties[`member:${OVER}`]]]);
+    // A member reads only their own answer; Comité, Organisateur, an outsider and an admin read none.
+    expect((await ok(mine(clients.Named, OPEN))).answer.answers.party_music).toBe('Nommé: musique');
+    expect((await ok(mine(clients.Anon2, OPEN))).answer).toMatchObject({ is_anonymous: true, answers: { safety: 'Anonyme 2: sécurité' } });
+    for (const role of ['committee', 'organiser', 'Outsider', 'admin', 'NoAnswer']) {
+      expect((await ok(mine(clients[role], OPEN))).answer).toBeNull();
+    }
+  });
+
+  test('« Voir comme » gets the same result for a named answer, an anonymous one and none, and can\'t write', async () => {
+    await ok(submit(clients.Anon1, OPEN, { lodging: 'Anonyme 1: dodo' }, true));
+    const seen = await Promise.all(['Named', 'Anon1', 'NoAnswer'].map((label) => voirComme(users[label].id, OPEN)));
+    expect(seen[0]).toEqual({
+      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), closes_on: isoDay(6),
+      closes_at: expect.any(String), closed_at: null, answer: null, answer_hidden: true
+    });
+    expect(seen[1]).toEqual(seen[0]);
+    expect(seen[2]).toEqual(seen[0]);
+
+    const write = (eventId, answers) => asSession({ sub: users.Anon1.id, impersonated_by: ADMIN_ID },
+      'select public.submit_event_feedback($1, $2, false)', [eventId, JSON.stringify(answers)]);
+    await expect(write(OPEN, { other: 'Admin was here' })).rejects.toThrow('read_only_impersonation');
+    // Refused before any other check answers: an empty answer, an unknown event.
+    await expect(write(OPEN, {})).rejects.toThrow('read_only_impersonation');
+    await expect(write('00000000-0000-0000-0000-00000000dead', {})).rejects.toThrow('read_only_impersonation');
+  });
+
+  // The first design's review: an admin can change a party's owner or event, or delete it. The
+  // answer stays its author's and its event's, so none of it reads, changes or moves an answer.
+  test('an answer keeps its author and event whatever an admin does to the party', async () => {
+    const SECRET = 'Mover: anonyme';
+    await ok(submit(clients.Mover, OPEN, { schedule: SECRET }, true));
+    const moverParty = parties[`Mover:${OPEN}`];
+    const mineStored = async () => (await stored(OPEN)).filter((row) => row.schedule === SECRET);
+    const before = await mineStored();
+    expect(before).toEqual([expect.objectContaining({ author_id: users.Mover.id, party_id: moverParty, is_anonymous: true })]);
+    const adminBefore = await ok(answersOf(clients.admin, OPEN));
+
+    // 1. The admin makes the party theirs: they don't read the answer, and their submit writes their own.
+    await ok(clients.admin.from('user_parties').update({ user_id: ADMIN_ID }).eq('id', moverParty));
+    try {
+      expect(await ok(mine(clients.admin, OPEN))).toMatchObject({ eligible: true, reason: null, answer: null });
+      const own = await ok(submit(clients.admin, OPEN, { other: 'Admin was here' }, false));
+      expect(own.answers).toEqual({ ...noAnswers, other: 'Admin was here' });
+      expect(await mineStored()).toEqual(before);
+      // The member, no longer the party's owner, still reads their own answer and can't write.
+      expect(await ok(mine(clients.Mover, OPEN))).toMatchObject({
+        eligible: false, reason: 'not_registered', answer: { is_anonymous: true, answers: { schedule: SECRET } }
+      });
+    } finally {
+      await db.query('delete from public.event_feedback where id in (select feedback_id from public.event_feedback_authors where author_id = $1 and event_id = $2)', [ADMIN_ID, OPEN]);
+      await ok(clients.admin.from('user_parties').update({ user_id: users.Mover.id }).eq('id', moverParty));
+    }
+
+    // 2. The admin moves the party to another event: the answer stays on its own.
+    await ok(clients.admin.from('user_parties').update({ event_id: FUTURE }).eq('id', moverParty));
+    try {
+      expect(await mineStored()).toEqual(before);
+      expect((await ok(mine(clients.Mover, OPEN))).answer.answers.schedule).toBe(SECRET);
+    } finally {
+      await ok(clients.admin.from('user_parties').update({ event_id: OPEN }).eq('id', moverParty));
+    }
+
+    // 3. The admin deletes the party: the answer is kept on its event, still anonymous, party null.
+    await ok(clients.admin.from('user_parties').delete().eq('id', moverParty));
+    expect(await mineStored()).toEqual([{ ...before[0], party_id: null }]);
+    // And the admin's read never moved: still nothing before the close.
+    expect(await ok(answersOf(clients.admin, OPEN))).toEqual(adminBefore);
+
+    // Nor can any later code move an answer or its link (author and party go null only by their foreign key).
+    const id = before[0].id;
+    for (const [table, column, value] of [
+      ['event_feedback', 'event_id', FUTURE],
+      ['event_feedback_authors', 'event_id', FUTURE],
+      ['event_feedback_authors', 'author_id', ADMIN_ID],
+      ['event_feedback_authors', 'party_id', parties[`Named:${OPEN}`]]
+    ]) {
+      const key = table === 'event_feedback' ? 'id' : 'feedback_id';
+      await expect(db.query(`update public.${table} set ${column} = $1 where ${key} = $2`, [value, id]))
+        .rejects.toThrow('event_feedback_invalid');
+    }
+  });
+
+  // LAZY: three anonymous answers, two named ones, and two accounts hard-deleted during the window.
+  // Its close date then passes with no update of the event (the triggers off, as time passing
+  // would): the first call closes it.
+  const LAZY_TEXTS = { Anon1: 'Lazy anonyme 1', Anon2: 'Lazy anonyme 2', Anon3: 'Lazy anonyme 3', Gone2: 'Lazy anonyme supprimé' };
+  const lazy = { windowIds: [], gone: {} };
+
+  test('the close date passed: the first call runs the levée, then an admin reads named answers with their author', async () => {
+    for (const label of ['Anon1', 'Anon2', 'Anon3']) {
+      await ok(submit(clients[label], LAZY, { food: LAZY_TEXTS[label] }, true));
+    }
+    await ok(submit(clients.Named, LAZY, { food: 'Lazy nommé' }, false));
+    // Switched to anonymous and back: named in the end.
+    await ok(submit(clients.NoAnswer, LAZY, { food: 'Lazy bascule' }, true));
+    await ok(submit(clients.NoAnswer, LAZY, { food: 'Lazy bascule' }, false));
+
+    // A hard-deleted account (from the dashboard; the app only soft-deletes) leaves its answers.
+    for (const label of ['Gone1', 'Gone2']) {
+      lazy.gone[label] = await createUser(label);
+      await register(label, LAZY, lazy.gone[label].id);
+    }
+    await ok(submit(await signIn(lazy.gone.Gone1.email), LAZY, { food: 'Lazy nommé supprimé' }, false));
+    await ok(submit(await signIn(lazy.gone.Gone2.email), LAZY, { food: LAZY_TEXTS.Gone2 }, true));
+    // A registration past its close date can't go (registration_cancel_locked), Auth's cascade
+    // included: the event moves ahead for the delete.
+    await db.query('update public.events set event_start_date = $2 where id = $1', [LAZY, startsIn(60)]);
+    try {
+      for (const user of Object.values(lazy.gone)) {
+        const { error } = await adminClient.auth.admin.deleteUser(user.id);
+        if (error) throw error;
+      }
+    } finally {
+      await db.query('update public.events set event_start_date = $2 where id = $1', [LAZY, startsIn(-10)]);
+    }
+    const windowRows = await stored(LAZY);
+    expect(windowRows).toHaveLength(7);
+    expect(windowRows.filter((row) => row.author_id === null)).toHaveLength(2); // Gone1's and Gone2's, unattributed now
+    lazy.windowIds = windowRows.map((row) => row.id);
+
+    await db.query('begin');
+    await db.query('set local session_replication_role = replica');
+    await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = $1', [LAZY, startsIn(-120), startsIn(-40)]);
+    await db.query('commit');
+    // Started 40 days ago for 3 days: opened 37 days ago, closed at the end of the day 24 days ago.
+    expect((await eventRow(LAZY)).feedback_closed_at).toBeNull();
+    // « Voir comme » doesn't run it (read-only) but already says closed.
+    expect(await voirComme(users.Anon1.id, LAZY)).toMatchObject({ window: 'closed', closed_at: null, answer: null, answer_hidden: true });
+    expect((await eventRow(LAZY)).feedback_closed_at).toBeNull();
+
+    const result = await ok(answersOf(clients.admin, LAZY));
+    const marker = (await eventRow(LAZY)).feedback_closed_at;
+    expect(marker).not.toBeNull();
+    // The marker is the scheduled close, which had passed.
+    const { rows: [{ scheduled }] } = await db.query(
+      "select $1::timestamptz = ($2::date::timestamp at time zone 'America/Toronto') as scheduled", [marker, isoDay(-23)]);
+    expect(scheduled).toBe(true);
+
+    expect(result).toEqual({
+      closed: true, closes_on: isoDay(-24), closes_at: result.closed_at, closed_at: expect.any(String),
+      named: [
+        { answers: { ...noAnswers, food: 'Lazy nommé' }, created_at: expect.any(String), updated_at: expect.any(String),
+          author: { user_id: users.Named.id, party_id: parties[`Named:${LAZY}`], full_name: users.Named.name, email: users.Named.email } },
+        { answers: { ...noAnswers, food: 'Lazy bascule' }, created_at: expect.any(String), updated_at: expect.any(String),
+          author: { user_id: users.NoAnswer.id, party_id: parties[`NoAnswer:${LAZY}`], full_name: users.NoAnswer.name, email: users.NoAnswer.email } },
+        { answers: { ...noAnswers, food: 'Lazy nommé supprimé' }, created_at: expect.any(String), updated_at: expect.any(String), author: null }
+      ],
+      anonymous: expect.any(Array)
+    });
+  });
+
+  test('after the levée an admin gets the anonymous texts only, in random (id) order, with nothing else', async () => {
+    const { anonymous } = await ok(answersOf(clients.admin, LAZY));
+    expect(anonymous.map((answer) => Object.keys(answer))).toEqual([0, 1, 2, 3].map(() => ['answers']));
+    expect(anonymous.map((answer) => answer.answers.food).sort()).toEqual(Object.values(LAZY_TEXTS).sort());
+    // In the order of their fresh random ids, nothing from the window.
+    const published = (await stored(LAZY)).filter((row) => row.is_anonymous);
+    expect(anonymous.map((answer) => answer.answers.food)).toEqual(published.map((row) => row.food));
     const text = JSON.stringify(anonymous);
     for (const secret of [
-      users.Anonymous.id, users.Anonymous.email, users.Anonymous.name, parties.Anonymous,
-      MEMBER_ID, 'member@test.local', parties[`member:${OVER}`], ...rows.map((row) => row.id)
+      ...['Anon1', 'Anon2', 'Anon3'].flatMap((label) => [users[label].id, users[label].email, users[label].name, parties[`${label}:${LAZY}`]]),
+      ...Object.values(lazy.gone).flatMap((user) => [user.id, user.email, user.name]),
+      ...lazy.windowIds, ...published.map((row) => row.id)
     ]) {
       expect(text).not.toContain(secret);
     }
-
-    // Choosing to be named again shows the author; the answer stays one row.
-    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité' }, false));
-    expect((await ok(answersOf(clients.admin, OVER))).find((answer) => answer.author?.user_id === users.Anonymous.id))
-      .toMatchObject({ author: { full_name: users.Anonymous.name } });
-    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité' }, true));
+    // Stable: a second read gives the same, and nothing is re-run.
+    expect((await ok(answersOf(clients.admin, LAZY))).anonymous).toEqual(anonymous);
   });
 
-  test('only account admins read the answers: not a member, Comité nor Organisateur; a member reads only their own', async () => {
-    for (const role of ['member', 'committee', 'organiser', 'Named']) {
-      expectCode(await answersOf(clients[role], OVER), 'admin_only');
-    }
-    // my_event_feedback only ever shows the caller's own answer.
-    expect((await ok(mine(clients.Named, OVER))).answer.answers.party_music).toBe('Nommé: musique');
-    expect((await ok(mine(clients.Anonymous, OVER))).answer.answers.safety).toBe('Anonyme: sécurité');
-    for (const role of ['committee', 'organiser', 'Outsider', 'admin']) {
-      expect((await ok(mine(clients[role], OVER))).answer).toBeNull();
-    }
+  test('after the levée no row in any table links an anonymous text to an author, party, id or time (as the owner)', async () => {
+    const rows = await stored(LAZY);
+    const published = rows.filter((row) => row.is_anonymous);
+    expect(published).toHaveLength(4);
+    // No author link left for them, and fresh ids: none from the window.
+    for (const row of published) expect(row).toMatchObject({ author_id: null, party_id: null });
+    expect(published.map((row) => row.id).filter((id) => lazy.windowIds.includes(id))).toEqual([]);
+    const { rows: links } = await db.query('select author_id from public.event_feedback_authors where event_id = $1 order by author_id', [LAZY]);
+    expect(links.map((link) => link.author_id).sort()).toEqual([users.Named.id, users.NoAnswer.id, null].sort());
+    // One transaction wrote them all: their xmin says nothing about who or when.
+    const { rows: [{ xmins }] } = await db.query(
+      'select count(distinct xmin::text)::int as xmins from public.event_feedback where event_id = $1 and is_anonymous', [LAZY]);
+    expect(xmins).toBe(1);
+    // The published row has nothing but its id, event, texts and choice.
+    const { rows: columns } = await db.query(`
+      select attname from pg_attribute where attrelid = 'public.event_feedback'::regclass and attnum > 0 and not attisdropped order by attnum`);
+    expect(columns.map((column) => column.attname)).toEqual(
+      ['id', 'event_id', 'welcome', 'party_music', 'safety', 'lodging', 'food', 'communications', 'schedule', 'other', 'is_anonymous']);
+
+    // Every table in public and private: the anonymous texts and the published ids appear only in
+    // event_feedback; the window ids nowhere.
+    const { rows: tables } = await db.query(`
+      select format('%I.%I', n.nspname, c.relname) as name
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname in ('public', 'private') and c.relkind = 'r' order by 1`);
+    expect(tables.length).toBeGreaterThan(20);
+    const holding = async (needles) => {
+      const found = [];
+      for (const { name } of tables) {
+        const { rows: [{ n }] } = await db.query(
+          `select count(*)::int as n from ${name} t where exists (select 1 from unnest($1::text[]) x where strpos(t::text, x) > 0)`, [needles]);
+        if (n > 0) found.push(name);
+      }
+      return found;
+    };
+    expect(await holding(Object.values(LAZY_TEXTS))).toEqual(['public.event_feedback']);
+    expect(await holding(published.map((row) => row.id))).toEqual(['public.event_feedback']);
+    expect(await holding(lazy.windowIds.filter((id) => !rows.some((row) => row.id === id)))).toEqual([]);
   });
 
-  // A new reader must apply ADR 0029's rule for anonymous answers: add it here once it does.
-  test('no view and no other function reads the table', async () => {
+  test('after the close a member reads their named answer, not an anonymous one, and can no longer write', async () => {
+    expect(await ok(mine(clients.Named, LAZY))).toMatchObject({
+      window: 'closed', closed_at: expect.any(String), answer: { is_anonymous: false, answers: { food: 'Lazy nommé' } }
+    });
+    expect(await ok(mine(clients.Anon1, LAZY))).toMatchObject({ window: 'closed', answer: null, answer_hidden: false });
+    for (const [label, anonymous] of [['Named', false], ['Anon1', true], ['NoAnswer', true]]) {
+      expectCode(await submit(clients[label], LAZY, { other: 'Trop tard' }, anonymous), 'event_feedback_closed');
+    }
+    // « Voir comme »: still the same result for named, anonymous and none.
+    const seen = await Promise.all(['Named', 'Anon1', 'Anon3'].map((label) => voirComme(users[label].id, LAZY)));
+    expect(seen[0]).toMatchObject({ window: 'closed', answer: null, answer_hidden: true });
+    expect(seen[1]).toEqual(seen[0]);
+    expect(seen[2]).toEqual(seen[0]);
+    // Nothing is added or edited after the close, whoever writes.
+    await expect(db.query("insert into public.event_feedback (event_id, other) values ($1, 'Forgé')", [LAZY])).rejects.toThrow('event_feedback_closed');
+    await expect(db.query("update public.event_feedback set other = 'Forgé' where event_id = $1", [LAZY])).rejects.toThrow('event_feedback_closed');
+  });
+
+  test('archival closes it at once; un-archiving or a new offset doesn\'t reopen it nor re-run the levée', async () => {
+    await ok(submit(clients.Anon1, ARCH2, { welcome: 'Arch2 anonyme 1' }, true));
+    await ok(submit(clients.Anon2, ARCH2, { welcome: 'Arch2 anonyme 2' }, true));
+    await ok(submit(clients.Named, ARCH2, { welcome: 'Arch2 nommé' }, false));
+    expect((await ok(answersOf(clients.admin, ARCH2))).closed).toBe(false);
+
+    await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCH2));
+    const closed = await eventRow(ARCH2);
+    expect(closed.feedback_closed_at).not.toBeNull();
+    const after = await stored(ARCH2);
+    expect(after.filter((row) => row.is_anonymous).every((row) => row.author_id === null)).toBe(true);
+
+    await ok(clients.admin.from('events').update({ status: 'ACTIVE' }).eq('id', ARCH2));
+    await ok(clients.admin.from('events').update({ feedback_days: 200 }).eq('id', ARCH2));
+    expect(await ok(mine(clients.Anon1, ARCH2))).toMatchObject({ window: 'closed', answer: null });
+    expectCode(await submit(clients.Anon1, ARCH2, { welcome: 'Encore' }, true), 'event_feedback_closed');
+    expect(await ok(answersOf(clients.admin, ARCH2))).toMatchObject({ closed: true, anonymous: [] });
+    // Same rows, same ids, same marker: nothing ran again.
+    expect(await stored(ARCH2)).toEqual(after);
+    expect((await eventRow(ARCH2)).feedback_closed_at).toEqual(closed.feedback_closed_at);
+  });
+
+  test('feedback_days: open until the end of its last day; shortened into the past, it closes now', async () => {
+    // Opened 7 days ago: 8 days make today the last day; still open.
+    await ok(clients.admin.from('events').update({ feedback_days: 8 }).eq('id', SHORT));
+    expect(await ok(mine(clients.Anon1, SHORT))).toMatchObject({ window: 'open', closes_on: isoDay(0), closed_at: null });
+    await ok(submit(clients.Anon1, SHORT, { communications: 'Short anonyme' }, true));
+    for (const value of [0, 366, 1.5]) {
+      expect((await clients.admin.from('events').update({ feedback_days: value }).eq('id', SHORT)).error).not.toBeNull();
+    }
+
+    // 7 days: the last day was yesterday. The update closes it, now (not at yesterday's end: it was open until now).
+    const { rows: [{ now }] } = await db.query('select now() as now');
+    await ok(clients.admin.from('events').update({ feedback_days: 7 }).eq('id', SHORT));
+    const marker = (await eventRow(SHORT)).feedback_closed_at;
+    expect(marker.getTime()).toBeGreaterThanOrEqual(now.getTime());
+    expect(await ok(mine(clients.Anon1, SHORT))).toMatchObject({ window: 'closed', closes_on: isoDay(-1), answer: null });
+    expectCode(await submit(clients.Anon1, SHORT, { communications: 'Encore' }, true), 'event_feedback_closed');
+    // Raised again: still closed.
+    await ok(clients.admin.from('events').update({ feedback_days: 30 }).eq('id', SHORT));
+    expect(await ok(mine(clients.Anon1, SHORT))).toMatchObject({ window: 'closed', closes_on: isoDay(22) });
+    expect((await eventRow(SHORT)).feedback_closed_at).toEqual(marker);
+  });
+
+  test('with 0, 1 or 2 anonymous answers the admin\'s anonymous list is the same: empty', async () => {
+    const results = await Promise.all([ARCHIVED, SHORT, ARCH2].map((eventId) => ok(answersOf(clients.admin, eventId))));
+    const counts = await Promise.all([ARCHIVED, SHORT, ARCH2].map(async (eventId) =>
+      (await stored(eventId)).filter((row) => row.is_anonymous).length));
+    expect(counts).toEqual([0, 1, 2]); // kept, not shown
+    for (const result of results) {
+      expect(Object.keys(result).sort()).toEqual(['anonymous', 'closed', 'closed_at', 'closes_at', 'closes_on', 'named']);
+      expect(result).toMatchObject({ closed: true, anonymous: [] });
+    }
+    expect(results.map((result) => result.named.length)).toEqual([0, 0, 1]);
+  });
+
+  test('no client writes the close marker, and nobody clears it', async () => {
+    expectCode(await clients.admin.from('events').update({ feedback_closed_at: new Date().toISOString() }).eq('id', FUTURE), 'event_feedback_close_locked');
+    expectCode(await clients.admin.from('events').update({ feedback_closed_at: null }).eq('id', ARCH2), 'event_feedback_close_locked');
+    await expect(db.query('update public.events set feedback_closed_at = null where id = $1', [ARCH2])).rejects.toThrow('event_feedback_close_locked');
+    expectCode(await clients.admin.from('events').insert({ theme: 'Bilan forgé', status: 'DRAFT', feedback_closed_at: new Date().toISOString() }),
+      'event_feedback_close_locked');
+    expect((await eventRow(FUTURE)).feedback_closed_at).toBeNull();
+    expect((await eventRow(ARCH2)).feedback_closed_at).not.toBeNull();
+  });
+
+  // A new reader must apply ADR 0029's rules: add it here once it does.
+  test('no view and no other function reads the tables', async () => {
     const { rows: views } = await db.query(`
       select distinct v.relname as name
       from pg_depend d
       join pg_rewrite r on r.oid = d.objid
       join pg_class v on v.oid = r.ev_class
-      where d.refobjid = 'public.event_feedback'::regclass and v.relname <> 'event_feedback'`);
+      where d.refobjid in ('public.event_feedback'::regclass, 'public.event_feedback_authors'::regclass)
+        and v.relname not in ('event_feedback', 'event_feedback_authors')`);
     expect(views).toEqual([]);
     const { rows: functions } = await db.query(`
       select p.oid::regprocedure::text as name
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname in ('public', 'private') and p.prosrc ~* 'public\\.event_feedback\\M'
+      where n.nspname in ('public', 'private') and p.prosrc ~* 'public\\.event_feedback(_authors)?\\M'
       order by 1`);
     expect(functions.map((row) => row.name)).toEqual([
       'event_feedback_answers(uuid)',
       'my_event_feedback(uuid)',
+      'private.event_feedback_levee(uuid)',
       'submit_event_feedback(uuid,jsonb,boolean)'
     ]);
   });
 
-  test('« Voir comme » neither shows the member\'s answer (nor whether there is one) nor writes it', async () => {
-    const asImpersonated = async (sql, params) => {
-      await db.query('begin');
-      try {
-        await db.query('set local role authenticated');
-        await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({
-          sub: users.Anonymous.id, role: 'authenticated', impersonated_by: '00000000-0000-0000-0000-000000000002'
-        })]);
-        return (await db.query(sql, params)).rows[0];
-      } finally {
-        await db.query('rollback');
-      }
-    };
-    const seen = await asImpersonated('select public.my_event_feedback($1) as out', [OVER]);
-    expect(seen.out).toEqual({ eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), answer: null, answer_hidden: true });
-    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', [OVER, JSON.stringify({ other: 'Admin was here' })]))
-      .rejects.toThrow('read_only_impersonation');
-    // Refused before any other check answers: an empty answer, an unknown event.
-    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', [OVER, '{}']))
-      .rejects.toThrow('read_only_impersonation');
-    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', ['00000000-0000-0000-0000-00000000dead', '{}']))
-      .rejects.toThrow('read_only_impersonation');
-  });
-
-  // Review of #315: an admin can change a party's owner or event, or delete it. The answer stays
-  // its author's and its event's (ADR 0029), so none of it reveals or changes an anonymous answer.
-  // Last: it deletes the Anonymous party.
-  test("an answer keeps its author and event whatever an admin does to the party", async () => {
-    const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
-    const SECRET = 'Anonyme: sécurité';
-    const carries = (list) => list.filter((answer) => answer.answers.safety === SECRET);
-    const storedRow = async () => (await db.query(
-      'select event_id, author_id, party_id, is_anonymous, safety from public.event_feedback where author_id = $1 and event_id = $2',
-      [users.Anonymous.id, OVER])).rows;
-    const before = await storedRow();
-    expect(before).toEqual([{ event_id: OVER, author_id: users.Anonymous.id, party_id: parties.Anonymous, is_anonymous: true, safety: SECRET }]);
-
-    // 1. The admin makes the party theirs: they don't read the answer, and their submit writes their own.
-    await ok(clients.admin.from('user_parties').update({ user_id: ADMIN_ID }).eq('id', parties.Anonymous));
+  // Last: it archives OPEN. A save in flight holds the event row; the archival waits for it, then
+  // publishes what it saved.
+  test('a save in flight when the event is archived is published, not left with its author link', async () => {
+    const member = new pg.Client({ connectionString: DB_URL });
+    await member.connect();
     try {
-      expect((await ok(clients.admin.from('user_parties').select('user_id').eq('id', parties.Anonymous)))[0].user_id).toBe(ADMIN_ID);
-      expect(await ok(mine(clients.admin, OVER))).toMatchObject({ eligible: true, reason: null, answer: null });
-      const own = await ok(submit(clients.admin, OVER, { other: 'Admin was here' }, false));
-      expect(own.answers.safety).toBeNull();
-      expect(own.answers.other).toBe('Admin was here');
-      expect(await storedRow()).toEqual(before);
-      // The member, no longer the party's owner, still reads their own answer and can't write.
-      expect(await ok(mine(clients.Anonymous, OVER))).toMatchObject({
-        eligible: false, reason: 'not_registered', answer: { is_anonymous: true, answers: { safety: SECRET } }
-      });
-      const list = await ok(answersOf(clients.admin, OVER));
-      expect(carries(list)).toEqual([expect.objectContaining({ is_anonymous: true, author: null })]);
-      expect(JSON.stringify(carries(list))).not.toContain(parties.Anonymous);
-    } finally {
-      await db.query('delete from public.event_feedback where author_id = $1', [ADMIN_ID]);
-      await ok(clients.admin.from('user_parties').update({ user_id: users.Anonymous.id }).eq('id', parties.Anonymous));
-    }
-
-    // 2. The admin moves the party to another event: the answer stays on its own.
-    await ok(clients.admin.from('user_parties').update({ event_id: FUTURE }).eq('id', parties.Anonymous));
-    try {
-      expect((await ok(clients.admin.from('user_parties').select('event_id').eq('id', parties.Anonymous)))[0].event_id).toBe(FUTURE);
-      expect(carries(await ok(answersOf(clients.admin, OVER)))).toHaveLength(1);
-      expect(carries(await ok(answersOf(clients.admin, FUTURE)))).toEqual([]);
-      expect(await storedRow()).toEqual(before);
-    } finally {
-      await ok(clients.admin.from('user_parties').update({ event_id: OVER }).eq('id', parties.Anonymous));
-    }
-
-    // 3. The admin deletes the party: the answer is kept on its event, still anonymous.
-    await ok(clients.admin.from('user_parties').delete().eq('id', parties.Anonymous));
-    expect(await ok(clients.admin.from('user_parties').select('id').eq('id', parties.Anonymous))).toEqual([]);
-    expect(await storedRow()).toEqual([{ ...before[0], party_id: null }]);
-    const list = await ok(answersOf(clients.admin, OVER));
-    expect(carries(list)).toEqual([{
-      is_anonymous: true, answers: expect.objectContaining({ safety: SECRET }), author: null, created_at: null, updated_at: null
-    }]);
-    expect(JSON.stringify(list)).not.toContain(users.Anonymous.id);
-
-    // Nor can any later code move an answer: its event, author and party stay (null only by their foreign key).
-    for (const [column, value] of [['event_id', FUTURE], ['author_id', ADMIN_ID], ['party_id', parties.Named]]) {
-      await expect(db.query(`update public.event_feedback set ${column} = $1 where author_id = $2`, [value, users.Anonymous.id]))
-        .rejects.toThrow('event_feedback_invalid');
-    }
-  });
-
-  // A hard-deleted profile (an Auth user deleted from the dashboard; the app only soft-deletes)
-  // nulls author_id and party_id through their foreign keys: the texts stay, unattributed.
-  test('a hard-deleted account leaves its answers, named and anonymous, with no author', async () => {
-    const tag = `Supprimé ${Date.now()}`;
-    const gone = { Gone1: await createUser('Gone1'), Gone2: await createUser('Gone2') };
-    const goneParties = {};
-    try {
-      for (const [label, user] of Object.entries(gone)) {
-        await db.query('update public.profiles set full_name = $2 where id = $1', [user.id, user.name]);
-        goneParties[label] = (await saveOk(clients.admin, OVER, [person(label)], { userId: user.id })).id;
-      }
-      await ok(submit(await signIn(gone.Gone1.email), OVER, { food: `${tag}: nommé` }, false));
-      await ok(submit(await signIn(gone.Gone2.email), OVER, { food: `${tag}: anonyme` }, true));
-      const ofGone = (list) => list.filter((answer) => answer.answers.food?.startsWith(tag));
-      expect(ofGone(await ok(answersOf(clients.admin, OVER))).find((answer) => !answer.is_anonymous).author)
-        .toMatchObject({ user_id: gone.Gone1.id, party_id: goneParties.Gone1 });
-
-      // A registration past its close date can't be deleted by anyone but an admin
-      // (registration_cancel_locked), Auth's cascade included: move the event ahead for the delete.
-      await db.query('update public.events set event_start_date = $2 where id = $1', [OVER, startsIn(60)]);
-      try {
-        for (const user of Object.values(gone)) {
-          const { error } = await adminClient.auth.admin.deleteUser(user.id);
-          if (error) throw error;
-        }
-      } finally {
-        await db.query('update public.events set event_start_date = $2 where id = $1', [OVER, startsIn(-10)]);
-      }
-      expect((await db.query('select count(*)::int as n from public.profiles where id = any($1::uuid[])',
-        [[gone.Gone1.id, gone.Gone2.id]])).rows[0].n).toBe(0);
-
-      const { rows } = await db.query(
-        'select is_anonymous, author_id, party_id, food from public.event_feedback where starts_with(food, $1) order by is_anonymous', [tag]);
-      expect(rows).toEqual([
-        { is_anonymous: false, author_id: null, party_id: null, food: `${tag}: nommé` },
-        { is_anonymous: true, author_id: null, party_id: null, food: `${tag}: anonyme` }
+      await member.query('begin');
+      await member.query('set local role authenticated');
+      await member.query("select set_config('request.jwt.claims', $1, true)",
+        [JSON.stringify({ sub: users.Anon3.id, role: 'authenticated' })]);
+      await member.query('select public.submit_event_feedback($1, $2, true)', [OPEN, JSON.stringify({ other: 'Open anonyme 3, en vol' })]);
+      const archive = db.query("update public.events set status = 'ARCHIVED' where id = $1", [OPEN]);
+      const state = await Promise.race([
+        archive.then(() => 'done'), new Promise((resolve) => setTimeout(() => resolve('pending'), 800))
       ]);
-
-      const list = ofGone(await ok(answersOf(clients.admin, OVER)));
-      expect(list).toEqual([
-        { is_anonymous: false, answers: expect.objectContaining({ food: `${tag}: nommé` }), author: null,
-          created_at: expect.any(String), updated_at: expect.any(String) },
-        { is_anonymous: true, answers: expect.objectContaining({ food: `${tag}: anonyme` }), author: null,
-          created_at: null, updated_at: null }
-      ]);
-      const text = JSON.stringify(list);
-      for (const secret of Object.values(gone).flatMap((user) => [user.id, user.email, user.name]).concat(Object.values(goneParties))) {
-        expect(text).not.toContain(secret);
-      }
+      expect(state).toBe('pending');
+      await member.query('commit');
+      await archive;
     } finally {
-      for (const user of Object.values(gone)) await adminClient.auth.admin.deleteUser(user.id);
+      await member.end();
     }
+    const rows = await stored(OPEN);
+    expect(rows.find((row) => row.other === 'Open anonyme 3, en vol')).toMatchObject({ is_anonymous: true, author_id: null, party_id: null });
+    expect(rows.filter((row) => row.is_anonymous && row.author_id !== null)).toEqual([]);
+    const result = await ok(answersOf(clients.admin, OPEN));
+    // Anon1, Anon2, Anon3 and Mover: four anonymous; the member and Named named.
+    expect(result.anonymous).toHaveLength(4);
+    expect(result.named.map((answer) => answer.author?.user_id).sort()).toEqual([MEMBER_ID, users.Named.id].sort());
   });
 });
 

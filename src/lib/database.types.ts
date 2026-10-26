@@ -419,71 +419,45 @@ export type Database = {
       }
       event_feedback: {
         Row: {
-          author_id: string | null
           communications: string | null
-          created_at: string
           event_id: string
           food: string | null
           id: string
           is_anonymous: boolean
           lodging: string | null
           other: string | null
-          party_id: string | null
           party_music: string | null
           safety: string | null
           schedule: string | null
-          updated_at: string
           welcome: string | null
         }
         Insert: {
-          author_id?: string | null
           communications?: string | null
-          created_at?: string
           event_id: string
           food?: string | null
           id?: string
           is_anonymous?: boolean
           lodging?: string | null
           other?: string | null
-          party_id?: string | null
           party_music?: string | null
           safety?: string | null
           schedule?: string | null
-          updated_at?: string
           welcome?: string | null
         }
         Update: {
-          author_id?: string | null
           communications?: string | null
-          created_at?: string
           event_id?: string
           food?: string | null
           id?: string
           is_anonymous?: boolean
           lodging?: string | null
           other?: string | null
-          party_id?: string | null
           party_music?: string | null
           safety?: string | null
           schedule?: string | null
-          updated_at?: string
           welcome?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "event_feedback_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "event_feedback_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "user_event_history"
-            referencedColumns: ["user_id"]
-          },
           {
             foreignKeyName: "event_feedback_event_id_fkey"
             columns: ["event_id"]
@@ -498,15 +472,64 @@ export type Database = {
             referencedRelation: "user_event_history"
             referencedColumns: ["event_id"]
           },
+        ]
+      }
+      event_feedback_authors: {
+        Row: {
+          author_id: string | null
+          created_at: string
+          event_id: string
+          feedback_id: string
+          party_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          created_at?: string
+          event_id: string
+          feedback_id: string
+          party_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          created_at?: string
+          event_id?: string
+          feedback_id?: string
+          party_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "event_feedback_party_id_fkey"
+            foreignKeyName: "event_feedback_authors_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_feedback_authors_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "user_event_history"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "event_feedback_authors_feedback_fkey"
+            columns: ["feedback_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "event_feedback"
+            referencedColumns: ["id", "event_id"]
+          },
+          {
+            foreignKeyName: "event_feedback_authors_party_id_fkey"
             columns: ["party_id"]
             isOneToOne: false
             referencedRelation: "user_event_history"
             referencedColumns: ["party_id"]
           },
           {
-            foreignKeyName: "event_feedback_party_id_fkey"
+            foreignKeyName: "event_feedback_authors_party_id_fkey"
             columns: ["party_id"]
             isOneToOne: false
             referencedRelation: "user_parties"
@@ -574,6 +597,8 @@ export type Database = {
           duration_days: number | null
           event_start_date: string | null
           external_links: Json | null
+          feedback_closed_at: string | null
+          feedback_days: number
           id: string
           instructions: string | null
           is_active: boolean | null
@@ -595,6 +620,8 @@ export type Database = {
           duration_days?: number | null
           event_start_date?: string | null
           external_links?: Json | null
+          feedback_closed_at?: string | null
+          feedback_days?: number
           id?: string
           instructions?: string | null
           is_active?: boolean | null
@@ -616,6 +643,8 @@ export type Database = {
           duration_days?: number | null
           event_start_date?: string | null
           external_links?: Json | null
+          feedback_closed_at?: string | null
+          feedback_days?: number
           id?: string
           instructions?: string | null
           is_active?: boolean | null
