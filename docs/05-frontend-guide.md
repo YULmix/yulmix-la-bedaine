@@ -342,7 +342,7 @@ sequenceDiagram
   unused, until it expires; a duplicated tab copies sessionStorage and shares the session (closing
   either ends it; the other reads until its access token's `exp`, writes refused).
 - **Not offered in that tab:** « Supprimer mon compte », the Preview account switcher,
-  « Voir comme… », and the « refresh the page » banner (`ResolutionBanner`). Never a global
+  « Voir comme… ». Never a global
   `signOut()` or `updateUser()`: those write Auth, which the read-only trigger doesn't cover.
 - Any write the database refuses shows `read_only_impersonation`'s French message like any other
   error. « Équipe » lists the sessions (`listVoirCommeLog`): who, whom, when, and « En cours,

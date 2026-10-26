@@ -77,3 +77,13 @@ test('a member can\'t open Retours or the history', async ({ page }) => {
   }
   await expect(adminNav(page)).toHaveCount(0);
 });
+
+test('no refresh banner after a feedback is resolved (#308)', async ({ page }) => {
+  await resetFeedback(ITEMS, ['Déjà réglé']);
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+  await page.locator('main').first().waitFor();
+  await page.waitForTimeout(1000);
+  await expect(page.getByText('Des ajustements ont été apportés')).toHaveCount(0);
+  await expect(page.getByText('Veuillez rafraîchir la page')).toHaveCount(0);
+});

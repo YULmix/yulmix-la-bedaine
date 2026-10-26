@@ -1173,7 +1173,6 @@ export type Database = {
           venue_capacity: number
         }[]
       }
-      get_latest_feedback_resolution: { Args: never; Returns: string }
       has_edition_role: {
         Args: { p_event_id: string; p_min_role: string }
         Returns: boolean
