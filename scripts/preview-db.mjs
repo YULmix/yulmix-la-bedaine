@@ -36,6 +36,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { generatePreviewSeed } from './preview-seed/generate.mjs';
+import { resolveStack, workdirArgs } from './lib/stack.js';
 
 const PREVIEW_REF = 'uacfrldoiixfstigosqv';
 const PRODUCTION_REF = 'ceacurlofmasyvhsoska';
@@ -188,7 +189,8 @@ async function main() {
       break;
     case 'local':
       generate();
-      runSupabase(['db', 'reset', '--local', ...seedArgs]);
+      // A worktree resets its own stack (npm run stack:up, #312); the main checkout the default one.
+      runSupabase([...workdirArgs(resolveStack()), 'db', 'reset', '--local', ...seedArgs]);
       console.log('\n✔ Local database reset with the generated demo data.');
       break;
     case 'reset': {

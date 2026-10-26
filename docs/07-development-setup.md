@@ -155,6 +155,31 @@ step. Don't repeat it.
 creates exactly the drift ADR 0013 exists to stop. `db query` is still fine for read-only
 `SELECT`s.
 
+## Per-worktree local stack
+
+A git worktree runs its own local Supabase, so two worktrees (or agents) never share a database,
+ports or a reset (#312). The main checkout needs nothing: with no stack generated it keeps the
+default `supabase start` stack (ports 54320-54329, 8083), Vite on 5173, and every command below
+behaves as before. `supabase/config.toml` is untouched; a stack runs from a **generated, gitignored**
+workdir `.stack/` (a copy of the config with a unique project id and shifted ports, plus links to
+`supabase/migrations`, `functions`, `seed.sql` and `seeds`).
+
+| Command | What it does |
+|---|---|
+| `npm run stack:up` | Derives this worktree's slot from its path (a block of 10 ports from 24000, checked free; a taken slot moves to the next), generates `.stack/`, starts the stack without Studio, Logflare and Vector, with Edge Functions served (`impersonate`, so « Voir comme » runs). Applies the migrations and seeds `member@test.local` / `admin@test.local`. Prints the API URL, DB URL, keys and Vite port. Safe to rerun |
+| `npm run stack:down` | Stops it and removes its containers, volumes and network |
+| `npm run stack:prune` | Removes the stacks of worktrees whose directory no longer exists (from a registry in `~/.local/state/yulmix-la-bedaine-stacks/`) |
+| `npm run stack:env` | Prints the env of this worktree's stack (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `VITE_PORT`) |
+| `npm run stack:dev` | Vite on the stack's own port, pointed at the stack |
+| `npm run stack:cli -- <args>` | The Supabase CLI on this stack, e.g. `npm run stack:cli -- db reset` or `-- status` |
+
+In a worktree with a stack, `npm run test:e2e`, `test:e2e:affected`, `test:rls`, `db:types` and
+`db:local:demo` use its database, and Playwright serves the app on its Vite port. In a worktree
+**without** one they fail with « run `npm run stack:up` » instead of reaching another stack. A bare
+`supabase ...` command in a worktree still means the default stack: use `npm run stack:cli --` there.
+After a new migration, `npm run stack:cli -- db reset` rebuilds the worktree's database only.
+A trimmed stack uses roughly 800 MB of memory.
+
 ## Scripts
 
 | Command | What it does | Verified state (2026-09-17) |

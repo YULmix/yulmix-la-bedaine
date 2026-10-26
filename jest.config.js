@@ -30,9 +30,10 @@ export default {
     // pattern (*.spec.js) otherwise collides with Jest's own default.
     '<rootDir>/e2e/',
     // Agent worktrees (a full second checkout of the repo) live here.
-    '<rootDir>/.claude/'
+    '<rootDir>/.claude/',
+    '<rootDir>/.stack/'
   ],
-  modulePathIgnorePatterns: ['<rootDir>/.claude/'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude/', '<rootDir>/.stack/'],
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',
     '!src/**/*.test.{js,jsx}',
