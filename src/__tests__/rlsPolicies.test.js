@@ -4358,3 +4358,260 @@ describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', ()
     }
   });
 });
+
+describe('📝 post-mortem feedback: one answer per registration, admins read, anonymity holds (#315)', () => {
+  jest.setTimeout(60000);
+
+  const OVER = 'a0000000-a000-a000-a000-a00000003151'; // ended 7 days ago: the window is open
+  const FUTURE = 'a0000000-a000-a000-a000-a00000003152'; // starts in 30 days: not yet
+  const ARCHIVED = 'a0000000-a000-a000-a000-a00000003153'; // ended, then archived: closed
+  const EVENT_IDS = [OVER, FUTURE, ARCHIVED];
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
+  const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
+  const DB_URL = localDbUrl();
+
+  const ok = async (query) => { const { data, error } = await query; if (error) throw error; return data; };
+  const person = (name) => ({ name, type: 'Adult', participation: 'Whole' });
+  const submit = (client, eventId, answers, isAnonymous = false) => client.rpc('submit_event_feedback', {
+    p_event_id: eventId, p_answers: answers, p_is_anonymous: isAnonymous
+  });
+  const mine = (client, eventId) => client.rpc('my_event_feedback', { p_event_id: eventId });
+  const answersOf = (client, eventId) => client.rpc('event_feedback_answers', { p_event_id: eventId });
+  const expectCode = (result, code, details) => {
+    expect(result.error?.message).toBe(code);
+    if (details) expect(JSON.parse(result.error.details)).toEqual(details);
+  };
+
+  let db;
+  const users = {}; // throwaway accounts: { id, email, name }
+  const clients = {};
+  const parties = {};
+
+  const createUser = async (label) => {
+    const email = `rls-315-${label.toLowerCase()}-${Date.now()}@test.local`;
+    const { data, error } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (error) throw error;
+    const name = `Rls315 ${label} Person`;
+    return { id: data.user.id, email, name };
+  };
+
+  beforeAll(async () => {
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(DB_URL).hostname);
+    db = new pg.Client({ connectionString: DB_URL });
+    await db.connect();
+    clients.admin = await signIn('admin@test.local');
+    clients.member = await signIn('member@test.local');
+    clients.committee = await signIn('committee@test.local');
+    clients.organiser = await signIn('organiser@test.local');
+    for (const label of ['Anonymous', 'Named', 'Cancelled', 'Waitlisted', 'Outsider']) {
+      users[label] = await createUser(label);
+      clients[label] = await signIn(users[label].email);
+      await db.query('update public.profiles set full_name = $2 where id = $1', [users[label].id, users[label].name]);
+    }
+
+    // Registrations are made while every event is ahead, then the dates move.
+    await ok(clients.admin.from('events').upsert(EVENT_IDS.map((id) => ({
+      id, theme: `Bilan ${id.slice(-1)}`, status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375,
+      reg_start_date: startsIn(-90), event_start_date: startsIn(60), duration_days: 3
+    }))));
+    for (const eventId of EVENT_IDS) {
+      parties[`member:${eventId}`] = (await saveOk(clients.admin, eventId, [person('Mo')], { userId: MEMBER_ID })).id;
+    }
+    for (const label of ['Anonymous', 'Named', 'Cancelled', 'Waitlisted']) {
+      parties[label] = (await saveOk(clients.admin, OVER, [person(label)], { userId: users[label].id })).id;
+    }
+    await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties.Cancelled]);
+    await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties.Waitlisted]);
+    for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
+      await ok(clients.admin.rpc('set_edition_role', { p_event_id: OVER, p_user_id: userId, p_role: role }));
+    }
+    // Started 10 days ago for 3 days: its last day was a week ago.
+    await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
+      [[OVER, ARCHIVED], startsIn(-90), startsIn(-10)]);
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
+    await db.query("update public.events set status = 'ARCHIVED' where id = $1", [ARCHIVED]);
+  });
+
+  afterAll(async () => {
+    try {
+      await clients.admin.from('edition_roles').delete().in('event_id', EVENT_IDS);
+      // Back ahead of their close date, or the registrations can't go.
+      await db.query("update public.events set status = 'ACTIVE', event_start_date = $2 where id = any($1::uuid[])", [EVENT_IDS, startsIn(60)]);
+      await db.query('delete from public.user_parties where event_id = any($1::uuid[])', [EVENT_IDS]);
+      await db.query("update public.events set status = 'DRAFT' where id = any($1::uuid[])", [EVENT_IDS]);
+      for (const user of Object.values(users)) await adminClient.auth.admin.deleteUser(user.id);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test('a member creates, then edits, their one answer while the window is open', async () => {
+    expect(await ok(mine(clients.member, OVER))).toEqual({
+      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), answer: null, answer_hidden: false
+    });
+
+    const first = await ok(submit(clients.member, OVER, { welcome: '  Accueil chaleureux\n', food: '' }));
+    expect(first.answers).toEqual({
+      welcome: 'Accueil chaleureux', party_music: null, safety: null, lodging: null,
+      food: null, communications: null, schedule: null, other: null
+    });
+    expect(first.is_anonymous).toBe(false);
+
+    const second = await ok(submit(clients.member, OVER, { food: 'Trop de chips', other: null }, true));
+    expect(second.answers.welcome).toBeNull(); // an edit replaces the whole answer
+    expect(second.answers.food).toBe('Trop de chips');
+    expect(second.is_anonymous).toBe(true);
+    expect(second.created_at).toBe(first.created_at);
+
+    expect((await ok(mine(clients.member, OVER))).answer).toEqual(second);
+    const { rows } = await db.query('select count(*)::int as n from public.event_feedback where party_id = $1', [parties[`member:${OVER}`]]);
+    expect(rows[0].n).toBe(1);
+    // The unique constraint, not just the function, makes a second row impossible.
+    await expect(db.query('insert into public.event_feedback (party_id, other) values ($1, $2)', [parties[`member:${OVER}`], 'Bis']))
+      .rejects.toThrow(/event_feedback_one_per_party/);
+  });
+
+  test('refused with a coded error: before the window, after archival, empty, cancelled, waitlisted, not registered', async () => {
+    const text = { other: 'Quelque chose' };
+    expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(33) });
+    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ eligible: true, window: 'not_yet', opens_on: isoDay(33) });
+    expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
+    expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed' });
+
+    for (const empty of [{}, { welcome: '', food: '   ', other: '\n\t ' }, { schedule: null }]) {
+      expectCode(await submit(clients.member, OVER, empty), 'event_feedback_empty');
+    }
+    expectCode(await submit(clients.member, OVER, { rating: '5' }), 'event_feedback_invalid', { category: 'rating' });
+    expectCode(await submit(clients.member, OVER, { food: 5 }), 'event_feedback_invalid', { category: 'food' });
+    expectCode(await submit(clients.member, OVER, ['food']), 'event_feedback_invalid');
+    expectCode(await submit(clients.member, OVER, { food: 'x'.repeat(5001) }), 'event_feedback_too_long', { category: 'food', max: 5000 });
+
+    expectCode(await submit(clients.Cancelled, OVER, text), 'event_feedback_not_eligible', { reason: 'cancelled' });
+    expectCode(await submit(clients.Waitlisted, OVER, text), 'event_feedback_not_eligible', { reason: 'waitlisted' });
+    expectCode(await submit(clients.Outsider, OVER, text), 'event_feedback_not_eligible', { reason: 'not_registered' });
+    expect(await ok(mine(clients.Waitlisted, OVER))).toMatchObject({ eligible: false, reason: 'waitlisted', answer: null });
+    expectCode(await submit(clients.member, '00000000-0000-0000-0000-00000000dead', text), 'event_not_found');
+
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    for (const call of [submit(anon, OVER, text), mine(anon, OVER), answersOf(anon, OVER)]) {
+      expect((await call).error).not.toBeNull();
+    }
+
+    const { rows } = await db.query(
+      'select count(*)::int as n from public.event_feedback where party_id = any($1::uuid[])',
+      [[parties.Cancelled, parties.Waitlisted, parties[`member:${FUTURE}`], parties[`member:${ARCHIVED}`]]]
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
+  test("nobody writes or reads the table directly, so no one reaches someone else's registration", async () => {
+    for (const role of ['member', 'committee', 'organiser', 'admin', 'Outsider']) {
+      const client = clients[role];
+      expect((await client.from('event_feedback').select('*')).error?.code).toBe('42501');
+      expect((await client.from('event_feedback').insert({ party_id: parties.Named, other: 'Forgé' })).error?.code).toBe('42501');
+      expect((await client.from('event_feedback').update({ other: 'Forgé' }).eq('party_id', parties.Named)).error?.code).toBe('42501');
+      expect((await client.from('event_feedback').delete().eq('party_id', parties.Named)).error?.code).toBe('42501');
+      // Nor through an embed from the registration.
+      expect((await client.from('user_parties').select('id, event_feedback(*)').eq('event_id', OVER)).error).not.toBeNull();
+    }
+    // The service role neither: the functions are the only way in.
+    expect((await adminClient.from('event_feedback').select('*')).error).not.toBeNull();
+  });
+
+  test('an admin reads every answer; an anonymous one carries no author id, name, email, party, row id nor time', async () => {
+    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité', lodging: 'Anonyme: dodo' }, true));
+    await ok(submit(clients.Named, OVER, { party_music: 'Nommé: musique' }, false));
+
+    const all = await ok(answersOf(clients.admin, OVER));
+    expect(all).toHaveLength(3); // the member's (anonymous since the first test), Anonymous's and Named's
+
+    const named = all.filter((answer) => !answer.is_anonymous);
+    expect(named).toEqual([{
+      is_anonymous: false,
+      answers: expect.objectContaining({ party_music: 'Nommé: musique' }),
+      author: { user_id: users.Named.id, party_id: parties.Named, full_name: users.Named.name, email: users.Named.email },
+      created_at: expect.any(String),
+      updated_at: expect.any(String)
+    }]);
+    // Named first, then the anonymous ones.
+    expect(all.map((answer) => answer.is_anonymous)).toEqual([false, true, true]);
+
+    const anonymous = all.filter((answer) => answer.is_anonymous);
+    expect(anonymous.map((answer) => Object.keys(answer).sort()))
+      .toEqual([0, 1].map(() => ['answers', 'author', 'created_at', 'is_anonymous', 'updated_at']));
+    for (const answer of anonymous) {
+      expect(answer).toMatchObject({ author: null, created_at: null, updated_at: null });
+    }
+    expect(anonymous.map((answer) => answer.answers.safety)).toContain('Anonyme: sécurité');
+
+    // Nothing that identifies the anonymous authors appears anywhere in what the admin gets.
+    const { rows } = await db.query('select id from public.event_feedback where party_id = any($1::uuid[])',
+      [[parties.Anonymous, parties[`member:${OVER}`]]]);
+    const text = JSON.stringify(anonymous);
+    for (const secret of [
+      users.Anonymous.id, users.Anonymous.email, users.Anonymous.name, parties.Anonymous,
+      MEMBER_ID, 'member@test.local', parties[`member:${OVER}`], ...rows.map((row) => row.id)
+    ]) {
+      expect(text).not.toContain(secret);
+    }
+
+    // Choosing to be named again shows the author; the answer stays one row.
+    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité' }, false));
+    expect((await ok(answersOf(clients.admin, OVER))).find((answer) => answer.author?.user_id === users.Anonymous.id))
+      .toMatchObject({ author: { full_name: users.Anonymous.name } });
+    await ok(submit(clients.Anonymous, OVER, { safety: 'Anonyme: sécurité' }, true));
+  });
+
+  test('only account admins read the answers: not a member, Comité nor Organisateur; a member reads only their own', async () => {
+    for (const role of ['member', 'committee', 'organiser', 'Named']) {
+      expectCode(await answersOf(clients[role], OVER), 'admin_only');
+    }
+    // my_event_feedback only ever shows the caller's own answer.
+    expect((await ok(mine(clients.Named, OVER))).answer.answers.party_music).toBe('Nommé: musique');
+    expect((await ok(mine(clients.Anonymous, OVER))).answer.answers.safety).toBe('Anonyme: sécurité');
+    for (const role of ['committee', 'organiser', 'Outsider', 'admin']) {
+      expect((await ok(mine(clients[role], OVER))).answer).toBeNull();
+    }
+  });
+
+  // A new reader must apply ADR 0029's rule for anonymous answers: add it here once it does.
+  test('no view and no other function reads the table', async () => {
+    const { rows: views } = await db.query(`
+      select distinct v.relname as name
+      from pg_depend d
+      join pg_rewrite r on r.oid = d.objid
+      join pg_class v on v.oid = r.ev_class
+      where d.refobjid = 'public.event_feedback'::regclass and v.relname <> 'event_feedback'`);
+    expect(views).toEqual([]);
+    const { rows: functions } = await db.query(`
+      select p.oid::regprocedure::text as name
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('public', 'private') and p.prosrc ~* 'public\\.event_feedback\\M'
+      order by 1`);
+    expect(functions.map((row) => row.name)).toEqual([
+      'event_feedback_answers(uuid)',
+      'my_event_feedback(uuid)',
+      'submit_event_feedback(uuid,jsonb,boolean)'
+    ]);
+  });
+
+  test('« Voir comme » neither shows the member\'s answer (nor whether there is one) nor writes it', async () => {
+    const asImpersonated = async (sql, params) => {
+      await db.query('begin');
+      try {
+        await db.query('set local role authenticated');
+        await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({
+          sub: users.Anonymous.id, role: 'authenticated', impersonated_by: '00000000-0000-0000-0000-000000000002'
+        })]);
+        return (await db.query(sql, params)).rows[0];
+      } finally {
+        await db.query('rollback');
+      }
+    };
+    const seen = await asImpersonated('select public.my_event_feedback($1) as out', [OVER]);
+    expect(seen.out).toEqual({ eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), answer: null, answer_hidden: true });
+    await expect(asImpersonated('select public.submit_event_feedback($1, $2, false)', [OVER, JSON.stringify({ other: 'Admin was here' })]))
+      .rejects.toThrow('read_only_impersonation');
+  });
+});
