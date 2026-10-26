@@ -77,7 +77,6 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
     .replace('{date}', formatDate(opensOn as string | null)),
   event_feedback_closed: () => fr.dbErrorEventFeedbackClosed,
   // Not raised since #354 (an empty set deletes the member's items); harmless, left for #355 to drop.
-  event_feedback_empty: () => fr.dbErrorEventFeedbackEmpty,
   event_feedback_invalid: () => fr.dbErrorEventFeedbackInvalid,
   event_feedback_duplicate: () => fr.dbErrorEventFeedbackDuplicate,
   event_feedback_too_long: ({ max }) => fr.dbErrorEventFeedbackTooLong.replace('{max}', String(max ?? 5000)),

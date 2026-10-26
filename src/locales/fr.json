@@ -842,7 +842,6 @@
   "dbErrorEventFeedbackNotEligible": "Seules les personnes inscrites à cette édition (ni annulées ni en liste d'attente) peuvent donner leur retour.",
   "dbErrorEventFeedbackNotOpen": "Les retours ouvriront le {date}, le premier jour de l'événement.",
   "dbErrorEventFeedbackClosed": "Les retours de cette édition sont clos : il n'est plus possible de répondre ni de modifier sa réponse.",
-  "dbErrorEventFeedbackEmpty": "Écrivez au moins un commentaire avant d'envoyer votre retour.",
   "dbErrorEventFeedbackInvalid": "Réponse invalide. Rechargez la page et réessayez.",
   "dbErrorEventFeedbackDuplicate": "Un seul commentaire signé et un seul commentaire privé par catégorie. Rechargez la page et réessayez.",
   "dbErrorEventFeedbackTooLong": "Un commentaire est trop long ({max} caractères au plus).",
