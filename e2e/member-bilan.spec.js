@@ -57,14 +57,14 @@ async function shoot(page, name) {
   await page.setViewportSize({ width: 1280, height: 720 });
 }
 
-test('switch off (#341): the member sees no card and the database refuses; the admin still sees the card and can answer', async ({ page, browser }) => {
+test('switch off (#341): the member sees no card and the page says it is not open; the admin still sees the card and can answer', async ({ page, browser }) => {
   seeded = await seedFeedbackEvent({ memberVisible: false, adminRegistered: true });
   await loginAs(page, TEST_USERS.member);
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   await expect(passCard(page)).toHaveCount(0);
   await page.goto(`/bilan/${seeded.eventId}`);
-  await expect(body(page)).toHaveAttribute('data-state', 'error');
+  await expect(body(page)).toHaveAttribute('data-state', 'not_yet');
   await expect(body(page).getByLabel(fr.bilanCategoryOther, { exact: true })).toHaveCount(0);
 
   const adminPage = await (await browser.newContext()).newPage();

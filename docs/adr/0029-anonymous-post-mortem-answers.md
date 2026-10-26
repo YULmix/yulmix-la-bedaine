@@ -176,14 +176,21 @@ Not fixed, by the organiser's decision on #315:
 
 `events.feedback_member_visible` (`NOT NULL DEFAULT false`, so off for every existing event) is the
 organiser's switch, set in the event form's « Calendrier » fieldset. Off, a member can neither read
-(`my_event_feedback`) nor save (`submit_event_feedback`) on the event: both go through
-`private.event_feedback_check_event`, which answers `event_not_found` as for an unknown event, so the
-pass shows no card and the page shows its load error. Admins are unaffected, to test: they read, save
-and edit as usual, with the same registration requirement as a member (an admin answers for an event
-they are registered to).
+nor save on the event. Reading (`my_event_feedback`, which the pass card calls on every pass load)
+returns one neutral payload, « not yet open », with no date, close or answer, so the pass shows no
+card and the page says the bilan isn't open. Saving (`submit_event_feedback`, and the admin read)
+goes through `private.event_feedback_check_event`, which answers `event_not_found` as for an unknown
+event. Admins are unaffected, to test: they read, save and edit as usual, with the same registration
+requirement as a member (an admin answers for an event they are registered to). A DRAFT event stays
+unknown to a member whatever the switch.
 
-The switch is only a visibility gate. It changes nothing about the window: `feedback_closed_at`,
-`event_feedback_window`, the close by date or archival and the levée don't read it, so turning it off
-never closes the feedback, releases anonymous answers or loses one, and the close still happens on
-schedule while it is off. Answers written while it was off (by an admin) stay and are published at the
-close like any other.
+The switch is only a visibility gate. The window, `feedback_closed_at`, the close by date or archival
+and the levée don't read it, so turning it off never closes the feedback, releases anonymous answers
+or loses one. It doesn't delay the close either: a refused call is rolled back and could not
+persist the due-close, so `my_event_feedback` runs it before looking at the switch and then answers
+neutrally (the refused save writes nothing and relies on that read, an admin call or an event
+update). The close still comes with the first of those after the close date.
+
+Answers an admin wrote while the switch was off are real rows: the close publishes them with the
+members' (named with their author, anonymous in the pool), so test answers are visible in the admin
+« Bilan » like any other.
