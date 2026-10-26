@@ -9,7 +9,9 @@ export const NUMBER_FIELDS = {
   duration_days: { min: 1 },
   max_attendees: { min: 1 },
   z_intent_months: { min: 0 },
-  x_reg_close_weeks: { min: 0 }
+  x_reg_close_weeks: { min: 0 },
+  // The post-mortem closes this many days after the last day (#329); the database caps it at a year.
+  feedback_days: { min: 1, max: 365 }
 };
 
 // Instants (#149). The draft holds what the datetime-local input shows, 'YYYY-MM-DDTHH:mm' in the
@@ -59,7 +61,7 @@ export const dirtyFields = (event, changes) => Object.keys(changes || {})
   .filter(field => !same(normalise(field, changes[field]), normalise(field, event?.[field])));
 
 /**
- * Why the draft can't be saved, by field: numbers `'integer' | 'min'`, the title `'required'`,
+ * Why the draft can't be saved, by field: numbers `'integer' | 'min' | 'max'`, the title `'required'`,
  * the registration start `'order'` (it must come strictly before the event start, when both are
  * set), and links `{ [row index]: 'incomplete' | 'url' }`. Only what the draft touches is checked,
  * so a saved event that already breaks a rule can still be edited elsewhere.
@@ -67,11 +69,12 @@ export const dirtyFields = (event, changes) => Object.keys(changes || {})
 export const validateDraft = (event, changes = {}) => {
   const errors = {};
   const value = field => (field in changes ? changes[field] : event?.[field]);
-  Object.entries(NUMBER_FIELDS).forEach(([field, { min }]) => {
+  Object.entries(NUMBER_FIELDS).forEach(([field, { min, max }]) => {
     if (!(field in changes)) return;
     const text = String(changes[field] ?? '').trim();
     if (!/^\d+$/.test(text)) errors[field] = 'integer';
     else if (Number(text) < min) errors[field] = 'min';
+    else if (max != null && Number(text) > max) errors[field] = 'max';
   });
   if ('theme' in changes && isBlank(changes.theme)) errors.theme = 'required';
   if (DATE_FIELDS.some(field => field in changes)) {

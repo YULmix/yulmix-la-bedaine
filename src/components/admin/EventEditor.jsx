@@ -2,6 +2,7 @@ import { BedDouble, FileText, Plus, Trash2 } from 'lucide-react';
 import fr from '../../locales/fr.json';
 import { formatEventDates } from '../../lib/eventDisplay';
 import { NUMBER_FIELDS, dateInputValue } from '../../lib/eventDraft';
+import { FEEDBACK_DAYS_DEFAULT, getFeedbackWindow } from '../../lib/eventFeedback';
 import { Button, Card, Field, Input, Notice, Tag, Textarea, Toggle, ViewPanel, ViewTabs } from '../ui';
 import { EVENT_STATUS } from './AdminEvents';
 import { EventVenuePlan } from './EventVenue';
@@ -29,6 +30,7 @@ const EditorCard = ({ id, title, children }) => (
 const ERROR_MESSAGES = {
   integer: () => fr.eventFieldInteger,
   min: field => fr.eventFieldMin.replace('{min}', NUMBER_FIELDS[field].min),
+  max: field => fr.eventFieldMax.replace('{max}', NUMBER_FIELDS[field].max),
   required: () => fr.eventFieldRequired,
   order: () => fr.eventRegStartOrder,
   incomplete: () => fr.eventLinkIncomplete,
@@ -70,11 +72,62 @@ const LinksEditor = ({ links, errors = {}, onChange }) => {
   );
 };
 
-const DetailsForm = ({ value, onChange, errors, creating }) => {
+const formatDay = day => day.toLocaleDateString('fr-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+
+// The post-mortem offset (#329) and what it comes to: the close date, in Toronto time, computed from
+// the values on screen (the draft), and its state. Once the feedback has closed it is final (the
+// database never reopens it), so the field is read-only with the date it closed.
+const FeedbackCloseField = ({ event, value, error, onChange, now = new Date() }) => {
+  const saved = getFeedbackWindow(event, now);
+  const typed = getFeedbackWindow({
+    status: event?.status ?? 'DRAFT',
+    event_start_date: value('event_start_date'),
+    duration_days: value('duration_days') || 1,
+    feedback_days: value('feedback_days') ?? FEEDBACK_DAYS_DEFAULT,
+    feedback_closed_at: event?.feedback_closed_at
+  }, now);
+
+  if (saved.state === 'closed') {
+    const closedOn = saved.closedOn ?? saved.closesOn;
+    return (
+      <div className="sm:max-w-md">
+        <p className="mb-1.5 text-sm font-semibold text-muted">{fr.eventFeedbackDaysLabel}</p>
+        <p className="text-sm text-ink" data-testid="feedback-close-note">
+          {closedOn ? fr.eventFeedbackClosedOn.replace('{date}', formatDay(closedOn)) : fr.eventFeedbackClosed}
+        </p>
+        <p className="mt-1 text-xs text-faint">{fr.eventFeedbackClosedHint}</p>
+      </div>
+    );
+  }
+
+  let note = fr.eventFeedbackNoDate;
+  if (!error && typed.closesOn) {
+    const date = formatDay(typed.closesOn);
+    note = {
+      not_yet: fr.eventFeedbackNotYet,
+      open: fr.eventFeedbackOpenUntil,
+      closed: fr.eventFeedbackWillClose
+    }[typed.state].replace('{date}', date);
+  }
+  return (
+    <div className="grid gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:items-start">
+      <Field label={fr.eventFeedbackDaysLabel} error={error}>
+        {({ id, describedBy, invalid }) => (
+          <Input id={id} aria-describedby={describedBy} invalid={invalid} type="number" inputMode="numeric"
+            min={NUMBER_FIELDS.feedback_days.min} max={NUMBER_FIELDS.feedback_days.max}
+            value={value('feedback_days') ?? FEEDBACK_DAYS_DEFAULT} onChange={e => onChange('feedback_days', e.target.value)} />
+        )}
+      </Field>
+      <p className="text-sm text-muted sm:pt-7" data-testid="feedback-close-note" aria-live="polite">{note}</p>
+    </div>
+  );
+};
+
+const DetailsForm = ({ event, value, onChange, errors, creating }) => {
   const text = field => ({ value: value(field) ?? '', onChange: e => onChange(field, e.target.value) });
   // Shown and typed in the event time zone (#149); a draft already holds the input's text.
   const dateTime = field => ({ value: dateInputValue(value(field)), onChange: e => onChange(field, e.target.value) });
-  const number = field => ({ type: 'number', inputMode: 'numeric', min: NUMBER_FIELDS[field].min, ...text(field) });
+  const number = field => ({ type: 'number', inputMode: 'numeric', min: NUMBER_FIELDS[field].min, max: NUMBER_FIELDS[field].max, ...text(field) });
   const numberField = (field, labelKey) => (
     <Field label={fr[labelKey]} error={fieldError(field, errors)}>
       {({ id, describedBy, invalid }) => <Input id={id} aria-describedby={describedBy} invalid={invalid} {...number(field)} />}
@@ -104,6 +157,7 @@ const DetailsForm = ({ value, onChange, errors, creating }) => {
           {numberField('x_reg_close_weeks', 'eventRegCloseWeeksLabel')}
           {numberField('max_attendees', 'eventMaxAttendeesLabel')}
         </div>
+        <FeedbackCloseField event={event} value={value} error={fieldError('feedback_days', errors)} onChange={onChange} />
         {/* A new event is created with registrations closed; opening them is for once it exists. */}
         {!creating && <Toggle label={fr.eventRegOpenLabel} checked={!!value('is_reg_open')} onChange={checked => onChange('is_reg_open', checked)} />}
       </EditorCard>
@@ -160,7 +214,7 @@ const EventEditor = ({
       </nav>
       <div className="max-w-3xl space-y-6">
         {restored && <Notice tone="info">{fr.eventEditorRestored}</Notice>}
-        <DetailsForm value={value} onChange={onChange} errors={errors} creating={creating} />
+        <DetailsForm event={event} value={value} onChange={onChange} errors={errors} creating={creating} />
         <SaveBar dirtyCount={dirtyCount} invalid={invalid} saving={saving} onSave={onSave} onDiscard={onDiscard}
           creating={creating} hint={fr.eventNewHint} saveLabel={creating ? fr.eventCreate : undefined} />
       </div>

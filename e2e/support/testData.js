@@ -211,10 +211,32 @@ export async function deleteBudget(eventId) {
   check(await db.from('event_budgets').delete().eq('event_id', eventId), 'delete e2e budget');
 }
 
+// A fresh ACTIVE event of its own (#329), for a spec that closes the post-mortem for good: the
+// close is final and its marker can't be cleared, so the shared e2e event must not be the one.
+// Other active events are deactivated first (only_one_active_event); archiveEvent puts it away.
+export async function createActiveEvent(fields = {}) {
+  const db = await adminClient();
+  check(await db.from('events').update({ is_active: false }).eq('is_active', true), 'deactivate active events');
+  const venueId = await e2eVenueId(db);
+  return check(await db.from('events').insert({
+    theme: `E2E Feedback ${randomUUID().slice(0, 8)}`,
+    status: 'ACTIVE',
+    is_active: true,
+    is_reg_open: false,
+    venue_id: venueId,
+    ...fields
+  }).select('id, theme').single(), 'create e2e feedback event');
+}
+
+export async function archiveEvent(eventId) {
+  const db = await adminClient();
+  check(await db.from('events').update({ is_active: false, status: 'ARCHIVED' }).eq('id', eventId), 'archive e2e event');
+}
+
 export async function getEvent(eventId) {
   const db = await adminClient();
   return check(
-    await db.from('events').select('status, is_active, selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links').eq('id', eventId).single(),
+    await db.from('events').select('status, is_active, selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links, feedback_days, feedback_closed_at').eq('id', eventId).single(),
     'read e2e event'
   );
 }
