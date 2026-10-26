@@ -111,6 +111,7 @@ Derived from production's schema as captured in the baseline migration
 | `email_log` | admin, or Organisateur and above on the party's event (#217) (members get a filtered summary of their own party through `my_party_emails()`, #93) | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
 | `user_parties` | own, admin, or Organisateur and above on its event (#217, #290: Comité reads its edition's parties through `edition_parties()`, without the money) (members see other parties' lifts through `carpool_board()`, #180: the board's fields only) | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
 | `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126), or Comité and above on the party's event (`private.edition_team_reads_party()`, #290); a restrictive policy hides [removed](./03-data-model.md#removed-attendees) attendees (`deleted_at` set) from everyone, admins included (#237) | one's own party, or admin (#217: reading a party doesn't let one write its attendees), and only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | none from the app: `save_registration()` marks a removed attendee `deleted_at` instead (#237); only the cascade when an admin deletes the party removes rows |
+| `event_feedback` | **nobody**: no privilege for any client role, admins and `service_role` included; read through `my_event_feedback()` (own answer) and `event_feedback_answers()` (admins, anonymous answers without their author), #315, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md) | nobody: `submit_event_feedback()` (the registration's owner, while the window is open) | same | nobody |
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
 | `galleries`, `gallery_images` | admin; a venue's `general` gallery for whoever (signed in) can read the venue; a location's gallery for whoever can read the location (a member, where their attendees sleep); `assignments` galleries for admins and the edition team (Comité and above) of any event held at the venue (#177, #217; anon has no grant at all) | admin only (images through `add_gallery_image()`; a 31st is refused) | admin only | admin only; a frozen copy's galleries can't change |
 | `storage.objects` in `location-photos` | anyone, by public URL (a public bucket; gallery images aren't private, #124, #177) | admin only | admin only | admin only |
@@ -179,6 +180,16 @@ Notes on specific choices:
   the attendee rows the caller's RLS shows, since Comité no longer reads `user_parties`.
   `set_place_override()` also refuses an archived event up front
   (`event_layout_frozen`), even for a write that would change nothing. `anon` can run none of them.
+- **Post-mortem answers stay anonymous by construction** (#315,
+  [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). `event_feedback` holds `party_id`, which
+  leads to `user_parties.user_id` and the profile, so no client role may read it at all: RLS is on
+  with no policy and every grant is revoked. Its three `SECURITY DEFINER` functions name their
+  output; `event_feedback_answers()` (account admins only) gives an anonymous answer's texts and
+  nothing else: no author, party, row id nor time, and after the named ones in random order. A
+  « Voir comme » session would show the member's own answer, so `my_event_feedback()` hides it
+  there (and whether there is one). The RLS suite (« post-mortem feedback ») checks that nothing in
+  the admin's result names an anonymous author, that every role is refused the table directly and
+  through an embed, and that no view and no other function reads it.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

@@ -88,6 +88,14 @@ The window before registration opens (`reg_start_date − z_intent_months`) wher
 that they plan to come and who with, so organisers can size and price the weekend. Non-binding.
 _Avoid_: pre-registration, RSVP, expression of interest.
 
+**Post-mortem** (fr. *bilan*, table `event_feedback`)
+What a registration's owner writes after the event: one optional free text per category
+(Accueil, Party + musique, Sécurité, Hébergement, Nourriture, Communications, Horaire, Autres),
+anonymous if they choose. Open from the day after the event's last day until it is archived; read
+by account admins only ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). Not the app
+feedback (« Feedback », `app_feedback`), which is about the app itself.
+_Avoid_: feedback, survey, review (for this).
+
 ## Money
 
 **Base price** / **selling price** (fr. *prix de base*, *prix de vente*, column

@@ -14,6 +14,7 @@ erDiagram
   EVENTS ||--o{ USER_PARTIES : "receives"
   USER_PARTIES ||--o{ ATTENDEES : "has (on delete cascade)"
   USER_PARTIES ||--o| PARTY_ADMIN_NOTES : "annotated by (organisers, on delete cascade)"
+  USER_PARTIES ||--o| EVENT_FEEDBACK : "post-mortem answer (#315, on delete cascade)"
   EVENTS ||--o| EVENT_BUDGETS : "budgeted by (Organisateur and above)"
   EVENTS ||--o{ EDITION_ROLES : "run by (#217)"
   PROFILES ||--o{ EDITION_ROLES : "holds"
@@ -148,6 +149,21 @@ erDiagram
     bool is_resolved
     timestamptz created_at
     timestamptz resolved_at
+  }
+  EVENT_FEEDBACK {
+    uuid id PK
+    uuid party_id FK "UNIQUE: one answer per party"
+    text welcome "« Accueil »; null = not answered"
+    text party_music "« Party + musique »"
+    text safety "« Sécurité »"
+    text lodging "« Hébergement »"
+    text food "« Nourriture »"
+    text communications "« Communications »"
+    text schedule "« Horaire »"
+    text other "« Autres »"
+    bool is_anonymous "chosen per answer"
+    timestamptz created_at
+    timestamptz updated_at
   }
   REGISTRATION_EDITS {
     uuid id PK
@@ -663,6 +679,27 @@ Organisateur and above on the party's edition (#227's « once #217 lands »). Si
 reads of attendees, `attendee_places` and notes reach the party's event through the definer
 helpers `private.edition_team_reads_party(party)` and `private.party_event_id(party)`, since its
 RLS no longer shows it `user_parties`.
+
+## Post-mortem feedback (#315)
+
+The « bilan » ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): after an event, each
+registration may leave one answer, a free text per category, anonymous if its owner chooses.
+Migration `20261026043829_event_feedback.sql`.
+
+| Table / function | What it is |
+|---|---|
+| `event_feedback` | One row per party (`UNIQUE (party_id)`, `ON DELETE CASCADE` like the party's other rows; nothing else deletes one). Eight nullable texts, `welcome`, `party_music`, `safety`, `lodging`, `food`, `communications`, `schedule`, `other` (« Accueil », « Party + musique », « Sécurité », « Hébergement », « Nourriture », « Communications », « Horaire », « Autres »): NULL is "not answered", a stored text has a non-space character and at most 5000 characters, at least one is answered (CHECKs). `is_anonymous`, `created_at`, `updated_at`. **No client privilege at all** (admins and `service_role` included), RLS on without a policy: only the three functions below read or write it |
+| `submit_event_feedback(event, answers, is_anonymous)` | `SECURITY DEFINER`. Creates or replaces the caller's answer: `answers` is an object keyed by category (string or null; trimmed, blank = not answered), and an edit replaces the whole answer. Refuses `not_authenticated`, `event_not_found`, `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed` (archived), `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{category}` (unknown key, not a string), `event_feedback_too_long` `{category, max}` and `event_feedback_empty`, in that order |
+| `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, answer, answer_hidden }`: whether the caller may answer, the window (`open`, `not_yet`, `closed`), the day it opens, and their own answer (`answers`, `is_anonymous`, times) or null. In a « Voir comme » session `answer` is always null and `answer_hidden` true. A DRAFT event is `event_not_found` for non-admins |
+| `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`, Comité and Organisateur included). Every answer of the event: `is_anonymous`, `answers`, `author` (`user_id`, `party_id`, `full_name`, `email`) and the times for a named answer; for an anonymous one `author` and the times are null and there is no id. Named answers first (oldest first), then the anonymous ones in random (id) order |
+
+- **Eligible**: the owner of a `registered` or `pending`, non-waitlisted registration on the event,
+  with an active account. An admin answers only for their own registration.
+- **The window** opens on the day after the event's last day, i.e. on the start's Toronto day +
+  `duration_days` (the same "event is over" as elsewhere, #149), and closes when the event is
+  archived. A DRAFT event, or one without a start date, is `not_yet`.
+- Nothing here writes `user_parties`, so the registration rules (close date, freeze) don't apply
+  to answers.
 
 ## « Voir comme » (#265)
 
