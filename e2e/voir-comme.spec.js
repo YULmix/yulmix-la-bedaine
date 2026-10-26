@@ -6,7 +6,7 @@
 //
 // E2E_SCREENSHOT_DIR=<dir> saves the dialog, the tab with its banner, the picker and the log at
 // 390 and 1440 px wide.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { readFileSync } from 'node:fs';
 import { adminMain, adminNav, openPartyDetail } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';

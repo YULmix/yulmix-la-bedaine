@@ -1,6 +1,6 @@
 // The Sites tab (#146): venues with their capacity and events, a venue's page to edit its
 // locations and places, and archiving instead of deleting.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, backLink, moreButton, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

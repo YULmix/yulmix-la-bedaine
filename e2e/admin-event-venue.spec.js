@@ -1,6 +1,6 @@
 // The event editor's Couchage section (#147): pick the event's venue, and choose what of it this
 // edition uses (a place excluded, or another capacity). The venue itself is edited in Sites.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, backLink, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { placeOption } from './support/placePicker.js';

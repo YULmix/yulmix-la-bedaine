@@ -1,7 +1,7 @@
 // Where a lift leaves from (#181): the start of a postal code (for matching, #180) and a note.
 // Only with « Offre » or « Besoin »; the code is optional but must be well formed. Kept in the
 // draft, saved normalised, shown on the summary, in the history and to admins; « Aucun » drops it.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   getParty,

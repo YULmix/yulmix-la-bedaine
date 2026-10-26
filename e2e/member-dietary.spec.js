@@ -1,7 +1,7 @@
 // Dietary needs (#152, #153): several per attendee, « Sans produits laitiers » among them,
 // « Aucune restriction » on its own, « Autre » with its text. Saved, shown to the member, and
 // counted per need in the admin overview.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   getParty,

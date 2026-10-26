@@ -1,7 +1,7 @@
 // Unsaved admin edits survive the app re-rendering (#139). ProtectedRoute used to be declared
 // inside App, so every App render (e.g. Supabase's auth event when the browser tab regains focus)
 // remounted the whole admin page and dropped whatever wasn't saved.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';

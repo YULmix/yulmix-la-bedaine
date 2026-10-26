@@ -1,7 +1,7 @@
 // Inscrits « Liste » sorting (#259): by name (default), « Inscrit le » and « Modifié le », from the
 // column headers (aria-sort) or, below xl, the « Trier » sheet shared with « Participants »; the
 // choice is in ?tri=.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { readFileSync } from 'node:fs';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';

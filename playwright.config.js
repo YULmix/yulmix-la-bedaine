@@ -27,6 +27,8 @@ Object.assign(process.env, supabaseEnv);
 // For the specs' own Node-side helpers only (creating throwaway auth users, e2e/support). Not in
 // supabaseEnv, so the dev server, and the browser bundle, never see it.
 process.env.E2E_SUPABASE_SERVICE_ROLE_KEY = serviceRoleKey || '';
+// For e2e/support/test.js, which routes the app's requests through Node (#327).
+process.env.E2E_BASE_URL = BASE_URL;
 
 // Specs that need the shared active event (and the seeded member's registration) to themselves,
 // in the order they run, one after the other, after the `chromium` project (which runs every
@@ -153,7 +155,10 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: BASE_URL,
-    trace: 'on-first-retry'
+    trace: 'on-first-retry',
+    // With e2e/support/test.js serving the app through route.fulfill(), Chromium's Local Network Access
+    // checks would block its WebSockets and API calls to 127.0.0.1 (#327).
+    launchOptions: { args: ['--disable-features=LocalNetworkAccessChecks'] }
   },
   projects: [
     {

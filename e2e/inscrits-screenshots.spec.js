@@ -3,7 +3,7 @@
 // names, every enum value), never on the e2e fixtures' few rows. Seeds nothing; skipped unless
 // E2E_SCREENSHOT_DIR=<dir> is set. Saves each screen at 390, 768, 1024, 1440 and 2560 px, with the
 // « Détails » pop-up and the sort sheet open, plus « Historique » and « Liste » (sorted, its sheet open).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { readFileSync } from 'node:fs';
 import { loginAs, TEST_USERS } from './support/auth.js';
 

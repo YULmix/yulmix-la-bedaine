@@ -1,7 +1,7 @@
 // Attendees are rows of their own table, saved through save_registration() (issue #126, ADR 0018):
 // editing a registration updates each attendee in place, adds and removes the others, and keeps
 // what an admin set on an attendee (their place, #114).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { openPartyEditor } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

@@ -1,7 +1,7 @@
 // The Budget admin tab (issue #109): categorized cost lines saved to the admin-only
 // event_budgets table, and the simulator whose "apply" sets the base price and main-event ratio.
 // That price applies to new registrations only: existing ones keep the price they locked (#117).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, eventRow } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

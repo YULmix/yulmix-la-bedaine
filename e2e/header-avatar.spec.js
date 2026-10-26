@@ -1,6 +1,6 @@
 // The header badge's picture (#261): provider picture, else Gravatar, else initials. The image
 // hosts are intercepted so the tests never touch the network.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 
 // A 1x1 PNG.

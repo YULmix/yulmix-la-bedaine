@@ -2,7 +2,7 @@
 // empty, at /admin/events/new. Saving asks for a confirmation (an event can't be deleted, ADR 0008),
 // inserts a draft (inactive, registrations closed) and opens it. Creation never touches the active
 // event.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, backLink, eventRow, moreButton, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
