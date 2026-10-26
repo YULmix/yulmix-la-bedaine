@@ -132,6 +132,9 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
           value={isAnonymous ? 'anonymous' : 'named'}
           onChange={value => { setIsAnonymous(value === 'anonymous'); setJustSaved(false); }}
         />
+        <p className="text-sm text-ink" data-testid="bilan-identity-hint">
+          {fr.bilanIdentityHint.replace('{date}', formatDate(feedback.closes_on))}
+        </p>
         <WhoSees closesOn={feedback.closes_on} />
       </div>
 

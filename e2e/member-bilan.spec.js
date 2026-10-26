@@ -104,6 +104,8 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
   // Members are asked for their « retour » (#343): none of the admins' or builders' words.
   await expect(body(page)).not.toContainText(/bilan|voir comme|n'importe quel appareil/i);
   await expect(body(page)).toContainText(fr.bilanWhoSeesNobodyBefore.split('{date}')[0]);
+  // A signed answer is not shown to admins before the close, and can still be made anonymous (#347).
+  await expect(body(page).getByTestId('bilan-identity-hint')).toContainText(fr.bilanIdentityHint.split('{date}')[0]);
   await shoot(page, 'bilan-form-member');
 
   // The empty form is refused, in French (blank text counts as empty).
