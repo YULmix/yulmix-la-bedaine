@@ -50,7 +50,7 @@ const WhoSees = ({ closesOn }) => (
       <li>{fr.bilanWhoSeesNobodyBefore.replace('{date}', formatDate(closesOn))}</li>
       <li>{fr.bilanWhoSeesNamed}</li>
       <li>{fr.bilanWhoSeesAnonymous}</li>
-      <li>{fr.bilanWhoSeesAfterClose}</li>
+      <li>{fr.bilanWhoSeesAfterClose.replace('{date}', formatDate(closesOn))}</li>
     </ul>
   </div>
 );

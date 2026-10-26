@@ -97,9 +97,12 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
     await expect(field(page, fr[key])).toBeVisible();
   }
   await expect(identity(page, fr.bilanIdentityNamed)).toBeChecked();
-  for (const key of ['bilanWhoSeesNamed', 'bilanWhoSeesAnonymous', 'bilanWhoSeesAfterClose']) {
+  for (const key of ['bilanWhoSeesNamed', 'bilanWhoSeesAnonymous']) {
     await expect(body(page)).toContainText(fr[key]);
   }
+  await expect(body(page)).toContainText(fr.bilanWhoSeesAfterClose.split('{date}')[0]);
+  // Members are asked for their « retour » (#343): none of the admins' or builders' words.
+  await expect(body(page)).not.toContainText(/bilan|voir comme|n'importe quel appareil/i);
   await expect(body(page)).toContainText(fr.bilanWhoSeesNobodyBefore.split('{date}')[0]);
   await shoot(page, 'bilan-form-member');
 
