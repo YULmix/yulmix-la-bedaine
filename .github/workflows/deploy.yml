@@ -127,8 +127,21 @@ jobs:
   migrations:
     name: Migrations apply cleanly
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read # docker login ghcr.io with GITHUB_TOKEN
+    env:
+      # The CLI pulls its images (postgres, postgres-meta) from public.ecr.aws by default, an
+      # anonymous pull capped per source IP that GitHub runners share ("Data limit exceeded",
+      # #321). ghcr.io mirrors them, and the runner is logged in below, so the cap doesn't apply.
+      SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io (Supabase images)
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
         with:
@@ -161,8 +174,8 @@ jobs:
       # or typecheck would be checking the app against a schema that no longer exists.
       - name: Database types match the migrations
         run: |
-          # `gen types` pulls the postgres-meta image from public.ecr.aws, which sometimes
-          # answers "toomanyrequests: Rate exceeded" (#253). Retry the generation only: the
+          # `gen types` pulls the postgres-meta image, now from ghcr.io (job env, #321); the
+          # retries stay for any transient registry error (#253). Retry the generation only: the
           # diff below runs once, so a real mismatch still fails at once without retries.
           for attempt in 1 2 3 4 5; do
             if supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"; then
