@@ -30,15 +30,25 @@ import {
 // decides the window, who may answer and what is shown; this page reads my_event_feedback() once
 // and shows its state (src/lib/eventFeedback.ts).
 //
-// Each category card holds one comment, signed by default, with a « Privé » switch; once it has
+// Each category card holds one comment, with the member's name by default, with an « Anonyme » switch; once it has
 // text, the other kind can be added beside it, never more than two (#355). The form's state is
 // src/lib/eventFeedback.ts's drafts.
 //
 // The unsaved text lives in this component's state only: it survives a tab refocus because the
-// route doesn't remount (#139), and nothing of it is written to storage, a URL or a log, so a
-// private comment leaves nothing on the device once the tab is gone (ADR 0029).
+// route doesn't remount (#139), and nothing of it is written to storage, a URL or a log, so an
+// anonymous comment leaves nothing on the device once the tab is gone (ADR 0029).
 
 const MAX_LENGTH = 5000;
+
+// Keeps password managers (browser autofill, 1Password, LastPass, Bitwarden, Dashlane-style form
+// detectors) from offering to fill or save a retour text.
+const NO_AUTOFILL = {
+  autoComplete: 'off',
+  'data-1p-ignore': 'true',
+  'data-lpignore': 'true',
+  'data-bwignore': 'true',
+  'data-form-type': 'other'
+};
 
 const backHome = <Link to="/" className="font-semibold text-neon underline underline-offset-4">{fr.backToHome}</Link>;
 
@@ -80,7 +90,7 @@ const ReadOnlyAnswer = ({ items }) => (
 );
 
 // One comment of a card: its kind as the textarea's label (with the card's title), the text, then
-// the « Privé » switch while it is alone on the card, or what its kind means when there are two.
+// the « Anonyme » switch while it is alone on the card, or what its kind means when there are two.
 // `focusRequest` ({ slot }) moves the focus to this comment's text when it names its slot: after an
 // add or a remove, whose button is gone.
 const Comment = ({ category, titleId, card, draft, focusRequest, onText, onPrivate, onRemove }) => {
@@ -95,10 +105,8 @@ const Comment = ({ category, titleId, card, draft, focusRequest, onText, onPriva
   const hint = draft.private ? fr.bilanPrivateHint : fr.bilanSignedHint;
   return (
     <div className="space-y-2" data-testid="bilan-comment" data-kind={draft.private ? 'private' : 'signed'}>
-      <div className="flex min-h-9 items-center justify-between gap-3">
-        <p id={kindId} className={cx('text-sm font-semibold', draft.private ? 'text-info' : 'text-muted')}>
-          {draft.private ? fr.bilanCommentPrivate : fr.bilanCommentSigned}
-        </p>
+      <div className={cx('flex min-h-9 items-center gap-3', draft.private ? 'justify-between' : 'justify-end')}>
+        {draft.private && <p id={kindId} className="text-sm font-semibold text-info">{fr.bilanCommentPrivate}</p>}
         {canRemoveDraft(card, draft) && (
           <Button
             variant="ghost"
@@ -117,9 +125,10 @@ const Comment = ({ category, titleId, card, draft, focusRequest, onText, onPriva
         maxLength={MAX_LENGTH}
         value={draft.text}
         onChange={changeEvent => onText(changeEvent.target.value)}
-        aria-labelledby={`${titleId} ${kindId}`}
+        aria-labelledby={draft.private ? `${titleId} ${kindId}` : titleId}
         aria-describedby={hintId}
         className="min-h-24"
+        {...NO_AUTOFILL}
       />
       {canSwitchKind(card) ? (
         <Toggle
@@ -189,6 +198,12 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
     setJustSaved(false);
   };
 
+  const cancel = () => {
+    setDrafts(draftsFrom(saved));
+    setError(null);
+    setJustSaved(false);
+  };
+
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
     setJustSaved(false);
@@ -212,10 +227,12 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   };
 
   const unsaved = draftsUnsaved(drafts, saved);
+  // Any edit at all, even a blank one that would not be sent: what Annuler can undo.
+  const edited = JSON.stringify(drafts) !== JSON.stringify(draftsFrom(saved));
   const nothingToSend = saved.length === 0 && itemsFromDrafts(drafts).length === 0;
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-6">
+    <form onSubmit={handleSubmit} noValidate autoComplete="off" className="space-y-6">
       <WhoSees closesOn={feedback.closes_on} />
 
       <div className="space-y-4">
@@ -231,9 +248,10 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-faint">{fr.bilanEditableUntil.replace('{date}', formatDate(feedback.closes_on))}</p>
-        <Button type="submit" loading={saving} disabled={nothingToSend} className="sm:shrink-0">
-          {saved.length > 0 ? fr.bilanSubmitEdit : fr.bilanSubmit}
-        </Button>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:shrink-0">
+          <Button variant="secondary" onClick={cancel} disabled={!edited || saving}>{fr.bilanCancel}</Button>
+          <Button type="submit" loading={saving} disabled={nothingToSend}>{fr.bilanSubmit}</Button>
+        </div>
       </div>
     </form>
   );

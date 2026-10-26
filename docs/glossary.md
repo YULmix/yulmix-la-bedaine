@@ -98,12 +98,12 @@ released ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). Not the app 
 (« Feedback », `app_feedback`), which is about the app itself.
 _Avoid_: feedback, survey, review (for this).
 
-**Private item** (fr. *privé*; was « anonymous answer »)
+**Private item** (fr. *anonyme*; was « anonymous answer »)
 A post-mortem item whose author admins never see. Readable by admins, as its text only, once the
 event is **released**: 3 different members (admins included) have written at least one private item
 on it; from then on for good, even if items are deleted. Loses its link to its author at the
 levée. Code: `is_private`, `private`.
-_Avoid_: anonymous (in code and docs; the organiser says « privé »).
+_Avoid_: anonymous (in code and docs; the UI and the organiser say « anonyme », never « privé »; a comment with the member's name is just a comment, never « signé »).
 
 **Levée** (of the post-mortem, fr. *levée*)
 The one irreversible step at the post-mortem's close (archival, or its close date passed): every

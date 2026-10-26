@@ -251,7 +251,7 @@ test('admin, before and after the close: signed comments live, private ones from
     }
   }
   await expect(answersBox(page)).not.toContainText('Marc-André Roy');
-  // Sécurité: the two private comments, « Privé » and no name, in the payload's order.
+  // Sécurité: the two private comments, « Anonyme » and no name, in the payload's order.
   const safetyOrder = released.answers.private.filter(entry => entry.category === 'safety').map(entry => fr.adminBilanPrivate + entry.text);
   await expect(category(page, fr.bilanCategorySafety).getByRole('listitem')).toHaveText(safetyOrder);
   const item = category(page, fr.bilanCategorySafety).getByRole('listitem').first();

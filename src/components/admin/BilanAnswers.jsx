@@ -6,7 +6,7 @@ import FeedbackCategoryCard from '../FeedbackCategoryCard';
 
 // The « Bilan » section's comments (#317, restyled by #346, live since #356), before and after the
 // close: the eight categories, each a card with a tinted header (icon, title, the count of what it
-// lists), its signed comments (author and text) and its private ones (« Privé » and text) once
+// lists), its signed comments (author and text) and its private ones (« Anonyme » and text) once
 // released. Until then each card says the private ones show from 3 authors, with no count. The card
 // itself is FeedbackCategoryCard, shared with the member's retour page (#352). `result` is
 // event_feedback_answers()'s (ADR 0029, #354). The counts above them are BilanDashboard's.

@@ -1,6 +1,6 @@
 // The member's retour page (#316), at /bilan/:eventId, over the database's my_event_feedback() and
 // submit_event_feedback() (#315, #354, ADR 0029): the pass links to it while the window is open;
-// per category a comment signed by default, a « Privé » switch, the other kind added beside it and
+// per category a comment signed by default, a « Anonyme » switch, the other kind added beside it and
 // never a third (#355); submit, return, edit, remove one or all; the explanation of who reads what;
 // nothing to send while nothing is written or saved; after the close the signed comments read-only and one neutral message otherwise;
 // the not-eligible and not-yet-open messages; « Voir comme » shows the same hidden state whether the
@@ -43,11 +43,11 @@ const body = page => page.getByTestId('bilan-body');
 const passCard = page => page.getByTestId('bilan-pass-card');
 // A comment's text: named by its card's title and its kind (#355).
 const field = (page, label, isPrivate = false) =>
-  body(page).getByRole('textbox', { name: `${label} ${isPrivate ? fr.bilanCommentPrivate : fr.bilanCommentSigned}`, exact: true });
+  body(page).getByRole('textbox', { name: isPrivate ? `${label} ${fr.bilanCommentPrivate}` : label, exact: true });
 const privateSwitch = (page, label) => body(page).getByRole('switch', { name: fr.bilanPrivateSwitchLabel.replace('{category}', label), exact: true });
 // A category's card on the form: the block under its title.
 const card = (page, label) => body(page).getByRole('heading', { level: 3, name: label, exact: true }).locator('xpath=../..');
-const submitButton = page => body(page).getByRole('button', { name: new RegExp(`^(${fr.bilanSubmit}|${fr.bilanSubmitEdit})$`) });
+const submitButton = page => body(page).getByRole('button', { name: fr.bilanSubmit, exact: true });
 const kinds = locator => locator.getByTestId('bilan-comment').evaluateAll(comments => comments.map(comment => comment.dataset.kind));
 
 // The categories in display order, with their colour (#346's cycle, shared with the admin Bilan
@@ -108,7 +108,7 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(page).toHaveURL(new RegExp(`/bilan/${seeded.eventId}$`));
   await expect(body(page)).toHaveAttribute('data-state', 'open');
 
-  // The eight categories, each one blank comment, signed, its « Privé » switch off.
+  // The eight categories, each one blank comment, signed, its « Anonyme » switch off.
   for (const [key] of CATEGORIES) {
     await expect(field(page, fr[key])).toBeVisible();
     await expect(privateSwitch(page, fr[key])).toHaveAttribute('aria-checked', 'false');
@@ -146,8 +146,25 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(whoSees).toContainText(fr.bilanWhoSeesSigned);
   await expect(whoSees).toContainText(fr.bilanWhoSeesPrivate);
   await expect(whoSees).toContainText(fr.bilanWhoSeesAfterClose.split('{date}')[0]);
-  await expect(body(page)).not.toContainText(/bilan|voir comme|levée|anonyme|signée|n'importe quel appareil|aucune réponse n'est lue|pas montrée aux administrateurs/i);
+  await expect(body(page)).not.toContainText(/bilan|voir comme|levée|signée|n'importe quel appareil|aucune réponse n'est lue|pas montrée aux administrateurs/i);
   await shoot(page, 'bilan-form-member');
+
+  // Every text field opts out of password managers; the toggle reads « Anonyme »; no « signé »/« privé ».
+  for (const area of await body(page).getByRole('textbox').all()) {
+    await expect(area).toHaveAttribute('autocomplete', 'off');
+    for (const opt of ['data-1p-ignore', 'data-lpignore', 'data-bwignore']) await expect(area).toHaveAttribute(opt, 'true');
+  }
+  await expect(body(page).getByText(fr.bilanPrivateToggle, { exact: true }).first()).toBeVisible();
+  await expect(body(page)).not.toContainText(/signé|privé/i);
+
+  // Annuler: disabled until something changes, then drops the edits.
+  const cancelButton = body(page).getByRole('button', { name: fr.bilanCancel, exact: true });
+  await expect(cancelButton).toBeDisabled();
+  await field(page, fr.bilanCategoryFood).fill('À jeter');
+  await expect(cancelButton).toBeEnabled();
+  await cancelButton.click();
+  await expect(field(page, fr.bilanCategoryFood)).toHaveValue('');
+  await expect(cancelButton).toBeDisabled();
 
   // Nothing written and nothing saved: nothing to send (blank text counts as nothing).
   await expect(submitButton(page)).toBeDisabled();
@@ -178,13 +195,18 @@ test('member: from the pass, a signed and a private comment on one card, return,
 
   await submitButton(page).click();
   await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
-  await expect(submitButton(page)).toHaveText(fr.bilanSubmitEdit);
+  await expect(submitButton(page)).toHaveText(fr.bilanSubmit);
   await shoot(page, 'bilan-saved-member');
 
   // Nothing of the answer is kept in the browser's storage.
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain('excellents');
   expect(stored).not.toContain('trop fort');
+
+  // Annuler after the save returns to the saved state, a removed comment included.
+  await field(page, fr.bilanCategoryFood, true).fill('Autre chose');
+  await body(page).getByRole('button', { name: fr.bilanCancel, exact: true }).click();
+  await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
 
   // Return: both kinds on the « Party + musique » card, the private one on « Nourriture ».
   await page.reload();
@@ -276,7 +298,7 @@ test('member: after the close, the signed comments read-only, the private ones n
   await expect(page.getByText('Texte privé du membre')).toHaveCount(0);
   await expect(body(page).getByRole('textbox')).toHaveCount(0);
   await expect(body(page).getByRole('switch')).toHaveCount(0);
-  await expect(body(page).getByRole('button', { name: fr.bilanSubmitEdit })).toHaveCount(0);
+  await expect(body(page).getByRole('button', { name: fr.bilanSubmit })).toHaveCount(0);
   // The answered categories only, as read-only cards in the form's style and colours (#352).
   await expect(body(page).getByRole('heading', { level: 3 })).toHaveText([fr.bilanCategorySafety, fr.bilanCategoryOther]);
   await expect(body(page).getByRole('region', { name: fr.bilanCategorySafety })).toContainText('Rien à signaler');

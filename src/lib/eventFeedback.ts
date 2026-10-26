@@ -91,7 +91,7 @@ export const itemOf = (items: FeedbackItem[] | null | undefined, category: Feedb
 
 // ---------------------------------------------------------------------------------------------
 // The form (#355): each category card holds one or two comments, at most one of each kind. A new
-// comment is signed; its « Privé » switch makes it private; once a card has one comment, the other
+// comment is signed; its « Anonyme » switch makes it private; once a card has one comment, the other
 // kind can be added. Saving sends the non-blank comments as the member's whole set.
 
 /** One comment being written on a card. `slot` is its stable key in the card ('a' or 'b'). */
