@@ -98,8 +98,9 @@ export const fetchEventFeedbackAnswers = async (client: Client, eventId: string)
 
 /**
  * What event_feedback_counts() returns (#345, ADR 0029), before and after the close. `anonymous`
- * is null while there are fewer than 3 anonymous answers (the UI says « moins de 3 »), and `total`
- * is null with it (total − signed would give it away). No text, author, id or time.
+ * is null while there are fewer than 3 anonymous answers besides the caller's own (the UI says
+ * « moins de 3 »); shown, it includes the caller's own. `total` is null with it (total − signed
+ * would give it away). No text, author, id or time.
  */
 export interface EventFeedbackCounts {
   closed: boolean;

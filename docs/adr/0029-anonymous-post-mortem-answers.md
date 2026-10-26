@@ -44,8 +44,9 @@ sequenceDiagram
   about who or when. `event_feedback_authors` holds the link: answer, `author_id`, `party_id`,
   `created_at`, `updated_at`, one per member per event (`UNIQUE (event_id, author_id)`). Both have
   RLS on, no policy, and no privilege for `anon`, `authenticated` or `service_role`. No view reads
-  them, nothing embeds them, they aren't in the Realtime publication. Three `SECURITY DEFINER` (four since #345)
-  functions are the only way in, and each names its output.
+  them, nothing embeds them, they aren't in the Realtime publication. The `SECURITY DEFINER`
+  functions below (three in #315, a fourth for the counts in #345) are the only way in, and each
+  names its output.
 - **The window and the close.** It opens on the event's first day (Toronto day of the
   start, from 00:00; amended 2026-10-26, #339, was the day after the last day). It closes at the end of the Toronto day "last day +
   `events.feedback_days`" (default 14, from 1 to 365), or at archival if that comes first. A DRAFT
@@ -67,7 +68,7 @@ sequenceDiagram
   trigger on `events` (holding the event's advisory lock exclusively, see below), in one
   transaction with setting the marker: at
   archival, at any update of the event once its close date has passed (or that puts it there), and,
-  through a no-op update, at the first call of any of the three functions (four since #345) after the close date. It
+  through a no-op update, at the first call of any of those functions after the close date. It
   re-inserts each anonymous answer as a new row (fresh random id, the event and the texts only), all
   of them in random order, then deletes their window rows, which deletes their links
   (`ON DELETE CASCADE`). The new rows share one `xmin` (the levée's transaction) and carry no time,
@@ -135,6 +136,10 @@ Not fixed, by the organiser's decision on #315:
 - **The candidate set.** The participants without a named answer are the candidates for the
   anonymous ones; the threshold of 3 counts answers, not people. An admin who registers accounts
   they control and has them answer anonymously can pad the count past 3 and narrow the candidates.
+  Before the close the counts (#345) make it a live probe: the threshold leaves out only the
+  calling admin's own answer, so with two other accounts they control answering anonymously,
+  every real anonymous answer from the first on shows as a step (their 2 plus 1 real make 3 others), which
+  they can match with what else they see.
 - **Changing the functions.** Anyone who changes them could capture authors; every change is a
   reviewed migration in the public repository.
 - **Rare deadlocks.** The levée holds the event's lock through the rest of its update. An update
@@ -212,10 +217,16 @@ loosening** of « nothing before the close »: admins learn *how many*, never *w
   doors as `event_feedback_answers()`: the event check (`event_not_found`), then the due-close,
   which may run the levée. It returns `{ closed, closes_on, eligible, signed, anonymous, total }`,
   before and after the close, and nothing else: no text, author, id, time, ordering or history.
-- **Signed** is exact from the first answer. **Anonymous** is exact only from 3 answers, the
-  threshold above; with 0, 1 or 2 it is `null` (the UI says « moins de 3 »), the same value for
-  all three. After the close the same rule holds, so the counts agree with
-  `event_feedback_answers()` (an anonymous count exactly when the anonymous texts are shown).
+- **Signed** is exact from the first answer. **Anonymous** is shown only when there are at least 3
+  anonymous answers **besides the caller's own**, the threshold above; otherwise it is `null` (the
+  UI says « moins de 3 »), the same value for 0, 1 and 2 others. Once shown, the number is every
+  anonymous answer, the caller's own included, and `total` is signed + that number: both count
+  the whole event, and an admin knows their own answer anyway. Before the close the caller's own
+  anonymous answer is found by its author link; this keeps an admin registered on the event from
+  probing the threshold with their own answer (save anonymously, reload, see whether it flips,
+  switch back, repeat; #345 review). After the close no anonymous answer has a link any more, so
+  the threshold is on all of them, exactly as in `event_feedback_answers()`, and the counts agree
+  with it (an anonymous count exactly when the anonymous texts are shown).
 - **The total never reveals an anonymous count under 3.** `total` (signed + anonymous) is `null`
   whenever `anonymous` is, since total − signed would give it; so is any rate over `eligible`.
 - **Eligible** is the denominator: the event's registrations that are neither cancelled nor on the
@@ -233,6 +244,10 @@ change as a step, and the organiser accepted it:
 - at any count, a switch from signed to anonymous (signed −1, anonymous +1 once shown), and back.
   Below the threshold the signed count still drops, which tells the admin that one more anonymous
   answer exists, though not whose;
+- a step from a shown count to `null`: an admin who read 3 and, on a reload, reads `null` with
+  signed +1 knows there are now exactly 2 others. `null` hides 0, 1 and 2 only from an admin with
+  no earlier reading to compare it with; across reloads, the steps above can be followed below the
+  threshold too;
 - each new signed answer (signed +1), which was never secret after the close.
 
 Matched with what else an admin sees (who just logged in, a message from a member), a step can

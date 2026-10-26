@@ -4376,7 +4376,10 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   const SWITCH = 'a0000000-a000-a000-a000-a00000003159'; // the members' switch (#341): off, unlike the others
   const SWITCH_DUE = 'a0000000-a000-a000-a000-a0000000315a'; // switch off and past its close date, with two anonymous answers
   const COUNTS = 'a0000000-a000-a000-a000-a0000000315b'; // the admins' counts (#345), on an event of its own
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS];
+  const COUNTS_OWN = 'a0000000-a000-a000-a000-a0000000315c'; // counts: the calling admin answers anonymously too
+  const COUNTS_DUE = 'a0000000-a000-a000-a000-a0000000315d'; // counts: past its close date, the first call is the counts
+  const COUNTS_DRAFT = 'a0000000-a000-a000-a000-a0000000315e'; // counts: a DRAFT event
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS, COUNTS_OWN, COUNTS_DUE, COUNTS_DRAFT];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4471,6 +4474,9 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     await register('admin', SWITCH, ADMIN_ID);
     for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'Cancelled', 'Waitlisted']) await register(label, COUNTS, users[label].id);
     await register('member', COUNTS, MEMBER_ID);
+    for (const label of ['Anon1', 'Anon2', 'Anon3']) await register(label, COUNTS_OWN, users[label].id);
+    await register('admin', COUNTS_OWN, ADMIN_ID);
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named']) await register(label, COUNTS_DUE, users[label].id);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${COUNTS}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${COUNTS}`]]);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
@@ -4483,7 +4489,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // Started 10 days ago for 3 days: the window opened 10 days ago (the first day)
     // and closes at the end of the day in 6 days (last day, 8 days ago, + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS, COUNTS_OWN, COUNTS_DUE, COUNTS_DRAFT], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
@@ -4793,6 +4799,61 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     const { rows: [{ anon_can }] } = await db.query(
       "select has_function_privilege('anon', 'public.event_feedback_counts(uuid)', 'execute') as anon_can");
     expect(anon_can).toBe(false);
+  });
+
+  // #345 review: the calling admin's own anonymous answer doesn't count towards the threshold, or
+  // they could probe it (save anonymously, reload, switch back). Shown, the number includes it.
+  test('the threshold leaves out the calling admin\'s own anonymous answer; shown, the count includes it', async () => {
+    await ok(submit(clients.admin, COUNTS_OWN, { other: 'Admin anonyme' }, true));
+    await ok(submit(clients.Anon1, COUNTS_OWN, { other: 'Autre 1' }, true));
+    await ok(submit(clients.Anon2, COUNTS_OWN, { other: 'Autre 2' }, true));
+    // 3 anonymous answers, but only 2 besides the admin's own: hidden, total too.
+    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toEqual(
+      { closed: false, closes_on: isoDay(6), eligible: 4, signed: 0, anonymous: null, total: null });
+    // Switching their own answer back and forth tells them nothing.
+    await ok(submit(clients.admin, COUNTS_OWN, { other: 'Admin signé' }, false));
+    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ signed: 1, anonymous: null, total: null });
+    await ok(submit(clients.admin, COUNTS_OWN, { other: 'Admin anonyme' }, true));
+    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ signed: 0, anonymous: null, total: null });
+    // A third other: shown, the admin's own included.
+    await ok(submit(clients.Anon3, COUNTS_OWN, { other: 'Autre 3' }, true));
+    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ signed: 0, anonymous: 4, total: 4 });
+    // After the close no anonymous answer has an author: the threshold is on all of them, as for the texts.
+    await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', COUNTS_OWN));
+    const counts = await ok(countsOf(clients.admin, COUNTS_OWN));
+    expect(counts).toMatchObject({ closed: true, signed: 0, anonymous: 4, total: 4 });
+    expect((await ok(answersOf(clients.admin, COUNTS_OWN))).anonymous).toHaveLength(4);
+  });
+
+  test('the counts\' first call after the close date runs the levée, and agree with the answers', async () => {
+    for (const label of ['Anon1', 'Anon2', 'Anon3']) await ok(submit(clients[label], COUNTS_DUE, { other: `Dû ${label}` }, true));
+    await ok(submit(clients.Named, COUNTS_DUE, { other: 'Dû nommé' }, false));
+    // Past its close date with no update since (dates moved with the triggers off, as for LAZY).
+    await db.query('begin');
+    await db.query('set local session_replication_role = replica');
+    await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = $1', [COUNTS_DUE, startsIn(-120), startsIn(-40)]);
+    await db.query('commit');
+    expect(await eventRow(COUNTS_DUE)).toMatchObject({ status: 'ACTIVE', feedback_closed_at: null });
+
+    const counts = await ok(countsOf(clients.admin, COUNTS_DUE));
+    expect((await eventRow(COUNTS_DUE)).feedback_closed_at).not.toBeNull();
+    expect(counts).toEqual({ closed: true, closes_on: isoDay(-24), eligible: 4, signed: 1, anonymous: 3, total: 4 });
+    const rows = await stored(COUNTS_DUE);
+    expect(rows.filter((row) => row.is_anonymous).every((row) => row.author_id === null && row.party_id === null)).toBe(true);
+    const answers = await ok(answersOf(clients.admin, COUNTS_DUE));
+    expect([answers.named.length, answers.anonymous.length]).toEqual([counts.signed, counts.anonymous]);
+    expect(answers.closes_on).toBe(counts.closes_on);
+  });
+
+  test('a DRAFT event and one with the members\' switch off: the admin gets the counts, a member admin_only', async () => {
+    await db.query("update public.events set status = 'DRAFT' where id = $1", [COUNTS_DRAFT]);
+    expect(await ok(countsOf(clients.admin, COUNTS_DRAFT))).toEqual(
+      { closed: false, closes_on: expect.any(String), eligible: 0, signed: 0, anonymous: null, total: null });
+    expectCode(await countsOf(clients.member, COUNTS_DRAFT), 'admin_only');
+    // SWITCH (#341) is off here, with the admin's anonymous answer and the member's named one.
+    expect((await db.query('select feedback_member_visible v from public.events where id = $1', [SWITCH])).rows[0].v).toBe(false);
+    expect(await ok(countsOf(clients.admin, SWITCH))).toMatchObject({ closed: false, eligible: 2, signed: 1, anonymous: null, total: null });
+    expectCode(await countsOf(clients.member, SWITCH), 'admin_only');
   });
 
   // ADR 0029: a read writes or locks no row a client can read (xmin/xmax/ctid are readable through the API).

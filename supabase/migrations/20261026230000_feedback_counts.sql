@@ -6,8 +6,12 @@
 --   eligible:  the event's registrations that may answer (neither cancelled nor waitlisted: the
 --              rule of private.event_feedback_party), the denominator;
 --   signed:    the named answers, exact from the first one;
---   anonymous: the anonymous answers when there are at least 3 (ADR 0029's threshold), otherwise
---              null: the same for 0, 1 and 2;
+--   anonymous: the anonymous answers, the caller's own included, when there are at least 3 OTHER
+--              than the caller's own (ADR 0029's threshold), otherwise null: the same for 0, 1
+--              and 2. The caller's own anonymous answer is known by its author link, which exists
+--              only before the close: an admin registered on the event can't move the threshold
+--              by saving anonymously and reloading (#345 review). After the levée no anonymous
+--              answer has a link, so the threshold is on all of them, as in event_feedback_answers();
 --   total:     signed + anonymous, null while anonymous is null (total - signed would give it).
 --
 -- Same doors as event_feedback_answers() (20261026043829_event_feedback.sql, not redefined here):
@@ -26,6 +30,7 @@ DECLARE
     v_window record;
     v_signed integer;
     v_anonymous integer;
+    v_own_anonymous integer;
     v_eligible integer;
 BEGIN
     IF NOT public.is_admin() THEN
@@ -40,11 +45,17 @@ BEGIN
     FROM public.event_feedback f
     WHERE f.event_id = p_event_id;
 
+    -- The caller's own anonymous answer (0 or 1), by its link: only while the window is open.
+    SELECT count(*) INTO v_own_anonymous
+    FROM public.event_feedback f
+    JOIN public.event_feedback_authors a ON a.feedback_id = f.id
+    WHERE f.event_id = p_event_id AND f.is_anonymous AND a.author_id = auth.uid();
+
     SELECT count(*) INTO v_eligible
     FROM public.user_parties up
     WHERE up.event_id = p_event_id AND up.status <> 'cancelled' AND NOT COALESCE(up.is_waitlisted, false);
 
-    IF v_anonymous < 3 THEN
+    IF v_anonymous - v_own_anonymous < 3 THEN
         v_anonymous := NULL;
     END IF;
 
@@ -59,7 +70,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.event_feedback_counts(uuid) IS
-    'How many post-mortem answers an event has, for account admins only (admin_only otherwise; not Comité nor Organisateur nor « Voir comme ») (#345, ADR 0029). { closed, closes_on, eligible, signed, anonymous, total }: anonymous only when there are 3 or more (else null), total null while anonymous is. No text, author, id, time or order.';
+    'How many post-mortem answers an event has, for account admins only (admin_only otherwise; not Comité nor Organisateur nor « Voir comme ») (#345, ADR 0029). { closed, closes_on, eligible, signed, anonymous, total }: anonymous (the caller''s own included) only when there are 3 or more besides the caller''s own (else null), total null while anonymous is. No text, author, id, time or order.';
 
 REVOKE ALL ON FUNCTION public.event_feedback_counts(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.event_feedback_counts(uuid) TO authenticated;

@@ -189,7 +189,7 @@ Notes on specific choices:
   RLS on with no policy, every grant revoked. Before the close, `event_feedback_answers()` (account
   admins only) gives the close date and nothing else, so an admin learns neither what was written
   nor who answered; `event_feedback_counts()` (account admins only) gives how many: the signed
-  answers, the anonymous ones only from 3, and a total only with them. At the close (archival, or the end of the Toronto day "last day +
+  answers, the anonymous ones only from 3 besides the caller's own, and a total only with them. At the close (archival, or the end of the Toronto day "last day +
   `events.feedback_days`") the levée, in `trg_close_event_feedback`, re-inserts the anonymous
   answers with fresh ids in random order and deletes their window rows and links; then no row ties
   an anonymous text to its author, party, id or time, even for the database owner. Anonymous answers
