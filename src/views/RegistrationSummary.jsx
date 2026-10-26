@@ -6,7 +6,7 @@ import { fetchLocationGalleries } from '../lib/galleries';
 import { sleepingByLocation } from '../lib/places';
 import fr from '../locales/fr.json';
 import { formatDate, formatDateTime } from '../lib/format';
-import { getRegistrationCloseDate, isRegistrationLocked } from '../lib/eventPhase';
+import { getRegistrationCloseDate, isRegistrationFrozen, isRegistrationLocked } from '../lib/eventPhase';
 import { describeChanges, memberHistoryEdits } from '../lib/editHistory';
 import { AttendeeList, InfoBlock, RegistrationInputs } from '../components/RegistrationDetails';
 import Pass from '../components/brand/Pass';
@@ -18,7 +18,7 @@ import { EDITABLE_REGISTRATION_STATUSES } from '../lib/registrationOptions';
 
 // Home page, registered state: the pass (signature), then the group, logistics, requests and edit
 // history. What matters most (am I in, what do I owe) is on the pass; details follow.
-const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEdit, onCancelled, onError }) => {
+const RegistrationSummary = ({ registration, event, isIntent, animateStamp, isAdmin = false, onEdit, onCancelled, onError }) => {
   const payerName = useAccountName(registration);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -79,6 +79,8 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
   const organizersMessage = registration.message_to_participants?.trim();
   const isCancellable = EDITABLE_REGISTRATION_STATUSES.includes(registration.status);
   const locked = isRegistrationLocked(event);
+  // From the event's start a member can change nothing (#314); the database refuses it, admins pass.
+  const frozen = !isAdmin && isRegistrationFrozen(event);
 
   return (
     <div className="space-y-6">
@@ -88,7 +90,9 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
         isIntent={isIntent}
         animateStamp={animateStamp}
         payerName={payerName}
-        action={(
+        action={frozen ? (
+          <p data-testid="registration-frozen" className="text-sm text-muted">{fr.registrationFrozenNotice}</p>
+        ) : (
           <Button onClick={onEdit} className="w-full">
             <Pencil aria-hidden="true" className="size-4.5" strokeWidth={2} />
             {fr.editRegistration}
@@ -188,7 +192,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
         )}
       </Card>
 
-      {isCancellable && !locked && (
+      {isCancellable && !locked && !frozen && (
         <div className="flex justify-center pt-2">
           <Button variant="dangerGhost" onClick={() => setConfirmingCancel(true)}>
             <LogOut aria-hidden="true" className="size-4.5" strokeWidth={1.75} />
@@ -196,7 +200,7 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, onEd
           </Button>
         </div>
       )}
-      {isCancellable && locked && (
+      {isCancellable && locked && !frozen && (
         <p className="pt-2 text-center text-sm text-muted">
           {fr.cancelRegistrationLocked.replace('{date}', formatDate(getRegistrationCloseDate(event)))}
         </p>

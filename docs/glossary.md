@@ -88,6 +88,14 @@ The window before registration opens (`reg_start_date − z_intent_months`) wher
 that they plan to come and who with, so organisers can size and price the weekend. Non-binding.
 _Avoid_: pre-registration, RSVP, expression of interest.
 
+**Registration close date** (fr. *date limite de désinscription*)
+The start day minus `x_reg_close_weeks` weeks. After it a member can still add and edit, but can no
+longer cancel or remove a participant: the amount owed stays owed.
+
+**Frozen registration** (#314)
+From the event's start instant (`event_start_date`) a member can change nothing on their
+registration, not even register again; admins still can.
+
 ## Money
 
 **Base price** / **selling price** (fr. *prix de base*, *prix de vente*, column
