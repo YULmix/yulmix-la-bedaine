@@ -8,6 +8,11 @@ project will not sustain.
 
 1. **French for users, English for code.** Every UI string in `src/locales/fr.json`; every
    identifier, column, filename and comment in English.
+   **Write member copy from the member's side**: what they can do, when, and what happens to
+   their answer, in words they already use. Never mention a feature or mechanic they don't know
+   (« Voir comme », sync across devices) or justify a choice from the builders' point of view.
+   Admins and members can name the same thing differently: the post-mortem is « Bilan » on admin
+   screens and « retour » for members, and a member-facing string never says « bilan » (#343).
    New modules in `src/lib/` are TypeScript (`.ts`); components stay `.jsx` until touched for
    another reason (#201). Don't loosen `tsconfig.json` to make a file pass: type it.
 2. **The database is the authority.** Any rule that must hold — money, access, capacity — belongs in
