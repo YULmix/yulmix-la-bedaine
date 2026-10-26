@@ -97,6 +97,47 @@ export const fetchEventFeedbackAnswers = async (client: Client, eventId: string)
 };
 
 /**
+ * What event_feedback_counts() returns (#345, ADR 0029), before and after the close. `anonymous`
+ * is null while there are fewer than 3 anonymous answers (the UI says « moins de 3 »), and `total`
+ * is null with it (total − signed would give it away). No text, author, id or time.
+ */
+export interface EventFeedbackCounts {
+  closed: boolean;
+  closes_on: string | null;
+  eligible: number;
+  signed: number;
+  anonymous: number | null;
+  total: number | null;
+}
+
+const count = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+/**
+ * The counts as the database returned them, keeping only the known fields. The database applies
+ * the threshold; this keeps `total` null whenever `anonymous` is, whatever the payload says.
+ */
+export const toFeedbackCounts = (data: unknown): EventFeedbackCounts => {
+  const raw = (data ?? {}) as Record<string, unknown>;
+  const anonymous = count(raw.anonymous);
+  return {
+    closed: raw.closed === true,
+    closes_on: typeof raw.closes_on === 'string' ? raw.closes_on : null,
+    eligible: count(raw.eligible) ?? 0,
+    signed: count(raw.signed) ?? 0,
+    anonymous,
+    total: anonymous === null ? null : count(raw.total)
+  };
+};
+
+/** How many answers the event's post-mortem has (admins only), before or after the close; throws an appError in French. */
+export const fetchEventFeedbackCounts = async (client: Client, eventId: string): Promise<EventFeedbackCounts> => {
+  const { data, error } = await client.rpc('event_feedback_counts', { p_event_id: eventId });
+  if (error) throw failure('Error loading the post-mortem counts', error, fr.adminBilanLoadError);
+  return toFeedbackCounts(data);
+};
+
+/**
  * The event's registrations that may answer: neither cancelled nor waitlisted (#315's eligibility).
  * A count only, read after the close.
  */

@@ -4375,7 +4375,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   const UNLINK = 'a0000000-a000-a000-a000-a00000003158'; // a party deleted while its save is in flight
   const SWITCH = 'a0000000-a000-a000-a000-a00000003159'; // the members' switch (#341): off, unlike the others
   const SWITCH_DUE = 'a0000000-a000-a000-a000-a0000000315a'; // switch off and past its close date, with two anonymous answers
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE];
+  const COUNTS = 'a0000000-a000-a000-a000-a0000000315b'; // the admins' counts (#345), on an event of its own
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4389,6 +4390,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   });
   const mine = (client, eventId) => client.rpc('my_event_feedback', { p_event_id: eventId });
   const answersOf = (client, eventId) => client.rpc('event_feedback_answers', { p_event_id: eventId });
+  const countsOf = (client, eventId) => client.rpc('event_feedback_counts', { p_event_id: eventId });
   const expectCode = (result, code, details) => {
     expect(result.error?.message).toBe(code);
     if (details) expect(JSON.parse(result.error.details)).toEqual(details);
@@ -4467,15 +4469,21 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     for (const label of ['Anon1', 'Anon2']) await register(label, SWITCH_DUE, users[label].id);
     await register('member', SWITCH_DUE, MEMBER_ID);
     await register('admin', SWITCH, ADMIN_ID);
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'Cancelled', 'Waitlisted']) await register(label, COUNTS, users[label].id);
+    await register('member', COUNTS, MEMBER_ID);
+    await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${COUNTS}`]]);
+    await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${COUNTS}`]]);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${OPEN}`]]);
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
-      await ok(clients.admin.rpc('set_edition_role', { p_event_id: OPEN, p_user_id: userId, p_role: role }));
+      for (const eventId of [OPEN, COUNTS]) {
+        await ok(clients.admin.rpc('set_edition_role', { p_event_id: eventId, p_user_id: userId, p_role: role }));
+      }
     }
     // Started 10 days ago for 3 days: the window opened 10 days ago (the first day)
     // and closes at the end of the day in 6 days (last day, 8 days ago, + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
@@ -4718,6 +4726,94 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     expect((await ok(mine(clients.Anon2, OPEN))).answer).toMatchObject({ is_anonymous: true, answers: { safety: 'Anonyme 2: sécurité' } });
     for (const role of ['committee', 'organiser', 'Outsider', 'admin', 'NoAnswer']) {
       expect((await ok(mine(clients[role], OPEN))).answer).toBeNull();
+    }
+  });
+
+  // #345 (ADR 0029, amendment « counts »): before the close an admin sees how many answers, never which.
+  test('before the close an admin reads the counts only: signed exact, anonymous from 3, total only with it', async () => {
+    const KEYS = ['anonymous', 'closed', 'closes_on', 'eligible', 'signed', 'total'];
+    const counts = async () => {
+      const result = await ok(countsOf(clients.admin, COUNTS));
+      expect(Object.keys(result).sort()).toEqual(KEYS); // no text, author, id, date or order
+      return result;
+    };
+    // Eligible: 5 (member, Anon1-3, Named); the cancelled and the waitlisted registrations don't count.
+    const empty = await counts();
+    expect(empty).toEqual({ closed: false, closes_on: isoDay(6), eligible: 5, signed: 0, anonymous: null, total: null });
+
+    await ok(submit(clients.Named, COUNTS, { welcome: 'Compté nommé' }, false));
+    const signedOnly = await counts();
+    expect(signedOnly).toEqual({ ...empty, signed: 1 });
+    // 0, 1 and 2 anonymous answers give the same result, total included.
+    await ok(submit(clients.Anon1, COUNTS, { welcome: 'Compté anonyme 1' }, true));
+    expect(await counts()).toEqual(signedOnly);
+    await ok(submit(clients.Anon2, COUNTS, { welcome: 'Compté anonyme 2' }, true));
+    expect(await counts()).toEqual(signedOnly);
+    await ok(submit(clients.Anon3, COUNTS, { welcome: 'Compté anonyme 3' }, true));
+    expect(await counts()).toEqual({ ...empty, signed: 1, anonymous: 3, total: 4 });
+
+    // A new signed answer, its switch to anonymous, an edit of the text.
+    await ok(submit(clients.member, COUNTS, { food: 'Compté membre' }, false));
+    expect(await counts()).toEqual({ ...empty, signed: 2, anonymous: 3, total: 5 });
+    await ok(submit(clients.member, COUNTS, { food: 'Compté membre' }, true));
+    expect(await counts()).toEqual({ ...empty, signed: 1, anonymous: 4, total: 5 });
+    await ok(submit(clients.member, COUNTS, { food: 'Compté membre, modifié' }, true));
+    expect(await counts()).toEqual({ ...empty, signed: 1, anonymous: 4, total: 5 });
+    // Back under the threshold: anonymous and total hidden again.
+    for (const label of ['member', 'Anon1']) await ok(submit(clients[label], COUNTS, { food: 'Signé finalement' }, false));
+    expect(await counts()).toEqual({ ...empty, signed: 3, anonymous: null, total: null });
+    for (const label of ['member', 'Anon1']) await ok(submit(clients[label], COUNTS, { food: 'Anonyme finalement' }, true));
+
+    // Nothing that names anyone or anything stored.
+    const text = JSON.stringify(await counts());
+    for (const row of await stored(COUNTS)) {
+      for (const secret of [row.id, row.author_id, row.party_id]) expect(text).not.toContain(secret);
+    }
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named']) {
+      for (const secret of [users[label].id, users[label].email, users[label].name]) expect(text).not.toContain(secret);
+    }
+    // Still open, and event_feedback_answers() still says nothing.
+    expect((await eventRow(COUNTS)).feedback_closed_at).toBeNull();
+    expect(await ok(answersOf(clients.admin, COUNTS))).toMatchObject({ closed: false, named: null, anonymous: null });
+  });
+
+  test('the counts are refused to member, Comité, Organisateur, anon and « Voir comme »; event_not_found as for the answers', async () => {
+    for (const role of ['member', 'committee', 'organiser', 'Named']) {
+      expectCode(await countsOf(clients[role], COUNTS), 'admin_only');
+    }
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    expect((await countsOf(anon, COUNTS)).error).toBeTruthy();
+    await expect(asSession({ sub: users.Named.id, impersonated_by: ADMIN_ID },
+      'select public.event_feedback_counts($1) as out', [COUNTS])).rejects.toThrow('admin_only');
+    // A non-admin is refused before the event check: an unknown event tells them nothing either.
+    expectCode(await countsOf(clients.member, '00000000-0000-0000-0000-00000000dead'), 'admin_only');
+    expectCode(await countsOf(clients.admin, '00000000-0000-0000-0000-00000000dead'), 'event_not_found');
+    expectCode(await answersOf(clients.admin, '00000000-0000-0000-0000-00000000dead'), 'event_not_found');
+    // No privilege for anon at all.
+    const { rows: [{ anon_can }] } = await db.query(
+      "select has_function_privilege('anon', 'public.event_feedback_counts(uuid)', 'execute') as anon_can");
+    expect(anon_can).toBe(false);
+  });
+
+  // ADR 0029: a read writes or locks no row a client can read (xmin/xmax/ctid are readable through the API).
+  test('reading the counts leaves the xmin, xmax and ctid of every row a client reads unchanged', async () => {
+    const system = 'id, xmin, xmax, ctid';
+    const read = async () => ({
+      event: await ok(clients.admin.from('events').select(system).eq('id', COUNTS)),
+      profile: await ok(clients.admin.from('profiles').select(system).eq('id', users.Anon1.id)),
+      party: await ok(clients.admin.from('user_parties').select(system).eq('id', parties[`Anon1:${COUNTS}`]))
+    });
+    const before = await read();
+    await ok(countsOf(clients.admin, COUNTS));
+    await ok(countsOf(clients.admin, COUNTS));
+    expect(await read()).toEqual(before);
+    // A save in flight (the event's lock held shared) doesn't block the read.
+    await db.query('begin');
+    try {
+      await db.query('select pg_advisory_xact_lock_shared(private.event_feedback_lock_key($1))', [COUNTS]);
+      await ok(countsOf(clients.admin, COUNTS));
+    } finally {
+      await db.query('rollback');
     }
   });
 
@@ -5022,6 +5118,29 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     expect(results.map((result) => result.named.length)).toEqual([0, 0, 1]);
   });
 
+  test('after the close the counts follow the same rules and agree with event_feedback_answers()', async () => {
+    // Archival closes COUNTS (4 anonymous, 1 named) at once.
+    await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', COUNTS));
+    expect((await eventRow(COUNTS)).feedback_closed_at).not.toBeNull();
+    for (const eventId of [COUNTS, ARCHIVED, SHORT, ARCH2, LAZY]) {
+      const counts = await ok(countsOf(clients.admin, eventId));
+      const answers = await ok(answersOf(clients.admin, eventId));
+      expect(Object.keys(counts).sort()).toEqual(['anonymous', 'closed', 'closes_on', 'eligible', 'signed', 'total']);
+      expect(counts).toMatchObject({ closed: true, closes_on: answers.closes_on, signed: answers.named.length });
+      if (answers.anonymous.length) {
+        expect(counts).toMatchObject({ anonymous: answers.anonymous.length, total: answers.named.length + answers.anonymous.length });
+      } else {
+        expect(counts).toMatchObject({ anonymous: null, total: null });
+      }
+    }
+    expect(await ok(countsOf(clients.admin, COUNTS))).toMatchObject({ eligible: 5, signed: 1, anonymous: 4, total: 5 });
+    // 0, 1 and 2 anonymous answers after the close: the same null.
+    expect((await Promise.all([ARCHIVED, SHORT, ARCH2].map((eventId) => ok(countsOf(clients.admin, eventId)))))
+      .map(({ signed, anonymous, total }) => ({ signed, anonymous, total })))
+      .toEqual([{ signed: 0, anonymous: null, total: null }, { signed: 0, anonymous: null, total: null }, { signed: 1, anonymous: null, total: null }]);
+    expectCode(await countsOf(clients.committee, COUNTS), 'admin_only');
+  });
+
   test('no client writes the close marker, and nobody clears it', async () => {
     expectCode(await clients.admin.from('events').update({ feedback_closed_at: new Date().toISOString() }).eq('id', FUTURE), 'event_feedback_close_locked');
     expectCode(await clients.admin.from('events').update({ feedback_closed_at: null }).eq('id', ARCH2), 'event_feedback_close_locked');
@@ -5049,6 +5168,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
       order by 1`);
     expect(functions.map((row) => row.name)).toEqual([
       'event_feedback_answers(uuid)',
+      'event_feedback_counts(uuid)',
       'my_event_feedback(uuid)',
       // The delete triggers that clear a link's author and party: they read nothing out.
       'private.event_feedback_forget_party()',
