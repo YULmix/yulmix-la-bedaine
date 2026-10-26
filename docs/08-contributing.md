@@ -69,7 +69,8 @@ The current history (*"head assets"* ×3) is not a model to follow.
 ### e2e verification: the affected set while iterating, the whole suite before the PR
 
 - **Iterating** (after each change, before the branch is final): `npm run test:e2e:affected -- --run`
-  after a `supabase db reset`. It runs the specs mapped from your diff plus the smoke set (member vs
+  after a database reset (`supabase db reset`, or `npm run stack:cli -- db reset` in a git worktree,
+  which has its own local stack: [Development setup](./07-development-setup.md#per-worktree-local-stack)). It runs the specs mapped from your diff plus the smoke set (member vs
   admin boundary, registration, payment status), typically 1–3 minutes
   ([how it picks](./07-development-setup.md#e2eauth-and-rlsspecjs--the-playwright-suite)).
 - **The whole suite is required** (`npx playwright test`, once, on the final HEAD, before the branch

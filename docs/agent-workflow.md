@@ -27,15 +27,15 @@ npm run build && npm run typecheck && npm run lint && npm run lint:diff -- origi
 deno test supabase/functions/ && deno check supabase/functions/*/index.ts   # when supabase/functions/ changed
 ```
 
-Then, against the local database (always under the lock, see "Running the app"):
+Then, against your worktree's own local stack (see "Running the app"):
 
-- `supabase db reset` applies the branch's migrations; a failure there is a bug to fix.
+- `npm run stack:cli -- db reset` applies the branch's migrations; a failure there is a bug to fix.
 - `npm run test:rls` in full when anything under `supabase/` changed.
 - `npm run db:local:demo` when the branch touches migrations, `seed.sql` or the seed generator
   ([Contributing, rule 4](./08-contributing.md#ground-rules)).
 - e2e: the affected set while iterating, then **the whole suite once, in ONE invocation, on the final
   HEAD** ([Contributing → e2e verification](./08-contributing.md#e2e-verification-the-affected-set-while-iterating-the-whole-suite-before-the-pr)).
-  Never a `supabase db reset` per Playwright project (30+ minutes, holds the lock for everyone). A
+  Never a database reset per Playwright project (30+ minutes). A
   failure in a spec you didn't touch: reset, rerun that project alone (`--no-deps --project=<name>`)
   to tell a real failure from leftover data. The chromium project is deliberately one worker (#170).
 - Squawk on any new migration (the pre-commit hook runs it).
@@ -55,35 +55,32 @@ horizontal scroll at 390px, clipped text) and follow the [UI checklist](./05-fro
   supervisor ledger: the `fleet-lib.sh` defaults). Worktrees live outside the repo so `eslint .` and
   Jest in the main checkout never pick them up.
 - Main checkout: `~/code/yulmix-la-bedaine`; default branch `main`; remote `origin`.
-- After creating a worktree: `npm ci`, and copy the main checkout's gitignored `.env.local` and
-  `.env.test` into it.
-- Shared resources: **one** local Supabase stack and port 5173 (Playwright's dev server) for every
-  worktree and agent. Use them only under the lock below.
+- After creating a worktree: `npm ci`, copy the main checkout's gitignored `.env.local` and
+  `.env.test` into it, then `npm run stack:up` (its own local Supabase stack and Vite port, see
+  [Development setup → Per-worktree local stack](./07-development-setup.md#per-worktree-local-stack),
+  [ADR 0028](./adr/0028-one-local-supabase-stack-per-worktree.md)).
+- Nothing local is shared between worktrees. The main checkout's default stack (and port 5173) is
+  the organiser's: never start, stop or reset it.
+- **A bare `supabase` command in a worktree targets that default (main) stack.** Agents run
+  `npm run stack:cli -- <args>` instead (`-- db reset`, `-- status`).
 
 ## Running the app for acceptance checks
 
-Every database command runs inside a `flock` block that starts by resetting the database from your
-own worktree; nothing seen in an earlier block can be assumed in the next one (someone else may
-have reset in between):
+Each worktree has its own stack, so there is no lock and no waiting. In your worktree:
 
 ```sh
-mkdir -p ~/code/yulmix-la-bedaine.worktrees
-flock -w 2700 ~/code/yulmix-la-bedaine.worktrees/.localdb.lock bash -c '
-  set -e
-  cd <your worktree>
-  if ss -ltn | grep -q ":5173 "; then echo "port 5173 busy: a dev server is running" >&2; exit 97; fi
-  supabase status >/dev/null 2>&1 || supabase start
-  supabase db reset
-  <the tests for this block>
-'
+npm run stack:up                  # once; safe to rerun
+npm run stack:cli -- db reset     # start every block from a known database
+<the tests: npm run test:rls, npm run test:e2e, ...>
 ```
 
-- Nothing but tests inside a block: no edits, no builds. Long blocks (the full e2e suite) run in the
-  background. Never `npm run dev`, `supabase stop`, `supabase db query` or `npm run db:*` outside it.
-- Port 5173 busy → don't kill anything, report it (Playwright would silently reuse a dev server
-  serving another worktree's code). Check the port only inside the lock.
-- `flock` timed out (exit 1 after 45 minutes) → do other work, retry later, mention it.
-- Docker denied but `getent group docker` lists the user → run the `flock` command inside
+- Run `db reset` before each verification, since your own earlier run may have left data behind.
+- Long runs (the full e2e suite, `test:rls`, `db:local:demo`) go with `run_in_background`.
+- Playwright serves the app on the stack's own Vite port; `npm run stack:dev` serves it for a manual
+  look (headless checks only, never a visible window).
+- Never touch another worktree's stack, and never the main checkout's.
+- No stack in the worktree: the `npm run` commands fail with « run `npm run stack:up` »; run it.
+- Docker denied but `getent group docker` lists the user → run the command inside
   `newgrp docker <<'EOF' … EOF`; the environment isn't broken.
 - Acceptance criteria are exercised for real, as **both** `member@test.local` and
   `admin@test.local`: SQL as each role
@@ -94,7 +91,7 @@ flock -w 2700 ~/code/yulmix-la-bedaine.worktrees/.localdb.lock bash -c '
 
 | Trigger | Command |
 |---|---|
-| A migration changes the schema | `npm run db:types` (after `supabase db reset`, under the lock); commit `src/lib/database.types.ts` |
+| A migration changes the schema | `npm run db:types` (after `npm run stack:cli -- db reset`); commit `src/lib/database.types.ts` |
 | A new e2e spec or source file | add it to `e2e/affected-map.json` (`npm test` fails until you do) |
 
 ## Tracker
@@ -226,8 +223,8 @@ today.
 
 PR body: a summary, what was and wasn't verified (from the developer's report), a **What changes for
 you locally** line (or "nothing"), any merge-order note, a `Closes #n` line, and the Claude Code
-footer. PRs are assigned to the organiser. **Only the organiser merges**: merging applies migrations
-to production. A PR is reported as ready (CI green), nothing more.
+footer. PRs are assigned to the organiser. The supervisor merges with `land.sh` on green CI (see the
+Supervisor overrides); merging applies migrations to production.
 
 ## Commits
 
@@ -248,10 +245,14 @@ stay as installed.
 
 ### Supervisor
 
-- **Capacity: one issue at a time.** A second developer only when the two issues pass every
-  "Parallelism" condition; say why in the plan. Filling every lane would only queue developers on the
-  database lock, and parallel branches here have collided on the e2e dependency chain, redefined SQL
-  functions and migration timestamps.
+- **Capacity: two lanes** (`FLEET_MAX_LANES=2`) when the two issues pass every "Parallelism"
+  condition, database work included; say why in the plan, otherwise one at a time. Each worktree has
+  its own local stack ([ADR 0028](./adr/0028-one-local-supabase-stack-per-worktree.md)), so the shared
+  database is no longer a reason to serialise; the file and SQL-object rules are, because parallel
+  branches here have collided on the e2e dependency chain, redefined SQL functions and migration
+  timestamps.
+- **Prune stacks after each merge**: `npm run stack:prune` (from any worktree or the main checkout)
+  removes the stacks of worktrees that no longer exist. Close the agent's worktree first.
 - **Preview database failures come first.** A failed *Reset Preview DB* or *Apply migrations to
   Preview* run is diagnosed and fixed before anything else is dispatched (it blocks the organiser's
   testing, #275). After each merge that adds a migration, check *Apply migrations to Preview*.
@@ -263,10 +264,12 @@ stay as installed.
   that isn't Preview. Preview is shared: one migration branch at a time; say in your status which
   branch Preview matches, and don't push a second one until the organiser says the first is tested.
   No migration in the PR → skip.
-- **Never merge**, even with `land.sh` available: merging applies migrations to production.
-- **Two lanes never share the local database.** Disjoint files are not enough: two developers that both
-  run database checks queue on the one local stack (#308 waited behind #310). Until each worktree has
-  its own stack (#312), a second lane only takes work that needs no local database.
+- **Merge PRs for current issues yourself** with `land.sh` once CI is green (organiser grant,
+  2026-10-25), local-workflow and decision-record PRs included: report what changes (locally, in the
+  ADR) in the same message, don't ask first. Merging applies migrations to production: check the
+  *Apply migrations* jobs of the `main` run.
+- **The second identical infra red in a day gets a fix, not a rerun** (the ECR data cap was rerun three
+  times before #321 fixed it).
 - **herdr agent names are lowercase**: `dev-gh-<n>`, `rev-gh-<n>` (herdr refuses `GH`); brief, report
   and worktree names keep the `GH-<n>` key.
 - **Start `ci-watch.sh` and `fleet-watch.sh` directly** with `run_in_background`, never behind a
@@ -277,8 +280,8 @@ stay as installed.
 
 ### Developer
 
-- A `review: yes` round still runs the cheap checks and the specs it added or changed under the
-  lock before reporting; the full verification (whole e2e suite, `test:rls`) comes after review,
+- A `review: yes` round still runs the cheap checks and the specs it added or changed on your own
+  stack before reporting; the full verification (whole e2e suite, `test:rls`) comes after review,
   except for a low-risk migration (see "Review"), which runs it in parallel with the review.
 - **Waiting on a long command** (the e2e suite, `test:rls`, `db:local:demo`): run it with the Bash
   tool's `run_in_background` and wait for its completion notice. Never poll with `pgrep -f <text>` (it
