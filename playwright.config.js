@@ -141,6 +141,10 @@ const SERIAL_ENTRIES = [
   // session through the impersonate Edge Function, so it runs after admin-users-sort, on its own.
   // Sets its own viewports.
   { name: 'voir-comme' },
+  // The member's « bilan » (#316) makes a fresh event per test the active one (a bilan's close is
+  // final, so the shared event can't be reused) and opens « Voir comme », so it runs after
+  // voir-comme, on its own. Sets its own viewports.
+  { name: 'member-bilan' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 

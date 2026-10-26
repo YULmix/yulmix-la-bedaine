@@ -792,3 +792,58 @@ export async function endOpenImpersonations() {
     'end open impersonations'
   );
 }
+
+// The post-mortem, « bilan » (#316). Its close is final (events.feedback_closed_at is never
+// cleared, ADR 0029), so each spec gets a fresh event rather than the shared, reused one: events
+// can't be deleted, they go back to inactive drafts on teardown. startDaysAgo puts the event's
+// start that many Toronto days ago (negative: in the future); active makes it the active event
+// (the pass, the admin's Inscrits). The seeded member gets a registration on it, saved by the
+// admin (a member can't register once the event has started, #314). Returns { eventId, partyId }.
+export async function seedFeedbackEvent({ startDaysAgo = 5, durationDays = 2, feedbackDays = 14, active = true } = {}) {
+  const db = await adminClient();
+  const venueId = await e2eVenueId(db);
+  const start = new Date(Date.now() - startDaysAgo * 24 * 60 * 60 * 1000)
+    .toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  if (active) check(await db.from('events').update({ is_active: false }).eq('is_active', true), 'deactivate other events');
+  const eventId = check(await db.from('events').insert({
+    theme: `E2E Bilan ${Date.now()}`,
+    description: 'Created by e2e/support/testData.js (bilan)',
+    status: 'ACTIVE',
+    is_active: active,
+    is_reg_open: true,
+    selling_price_whole_event: 200,
+    ratio_main_whole: 0.5375,
+    max_attendees: 90,
+    event_start_date: `${start} 00:00 America/Toronto`,
+    duration_days: durationDays,
+    feedback_days: feedbackDays,
+    x_reg_close_weeks: 1,
+    reg_start_date: '2026-05-01 00:00 America/Toronto',
+    z_intent_months: 2,
+    external_links: [],
+    venue_id: venueId
+  }).select('id').single(), 'create bilan event').id;
+  const partyId = await saveParty(db, eventId, MEMBER_ID, E2E_ATTENDEES, 'create bilan party');
+  return { eventId, partyId };
+}
+
+// Closes the event's post-mortem now: a feedback_days that puts the close in the past closes it at
+// once (the levée, ADR 0029).
+export async function closeFeedback(eventId) {
+  const db = await adminClient();
+  check(await db.from('events').update({ feedback_days: 1 }).eq('id', eventId), 'close bilan');
+}
+
+export async function teardownFeedbackEvent({ eventId, partyId }) {
+  const db = await adminClient();
+  if (partyId) check(await db.from('user_parties').delete().eq('id', partyId), 'delete bilan party');
+  if (eventId) check(await db.from('events').update({ is_active: false, status: 'DRAFT' }).eq('id', eventId), 'deactivate bilan event');
+}
+
+// Saves an answer as one of the seeded users, the way the page does; throws on a refusal.
+export async function submitFeedbackAs(user, eventId, answers, isAnonymous = false) {
+  const db = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await db.auth.signInWithPassword(user);
+  if (error) throw new Error(`sign-in as ${user.email} failed: ${error.message}`);
+  return check(await db.rpc('submit_event_feedback', { p_event_id: eventId, p_answers: answers, p_is_anonymous: isAnonymous }), 'submit bilan');
+}
