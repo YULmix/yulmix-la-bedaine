@@ -223,8 +223,8 @@ today.
 
 PR body: a summary, what was and wasn't verified (from the developer's report), a **What changes for
 you locally** line (or "nothing"), any merge-order note, a `Closes #n` line, and the Claude Code
-footer. PRs are assigned to the organiser. **Only the organiser merges**: merging applies migrations
-to production. A PR is reported as ready (CI green), nothing more.
+footer. PRs are assigned to the organiser. The supervisor merges with `land.sh` on green CI (see the
+Supervisor overrides); merging applies migrations to production.
 
 ## Commits
 
@@ -264,7 +264,12 @@ stay as installed.
   that isn't Preview. Preview is shared: one migration branch at a time; say in your status which
   branch Preview matches, and don't push a second one until the organiser says the first is tested.
   No migration in the PR → skip.
-- **Never merge**, even with `land.sh` available: merging applies migrations to production.
+- **Merge PRs for current issues yourself** with `land.sh` once CI is green (organiser grant,
+  2026-10-25), local-workflow and decision-record PRs included: report what changes (locally, in the
+  ADR) in the same message, don't ask first. Merging applies migrations to production: check the
+  *Apply migrations* jobs of the `main` run.
+- **The second identical infra red in a day gets a fix, not a rerun** (the ECR data cap was rerun three
+  times before #321 fixed it).
 - **herdr agent names are lowercase**: `dev-gh-<n>`, `rev-gh-<n>` (herdr refuses `GH`); brief, report
   and worktree names keep the `GH-<n>` key.
 - **Start `ci-watch.sh` and `fleet-watch.sh` directly** with `run_in_background`, never behind a
