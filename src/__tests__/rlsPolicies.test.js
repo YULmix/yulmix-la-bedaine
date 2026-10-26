@@ -4465,8 +4465,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
       await ok(clients.admin.rpc('set_edition_role', { p_event_id: OPEN, p_user_id: userId, p_role: role }));
     }
-    // Started 10 days ago for 3 days: the last day was 8 days ago, the window opened 7 days ago
-    // and closes at the end of the day in 6 days (last day + 14).
+    // Started 10 days ago for 3 days: the window opened 10 days ago (the first day)
+    // and closes at the end of the day in 6 days (last day, 8 days ago, + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
       [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
@@ -4496,7 +4496,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   test('a member creates, edits and switches named ↔ anonymous their one answer while the window is open', async () => {
     const seen = await ok(mine(clients.member, OPEN));
     expect(seen).toEqual({
-      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), closes_on: isoDay(6),
+      eligible: true, reason: null, window: 'open', opens_on: isoDay(-10), closes_on: isoDay(6),
       closes_at: expect.any(String), closed_at: null, answer: null, answer_hidden: false
     });
     // The close is the end of the Toronto day "last day + feedback_days".
@@ -4533,8 +4533,27 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
 
   test('refused with a coded error: before the window, after the close, empty, cancelled, waitlisted, not registered', async () => {
     const text = { other: 'Quelque chose' };
-    expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(33) });
-    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ eligible: true, window: 'not_yet', opens_on: isoDay(33) });
+    expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(30) });
+    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ eligible: true, window: 'not_yet', opens_on: isoDay(30) });
+    // The first day opens it (#339), the day before doesn't; the close doesn't move.
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(1)]);
+    expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(1) });
+    // Late evening of the first day (23:30 Toronto) is the same day: open too.
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, `${isoDay(0)} 23:30 America/Toronto`]);
+    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ window: 'open', opens_on: isoDay(0) });
+    // An admin without a registration of their own sees the open window but isn't eligible: no pass card.
+    expect(await ok(mine(clients.admin, FUTURE))).toMatchObject({ eligible: false, reason: 'not_registered', window: 'open' });
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(0)]);
+    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ window: 'open', opens_on: isoDay(0), closes_on: isoDay(3 + 14 - 1) });
+    await ok(submit(clients.member, FUTURE, text));
+    await db.query('delete from public.event_feedback where event_id = $1', [FUTURE]);
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
+    // A closed event stays closed when its start moves to today (the marker is read first).
+    const { rows: [{ start: archivedStart }] } = await db.query('select event_start_date as start from public.events where id = $1', [ARCHIVED]);
+    await db.query('update public.events set event_start_date = $2 where id = $1', [ARCHIVED, startsIn(0)]);
+    expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
+    expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ window: 'closed' });
+    await db.query('update public.events set event_start_date = $2 where id = $1', [ARCHIVED, archivedStart]);
     expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
     expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed', closed_at: expect.any(String) });
 
@@ -4624,7 +4643,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     await ok(submit(clients.Anon1, OPEN, { lodging: 'Anonyme 1: dodo' }, true));
     const seen = await Promise.all(['Named', 'Anon1', 'NoAnswer'].map((label) => voirComme(users[label].id, OPEN)));
     expect(seen[0]).toEqual({
-      eligible: true, reason: null, window: 'open', opens_on: isoDay(-7), closes_on: isoDay(6),
+      eligible: true, reason: null, window: 'open', opens_on: isoDay(-10), closes_on: isoDay(6),
       closes_at: expect.any(String), closed_at: null, answer: null, answer_hidden: true
     });
     expect(seen[1]).toEqual(seen[0]);

@@ -181,7 +181,16 @@ test('member: closed without an answer, not open yet, not eligible: French messa
   await expect(body(page)).toContainText(fr.bilanClosedMessage);
   await teardownFeedbackEvent(seeded);
 
-  // Not over yet: no card on the pass, and the page says when it opens.
+  // Running today (first day, #339): the card is already on the pass and the page takes answers.
+  seeded = await seedFeedbackEvent({ startDaysAgo: 0, durationDays: 3 });
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+  await expect(passCard(page)).toBeVisible();
+  await page.goto(`/bilan/${seeded.eventId}`);
+  await expect(body(page)).toHaveAttribute('data-state', 'open');
+  await teardownFeedbackEvent(seeded);
+
+  // Not started yet: no card on the pass, and the page says when it opens.
   seeded = await seedFeedbackEvent({ startDaysAgo: -10 });
   await page.goto('/');
   await expect(page.getByRole('article', { name: fr.passLabel })).toBeVisible();

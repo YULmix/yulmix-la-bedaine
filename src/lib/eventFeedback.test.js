@@ -106,12 +106,12 @@ describe('the form state', () => {
 // (start instant, duration_days, feedback_days -> opens_on, closes_on, closes_at in UTC): the
 // helper must give the same close, across both daylight-saving changes and a late-evening start.
 const FROM_DATABASE = [
-  ['2026-10-31T02:00:00Z', 3, 14, '2026-11-02', '2026-11-15', '2026-11-16T05:00:00Z'],
-  ['2027-03-13T01:00:00Z', 3, 1, '2027-03-15', '2027-03-15', '2027-03-16T04:00:00Z'],
-  ['2027-03-13T01:00:00Z', 2, 7, '2027-03-14', '2027-03-20', '2027-03-21T04:00:00Z'],
-  ['2026-10-31T03:30:00Z', 1, 365, '2026-10-31', '2027-10-30', '2027-10-31T04:00:00Z'],
-  ['2026-10-31T04:30:00Z', 2, 30, '2026-11-02', '2026-12-01', '2026-12-02T05:00:00Z'],
-  ['2026-11-01T05:30:00Z', 1, 1, '2026-11-02', '2026-11-02', '2026-11-03T05:00:00Z']
+  ['2026-10-31T02:00:00Z', 3, 14, '2026-10-30', '2026-11-15', '2026-11-16T05:00:00Z'],
+  ['2027-03-13T01:00:00Z', 3, 1, '2027-03-12', '2027-03-15', '2027-03-16T04:00:00Z'],
+  ['2027-03-13T01:00:00Z', 2, 7, '2027-03-12', '2027-03-20', '2027-03-21T04:00:00Z'],
+  ['2026-10-31T03:30:00Z', 1, 365, '2026-10-30', '2027-10-30', '2027-10-31T04:00:00Z'],
+  ['2026-10-31T04:30:00Z', 2, 30, '2026-10-31', '2026-12-01', '2026-12-02T05:00:00Z'],
+  ['2026-11-01T05:30:00Z', 1, 1, '2026-11-01', '2026-11-02', '2026-11-03T05:00:00Z']
 ];
 
 const dayText = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -121,11 +121,13 @@ describe('getFeedbackWindow dates', () => {
     const window = getFeedbackWindow({ status: 'ACTIVE', event_start_date: start, duration_days: duration, feedback_days: days }, new Date('2020-01-01T00:00:00Z'));
     expect(dayText(window.closesOn)).toBe(closesOn);
     expect(window.closesAt.getTime()).toBe(new Date(closesAt).getTime());
-    // The first answerable day is the day after the last: the state flips to open at its midnight.
+    // The first answerable day is the event's first day: the state flips to open at its midnight.
     const [y, m, d] = opensOn.split('-').map(Number);
     expect(window.state).toBe('not_yet');
     const justAfterOpen = getFeedbackWindow({ status: 'ACTIVE', event_start_date: start, duration_days: duration, feedback_days: days }, new Date(Date.UTC(y, m - 1, d, 12)));
     expect(justAfterOpen.state).toBe('open');
+    const dayBefore = getFeedbackWindow({ status: 'ACTIVE', event_start_date: start, duration_days: duration, feedback_days: days }, new Date(Date.UTC(y, m - 1, d - 1, 12)));
+    expect(dayBefore.state).toBe('not_yet');
   });
 
   test('a missing duration counts one day, a missing offset the default 14', () => {
@@ -143,9 +145,11 @@ describe('getFeedbackWindow dates', () => {
 
 describe('getFeedbackWindow state', () => {
   const event = { status: 'ACTIVE', event_start_date: '2026-10-31T02:00:00Z', duration_days: 3, feedback_days: 14 };
-  test('open from the first answerable day, closed from the close instant, to the second', () => {
-    expect(getFeedbackWindow(event, new Date('2026-11-02T04:59:59Z')).state).toBe('not_yet');
-    expect(getFeedbackWindow(event, new Date('2026-11-02T05:00:00Z')).state).toBe('open');
+  // The first day is the Toronto day 30 Oct (the start is 31 Oct 02:00Z = 30 Oct 22:00 EDT).
+  test('open from the first day, closed from the close instant, to the second', () => {
+    expect(getFeedbackWindow(event, new Date('2026-10-30T03:59:59Z')).state).toBe('not_yet');
+    expect(getFeedbackWindow(event, new Date('2026-10-30T04:00:00Z')).state).toBe('open');
+    expect(getFeedbackWindow(event, new Date('2026-11-02T05:00:00Z')).state).toBe('open'); // the close is unchanged by the earlier opening
     expect(getFeedbackWindow(event, new Date('2026-11-16T04:59:59Z')).state).toBe('open');
     expect(getFeedbackWindow(event, new Date('2026-11-16T05:00:00Z')).state).toBe('closed');
   });
