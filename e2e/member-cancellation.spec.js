@@ -3,9 +3,10 @@
 // registration is frozen for members (#314); admins keep editing.
 import { test, expect } from '@playwright/test';
 import { loginAs, TEST_USERS } from './support/auth.js';
+import { adminMain, openPartyDetail, openPartyEditor } from './support/admin.js';
 import {
-  ADMIN_ID, E2E_ATTENDEES, createParty, deleteParty, getParty, seedActiveEventWithMemberParty, setPartyAnswers,
-  teardownActiveEventWithMemberParty
+  ADMIN_ID, E2E_ATTENDEES, createParty, deleteParty, endOpenImpersonations, getParty, seedActiveEventWithMemberParty,
+  setPartyAnswers, teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { readFileSync } from 'node:fs';
 
@@ -145,4 +146,47 @@ test('a form left open past the start is refused in French on save', async ({ pa
 
   await expect(page.getByRole('main').getByText(fr.dbErrorRegistrationFrozen).first()).toBeVisible();
   await expect(page.getByText('registration_frozen')).toHaveCount(0);
+});
+
+test("from the start, an admin still edits a member's registration and marks it paid", async ({ page }) => {
+  seeded = await seedActiveEventWithMemberParty({ event_start_date: inHours(-1), x_reg_close_weeks: 0 });
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/admin/users');
+
+  const editor = await openPartyEditor(page);
+  await editor.getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: `${fr.participantNumberLabel}2`, exact: true }) })
+    .getByLabel(fr.fullNameLabel)
+    .fill('Bob Frozen');
+  await editor.getByRole('button', { name: fr.saveChangesButton }).click();
+  await expect(page.getByText(fr.changesSavedToast)).toBeVisible();
+  expect((await getParty(seeded.partyId)).attendees.map(a => a.name)).toEqual([E2E_ATTENDEES[0].name, 'Bob Frozen']);
+
+  await page.goto('/admin/users');
+  await adminMain(page).getByRole('button', { name: fr.unpaidShort, exact: true }).click();
+  await page.getByRole('dialog', { name: fr.markPaid }).getByRole('button', { name: fr.markPaid }).click();
+  await expect(adminMain(page).getByRole('button', { name: fr.paid, exact: true })).toBeVisible();
+  expect((await getParty(seeded.partyId)).payment_status).toBe('paid');
+});
+
+test("from the start, « Voir comme » shows the member's frozen pass", async ({ page }) => {
+  await endOpenImpersonations();
+  seeded = await seedActiveEventWithMemberParty({ event_start_date: inHours(-1), x_reg_close_weeks: 0 });
+  try {
+    await loginAs(page, TEST_USERS.admin);
+    await page.goto('/admin/users');
+    const dialog = await openPartyDetail(page);
+    const [tab] = await Promise.all([
+      page.context().waitForEvent('page'),
+      dialog.getByRole('button', { name: fr.voirCommeAction, exact: true }).click()
+    ]);
+    // A cold start of the impersonate function can take a few seconds (see voir-comme.spec.js).
+    const pass = tab.getByRole('article', { name: fr.passLabel });
+    await expect(pass.getByText(fr.registrationFrozenNotice)).toBeVisible({ timeout: 30_000 });
+    await expect(pass.getByRole('button', { name: fr.editRegistration })).toHaveCount(0);
+    await expect(tab.getByRole('button', { name: fr.cancelRegistration })).toHaveCount(0);
+    await tab.close();
+  } finally {
+    await endOpenImpersonations();
+  }
 });
