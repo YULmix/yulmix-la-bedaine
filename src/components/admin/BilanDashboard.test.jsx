@@ -17,7 +17,6 @@ const shown = {
 };
 const OPEN = fr.adminBilanCountsOpenUntil.replace('{date}', '15 novembre 2026');
 const cell = label => screen.getByText(label, { selector: 'p' }).parentElement;
-const tile = name => screen.getByText(name, { selector: 'span' }).closest('li');
 
 test('before the release: the signed comments, « moins de 3 » private, the members who signed over the eligible', () => {
   render(<BilanDashboard counts={hidden} closed={false} status={OPEN} />);
@@ -30,21 +29,16 @@ test('before the release: the signed comments, « moins de 3 » private, the mem
   expect(cell(fr.adminBilanCountsMembers)).toHaveTextContent(fr.adminBilanCountsMembersHint.replace('{rate}', 27));
   const bar = screen.getByRole('img', { name: fr.adminBilanCountsBar.replace('{n}', 23).replace('{eligible}', 86).replace('{rate}', 27) });
   expect(bar.querySelector('span').style.width).toMatch(/^26\.7\d*%$/);
-  // Per category, one tile each in display order: the signed count, and « moins de 3 » for every private one.
-  const tiles = within(screen.getByText(fr.adminBilanCountsByCategory).parentElement).getAllByRole('listitem');
-  expect(tiles.map(item => item.querySelector('p').textContent))
-    .toEqual(FEEDBACK_CATEGORIES.map(c => fr[`bilanCategory${{ welcome: 'Welcome', party_music: 'PartyMusic', safety: 'Safety', lodging: 'Lodging', food: 'Food', communications: 'Communications', schedule: 'Schedule', other: 'Other' }[c]}`]));
-  expect(tile(fr.bilanCategoryWelcome)).toHaveTextContent(`${fr.bilanCategoryWelcome}${fr.adminBilanCountsSignedShort}5${fr.adminBilanCountsPrivateShort}${fr.adminBilanCountsPrivateHidden}`);
-  expect(tiles.filter(item => item.textContent.endsWith(fr.adminBilanCountsPrivateHidden))).toHaveLength(8);
+  // No breakdown per category (#363).
+  expect(screen.queryByText(fr.bilanCategoryWelcome)).toBeNull();
+  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   // No total adding signed and private up.
   expect(screen.queryByText('16 + ')).toBeNull();
 });
 
-test('released: the private counts, overall and per category', () => {
+test('released: the private count', () => {
   render(<BilanDashboard counts={shown} closed={false} status={OPEN} />);
   expect(cell(fr.adminBilanCountsPrivate)).toHaveTextContent('7' + fr.adminBilanCountsPrivateHint);
-  expect(tile(fr.bilanCategoryWelcome)).toHaveTextContent(`${fr.bilanCategoryWelcome}${fr.adminBilanCountsSignedShort}5${fr.adminBilanCountsPrivateShort}2`);
-  expect(tile(fr.bilanCategoryFood)).toHaveTextContent(`${fr.bilanCategoryFood}${fr.adminBilanCountsSignedShort}1${fr.adminBilanCountsPrivateShort}3`);
   expect(screen.queryByText(fr.adminBilanCountsPrivateHidden)).toBeNull();
 });
 
@@ -61,7 +55,6 @@ test('no eligible registration: the title and the tag, a sentence, no figure', (
   expect(screen.getByText(fr.adminBilanCountsOpen)).toBeInTheDocument();
   expect(screen.queryByText(fr.adminBilanCountsSigned)).toBeNull();
   expect(screen.queryByRole('img')).toBeNull();
-  expect(screen.queryByText(fr.adminBilanCountsByCategory)).toBeNull();
 });
 
 test('after the close: the tag passed in', () => {

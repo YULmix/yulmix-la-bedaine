@@ -90,7 +90,14 @@ const BilanSection = () => {
           </Notice>
         ) : (
           <div className="space-y-4">
-            <BilanDashboard counts={shown.counts} closed={closed} status={status} />
+            {/* Same columns as the category cards below (BilanAnswers): the card takes at most two of them. */}
+            <div className="@container">
+              <div className="grid gap-4 @3xl:grid-cols-2 @6xl:grid-cols-3">
+                <div className="min-w-0 @3xl:col-span-2" data-testid="bilan-dashboard-slot">
+                  <BilanDashboard counts={shown.counts} closed={closed} status={status} />
+                </div>
+              </div>
+            </div>
             <BilanAnswers result={result} />
           </div>
         )}
