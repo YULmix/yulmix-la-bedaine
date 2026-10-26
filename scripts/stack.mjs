@@ -102,14 +102,23 @@ function down() {
   const stack = { ...state, workdir: join(REPO_ROOT, STACK_DIR) };
   spawnSync('supabase', [...workdirArgs(stack), 'stop', '--no-backup'], { cwd: REPO_ROOT, stdio: 'inherit' });
   const removed = destroyProject(state.projectId);
+  // No stack any more: a main checkout returns to the default stack, a worktree gets the «stack:up» hint.
+  rmSync(join(REPO_ROOT, STACK_DIR, 'state.json'), { force: true });
+  removeRegistryEntry(state.projectId);
   console.log(`Removed ${removed.containers} container(s), ${removed.volumes} volume(s), ${removed.networks} network(s) of ${state.projectId}.`);
 }
 
 function prune() {
   let pruned = 0;
   for (const entry of readRegistry()) {
-    if (existsSync(entry.worktree)) continue;
-    const removed = destroyProject(entry.projectId);
+    if (typeof entry.worktree !== 'string' || existsSync(entry.worktree)) continue;
+    let removed;
+    try {
+      removed = destroyProject(entry.projectId);
+    } catch (error) {
+      console.error(`Skipped a registry entry: ${error.message}`);
+      continue;
+    }
     removeRegistryEntry(entry.projectId);
     pruned++;
     console.log(`Pruned ${entry.projectId} (${entry.worktree} is gone): ${removed.containers} container(s), ${removed.volumes} volume(s).`);

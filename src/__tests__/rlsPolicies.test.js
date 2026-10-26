@@ -4290,6 +4290,9 @@ describe('📡 Realtime delivers user_parties by the SELECT policies (#296)', ()
 
   afterAll(async () => {
     for (const [client, channel] of channels) await client.removeChannel(channel);
+    // removeChannel leaves a deferred "disconnect when empty" timer on each client, which keeps
+    // Jest's process alive after the run (#323): disconnect the sockets now.
+    for (const [client] of channels) await client.realtime.disconnect();
     await admin.from('edition_roles').delete().in('event_id', [EVENT, OTHER_EVENT]);
     await admin.from('user_parties').delete().in('event_id', [EVENT, OTHER_EVENT]);
     await admin.from('events').update({ status: 'DRAFT' }).in('id', [EVENT, OTHER_EVENT]);

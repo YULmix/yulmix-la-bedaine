@@ -175,10 +175,15 @@ workdir `.stack/` (a copy of the config with a unique project id and shifted por
 
 In a worktree with a stack, `npm run test:e2e`, `test:e2e:affected`, `test:rls`, `db:types` and
 `db:local:demo` use its database, and Playwright serves the app on its Vite port. In a worktree
-**without** one they fail with « run `npm run stack:up` » instead of reaching another stack. A bare
-`supabase ...` command in a worktree still means the default stack: use `npm run stack:cli --` there.
+**without** one they fail with « run `npm run stack:up` » instead of reaching another stack. **A bare
+`supabase ...` command in a worktree still means the default (main) stack, so never run `supabase db reset|stop|start` there: use `npm run stack:cli --`.**
 After a new migration, `npm run stack:cli -- db reset` rebuilds the worktree's database only.
 A trimmed stack uses roughly 800 MB of memory.
+
+"Main checkout" means a directory whose `.git` is a directory (or absent); only a linked `git worktree`
+(`.git` is a file) must have a stack. A separate full `git clone` is therefore also "main" and shares
+the default stack: run `npm run stack:up` in it to give it its own. `stack:down` removes `.stack/state.json`,
+so a main checkout goes back to the default stack afterwards.
 
 ## Scripts
 

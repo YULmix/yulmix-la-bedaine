@@ -17,9 +17,12 @@ export const STACK_DIR = '.stack';
 export const REPO_ROOT = resolve(import.meta.dirname, '..', '..');
 
 export function isMainCheckout(root = REPO_ROOT) {
-  // A worktree's .git is a file ("gitdir: ..."), the main checkout's is a directory.
+  // A linked worktree's .git is a file ("gitdir: ..."); everything else is "main": a normal
+  // checkout (.git directory, which is what CI's actions/checkout gives) and a tree without .git
+  // (tarball). So a SEPARATE full clone is also "main" and shares the default stack: git cannot
+  // tell it apart. Run `npm run stack:up` in such a clone to give it its own (state.json then wins).
   const git = join(root, '.git');
-  return existsSync(git) && statSync(git).isDirectory();
+  return !(existsSync(git) && statSync(git).isFile());
 }
 
 export const NO_STACK_MESSAGE =
@@ -127,7 +130,14 @@ const names = (args) => docker(args).split('\n').map((s) => s.trim()).filter(Boo
 // `supabase stop --no-backup` leaves at least the edge runtime's volume behind, and nothing at all
 // works for a worktree whose directory is gone, so sweep by name: the CLI suffixes every container,
 // volume and network with `_<project_id>`.
+// Ids stack.mjs generates (stackSlots.projectIdFor). Anything else (a hand-edited registry entry)
+// must sweep nothing: an empty id would make the name filters match foreign resources.
+export const PROJECT_ID_PATTERN = /^yulmix-wt-[a-z0-9-]+$/;
+
 export function destroyProject(projectId) {
+  if (typeof projectId !== 'string' || !PROJECT_ID_PATTERN.test(projectId)) {
+    throw new Error(`Refusing to sweep Docker for an unexpected project id: ${JSON.stringify(projectId)}`);
+  }
   const suffix = `_${projectId}`;
   const containers = names(['ps', '-a', '--format', '{{.Names}}', '--filter', `name=${projectId}`]).filter((n) => n.endsWith(suffix));
   if (containers.length) docker(['rm', '-f', '-v', ...containers]);
