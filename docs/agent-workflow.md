@@ -283,6 +283,12 @@ stay as installed.
   its own issue, filed after the fix ships: in the fix it turns a UI change into a reviewed migration
   with the full database verification (#308).
 
+- When the organiser reports that something fails, first ask what he saw (which screen, which
+  record), then answer with what the code and data show, marked as verified or not. Never offer a
+  guessed cause as the answer, and run a read-only production query only with his OK.
+- Parallel lanes that may both need a new shared module (a `src/lib` helper): the briefs name which
+  lane owns it; the other lane puts its code in its own module.
+
 ### Developer
 
 - A `review: yes` round still runs the cheap checks and the specs it added or changed on your own
