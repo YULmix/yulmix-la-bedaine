@@ -16,6 +16,7 @@ no component library.
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
 | `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
+| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Bilan de l'édition »: the eight comments, named or anonymous, with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close a named answer read-only or one neutral message (no answer and an anonymous one look the same), and in « Voir comme » the same hidden state whatever the member answered |
 | `/a-propos` | `AboutView` | None |
 | `/voir-comme/:memberId` | A « Voir comme » tab (#267): `VoirCommeTab` opens the member's read-only session, then moves to `/` and runs the whole app on it | The `impersonate` Edge Function (admins only, non-admin targets) and the database (read-only); see « Voir comme » below |
 
@@ -39,9 +40,11 @@ flowchart TD
   APP -->|route /event-details| DETAILS["EventDetailsView"]
   APP -->|route /carpool| CARPOOL["CarpoolView"]
   APP -->|route /admin| ADMIN["AdminView"]
+  APP -->|"route /bilan/:eventId"| BILAN["BilanPage<br/>post-mortem"]
 
   HOME --> SUMMARY["RegistrationSummary<br/>Pass + group, logistics, edit history"]
   HOME --> PAST["PastEditions"]
+  SUMMARY -->|"window open"| BILANCARD["BilanPassCard"]
   REGPAGE --> FORM["RegistrationForm<br/>4 steps + sticky total"]
   ADMIN -->|"god-mode dialog"| FORM
   ADMIN --> PROFILE["UserProfileDialog"]
@@ -425,6 +428,13 @@ to do about paying (Interac details, "don't pay yet" for a waitlisted party or a
 member reaches the pass by choosing to. An edit goes straight back to the pass with a
 "Modifications enregistrées" toast, because there is nothing new to explain. Either way, never
 navigate home after a save without one of the two. `Button` shows a spinner while `loading`.
+
+**The bilan keeps no copy of an answer (#316).** `BilanPage` holds the unsaved text in React
+state only: it survives a tab refocus because the route doesn't remount (#139), but nothing of it
+goes to `sessionStorage`, a URL, a log or analytics, so an anonymous answer leaves nothing on the
+device ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). The window's dates and state
+come from `my_event_feedback()`, never computed in the browser (`src/lib/eventFeedback.ts` only
+maps its result to the page's state).
 
 **Option lists.** Add new choices to `src/lib/registrationOptions.ts`, never inline in JSX.
 `getOptionLabel(options, value, fallback)` and `getDietaryRequestsLabel(csv)` handle display.

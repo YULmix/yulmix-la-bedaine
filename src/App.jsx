@@ -12,6 +12,7 @@ import EventDetailsView from './views/EventDetailsView';
 import AboutView from './views/AboutView';
 import RegistrationPage from './views/RegistrationPage';
 import CarpoolView from './views/CarpoolView';
+import BilanPage from './views/BilanPage';
 import { Button, EmptyState, Skeleton } from './components/ui';
 import fr from './locales/fr.json';
 import { supabase } from './lib/supabase';
@@ -288,6 +289,15 @@ function App() {
             <ProtectedRoute {...guard}>
               <PageMain width="dense">
                 <CarpoolView activeEvent={activeEvent} isAdmin={isAdmin} />
+              </PageMain>
+            </ProtectedRoute>
+          } />
+
+          {/* The member's post-mortem of one event (#316); the database says what it may show. */}
+          <Route path="/bilan/:eventId" element={
+            <ProtectedRoute {...guard}>
+              <PageMain>
+                <BilanPage events={activeEvent ? [activeEvent, ...otherEvents] : otherEvents} />
               </PageMain>
             </ProtectedRoute>
           } />

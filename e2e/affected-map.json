@@ -26,6 +26,7 @@
    "admin-remount",
    "header-phone",
    "member-account-deletion",
+   "member-bilan",
    "voir-comme"
   ],
   "src/components/AccountPicker.jsx": [
@@ -45,6 +46,9 @@
    "member-registration-draft",
    "preview-account-picker",
    "header-avatar"
+  ],
+  "src/components/BilanPassCard.jsx": [
+   "member-bilan"
   ],
   "src/components/EventFacts.jsx": [
    "member-event-info",
@@ -709,7 +713,8 @@
    "admin-venues"
   ],
   "src/lib/eventFeedback.ts": [
-   "admin-event-feedback-days"
+   "admin-event-feedback-days",
+   "member-bilan"
   ],
   "src/lib/eventPhase.ts": [
    "admin-budget",
@@ -1093,6 +1098,9 @@
    "admin-logistics-batch-save",
    "app-canvas"
   ],
+  "src/views/BilanPage.jsx": [
+   "member-bilan"
+  ],
   "src/views/CarpoolView.jsx": [
    "admin-logistics-views",
    "attendee-removal",
@@ -1125,6 +1133,7 @@
    "admin-participant-message",
    "attendees-edit",
    "galleries",
+   "member-bilan",
    "member-cancellation",
    "member-departure-place"
   ]
