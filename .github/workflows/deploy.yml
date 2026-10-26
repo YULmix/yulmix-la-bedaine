@@ -72,6 +72,10 @@ env:
 jobs:
   build-and-test:
     name: Build & test
+    # A doc-only PR (see `changes`) needs neither the build nor the migration replay. Pushes to
+    # main always run it: backup, deploy and the rest `need` it.
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,6 +130,10 @@ jobs:
   # and only after this job has passed on the same commit.
   migrations:
     name: Migrations apply cleanly
+    # A doc-only PR (see `changes`) needs neither the build nor the migration replay. Pushes to
+    # main always run it: backup, deploy and the rest `need` it.
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
