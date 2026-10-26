@@ -240,7 +240,8 @@
   "src/components/admin/EventEditor.jsx": [
    "admin-drill-down",
    "admin-event-create",
-   "admin-event-editor"
+   "admin-event-editor",
+   "admin-event-feedback-days"
   ],
   "src/components/admin/EventLocations.jsx": [
    "admin-drill-down",
@@ -341,6 +342,7 @@
   "src/components/admin/sections/EventsSection.jsx": [
    "admin-event-archive",
    "admin-event-create",
+   "admin-event-feedback-days",
    "admin-venues"
   ],
   "src/components/admin/sections/FeedbackSection.jsx": [
@@ -709,6 +711,7 @@
    "admin-event-archive",
    "admin-event-create",
    "admin-event-editor",
+   "admin-event-feedback-days",
    "admin-venues"
   ],
   "src/lib/eventDrafts.ts": [
@@ -719,6 +722,7 @@
   ],
   "src/lib/eventFeedback.ts": [
    "admin-bilan",
+   "admin-event-feedback-days",
    "member-bilan"
   ],
   "src/lib/eventFeedbackAdmin.ts": [

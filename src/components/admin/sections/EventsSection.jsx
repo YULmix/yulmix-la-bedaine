@@ -5,6 +5,7 @@ import fr from '../../../locales/fr.json';
 import { NEW_EVENT_ID, adminHref } from '../../../lib/adminRoutes';
 import { activateEvent, archiveEvent, refreshEvents, useEvents } from '../../../lib/events';
 import { createEventFromDraft, discardEventDraft, saveEventDraft, setEventDraftField, useEventDraft, useUnsavedEventIds } from '../../../lib/eventDrafts';
+import { closesOnSave, getFeedbackWindow } from '../../../lib/eventFeedback';
 import { dirtyFields, filledFields, validateDraft, validateNewEvent } from '../../../lib/eventDraft';
 import { useToasts } from '../../../hooks/useToasts';
 import { AdminEventList } from '../AdminEvents';
@@ -29,6 +30,7 @@ const EventsSection = ({ eventId, editorSection }) => {
   const [confirmingCreate, setConfirmingCreate] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(null);
   const [archiving, setArchiving] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const { addToast } = useToasts(1699);
 
   if (loading || error) return <SectionStatus loading={loading} error={error} onRetry={refreshEvents} />;
@@ -98,8 +100,12 @@ const EventsSection = ({ eventId, editorSection }) => {
   if (editingEvent) {
     const dirty = dirtyFields(editingEvent, draft.changes);
     const errors = validateDraft(editingEvent, draft.changes);
-    const handleSave = async () => {
-      if (!dirty.length || Object.keys(errors).length) return;
+    // An offset (or dates) that puts the close in the past closes the feedback for good: say so first (#329).
+    const afterSave = { ...editingEvent, ...draft.changes };
+    const closing = closesOnSave(editingEvent, afterSave);
+    const closeDate = closing ? getFeedbackWindow(afterSave).closesOn : null;
+    const save = async () => {
+      setConfirmingClose(false);
       try {
         await saveEventDraft(editingEvent);
         addToast(fr.eventMetadataUpdatedToast, 'success');
@@ -107,7 +113,13 @@ const EventsSection = ({ eventId, editorSection }) => {
         addToast(err.message, 'error');
       }
     };
+    const handleSave = async () => {
+      if (!dirty.length || Object.keys(errors).length) return;
+      if (closing) setConfirmingClose(true);
+      else await save();
+    };
     return (
+      <>
       <EventEditor
         event={editingEvent}
         section={editorSection}
@@ -123,6 +135,19 @@ const EventsSection = ({ eventId, editorSection }) => {
         onDiscard={() => discardEventDraft(editingEvent.id)}
         backTo={adminHref({ section: 'events' })}
       />
+      <ConfirmDialog
+        open={confirmingClose && closing}
+        title={fr.eventFeedbackCloseConfirmTitle}
+        confirmLabel={fr.eventFeedbackCloseConfirmButton}
+        onConfirm={save}
+        onCancel={() => setConfirmingClose(false)}
+        loading={draft.saving}
+      >
+        {closeDate && fr.eventFeedbackCloseConfirm
+          .replace('{days}', String(afterSave.feedback_days))
+          .replace('{date}', closeDate.toLocaleDateString('fr-CA', { year: 'numeric', month: 'long', day: 'numeric' }))}
+      </ConfirmDialog>
+      </>
     );
   }
 
