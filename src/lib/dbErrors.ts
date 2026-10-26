@@ -70,7 +70,16 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   impersonation_request_invalid: () => fr.dbErrorImpersonationRequestInvalid,
   impersonation_session_not_found: () => fr.dbErrorImpersonationSessionNotFound,
   impersonation_not_marked: () => fr.dbErrorImpersonationFailed,
-  impersonation_failed: () => fr.dbErrorImpersonationFailed
+  impersonation_failed: () => fr.dbErrorImpersonationFailed,
+  // Post-mortem feedback, « bilan » (#315).
+  event_feedback_not_eligible: () => fr.dbErrorEventFeedbackNotEligible,
+  event_feedback_not_open: ({ opens_on: opensOn }) => fr.dbErrorEventFeedbackNotOpen
+    .replace('{date}', formatDate(opensOn as string | null)),
+  event_feedback_closed: () => fr.dbErrorEventFeedbackClosed,
+  event_feedback_empty: () => fr.dbErrorEventFeedbackEmpty,
+  event_feedback_invalid: () => fr.dbErrorEventFeedbackInvalid,
+  event_feedback_too_long: ({ max }) => fr.dbErrorEventFeedbackTooLong.replace('{max}', String(max ?? 5000)),
+  event_feedback_close_locked: () => fr.dbErrorEventFeedbackCloseLocked
 };
 
 const parseDetails = (details: string | null | undefined): ErrorParams => {

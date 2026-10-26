@@ -88,6 +88,21 @@ The window before registration opens (`reg_start_date − z_intent_months`) wher
 that they plan to come and who with, so organisers can size and price the weekend. Non-binding.
 _Avoid_: pre-registration, RSVP, expression of interest.
 
+**Post-mortem** (fr. *bilan*, tables `event_feedback`, `event_feedback_authors`)
+What a member registered on an event writes after it: one optional free text per category
+(Accueil, Party + musique, Sécurité, Hébergement, Nourriture, Communications, Horaire, Autres),
+named or anonymous. Open from the day after the event's last day until the end of the day
+`feedback_days` (default 14) later, or archival if earlier; read by account admins only, after the
+close ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). Not the app feedback
+(« Feedback », `app_feedback`), which is about the app itself.
+_Avoid_: feedback, survey, review (for this).
+
+**Levée** (of the post-mortem, fr. *levée*)
+The one irreversible step at the post-mortem's close (archival, or its close date passed): the
+answers become readable by admins, and every anonymous answer loses its link to its author for
+good (re-inserted with a new id, the window's row and link deleted). Sets
+`events.feedback_closed_at`; never runs twice.
+
 **Registration close date** (fr. *date limite de désinscription*)
 The start day minus `x_reg_close_weeks` weeks. After it a member can still add and edit, but can no
 longer cancel or remove a participant: the amount owed stays owed.

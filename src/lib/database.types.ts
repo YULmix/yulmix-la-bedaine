@@ -417,6 +417,83 @@ export type Database = {
           },
         ]
       }
+      event_feedback: {
+        Row: {
+          communications: string | null
+          event_id: string
+          food: string | null
+          id: string
+          is_anonymous: boolean
+          lodging: string | null
+          other: string | null
+          party_music: string | null
+          safety: string | null
+          schedule: string | null
+          welcome: string | null
+        }
+        Insert: {
+          communications?: string | null
+          event_id: string
+          food?: string | null
+          id?: string
+          is_anonymous?: boolean
+          lodging?: string | null
+          other?: string | null
+          party_music?: string | null
+          safety?: string | null
+          schedule?: string | null
+          welcome?: string | null
+        }
+        Update: {
+          communications?: string | null
+          event_id?: string
+          food?: string | null
+          id?: string
+          is_anonymous?: boolean
+          lodging?: string | null
+          other?: string | null
+          party_music?: string | null
+          safety?: string | null
+          schedule?: string | null
+          welcome?: string | null
+        }
+        Relationships: []
+      }
+      event_feedback_authors: {
+        Row: {
+          author_id: string | null
+          created_at: string
+          event_id: string
+          feedback_id: string
+          party_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          created_at?: string
+          event_id: string
+          feedback_id: string
+          party_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          created_at?: string
+          event_id?: string
+          feedback_id?: string
+          party_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_feedback_authors_feedback_fkey"
+            columns: ["feedback_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "event_feedback"
+            referencedColumns: ["id", "event_id"]
+          },
+        ]
+      }
       event_place_overrides: {
         Row: {
           capacity: number | null
@@ -477,6 +554,8 @@ export type Database = {
           duration_days: number | null
           event_start_date: string | null
           external_links: Json | null
+          feedback_closed_at: string | null
+          feedback_days: number
           id: string
           instructions: string | null
           is_active: boolean | null
@@ -498,6 +577,8 @@ export type Database = {
           duration_days?: number | null
           event_start_date?: string | null
           external_links?: Json | null
+          feedback_closed_at?: string | null
+          feedback_days?: number
           id?: string
           instructions?: string | null
           is_active?: boolean | null
@@ -519,6 +600,8 @@ export type Database = {
           duration_days?: number | null
           event_start_date?: string | null
           external_links?: Json | null
+          feedback_closed_at?: string | null
+          feedback_days?: number
           id?: string
           instructions?: string | null
           is_active?: boolean | null
@@ -1158,6 +1241,7 @@ export type Database = {
       delete_my_account: { Args: never; Returns: undefined }
       edition_parties: { Args: { p_event_id: string }; Returns: Json }
       edition_role: { Args: { p_event_id: string }; Returns: string }
+      event_feedback_answers: { Args: { p_event_id: string }; Returns: Json }
       event_places: {
         Args: { p_event_id: string }
         Returns: {
@@ -1183,6 +1267,7 @@ export type Database = {
         Args: { p_image_id: string; p_offset: number }
         Returns: undefined
       }
+      my_event_feedback: { Args: { p_event_id: string }; Returns: Json }
       my_party_emails: {
         Args: { p_party_id: string }
         Returns: {
@@ -1253,6 +1338,10 @@ export type Database = {
           type: string
           venue_capacity: number
         }[]
+      }
+      submit_event_feedback: {
+        Args: { p_answers: Json; p_event_id: string; p_is_anonymous: boolean }
+        Returns: Json
       }
       unused_gallery_images: { Args: { p_paths?: string[] }; Returns: string[] }
       venue_layout: {
