@@ -4373,7 +4373,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   const SHORT = 'a0000000-a000-a000-a000-a00000003156'; // an admin shortens feedback_days into the past
   const RACE = 'a0000000-a000-a000-a000-a00000003157'; // concurrent saves and an archival
   const UNLINK = 'a0000000-a000-a000-a000-a00000003158'; // a party deleted while its save is in flight
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK];
+  const SWITCH = 'a0000000-a000-a000-a000-a00000003159'; // the members' switch (#341): off, unlike the others
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4449,7 +4450,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // Registrations are made while every event is ahead, then the dates move.
     await ok(clients.admin.from('events').upsert(EVENT_IDS.map((id) => ({
       id, theme: `Bilan ${id.slice(-1)}`, status: 'ACTIVE', is_active: false, selling_price_whole_event: 100, ratio_main_whole: 0.5375,
-      reg_start_date: startsIn(-90), event_start_date: startsIn(60), duration_days: 3, feedback_days: 14
+      reg_start_date: startsIn(-90), event_start_date: startsIn(60), duration_days: 3, feedback_days: 14,
+      feedback_member_visible: id !== SWITCH
     }))));
     for (const eventId of [OPEN, FUTURE, ARCHIVED]) await register('member', eventId, MEMBER_ID);
     for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer', 'Cancelled', 'Waitlisted', 'Mover']) {
@@ -4460,6 +4462,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     await register('Anon1', SHORT, users.Anon1.id);
     for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, RACE, users[label].id);
     await register('Racer', UNLINK, users.Racer.id);
+    await register('member', SWITCH, MEMBER_ID);
+    await register('admin', SWITCH, ADMIN_ID);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${OPEN}`]]);
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
@@ -4468,7 +4472,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // Started 10 days ago for 3 days: the window opened 10 days ago (the first day)
     // and closes at the end of the day in 6 days (last day, 8 days ago, + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
@@ -4482,7 +4486,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
       // marker go. Back ahead of their close date too, or the registrations can't go.
       await db.query('begin');
       await db.query('set local session_replication_role = replica');
-      await db.query(`update public.events set status = 'ACTIVE', feedback_closed_at = null, feedback_days = 14,
+      await db.query(`update public.events set status = 'ACTIVE', feedback_closed_at = null, feedback_days = 14, feedback_member_visible = false,
         reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])`, [EVENT_IDS, startsIn(-90), startsIn(60)]);
       await db.query('commit');
       await db.query('delete from public.user_parties where event_id = any($1::uuid[])', [EVENT_IDS]);
@@ -4491,6 +4495,37 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     } finally {
       await db.end();
     }
+  });
+
+  test('the members\' switch (#341): off, a member can neither read nor save; an admin still can; on, the member can', async () => {
+    const text = { other: 'Pour tester' };
+    expect((await eventRow(SWITCH))).toMatchObject({ feedback_closed_at: null });
+    expect((await db.query('select feedback_member_visible v from public.events where id = $1', [SWITCH])).rows[0].v).toBe(false);
+    // Off: the member is refused as for an unknown event, whichever door.
+    expectCode(await mine(clients.member, SWITCH), 'event_not_found');
+    expectCode(await submit(clients.member, SWITCH, text), 'event_not_found');
+    expect(await stored(SWITCH)).toEqual([]);
+    // The admin reads, saves and edits as usual (they are registered on it), and reads the answers admin-side.
+    expect(await ok(mine(clients.admin, SWITCH))).toMatchObject({ eligible: true, window: 'open', answer: null });
+    await ok(submit(clients.admin, SWITCH, text));
+    const edited = await ok(submit(clients.admin, SWITCH, { other: 'Modifié' }, true));
+    expect(edited.answers.other).toBe('Modifié');
+    expect((await ok(mine(clients.admin, SWITCH))).answer.answers.other).toBe('Modifié');
+    expect(await ok(answersOf(clients.admin, SWITCH))).toMatchObject({ closed: false });
+    // The switch changed nothing about the close: still open, no marker.
+    expect((await eventRow(SWITCH)).feedback_closed_at).toBeNull();
+    // On: the member gets today's behaviour, and the answer written while off is still there.
+    await ok(clients.admin.from('events').update({ feedback_member_visible: true }).eq('id', SWITCH));
+    expect(await ok(mine(clients.member, SWITCH))).toMatchObject({ eligible: true, window: 'open', answer: null });
+    await ok(submit(clients.member, SWITCH, text));
+    expect((await ok(mine(clients.admin, SWITCH))).answer.answers.other).toBe('Modifié');
+    // A member can't flip it themselves.
+    const flip = await clients.member.from('events').update({ feedback_member_visible: false }).eq('id', SWITCH).select();
+    expect(flip.error || flip.data.length === 0).toBeTruthy();
+    // Off again: refused again, nothing lost.
+    await ok(clients.admin.from('events').update({ feedback_member_visible: false }).eq('id', SWITCH));
+    expectCode(await submit(clients.member, SWITCH, text), 'event_not_found');
+    expect(await stored(SWITCH)).toHaveLength(2);
   });
 
   test('a member creates, edits and switches named ↔ anonymous their one answer while the window is open', async () => {

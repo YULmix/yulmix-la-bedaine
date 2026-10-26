@@ -63,6 +63,28 @@ test('the offset shows with its close date, an edit before the close saves and m
   expect((await getEvent(seeded.eventId)).feedback_closed_at).toBeNull();
 });
 
+test('the members\' switch is off by default, an admin turns it on and off in « Calendrier »', async ({ page }) => {
+  seeded = await seedActiveEventWithMemberParty({ feedback_days: 14, event_start_date: daysFromNow(-3), duration_days: 1 });
+  expect((await getEvent(seeded.eventId)).feedback_member_visible).toBe(false);
+  const details = await openEditor(page, E2E_EVENT_THEME);
+  const toggle = details.getByRole('switch', { name: fr.eventFeedbackMemberVisibleLabel });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
+    await page.setViewportSize({ width, height });
+    await toggle.scrollIntoViewIfNeeded();
+    await screenshot(page, `event-feedback-switch-off-${width}`);
+  }
+  await toggle.click();
+  await details.getByRole('button', { name: fr.save, exact: true }).click();
+  await expect.poll(async () => (await getEvent(seeded.eventId)).feedback_member_visible).toBe(true);
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await screenshot(page, 'event-feedback-switch-on-2560');
+  await toggle.click();
+  await details.getByRole('button', { name: fr.save, exact: true }).click();
+  await expect.poll(async () => (await getEvent(seeded.eventId)).feedback_member_visible).toBe(false);
+  expect((await getEvent(seeded.eventId)).feedback_closed_at).toBeNull();
+});
+
 test('an event not over yet says the feedback is not open, with the date it will close', async ({ page }) => {
   const start = daysFromNow(30);
   seeded = await seedActiveEventWithMemberParty({ feedback_days: 14, event_start_date: start, duration_days: 3 });

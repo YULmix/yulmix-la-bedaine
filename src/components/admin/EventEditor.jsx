@@ -158,6 +158,8 @@ const DetailsForm = ({ event, value, onChange, errors, creating }) => {
           {numberField('max_attendees', 'eventMaxAttendeesLabel')}
         </div>
         <FeedbackCloseField event={event} value={value} error={fieldError('feedback_days', errors)} onChange={onChange} />
+        <Toggle label={fr.eventFeedbackMemberVisibleLabel} description={fr.eventFeedbackMemberVisibleHint}
+          checked={!!value('feedback_member_visible')} onChange={checked => onChange('feedback_member_visible', checked)} />
         {/* A new event is created with registrations closed; opening them is for once it exists. */}
         {!creating && <Toggle label={fr.eventRegOpenLabel} checked={!!value('is_reg_open')} onChange={checked => onChange('is_reg_open', checked)} />}
       </EditorCard>

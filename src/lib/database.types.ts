@@ -556,6 +556,7 @@ export type Database = {
           external_links: Json | null
           feedback_closed_at: string | null
           feedback_days: number
+          feedback_member_visible: boolean
           id: string
           instructions: string | null
           is_active: boolean | null
@@ -579,6 +580,7 @@ export type Database = {
           external_links?: Json | null
           feedback_closed_at?: string | null
           feedback_days?: number
+          feedback_member_visible?: boolean
           id?: string
           instructions?: string | null
           is_active?: boolean | null
@@ -602,6 +604,7 @@ export type Database = {
           external_links?: Json | null
           feedback_closed_at?: string | null
           feedback_days?: number
+          feedback_member_visible?: boolean
           id?: string
           instructions?: string | null
           is_active?: boolean | null

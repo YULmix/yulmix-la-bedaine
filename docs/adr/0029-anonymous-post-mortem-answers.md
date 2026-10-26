@@ -171,3 +171,19 @@ Not fixed, by the organiser's decision on #315:
   answers in the order the database returns them.
 - The event form (#329) edits `feedback_days` and shows `feedback_closed_at`; it never writes the
   marker.
+
+## Amendment (#341): the members' switch
+
+`events.feedback_member_visible` (`NOT NULL DEFAULT false`, so off for every existing event) is the
+organiser's switch, set in the event form's « Calendrier » fieldset. Off, a member can neither read
+(`my_event_feedback`) nor save (`submit_event_feedback`) on the event: both go through
+`private.event_feedback_check_event`, which answers `event_not_found` as for an unknown event, so the
+pass shows no card and the page shows its load error. Admins are unaffected, to test: they read, save
+and edit as usual, with the same registration requirement as a member (an admin answers for an event
+they are registered to).
+
+The switch is only a visibility gate. It changes nothing about the window: `feedback_closed_at`,
+`event_feedback_window`, the close by date or archival and the levée don't read it, so turning it off
+never closes the feedback, releases anonymous answers or loses one, and the close still happens on
+schedule while it is off. Answers written while it was off (by an admin) stay and are published at the
+close like any other.
