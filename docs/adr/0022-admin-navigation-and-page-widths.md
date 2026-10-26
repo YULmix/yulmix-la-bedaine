@@ -73,8 +73,8 @@ flowchart TD
   cards side by side cramp the figures in `3xl` and leave the rest of a wide screen empty, so
   it's dense.
 
-  *Amended by #346 (October 2026): « Bilan » is dense, but narrow before its close.* See the
-  amendment below.
+  *Amended by #346 (October 2026): « Bilan » is dense, but narrow before its close; since #356
+  dense throughout.* See the amendment below.
 - **One container.** From `md` up, the sidebar and the page share one centred container
   (`max-w-screen-2xl`), and the app header uses the same width on admin pages, so the logo
   lines up with the sidebar and the account menu with the page's right edge. The sidebar stays
@@ -114,4 +114,9 @@ because one narrow column of eight cards wasted most of a wide screen and made a
 
 The section is the one place where the width depends on the data. It is not a third width: the
 shell still applies one of the two, and the section narrows its own content within it.
+
+*Since #356 (October 2026)* the comments are read live, so the section is the same before and after
+the close: always full width, the comments' grid as above, the counts' card full width too, its
+per-category tiles four across from a `3xl` container. The narrow « before the
+close » state is gone, and the width no longer depends on the data.
 

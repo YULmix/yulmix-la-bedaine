@@ -22,10 +22,10 @@ const ICONS = {
 // The categories' colours, cycling in display order (FEEDBACK_CATEGORIES): a category keeps its
 // colour whichever categories are shown around it.
 const TONES = [
-  { head: 'tint-neon', chip: 'bg-neon text-night', text: 'text-neon' },
-  { head: 'tint-info', chip: 'bg-info text-night', text: 'text-info' },
-  { head: 'tint-ok', chip: 'bg-ok text-night', text: 'text-ok' },
-  { head: 'tint-warn', chip: 'bg-warn text-night', text: 'text-warn' }
+  { head: 'tint-neon', chip: 'bg-neon text-night', dot: 'bg-neon', text: 'text-neon' },
+  { head: 'tint-info', chip: 'bg-info text-night', dot: 'bg-info', text: 'text-info' },
+  { head: 'tint-ok', chip: 'bg-ok text-night', dot: 'bg-ok', text: 'text-ok' },
+  { head: 'tint-warn', chip: 'bg-warn text-night', dot: 'bg-warn', text: 'text-warn' }
 ];
 
 export const categoryTone = category => {

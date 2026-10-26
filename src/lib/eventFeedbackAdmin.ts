@@ -53,8 +53,8 @@ export interface EventFeedbackAnswers {
 /** One category's items: the signed ones with their author's label, then the private texts. */
 export interface CategoryAnswers {
   category: FeedbackCategory;
-  named: Array<{ author: string; text: string }>;
-  anonymous: string[];
+  signed: Array<{ author: string; text: string }>;
+  private: string[];
 }
 
 const textOf = (item: { text?: unknown } | null | undefined): string | null =>
@@ -75,11 +75,11 @@ export const groupByCategory = (result: EventFeedbackAnswers | null | undefined)
   const privateItems = result.private ?? [];
   return FEEDBACK_CATEGORIES.map(category => ({
     category,
-    named: signed.flatMap(item => {
+    signed: signed.flatMap(item => {
       const text = item.category === category ? textOf(item) : null;
       return text === null ? [] : [{ author: authorLabel(item.author), text }];
     }),
-    anonymous: privateItems.flatMap(item => {
+    private: privateItems.flatMap(item => {
       const text = item.category === category ? textOf(item) : null;
       return text === null ? [] : [text];
     })
@@ -159,32 +159,6 @@ export const fetchEventFeedbackCounts = async (client: Client, eventId: string):
   return toFeedbackCounts(data);
 };
 
-// ---------------------------------------------------------------------------------------------
-// Transitional (until the « Bilan » section is reworked, #356): the dashboard's figures.
-
-/** The dashboard's figures: signed members, private items (null until released), no total. */
-export interface DashboardCounts {
-  closed: boolean;
-  closes_on: string | null;
-  eligible: number;
-  signed: number;
-  anonymous: number | null;
-  total: number | null;
-}
-
-/**
- * The figures the dashboard shows: the members with a signed item, the private items once
- * released (« moins de 3 » until then), and no total: members and items don't add up.
- */
-export const shownCounts = (counts: EventFeedbackCounts): DashboardCounts => ({
-  closed: counts.closed,
-  closes_on: counts.closes_on,
-  eligible: counts.eligible,
-  signed: counts.signed_members,
-  anonymous: counts.private_total,
-  total: null
-});
-
-/** The response rate shown, in whole percent of the eligible registrations (0 to 100): the total once shown, else the signed ones. */
-export const responseRate = ({ eligible, signed, total }: DashboardCounts): number =>
-  eligible > 0 ? Math.min(100, Math.max(0, Math.round(((total ?? signed) / eligible) * 100))) : 0;
+/** The members who signed at least one item, in whole percent of the eligible registrations (0 to 100). */
+export const signedRate = ({ eligible, signed_members: signed }: Pick<EventFeedbackCounts, 'eligible' | 'signed_members'>): number =>
+  eligible > 0 ? Math.min(100, Math.max(0, Math.round((signed / eligible) * 100))) : 0;
