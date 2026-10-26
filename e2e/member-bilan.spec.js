@@ -57,6 +57,28 @@ async function shoot(page, name) {
   await page.setViewportSize({ width: 1280, height: 720 });
 }
 
+test('switch off (#341): the member sees no card and the page says it is not open; the admin still sees the card and can answer', async ({ page, browser }) => {
+  seeded = await seedFeedbackEvent({ memberVisible: false, adminRegistered: true });
+  await loginAs(page, TEST_USERS.member);
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await expect(passCard(page)).toHaveCount(0);
+  await page.goto(`/bilan/${seeded.eventId}`);
+  await expect(body(page)).toHaveAttribute('data-state', 'not_yet');
+  await expect(body(page).getByLabel(fr.bilanCategoryOther, { exact: true })).toHaveCount(0);
+
+  const adminPage = await (await browser.newContext()).newPage();
+  await loginAs(adminPage, TEST_USERS.admin);
+  await adminPage.goto('/');
+  await expect(passCard(adminPage)).toBeVisible();
+  await adminPage.goto(`/bilan/${seeded.eventId}`);
+  await expect(body(adminPage)).toHaveAttribute('data-state', 'open');
+  await field(adminPage, fr.bilanCategoryOther).fill('Test admin');
+  await submitButton(adminPage).click();
+  await expect(body(adminPage).getByText(fr.bilanSavedTitle)).toBeVisible();
+  await adminPage.context().close();
+});
+
 test('member: from the pass, submit, return, edit and switch named ↔ anonymous', async ({ page }) => {
   seeded = await seedFeedbackEvent();
   await loginAs(page, TEST_USERS.member);

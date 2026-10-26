@@ -171,3 +171,26 @@ Not fixed, by the organiser's decision on #315:
   answers in the order the database returns them.
 - The event form (#329) edits `feedback_days` and shows `feedback_closed_at`; it never writes the
   marker.
+
+## Amendment (#341): the members' switch
+
+`events.feedback_member_visible` (`NOT NULL DEFAULT false`, so off for every existing event) is the
+organiser's switch, set in the event form's « Calendrier » fieldset. Off, a member can neither read
+nor save on the event. Reading (`my_event_feedback`, which the pass card calls on every pass load)
+returns one neutral payload, « not yet open », with no date, close or answer, so the pass shows no
+card and the page says the bilan isn't open. Saving (`submit_event_feedback`, and the admin read)
+goes through `private.event_feedback_check_event`, which answers `event_not_found` as for an unknown
+event. Admins are unaffected, to test: they read, save and edit as usual, with the same registration
+requirement as a member (an admin answers for an event they are registered to). A DRAFT event stays
+unknown to a member whatever the switch.
+
+The switch is only a visibility gate. The window, `feedback_closed_at`, the close by date or archival
+and the levée don't read it, so turning it off never closes the feedback, releases anonymous answers
+or loses one. It doesn't delay the close either: a refused call is rolled back and could not
+persist the due-close, so `my_event_feedback` runs it before looking at the switch and then answers
+neutrally (the refused save writes nothing and relies on that read, an admin call or an event
+update). The close still comes with the first of those after the close date.
+
+Answers an admin wrote while the switch was off are real rows: the close publishes them with the
+members' (named with their author, anonymous in the pool), so test answers are visible in the admin
+« Bilan » like any other.

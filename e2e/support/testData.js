@@ -244,7 +244,7 @@ export async function shelveEvent(eventId) {
 export async function getEvent(eventId) {
   const db = await adminClient();
   return check(
-    await db.from('events').select('status, is_active, selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links, feedback_days, feedback_closed_at').eq('id', eventId).single(),
+    await db.from('events').select('status, is_active, selling_price_whole_event, ratio_main_whole, theme, max_attendees, reg_start_date, event_start_date, external_links, feedback_days, feedback_closed_at, feedback_member_visible').eq('id', eventId).single(),
     'read e2e event'
   );
 }
@@ -829,7 +829,7 @@ export async function endOpenImpersonations() {
 // start that many Toronto days ago (negative: in the future); active makes it the active event
 // (the pass, the admin's Inscrits). The seeded member gets a registration on it, saved by the
 // admin (a member can't register once the event has started, #314). Returns { eventId, partyId }.
-export async function seedFeedbackEvent({ startDaysAgo = 5, durationDays = 2, feedbackDays = 14, active = true } = {}) {
+export async function seedFeedbackEvent({ startDaysAgo = 5, durationDays = 2, feedbackDays = 14, active = true, memberVisible = true, adminRegistered = false } = {}) {
   const db = await adminClient();
   const venueId = await e2eVenueId(db);
   const start = new Date(Date.now() - startDaysAgo * 24 * 60 * 60 * 1000)
@@ -847,6 +847,8 @@ export async function seedFeedbackEvent({ startDaysAgo = 5, durationDays = 2, fe
     event_start_date: `${start} 00:00 America/Toronto`,
     duration_days: durationDays,
     feedback_days: feedbackDays,
+    // Off by default in the database (#341); on here so a member's specs see the bilan.
+    feedback_member_visible: memberVisible,
     x_reg_close_weeks: 1,
     reg_start_date: '2026-05-01 00:00 America/Toronto',
     z_intent_months: 2,
@@ -854,7 +856,9 @@ export async function seedFeedbackEvent({ startDaysAgo = 5, durationDays = 2, fe
     venue_id: venueId
   }).select('id').single(), 'create bilan event').id;
   const partyId = await saveParty(db, eventId, MEMBER_ID, E2E_ATTENDEES, 'create bilan party');
-  return { eventId, partyId };
+  // An admin answers for an event they are registered to, like a member (#341: testing with the switch off).
+  const adminPartyId = adminRegistered ? await saveParty(db, eventId, ADMIN_ID, E2E_ATTENDEES, 'create bilan admin party') : null;
+  return { eventId, partyId, adminPartyId };
 }
 
 // Closes the event's post-mortem now: a feedback_days that puts the close in the past closes it at
@@ -864,8 +868,9 @@ export async function closeFeedback(eventId) {
   check(await db.from('events').update({ feedback_days: 1 }).eq('id', eventId), 'close bilan');
 }
 
-export async function teardownFeedbackEvent({ eventId, partyId }) {
+export async function teardownFeedbackEvent({ eventId, partyId, adminPartyId }) {
   const db = await adminClient();
+  if (adminPartyId) check(await db.from('user_parties').delete().eq('id', adminPartyId), 'delete bilan admin party');
   if (partyId) check(await db.from('user_parties').delete().eq('id', partyId), 'delete bilan party');
   if (eventId) check(await db.from('events').update({ is_active: false, status: 'DRAFT' }).eq('id', eventId), 'deactivate bilan event');
 }
