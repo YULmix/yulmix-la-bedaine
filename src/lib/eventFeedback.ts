@@ -21,7 +21,6 @@ import type { InstantLike } from './eventTime';
 /** The categories, in display order: the database's category values. */
 export const FEEDBACK_CATEGORIES = ['welcome', 'party_music', 'safety', 'lodging', 'food', 'communications', 'schedule', 'other'] as const;
 export type FeedbackCategory = typeof FEEDBACK_CATEGORIES[number];
-export type FeedbackAnswers = Record<FeedbackCategory, string>;
 
 const CATEGORY_LABEL_KEYS: Record<FeedbackCategory, keyof typeof fr> = {
   welcome: 'bilanCategoryWelcome',
@@ -90,48 +89,88 @@ export const canAnswerFeedback = (feedback: MyEventFeedback | null | undefined):
 export const itemOf = (items: FeedbackItem[] | null | undefined, category: FeedbackCategory, isPrivate: boolean): FeedbackItem | null =>
   (items ?? []).find(item => item.category === category && item.private === isPrivate) ?? null;
 
-/** Every category, blank. */
-export const emptyAnswers = (): FeedbackAnswers =>
-  Object.fromEntries(FEEDBACK_CATEGORIES.map(category => [category, ''])) as FeedbackAnswers;
-
-/** Whether at least one category has a non-blank text (the database's own rule). */
-export const hasAnyAnswer = (answers: FeedbackAnswers): boolean =>
-  FEEDBACK_CATEGORIES.some(category => (answers[category] ?? '').trim() !== '');
-
 // ---------------------------------------------------------------------------------------------
-// Transitional (until the form is reworked, #355): the one-answer form (eight texts and one
-// named/anonymous choice) over the items. The form's answer is the member's signed items when
-// they have any, else their private ones; saving it replaces the member's whole set with its
-// texts, all of the chosen kind.
+// The form (#355): each category card holds one or two comments, at most one of each kind. A new
+// comment is signed; its « Privé » switch makes it private; once a card has one comment, the other
+// kind can be added. Saving sends the non-blank comments as the member's whole set.
 
-/** The one-answer form's view of the member's items. */
-export interface LegacyAnswer {
-  answers: Partial<Record<FeedbackCategory, string>>;
-  is_anonymous: boolean;
+/** One comment being written on a card. `slot` is its stable key in the card ('a' or 'b'). */
+export interface FeedbackDraft {
+  slot: 'a' | 'b';
+  private: boolean;
+  text: string;
 }
+export type FeedbackDrafts = Record<FeedbackCategory, FeedbackDraft[]>;
 
-export const legacyAnswer = (items: FeedbackItem[] | null | undefined): LegacyAnswer | null => {
-  const list = items ?? [];
-  if (list.length === 0) return null;
-  const isPrivate = !list.some(item => !item.private);
-  const answers: Partial<Record<FeedbackCategory, string>> = {};
-  for (const item of list) if (item.private === isPrivate) answers[item.category] = item.text;
-  return { answers, is_anonymous: isPrivate };
+const blankDraft = (): FeedbackDraft => ({ slot: 'a', private: false, text: '' });
+const isBlank = (text: string | null | undefined): boolean => (text ?? '').trim() === '';
+
+/** The form's state from the member's items: each card its items, signed first, or one blank signed comment. */
+export const draftsFrom = (items: FeedbackItem[] | null | undefined): FeedbackDrafts =>
+  Object.fromEntries(FEEDBACK_CATEGORIES.map(category => {
+    const own = [false, true]
+      .map(isPrivate => itemOf(items, category, isPrivate))
+      .filter((item): item is FeedbackItem => !!item);
+    const drafts: FeedbackDraft[] = own.length === 0
+      ? [blankDraft()]
+      : own.map((item, index) => ({ slot: index === 0 ? 'a' : 'b', private: item.private, text: item.text }));
+    return [category, drafts];
+  })) as FeedbackDrafts;
+
+const updateCard = (drafts: FeedbackDrafts, category: FeedbackCategory, change: (card: FeedbackDraft[]) => FeedbackDraft[]): FeedbackDrafts =>
+  ({ ...drafts, [category]: change(drafts[category] ?? [blankDraft()]) });
+
+/** A comment's new text. */
+export const setDraftText = (drafts: FeedbackDrafts, category: FeedbackCategory, slot: FeedbackDraft['slot'], text: string): FeedbackDrafts =>
+  updateCard(drafts, category, card => card.map(draft => (draft.slot === slot ? { ...draft, text } : draft)));
+
+/** Whether a comment's kind can be switched: only alone on its card (two would then be of one kind). */
+export const canSwitchKind = (card: FeedbackDraft[]): boolean => card.length === 1;
+
+/** Makes a card's only comment private or signed; unchanged when the card has two. */
+export const setDraftPrivate = (drafts: FeedbackDrafts, category: FeedbackCategory, slot: FeedbackDraft['slot'], isPrivate: boolean): FeedbackDrafts =>
+  updateCard(drafts, category, card => (canSwitchKind(card)
+    ? card.map(draft => (draft.slot === slot ? { ...draft, private: isPrivate } : draft))
+    : card));
+
+/** The kind a card can still add (true = private), or null: it has two, or its one comment is blank. */
+export const otherKindToAdd = (card: FeedbackDraft[]): boolean | null =>
+  (card.length === 1 && !isBlank(card[0].text) ? !card[0].private : null);
+
+/** Adds the other kind's comment to a card; unchanged when it can't (otherKindToAdd). */
+export const addOtherKind = (drafts: FeedbackDrafts, category: FeedbackCategory): FeedbackDrafts =>
+  updateCard(drafts, category, card => {
+    const kind = otherKindToAdd(card);
+    if (kind === null) return card;
+    return [...card, { slot: card[0].slot === 'a' ? 'b' : 'a', private: kind, text: '' }];
+  });
+
+/** Whether a comment shows a remove action: one of two, or alone with text or private. */
+export const canRemoveDraft = (card: FeedbackDraft[], draft: FeedbackDraft): boolean =>
+  card.length > 1 || !isBlank(draft.text) || draft.private;
+
+/** Removes a comment; a card's last one becomes a blank signed comment (a card always shows one). */
+export const removeDraft = (drafts: FeedbackDrafts, category: FeedbackCategory, slot: FeedbackDraft['slot']): FeedbackDrafts =>
+  updateCard(drafts, category, card => {
+    const rest = card.filter(draft => draft.slot !== slot);
+    return rest.length > 0 ? rest : [blankDraft()];
+  });
+
+/** The form's comments as items: the non-blank ones, in display order, signed first in a card. */
+export const itemsFromDrafts = (drafts: FeedbackDrafts): FeedbackItem[] =>
+  FEEDBACK_CATEGORIES.flatMap(category => [...(drafts[category] ?? [])]
+    .filter(draft => !isBlank(draft.text))
+    .sort((left, right) => Number(left.private) - Number(right.private))
+    .map(draft => ({ category, private: draft.private, text: draft.text })));
+
+const itemKey = (item: FeedbackItem): string => `${item.category}|${item.private}|${item.text}`;
+
+/** Whether the form's comments differ from the saved items. */
+export const draftsUnsaved = (drafts: FeedbackDrafts, saved: FeedbackItem[] | null | undefined): boolean => {
+  const current = itemsFromDrafts(drafts).map(itemKey).sort();
+  const stored = (saved ?? []).map(itemKey).sort();
+  return current.length !== stored.length || current.some((key, index) => key !== stored[index]);
 };
-
-/** The one-answer form's texts and choice as items (blank texts left out). */
-export const itemsFromAnswers = (answers: FeedbackAnswers, isAnonymous: boolean): FeedbackItem[] =>
-  FEEDBACK_CATEGORIES.filter(category => (answers[category] ?? '').trim() !== '')
-    .map(category => ({ category, private: isAnonymous, text: answers[category] }));
-
-/** A saved answer's texts as the form's state (every category, '' when not answered). */
-export const answersFrom = (answer: LegacyAnswer | null | undefined): FeedbackAnswers =>
-  Object.fromEntries(FEEDBACK_CATEGORIES.map(category => [category, answer?.answers?.[category] ?? ''])) as FeedbackAnswers;
-
-/** Whether the form differs from what's saved (the texts and the choice). */
-export const isUnsaved = (answers: FeedbackAnswers, isAnonymous: boolean, saved: LegacyAnswer | null | undefined): boolean =>
-  FEEDBACK_CATEGORIES.some(category => (answers[category] ?? '') !== (saved?.answers?.[category] ?? ''))
-  || (!!saved && isAnonymous !== saved.is_anonymous);
 
 // ---------------------------------------------------------------------------------------------
 

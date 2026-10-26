@@ -70,10 +70,10 @@ Exactly one event may be `is_active = TRUE`, enforced by the partial unique inde
 (`activateEvent` in `src/lib/events.ts`).
 
 The **bilan** (post-mortem, #315, #316, #339) opens on the event's first day, until its close (`feedback_days` after the last day, or archival if earlier). While it is
-open, the pass links to `/bilan/<event>`, where each member with a registration writes one comment
-per category, named or anonymous, and edits it until the close. Nobody reads anything before the
-close; then admins read the named answers, and the anonymous ones only when there are at least
-three, with nothing left that ties them to their author
+open, the pass links to `/bilan/<event>`, where each member with a registration writes, per category,
+a signed comment, a private one or both, and edits or removes them until the close. Admins read the
+signed comments as they arrive, with their author, and the private ones only once at least three
+members have written one, with nothing that ties them to their author
 ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)).
 
 ## Registration timeline

@@ -1,12 +1,13 @@
-// The member's post-mortem page, « bilan » (#316), at /bilan/:eventId, over the database's
-// my_event_feedback() and submit_event_feedback() (#315, ADR 0029): the pass links to it while the
-// window is open; submit, return, edit and switch named ↔ anonymous; the explanation of who reads
-// what; the empty form refused; after the close a named answer read-only and one neutral message
-// otherwise; the not-eligible and not-yet-open messages; « Voir comme » shows the same hidden state
-// whether the member answered named, anonymously or not at all; unsaved text survives a tab
-// refocus and is never written to the browser's storage.
+// The member's retour page (#316), at /bilan/:eventId, over the database's my_event_feedback() and
+// submit_event_feedback() (#315, #354, ADR 0029): the pass links to it while the window is open;
+// per category a comment signed by default, a « Privé » switch, the other kind added beside it and
+// never a third (#355); submit, return, edit, remove; the explanation of who reads what; the empty
+// form refused; after the close the signed comments read-only and one neutral message otherwise;
+// the not-eligible and not-yet-open messages; « Voir comme » shows the same hidden state whether the
+// member wrote signed, private or nothing; unsaved text survives a tab refocus and is never written
+// to the browser's storage.
 //
-// Each test has its own fresh event (a bilan's close is final, so the shared e2e event can't be
+// Each test has its own fresh event (a retour's close is final, so the shared e2e event can't be
 // reused), made the active one: the spec runs in its own serial project.
 //
 // E2E_SCREENSHOT_DIR=<dir> saves the page and the pass card at 390, 1440, 1920x1080 and 2560x1440.
@@ -17,6 +18,7 @@ import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   closeFeedback,
   endOpenImpersonations,
+  feedbackAnswersAs,
   seedFeedbackEvent,
   submitFeedbackAs,
   teardownFeedbackEvent
@@ -39,9 +41,14 @@ test.afterEach(async () => {
 
 const body = page => page.getByTestId('bilan-body');
 const passCard = page => page.getByTestId('bilan-pass-card');
-const field = (page, label) => body(page).getByLabel(label, { exact: true });
+// A comment's text: named by its card's title and its kind (#355).
+const field = (page, label, isPrivate = false) =>
+  body(page).getByRole('textbox', { name: `${label} ${isPrivate ? fr.bilanCommentPrivate : fr.bilanCommentSigned}`, exact: true });
+const privateSwitch = (page, label) => body(page).getByRole('switch', { name: fr.bilanPrivateSwitchLabel.replace('{category}', label), exact: true });
+// A category's card on the form: the block under its title.
+const card = (page, label) => body(page).getByRole('heading', { level: 3, name: label, exact: true }).locator('xpath=../..');
 const submitButton = page => body(page).getByRole('button', { name: new RegExp(`^(${fr.bilanSubmit}|${fr.bilanSubmitEdit})$`) });
-const identity = (page, label) => body(page).getByRole('radio', { name: label, exact: true });
+const kinds = locator => locator.getByTestId('bilan-comment').evaluateAll(comments => comments.map(comment => comment.dataset.kind));
 
 // The categories in display order, with their colour (#346's cycle, shared with the admin Bilan
 // through FeedbackCategoryCard, #352).
@@ -89,11 +96,11 @@ test('switch off (#341): the member sees no card and the page says it is not ope
   await adminPage.context().close();
 });
 
-test('member: from the pass, submit, return, edit and switch named ↔ anonymous', async ({ page }) => {
+test('member: from the pass, a signed and a private comment on one card, return, edit, remove', async ({ page }) => {
   seeded = await seedFeedbackEvent();
   await loginAs(page, TEST_USERS.member);
 
-  // The pass links to the bilan while it is open, with its close date.
+  // The pass links to the retour while it is open, with its close date.
   await expect(passCard(page)).toBeVisible();
   await expect(passCard(page)).toContainText(fr.bilanPassTitle);
   await shoot(page, 'bilan-pass-card-member');
@@ -101,20 +108,23 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
   await expect(page).toHaveURL(new RegExp(`/bilan/${seeded.eventId}$`));
   await expect(body(page)).toHaveAttribute('data-state', 'open');
 
-  // The eight categories, the choice, and who reads what next to it.
+  // The eight categories, each one blank comment, signed, its « Privé » switch off.
   for (const [key] of CATEGORIES) {
     await expect(field(page, fr[key])).toBeVisible();
+    await expect(privateSwitch(page, fr[key])).toHaveAttribute('aria-checked', 'false');
   }
-  // Each a card (#352): the title is the textarea's label, in a header tinted with the category's
-  // colour, with an icon; one icon per category; the textareas in display order, one column.
+  await expect(body(page).getByRole('textbox')).toHaveCount(CATEGORIES.length);
+  // Each a card (#352): its title in a header tinted with the category's colour, with an icon; one
+  // icon per category; the textareas in display order, one column.
   const cards = await body(page).getByRole('textbox').evaluateAll(areas => areas.map(area => {
-    const header = area.labels[0].parentElement;
-    return { label: area.labels[0].textContent, header: header.textContent, tint: header.className.match(/\btint-\w+/)?.[0], icon: header.querySelector('svg')?.innerHTML };
+    const title = document.getElementById(area.getAttribute('aria-labelledby').split(' ')[0]);
+    const header = title.parentElement;
+    return { label: title.textContent, header: header.textContent, tint: header.className.match(/\btint-\w+/)?.[0], icon: header.querySelector('svg')?.innerHTML };
   }));
-  expect(cards.map(card => [card.label, card.tint])).toEqual(CATEGORIES.map(([key, tint]) => [fr[key], tint]));
+  expect(cards.map(entry => [entry.label, entry.tint])).toEqual(CATEGORIES.map(([key, tint]) => [fr[key], tint]));
   // No count on the member's card, and one icon per category.
-  expect(cards.map(card => card.header)).toEqual(cards.map(card => card.label));
-  expect(new Set(cards.map(card => card.icon)).size).toBe(CATEGORIES.length);
+  expect(cards.map(entry => entry.header)).toEqual(cards.map(entry => entry.label));
+  expect(new Set(cards.map(entry => entry.icon)).size).toBe(CATEGORIES.length);
   // One column on a phone and on a wide screen.
   for (const [width, height] of [[390, 844], [2560, 1440]]) {
     await page.setViewportSize({ width, height });
@@ -122,34 +132,50 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
     expect(new Set(lefts).size, `one column at ${width}px`).toBe(1);
   }
   await page.setViewportSize({ width: 1280, height: 720 });
-  // Tab order: category after category.
+  // Tab order: a card's text, then its switch, then the next card.
   await field(page, fr.bilanCategoryWelcome).focus();
   for (const [key] of CATEGORIES.slice(1)) {
+    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await expect(field(page, fr[key])).toBeFocused();
   }
   await page.evaluate(() => document.activeElement?.blur());
-  await expect(identity(page, fr.bilanIdentityNamed)).toBeChecked();
-  for (const key of ['bilanWhoSeesNamed', 'bilanWhoSeesAnonymous']) {
-    await expect(body(page)).toContainText(fr[key]);
-  }
-  await expect(body(page)).toContainText(fr.bilanWhoSeesAfterClose.split('{date}')[0]);
-  // Members are asked for their « retour » (#343): none of the admins' or builders' words.
-  await expect(body(page)).not.toContainText(/bilan|voir comme|n'importe quel appareil/i);
-  await expect(body(page)).toContainText(fr.bilanWhoSeesNobodyBefore.split('{date}')[0]);
-  // A signed answer is not shown to admins before the close, and can still be made anonymous (#347).
-  await expect(body(page).getByTestId('bilan-identity-hint')).toContainText(fr.bilanIdentityHint.split('{date}')[0]);
+
+  // Who reads what, live: no word of a close hiding anything, and none of the admins' or builders' words.
+  const whoSees = body(page).getByTestId('bilan-who-sees');
+  await expect(whoSees).toContainText(fr.bilanWhoSeesSigned);
+  await expect(whoSees).toContainText(fr.bilanWhoSeesPrivate);
+  await expect(whoSees).toContainText(fr.bilanWhoSeesAfterClose.split('{date}')[0]);
+  await expect(body(page)).not.toContainText(/bilan|voir comme|levée|anonyme|signée|n'importe quel appareil|aucune réponse n'est lue|pas montrée aux administrateurs/i);
   await shoot(page, 'bilan-form-member');
 
   // The empty form is refused, in French (blank text counts as empty).
   await field(page, fr.bilanCategoryFood).fill('   ');
   await submitButton(page).click();
   await expect(body(page).getByRole('alert')).toHaveText(fr.dbErrorEventFeedbackEmpty);
+  await field(page, fr.bilanCategoryFood).fill('');
 
-  // Submit, anonymous: the confirmation.
+  // « Party + musique »: a signed comment, then the private one added beside it; the focus follows.
+  const party = card(page, fr.bilanCategoryPartyMusic);
+  await expect(party.getByRole('button', { name: fr.bilanAddPrivate })).toHaveCount(0);
+  await field(page, fr.bilanCategoryPartyMusic).fill('Le DJ du samedi était génial');
+  await party.getByRole('button', { name: fr.bilanAddPrivate }).click();
+  await expect(field(page, fr.bilanCategoryPartyMusic, true)).toBeFocused();
+  await page.keyboard.type('Le son était trop fort près du bar');
+  // Two comments: no third offered, and no switch (it would make two of one kind).
+  await expect(party.getByRole('button', { name: new RegExp(`^(${fr.bilanAddPrivate}|${fr.bilanAddSigned})$`) })).toHaveCount(0);
+  await expect(privateSwitch(page, fr.bilanCategoryPartyMusic)).toHaveCount(0);
+  expect(await kinds(party)).toEqual(['signed', 'private']);
+
+  // « Nourriture »: the switch makes the one comment private; then a signed one can be added.
+  const food = card(page, fr.bilanCategoryFood);
   await field(page, fr.bilanCategoryFood).fill('Les repas étaient excellents');
-  await field(page, fr.bilanCategoryWelcome).fill('Accueil chaleureux');
-  await identity(page, fr.bilanIdentityAnonymous).check({ force: true });
+  await privateSwitch(page, fr.bilanCategoryFood).click();
+  await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
+  await expect(food).toContainText(fr.bilanPrivateHint);
+  await expect(food.getByRole('button', { name: fr.bilanAddSigned })).toBeVisible();
+  await shoot(page, 'bilan-form-both-member');
+
   await submitButton(page).click();
   await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
   await expect(submitButton(page)).toHaveText(fr.bilanSubmitEdit);
@@ -158,23 +184,32 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
   // Nothing of the answer is kept in the browser's storage.
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain('excellents');
+  expect(stored).not.toContain('trop fort');
 
-  // Return: the saved texts and choice are prefilled.
+  // Return: both kinds on the « Party + musique » card, the private one on « Nourriture ».
   await page.reload();
-  await expect(field(page, fr.bilanCategoryFood)).toHaveValue('Les repas étaient excellents');
-  await expect(field(page, fr.bilanCategoryWelcome)).toHaveValue('Accueil chaleureux');
-  await expect(identity(page, fr.bilanIdentityAnonymous)).toBeChecked();
+  await expect(field(page, fr.bilanCategoryPartyMusic)).toHaveValue('Le DJ du samedi était génial');
+  await expect(field(page, fr.bilanCategoryPartyMusic, true)).toHaveValue('Le son était trop fort près du bar');
+  expect(await kinds(card(page, fr.bilanCategoryPartyMusic))).toEqual(['signed', 'private']);
+  await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
+  await expect(privateSwitch(page, fr.bilanCategoryFood)).toHaveAttribute('aria-checked', 'true');
+  // The admin reads the signed one live, with its author.
+  let answers = await feedbackAnswersAs(TEST_USERS.admin, seeded.eventId);
+  expect(answers.signed.map(item => [item.category, item.text])).toEqual([['party_music', 'Le DJ du samedi était génial']]);
 
-  // Edit and switch to named.
-  await field(page, fr.bilanCategoryWelcome).fill('');
+  // Remove the signed comment, edit another: the private one stays alone, and the admin no longer sees it.
+  await card(page, fr.bilanCategoryPartyMusic)
+    .getByRole('button', { name: fr.bilanRemoveSignedLabel.replace('{category}', fr.bilanCategoryPartyMusic) }).click();
+  await expect(field(page, fr.bilanCategoryPartyMusic, true)).toBeFocused();
   await field(page, fr.bilanCategorySchedule).fill('Un peu serré le samedi');
-  await identity(page, fr.bilanIdentityNamed).check({ force: true });
   await submitButton(page).click();
   await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
   await page.reload();
-  await expect(field(page, fr.bilanCategoryWelcome)).toHaveValue('');
+  await expect(card(page, fr.bilanCategoryPartyMusic).getByRole('textbox')).toHaveCount(1);
+  await expect(field(page, fr.bilanCategoryPartyMusic, true)).toHaveValue('Le son était trop fort près du bar');
   await expect(field(page, fr.bilanCategorySchedule)).toHaveValue('Un peu serré le samedi');
-  await expect(identity(page, fr.bilanIdentityNamed)).toBeChecked();
+  answers = await feedbackAnswersAs(TEST_USERS.admin, seeded.eventId);
+  expect(answers.signed.map(item => [item.category, item.text])).toEqual([['schedule', 'Un peu serré le samedi']]);
 });
 
 test('member: unsaved text survives the tab regaining focus, and stays out of storage', async ({ page }) => {
@@ -198,9 +233,13 @@ test('member: unsaved text survives the tab regaining focus, and stays out of st
   expect(stored).not.toContain('Chalet');
 });
 
-test('member: after the close, a named answer read-only', async ({ page }) => {
+test('member: after the close, the signed comments read-only, the private ones not shown', async ({ page }) => {
   seeded = await seedFeedbackEvent();
-  await submitFeedbackAs(TEST_USERS.member, seeded.eventId, { safety: 'Rien à signaler', other: 'Merci!' }, false);
+  await submitFeedbackAs(TEST_USERS.member, seeded.eventId, [
+    { category: 'safety', private: false, text: 'Rien à signaler' },
+    { category: 'safety', private: true, text: 'Texte privé du membre' },
+    { category: 'other', private: false, text: 'Merci!' }
+  ]);
   await closeFeedback(seeded.eventId);
   await loginAs(page, TEST_USERS.member);
 
@@ -213,7 +252,10 @@ test('member: after the close, a named answer read-only', async ({ page }) => {
   await expect(body(page)).toContainText(fr.bilanClosedNamedTitle);
   await expect(body(page)).toContainText('Rien à signaler');
   await expect(body(page)).toContainText('Merci!');
+  await expect(body(page)).toContainText(fr.bilanClosedNamedMessage);
+  await expect(page.getByText('Texte privé du membre')).toHaveCount(0);
   await expect(body(page).getByRole('textbox')).toHaveCount(0);
+  await expect(body(page).getByRole('switch')).toHaveCount(0);
   await expect(body(page).getByRole('button', { name: fr.bilanSubmitEdit })).toHaveCount(0);
   // The answered categories only, as read-only cards in the form's style and colours (#352).
   await expect(body(page).getByRole('heading', { level: 3 })).toHaveText([fr.bilanCategorySafety, fr.bilanCategoryOther]);
@@ -225,21 +267,21 @@ test('member: after the close, a named answer read-only', async ({ page }) => {
   await shoot(page, 'bilan-closed-named-member');
 });
 
-test('member: after the close, an anonymous answer is replaced by the message', async ({ page }) => {
+test('member: after the close, private comments only: the neutral message', async ({ page }) => {
   seeded = await seedFeedbackEvent();
-  await submitFeedbackAs(TEST_USERS.member, seeded.eventId, { food: 'Texte anonyme du membre' }, true);
+  await submitFeedbackAs(TEST_USERS.member, seeded.eventId, { food: 'Texte privé du membre' }, true);
   await closeFeedback(seeded.eventId);
   await loginAs(page, TEST_USERS.member);
   await page.goto(`/bilan/${seeded.eventId}`);
   await expect(body(page)).toHaveAttribute('data-state', 'closed');
   await expect(body(page)).toContainText(fr.bilanClosedTitle);
   await expect(body(page)).toContainText(fr.bilanClosedMessage);
-  await expect(page.getByText('Texte anonyme du membre')).toHaveCount(0);
+  await expect(page.getByText('Texte privé du membre')).toHaveCount(0);
   await shoot(page, 'bilan-closed-member');
 });
 
 test('member: closed without an answer, not open yet, not eligible: French messages, no form', async ({ page }) => {
-  // Closed, never answered: the same message as an anonymous answer.
+  // Closed, never answered: the same message as private comments only.
   seeded = await seedFeedbackEvent();
   await closeFeedback(seeded.eventId);
   await loginAs(page, TEST_USERS.member);
@@ -282,14 +324,14 @@ test('admin: not registered, the page refuses; the database refuses a submit too
 });
 
 // « Voir comme » (ADR 0025): the member's own session, read-only. The page shows the database's
-// hidden state, the same whether the member answered nothing, anonymously or named.
-test('admin « Voir comme »: the same hidden state for no answer, an anonymous one and a named one', async ({ page }) => {
+// hidden state, the same whether the member wrote nothing, private comments or signed ones.
+test('admin « Voir comme »: the same hidden state for no comment, a private one and a signed one', async ({ page }) => {
   seeded = await seedFeedbackEvent();
   await loginAs(page, TEST_USERS.admin);
 
   const cases = [
     { name: 'none', submit: null },
-    { name: 'anonymous', submit: () => submitFeedbackAs(TEST_USERS.member, seeded.eventId, { food: 'Secret anonyme' }, true) },
+    { name: 'private', submit: () => submitFeedbackAs(TEST_USERS.member, seeded.eventId, { food: 'Secret privé' }, true) },
     { name: 'named', submit: () => submitFeedbackAs(TEST_USERS.member, seeded.eventId, { food: 'Secret signé' }, false) }
   ];
   const seen = [];

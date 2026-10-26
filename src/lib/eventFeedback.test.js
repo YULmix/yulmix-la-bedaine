@@ -1,19 +1,23 @@
 import fr from '../locales/fr.json';
 import {
   FEEDBACK_CATEGORIES,
-  answersFrom,
+  addOtherKind,
   canAnswerFeedback,
+  canRemoveDraft,
+  canSwitchKind,
   categoryLabel,
   closesOnSave,
-  emptyAnswers,
+  draftsFrom,
+  draftsUnsaved,
   feedbackPageState,
   getFeedbackWindow,
   fetchMyEventFeedback,
-  hasAnyAnswer,
-  isUnsaved,
   itemOf,
-  itemsFromAnswers,
-  legacyAnswer,
+  itemsFromDrafts,
+  otherKindToAdd,
+  removeDraft,
+  setDraftPrivate,
+  setDraftText,
   submitEventFeedback
 } from './eventFeedback';
 
@@ -31,7 +35,6 @@ const base = {
 };
 const signedItems = [{ category: 'welcome', private: false, text: 'Super accueil' }];
 const privateItems = [{ category: 'food', private: true, text: 'Trop salé' }];
-const named = legacyAnswer(signedItems);
 
 describe('feedbackPageState', () => {
   test('open and eligible: the form, with or without an answer', () => {
@@ -99,39 +102,98 @@ describe('the form state', () => {
     expect(itemOf(null, 'food', false)).toBeNull();
   });
 
-  // Transitional, until #355: the one-answer form over the items.
-  test('legacyAnswer: the signed items when there are any, else the private ones', () => {
-    expect(legacyAnswer([])).toBeNull();
-    expect(legacyAnswer(signedItems)).toEqual({ answers: { welcome: 'Super accueil' }, is_anonymous: false });
-    expect(legacyAnswer(privateItems)).toEqual({ answers: { food: 'Trop salé' }, is_anonymous: true });
-    expect(legacyAnswer([...privateItems, ...signedItems])).toEqual({ answers: { welcome: 'Super accueil' }, is_anonymous: false });
-  });
+});
 
-  test('itemsFromAnswers: the non-blank texts, all of the chosen kind', () => {
-    const answers = { ...emptyAnswers(), welcome: 'Bien', food: '  ', other: 'Merci' };
-    expect(itemsFromAnswers(answers, true)).toEqual([
-      { category: 'welcome', private: true, text: 'Bien' }, { category: 'other', private: true, text: 'Merci' }
+// The form's comments (#355): one or two per card, at most one of each kind, signed by default.
+describe('the form drafts', () => {
+  const blank = { slot: 'a', private: false, text: '' };
+
+  test('draftsFrom: every card its items, signed first, or one blank signed comment', () => {
+    const drafts = draftsFrom([
+      { category: 'party_music', private: true, text: 'En privé' },
+      { category: 'party_music', private: false, text: 'Signé' },
+      ...privateItems
     ]);
-    expect(itemsFromAnswers(emptyAnswers(), false)).toEqual([]);
+    expect(Object.keys(drafts)).toEqual([...FEEDBACK_CATEGORIES]);
+    expect(drafts.party_music).toEqual([
+      { slot: 'a', private: false, text: 'Signé' }, { slot: 'b', private: true, text: 'En privé' }
+    ]);
+    expect(drafts.food).toEqual([{ slot: 'a', private: true, text: 'Trop salé' }]);
+    expect(drafts.welcome).toEqual([blank]);
+    expect(draftsFrom(null).other).toEqual([blank]);
   });
 
-  test('answersFrom fills every category, null and missing as blank', () => {
-    expect(answersFrom(named)).toEqual({ ...emptyAnswers(), welcome: 'Super accueil' });
-    expect(answersFrom(null)).toEqual(emptyAnswers());
+  test('a new comment is signed; the switch makes it private only while it is alone on its card', () => {
+    let drafts = draftsFrom([]);
+    drafts = setDraftText(drafts, 'party_music', 'a', 'Super DJ');
+    drafts = setDraftPrivate(drafts, 'party_music', 'a', true);
+    expect(drafts.party_music).toEqual([{ slot: 'a', private: true, text: 'Super DJ' }]);
+    expect(canSwitchKind(drafts.party_music)).toBe(true);
+    drafts = addOtherKind(drafts, 'party_music');
+    expect(drafts.party_music).toEqual([{ slot: 'a', private: true, text: 'Super DJ' }, { slot: 'b', private: false, text: '' }]);
+    // Two of one kind can't happen: with two comments the switch does nothing.
+    expect(canSwitchKind(drafts.party_music)).toBe(false);
+    expect(setDraftPrivate(drafts, 'party_music', 'b', true).party_music).toEqual(drafts.party_music);
   });
 
-  test('hasAnyAnswer ignores blank texts', () => {
-    expect(hasAnyAnswer(emptyAnswers())).toBe(false);
-    expect(hasAnyAnswer({ ...emptyAnswers(), food: '  \n ' })).toBe(false);
-    expect(hasAnyAnswer({ ...emptyAnswers(), food: 'Bon' })).toBe(true);
+  test('otherKindToAdd / addOtherKind: the other kind once the one comment has text, never a third', () => {
+    const drafts = draftsFrom([]);
+    expect(otherKindToAdd(drafts.food)).toBeNull();
+    expect(addOtherKind(drafts, 'food').food).toEqual([blank]);
+    const signed = setDraftText(drafts, 'food', 'a', 'Bon');
+    expect(otherKindToAdd(signed.food)).toBe(true);
+    const both = addOtherKind(signed, 'food');
+    expect(both.food.map(draft => draft.private)).toEqual([false, true]);
+    expect(otherKindToAdd(both.food)).toBeNull();
+    expect(addOtherKind(both, 'food').food).toHaveLength(2);
+    const privateOnly = setDraftPrivate(signed, 'food', 'a', true);
+    expect(otherKindToAdd(privateOnly.food)).toBe(false);
   });
 
-  test('isUnsaved: the texts, and the named ↔ anonymous switch', () => {
-    expect(isUnsaved(emptyAnswers(), false, null)).toBe(false);
-    expect(isUnsaved({ ...emptyAnswers(), food: 'x' }, false, null)).toBe(true);
-    expect(isUnsaved(answersFrom(named), false, named)).toBe(false);
-    expect(isUnsaved(answersFrom(named), true, named)).toBe(true);
-    expect(isUnsaved({ ...answersFrom(named), welcome: 'Autre' }, false, named)).toBe(true);
+  test('removeDraft: one of two goes; the last one becomes a blank signed comment', () => {
+    const both = draftsFrom([{ category: 'food', private: false, text: 'Bon' }, { category: 'food', private: true, text: 'Salé' }]);
+    const onlyPrivate = removeDraft(both, 'food', 'a');
+    expect(onlyPrivate.food).toEqual([{ slot: 'b', private: true, text: 'Salé' }]);
+    // Adding back takes the free slot, so keys stay unique.
+    expect(addOtherKind(onlyPrivate, 'food').food.map(draft => draft.slot)).toEqual(['b', 'a']);
+    expect(removeDraft(onlyPrivate, 'food', 'b').food).toEqual([blank]);
+  });
+
+  test('canRemoveDraft: one of two, or alone with text or private', () => {
+    expect(canRemoveDraft([blank], blank)).toBe(false);
+    expect(canRemoveDraft([{ ...blank, text: 'x' }], { ...blank, text: 'x' })).toBe(true);
+    expect(canRemoveDraft([{ ...blank, private: true }], { ...blank, private: true })).toBe(true);
+    const two = [blank, { slot: 'b', private: true, text: '' }];
+    expect(canRemoveDraft(two, two[1])).toBe(true);
+  });
+
+  test('itemsFromDrafts: the non-blank comments, in display order, signed first in a card', () => {
+    let drafts = draftsFrom([]);
+    drafts = setDraftText(drafts, 'other', 'a', 'Merci');
+    drafts = setDraftText(drafts, 'welcome', 'a', 'Privé ici');
+    drafts = setDraftPrivate(drafts, 'welcome', 'a', true);
+    drafts = addOtherKind(drafts, 'welcome');
+    drafts = setDraftText(drafts, 'welcome', 'b', 'Signé ici');
+    drafts = setDraftText(drafts, 'food', 'a', '  \n ');
+    expect(itemsFromDrafts(drafts)).toEqual([
+      { category: 'welcome', private: false, text: 'Signé ici' },
+      { category: 'welcome', private: true, text: 'Privé ici' },
+      { category: 'other', private: false, text: 'Merci' }
+    ]);
+    expect(itemsFromDrafts(draftsFrom([]))).toEqual([]);
+  });
+
+  test('draftsUnsaved: texts, kinds and removals, whatever the order', () => {
+    const saved = [...signedItems, ...privateItems];
+    const drafts = draftsFrom(saved);
+    expect(draftsUnsaved(drafts, saved)).toBe(false);
+    expect(draftsUnsaved(drafts, [...privateItems, ...signedItems])).toBe(false);
+    expect(draftsUnsaved(draftsFrom([]), [])).toBe(false);
+    expect(draftsUnsaved(setDraftText(drafts, 'welcome', 'a', 'Autre'), saved)).toBe(true);
+    expect(draftsUnsaved(setDraftPrivate(drafts, 'food', 'a', false), saved)).toBe(true);
+    expect(draftsUnsaved(removeDraft(drafts, 'food', 'a'), saved)).toBe(true);
+    // A blank comment added and left empty is not a change.
+    expect(draftsUnsaved(addOtherKind(drafts, 'food'), saved)).toBe(false);
   });
 });
 
