@@ -152,11 +152,11 @@ test('a title, the date order and well-formed links are required to save', async
   await details.getByLabel(fr.eventTitle).fill('E2E Admin Tabs Event 2');
 
   // To the minute (#149): the same instant is refused, an hour earlier the same day is fine.
-  await details.getByLabel(fr.eventStartDateLabel).fill('2026-07-10T18:00');
-  await details.getByLabel(fr.eventRegStartDateLabel).fill('2026-07-10T18:00');
+  await details.getByLabel(fr.eventStartDateLabel).fill('2099-07-10T18:00');
+  await details.getByLabel(fr.eventRegStartDateLabel).fill('2099-07-10T18:00');
   await expect(details.getByText(fr.eventRegStartOrder)).toBeVisible();
   await expect(save).toBeDisabled();
-  await details.getByLabel(fr.eventRegStartDateLabel).fill('2026-07-10T17:00');
+  await details.getByLabel(fr.eventRegStartDateLabel).fill('2099-07-10T17:00');
   await expect(details.getByText(fr.eventRegStartOrder)).toHaveCount(0);
 
   const addLink = details.getByRole('button', { name: fr.eventExternalLinksAddRow });
@@ -178,7 +178,7 @@ test('a title, the date order and well-formed links are required to save', async
   await expect.poll(async () => {
     const saved = await getEvent(seeded.eventId);
     return [saved.theme, iso(saved.reg_start_date), iso(saved.event_start_date), saved.external_links.at(-1)];
-  }).toEqual(['E2E Admin Tabs Event 2', '2026-07-10T21:00:00.000Z', '2026-07-10T22:00:00.000Z', { label: 'Plan', url: 'https://example.org/plan.pdf' }]);
+  }).toEqual(['E2E Admin Tabs Event 2', '2099-07-10T21:00:00.000Z', '2099-07-10T22:00:00.000Z', { label: 'Plan', url: 'https://example.org/plan.pdf' }]);
   await expect(details.getByLabel(fr.eventExternalLinksLabelPlaceholder, { exact: true })).toHaveCount(firstNew + 1);
 });
 
@@ -190,7 +190,7 @@ test('the database refuses an out-of-order registration date, and the editor sho
   await page.route('**/rest/v1/events?*', async (route) => {
     if (route.request().method() !== 'PATCH') return route.continue();
     await route.continue({
-      postData: JSON.stringify({ ...route.request().postDataJSON(), event_start_date: '2026-07-10T22:00:00Z', reg_start_date: '2026-07-10T22:00:00Z' })
+      postData: JSON.stringify({ ...route.request().postDataJSON(), event_start_date: '2099-07-10T22:00:00Z', reg_start_date: '2099-07-10T22:00:00Z' })
     });
   });
   await details.getByLabel(fr.eventTitle).fill('E2E Refused Event');

@@ -233,6 +233,14 @@ export async function archiveEvent(eventId) {
   check(await db.from('events').update({ is_active: false, status: 'ARCHIVED' }).eq('id', eventId), 'archive e2e event');
 }
 
+// Puts an event away after a spec: events can't be deleted, and the members' home page shows an
+// archived one (or an active one), which would change what the member-side specs start from. A
+// draft without dates is invisible to members.
+export async function shelveEvent(eventId) {
+  const db = await adminClient();
+  check(await db.from('events').update({ is_active: false, status: 'DRAFT', event_start_date: null }).eq('id', eventId), 'shelve e2e event');
+}
+
 export async function getEvent(eventId) {
   const db = await adminClient();
   return check(

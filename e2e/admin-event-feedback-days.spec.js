@@ -5,7 +5,7 @@ import { test, expect } from './support/test.js';
 import { eventRow } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
-  E2E_EVENT_THEME, archiveEvent, createActiveEvent, getEvent,
+  E2E_EVENT_THEME, archiveEvent, createActiveEvent, getEvent, shelveEvent,
   seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty
 } from './support/testData.js';
 import { readFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ let seeded;
 let own;
 test.afterEach(async () => {
   if (seeded) await teardownActiveEventWithMemberParty(seeded);
-  if (own) await archiveEvent(own.id);
+  if (own) await shelveEvent(own.id);
   seeded = null;
   own = null;
 });
@@ -123,7 +123,7 @@ test('an offset that closes the feedback now asks first, then closes it for good
 });
 
 test('an archived event shows its feedback as closed, read-only', async ({ page }) => {
-  own = await createActiveEvent({ event_start_date: daysFromNow(-1) });
+  own = await createActiveEvent();
   await archiveEvent(own.id);
   await loginAs(page, TEST_USERS.admin);
   await page.goto(`/admin/events/${own.id}`);
