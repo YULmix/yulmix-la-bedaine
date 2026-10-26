@@ -4561,7 +4561,7 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
     expect(profile.deleted_at).toBeNull();
   });
 
-  test('after the start, direct database sessions (seed.sql, the demo seed) and service-role claims still write', async () => {
+  test('after the start, direct database sessions (seed.sql) and service-role claims still write', async () => {
     const party = await registeredThenStarted();
     // Local only. The service role has no write grant on user_parties through the API; its claims
     // still pass the guard, like a session with no claims at all.

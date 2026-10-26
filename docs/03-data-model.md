@@ -627,8 +627,10 @@ Who still writes after the start:
   parties, and `lock_unpriced_registrations_on_first_price()` marks the event in
   `bedaine.pricing_event` around that update, which the trigger lets through. It only runs from an
   update of `events`, which members can't do;
-- the service role, migrations and direct database sessions (`seed.sql`, the demo seed), whose JWT
-  role isn't `authenticated`/`anon`.
+- the service role, migrations and direct database sessions (`seed.sql`), whose JWT role isn't
+  `authenticated`/`anon`. The demo seed (`scripts/preview-seed/generate.mjs`) registers through
+  `save_registration()` with each member's claims, so it gives the events that have started a
+  start still to come while it registers, then restores theirs.
 
 The carpool board, profiles and feedback don't write `user_parties` and are unaffected.
 

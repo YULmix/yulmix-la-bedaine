@@ -16,8 +16,9 @@
 --
 -- Who passes:
 --   * admins (public.is_admin()): corrections, payments, notes, registration_edits logging;
---   * the service role, migrations and direct database sessions (the demo seed, seed.sql, Edge
---     Functions), like the other end-user guards (auth.role() not authenticated/anon);
+--   * the service role, migrations and direct database sessions (seed.sql, Edge Functions), like
+--     the other end-user guards (auth.role() not authenticated/anon). The demo seed registers
+--     with each member's claims, so it gives started events a start still to come while it does.
 --   * an Organisateur's set_payment_status() and save_logistics(), which already authorise the
 --     caller on the party's event and mark the party in bedaine.organiser_party (ADR 0023) for
 --     protect_admin_only_party_fields(); the same mark lets them through here. A client can't set
