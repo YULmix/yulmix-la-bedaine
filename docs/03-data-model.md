@@ -14,10 +14,10 @@ erDiagram
   EVENTS ||--o{ USER_PARTIES : "receives"
   USER_PARTIES ||--o{ ATTENDEES : "has (on delete cascade)"
   USER_PARTIES ||--o| PARTY_ADMIN_NOTES : "annotated by (organisers, on delete cascade)"
-  EVENTS ||--o{ EVENT_FEEDBACK : "post-mortem answers (#315)"
-  EVENT_FEEDBACK ||--o| EVENT_FEEDBACK_AUTHORS : "author link, until the close (anonymous) (#315)"
-  PROFILES ||--o{ EVENT_FEEDBACK_AUTHORS : "wrote (no FK; trigger sets null on delete)"
-  USER_PARTIES ||--o{ EVENT_FEEDBACK_AUTHORS : "written from (no FK; trigger sets null on delete)"
+  EVENTS ||--o{ EVENT_FEEDBACK_ITEMS : "post-mortem items (#315, #354; no FK)"
+  EVENT_FEEDBACK_ITEMS ||--o| EVENT_FEEDBACK_ITEM_AUTHORS : "author link, until the close (private) (#354)"
+  PROFILES ||--o{ EVENT_FEEDBACK_ITEM_AUTHORS : "wrote (no FK; trigger sets null on delete)"
+  USER_PARTIES ||--o{ EVENT_FEEDBACK_ITEM_AUTHORS : "written from (no FK; trigger sets null on delete)"
   EVENTS ||--o| EVENT_BUDGETS : "budgeted by (Organisateur and above)"
   EVENTS ||--o{ EDITION_ROLES : "run by (#217)"
   PROFILES ||--o{ EDITION_ROLES : "holds"
@@ -155,24 +155,20 @@ erDiagram
     timestamptz created_at
     timestamptz resolved_at
   }
-  EVENT_FEEDBACK {
-    uuid id PK "fresh at the levée for anonymous answers"
-    uuid event_id FK
-    text welcome "« Accueil »; null = not answered"
-    text party_music "« Party + musique »"
-    text safety "« Sécurité »"
-    text lodging "« Hébergement »"
-    text food "« Nourriture »"
-    text communications "« Communications »"
-    text schedule "« Horaire »"
-    text other "« Autres »"
-    bool is_anonymous "chosen per answer, switchable until the close"
+  EVENT_FEEDBACK_ITEMS {
+    uuid id PK "random; fresh at the levée for private items"
+    uuid event_id "no FK"
+    text category "one of the eight"
+    text body "non-blank, at most 5000"
+    bool is_private "signed (false) or private, fixed for the item"
   }
-  EVENT_FEEDBACK_AUTHORS {
-    uuid feedback_id PK "FK (feedback_id, event_id), on delete cascade"
+  EVENT_FEEDBACK_ITEM_AUTHORS {
+    uuid item_id PK "FK (item_id, event_id, category, is_private), on delete cascade"
     uuid event_id
-    uuid author_id FK "UNIQUE (event_id, author_id)"
-    uuid party_id FK
+    text category
+    bool is_private
+    uuid author_id "no FK; UNIQUE (event_id, author_id, category, is_private)"
+    uuid party_id "no FK"
     timestamptz created_at
     timestamptz updated_at
   }
@@ -387,8 +383,8 @@ flowchart TD
     E3["AFTER UPDATE OF selling_price_whole_event → lock_unpriced_registrations_on_first_price()<br/>only when the price goes from ≤ 0 to > 0 (#117)"]
     E4["BEFORE UPDATE → close_event_feedback_on_event_update()<br/>the post-mortem's levée and final marker (#315)"]
   end
-  subgraph feedback["event_feedback / event_feedback_authors"]
-    F1["BEFORE INSERT/UPDATE → enforce_event_feedback_rules()<br/>fixed author and event; nothing added or edited after the close (#315)"]
+  subgraph feedback["event_feedback_items / event_feedback_item_authors"]
+    F1["BEFORE INSERT/UPDATE → enforce_event_feedback_rules()<br/>fixed author, event, category and kind; nothing added or edited after the close (#315, #354)"]
   end
   subgraph profiles
     P1["AFTER INSERT on auth.users → handle_new_user()<br/>creates profile, sets root admin"]
@@ -740,23 +736,27 @@ RLS no longer shows it `user_parties`.
 
 ## Post-mortem feedback (#315)
 
-The « bilan » ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): after an event, each
-member registered on it may leave one answer, a free text per category, named or anonymous.
-Admins read no answer before the feedback closes, only its counts (#345); at the close the « levée » publishes the answers
-and erases the author link of every anonymous one. Migrations `20261026043829_event_feedback.sql`, `20261026230000_feedback_counts.sql` (counts).
+The « bilan » ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): each member registered on
+an event may leave **items**, one free text per category, each signed or private, at most one of
+each kind per category (#354). Admins read the signed items live, with their author; the private
+ones only once the event is released (3 different private authors), as texts only; at the close
+the « levée » erases the author link of every private item. Migrations
+`20261026043829_event_feedback.sql`, `20261026230000_feedback_counts.sql` (counts),
+`20261027000000_feedback_items.sql` (items; converted the one-answer tables and dropped them).
 
 | Table / column / function | What it is |
 |---|---|
 | `events.feedback_days` | Days after the event's last day until the feedback closes, at the end of that Toronto day. `NOT NULL DEFAULT 14`, 1 to 365 (`events_feedback_days_range`). Editable by admins; after the close it changes nothing |
-| `events.feedback_member_visible` | Whether members can see and answer the post-mortem (#341, ADR 0029). `NOT NULL DEFAULT false`; admins always can. Doesn't affect the close, archival or the anonymity release |
+| `events.feedback_member_visible` | Whether members can see and answer the post-mortem (#341, ADR 0029). `NOT NULL DEFAULT false`; admins always can. Doesn't affect the close, archival or the release |
 | `events.feedback_closed_at` | The final close marker: set once by the levée (the scheduled close if it had passed, otherwise the moment of the close), never cleared. `trg_close_event_feedback` refuses any write to it (`event_feedback_close_locked`), the owner included; `trg_refuse_event_feedback_marker` refuses it on insert. Existing events already archived or past their close were backfilled |
-| `event_feedback` | The answers: `id`, `event_id`, eight nullable texts `welcome`, `party_music`, `safety`, `lodging`, `food`, `communications`, `schedule`, `other` (« Accueil », « Party + musique », « Sécurité », « Hébergement », « Nourriture », « Communications », « Horaire », « Autres »; NULL = not answered, a stored text has a non-space character and at most 5000 characters, at least one answered), `is_anonymous`. No author, no time. **No client privilege** (admins and `service_role` included), RLS on without a policy |
-| `event_feedback_authors` | The author link: `feedback_id` (with `event_id`, a foreign key to the answer, `ON DELETE CASCADE`), `author_id` (the `profiles` id), `party_id` (the registration it was written from, a `user_parties` id), `created_at`, `updated_at`; `UNIQUE (event_id, author_id)`: one answer per member per event. Every answer has one while the window is open; after the close only the named ones. Same closure as `event_feedback`. Neither table has a foreign key to `events`, `profiles` or `user_parties`: a foreign key's check locks the referenced row, which writes the saving transaction's id into its `xmax`, readable through the API (ADR 0029). `trg_event_feedback_forget_profile` and `trg_event_feedback_forget_party` (`AFTER DELETE`, `SECURITY DEFINER`) set `author_id` / `party_id` null instead |
-| `submit_event_feedback(event, answers, is_anonymous)` | `SECURITY DEFINER`. Creates or replaces the caller's answer while the window is open, named or anonymous (switchable): `answers` is an object keyed by category (string or null; trimmed, blank = not answered); an edit replaces the whole answer. Returns `{ answers, is_anonymous, created_at, updated_at }`. Refuses `not_authenticated`, `read_only_impersonation` (« Voir comme », before any other check), `event_not_found` (also a DRAFT event, for non-admins), `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed`, `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{category}`, `event_feedback_too_long` `{category, max}`, `event_feedback_empty`, in that order |
-| `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, closes_on, closes_at, closed_at, answer, answer_hidden }`: whether the caller may answer, the window (`not_yet`, `open`, `closed`), its first and last Toronto day, the closing instant, the marker, and the caller's answer (before the close, named or anonymous; after it, a named one only, since an anonymous one has no author any more). In « Voir comme », `answer` is always null and `answer_hidden` true, and nothing else depends on the answer |
-| `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité and Organisateur included). `{ closed, closes_on, closes_at, closed_at, named, anonymous }`. Before the close `named` and `anonymous` are null. After it, `named` lists `{ answers, author: { user_id, party_id, full_name, email } \| null, created_at, updated_at }` oldest first (author null once the profile is hard-deleted), and `anonymous` lists `{ answers }` in random (id) order when there are at least 3, otherwise `[]` |
-| `event_feedback_counts(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité, Organisateur and « Voir comme » included), before and after the close (#345). `{ closed, closes_on, eligible, signed, anonymous, total }`: `eligible` the registrations neither cancelled nor waitlisted, `signed` the named answers, `anonymous` the anonymous ones (the caller's own included) only when there are at least 3 besides the caller's own, found by its author link before the close (otherwise null), `total` signed + anonymous, null while anonymous is. No text, author, id or time |
-| `private.event_feedback_levee(event)` | The levée: re-inserts the event's anonymous answers with fresh ids, in random order, and deletes their window rows and links. Called only by `trg_close_event_feedback` |
+| `event_feedback_items` | The items: `id` (random), `event_id`, `category` (`welcome`, `party_music`, `safety`, `lodging`, `food`, `communications`, `schedule`, `other`: « Accueil », « Party + musique », « Sécurité », « Hébergement », « Nourriture », « Communications », « Horaire », « Autres »), `body` (a non-space character, at most 5000 characters), `is_private`. No author, no time. An item's event, category and kind never change (`trg_enforce_event_feedback_rules`). **No client privilege** (admins and `service_role` included), RLS on without a policy |
+| `event_feedback_item_authors` | The author link: `item_id` (with `event_id`, `category`, `is_private`, a foreign key to the item, `ON DELETE CASCADE`), `author_id` (the `profiles` id), `party_id` (the registration it was written from, a `user_parties` id), `created_at`, `updated_at`; `UNIQUE (event_id, author_id, category, is_private)`: one signed and one private item per member, category and event. Every item has one while the window is open; after the close only the signed ones. Same closure as the items. Neither table has a foreign key to `events`, `profiles` or `user_parties`: a foreign key's check locks the referenced row, which writes the saving transaction's id into its `xmax`, readable through the API (ADR 0029). `trg_event_feedback_forget_profile` and `trg_event_feedback_forget_party` (`AFTER DELETE`, `SECURITY DEFINER`) set `author_id` / `party_id` null instead |
+| `private.event_feedback_releases` | The release marker: one row (`event_id` only, no time) per event whose private items admins may read, inserted by the save that brings the event's 3rd different private author, never removed. No client privilege, RLS on, no policy, no foreign key |
+| `submit_event_feedback(event, items)` | `SECURITY DEFINER`. Sets the caller's whole set of items while the window is open: `items = [{ category, private, text }]` (`private` false when missing or null; `text` trimmed, a blank one is no item). A pair left out is deleted; a kept one keeps its id; an empty set deletes all the caller's items (a no-op when they have none), so a client always sends the full current set. Releases the event when its distinct private authors reach 3 (under an advisory lock on the release, so two such saves can't both miss it). Returns `{ items }`. Refuses `not_authenticated`, `read_only_impersonation` (« Voir comme », before any other check), `event_not_found` (also a DRAFT event and the switch off, for non-admins), `event_feedback_not_eligible` `{reason}` (`not_registered`, `cancelled`, `waitlisted`, `account_deleted`), `event_feedback_closed`, `event_feedback_not_open` `{opens_on}`, `event_feedback_invalid` `{key}` or `{category}`, `event_feedback_duplicate` `{category, private}`, `event_feedback_too_long` `{category, private, max}`, in that order |
+| `my_event_feedback(event)` | `SECURITY DEFINER`. `{ eligible, reason, window, opens_on, closes_on, closes_at, closed_at, items, answer_hidden }`: whether the caller may answer, the window (`not_yet`, `open`, `closed`), its first and last Toronto day, the closing instant, the marker, and the caller's own items `[{ category, private, text }]` in display order, signed first (before the close, private ones included; after it, the signed ones only, since a private one has no author any more). In « Voir comme », `items` is always `[]` and `answer_hidden` true, and nothing else depends on the items |
+| `event_feedback_answers(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité, Organisateur and « Voir comme » included), before and after the close. `{ closed, closes_on, closes_at, closed_at, released, signed, private }`: `signed` lists `{ category, text, author: { id, party, name, email } \| null }` in category order then by author name, no time (author null once the profile is hard-deleted); `private` lists `{ category, text }` in random (id) order once released, otherwise `[]` |
+| `event_feedback_counts(event)` | `SECURITY DEFINER`, account admins only (`admin_only`; Comité, Organisateur and « Voir comme » included), before and after the close (#345, #354). `{ closed, closes_on, eligible, signed_members, released, categories: [{ category, signed, private }], signed_total, private_total }`: `eligible` the registrations neither cancelled nor waitlisted, `signed_members` the members with a signed item; every private number null until released. No text, author, id or time |
+| `private.event_feedback_levee(event)` | The levée: re-inserts the event's private items with fresh ids, in random order, and deletes their window rows and links. Called only by `trg_close_event_feedback` |
 
 - **Eligible**: the owner of a `registered` or `pending`, non-waitlisted registration on the event,
   with an active account. An admin answers only for their own registration.
@@ -769,15 +769,15 @@ and erases the author link of every anonymous one. Migrations `20261026043829_ev
   of one of the functions above after the close date (a no-op update of the event). It runs the
   levée and sets the marker in the same transaction. After it nothing is added or edited
   (`trg_enforce_event_feedback_rules`, `event_feedback_closed`), whoever writes.
-- **An answer belongs to who wrote it and to its event, not to the party.** Admins can change a
-  party's owner or event, or delete it; none of that moves an answer (`author_id`, `event_id` fixed
-  by `trg_enforce_event_feedback_rules`). The previous owner still reads their answer before the
-  close (and, no longer registered, can't edit it); the new owner writes their own. A deleted party
-  leaves its answer, `party_id` null.
-- **Account deletion** (`delete_my_account()`, a soft delete) leaves answers as they are. Only a
+- **An item belongs to who wrote it and to its event, not to the party.** Admins can change a
+  party's owner or event, or delete it; none of that moves an item (`author_id`, `event_id` fixed
+  by `trg_enforce_event_feedback_rules`). The previous owner still reads their items before the
+  close (and, no longer registered, can't edit them); the new owner writes their own. A deleted party
+  leaves its items, `party_id` null.
+- **Account deletion** (`delete_my_account()`, a soft delete) leaves items as they are. Only a
   hard-deleted profile nulls `author_id`, and the text stays, unattributed.
 - Nothing here writes `user_parties`, so the registration rules (close date, freeze) don't apply
-  to answers.
+  to items.
 
 ## « Voir comme » (#265)
 

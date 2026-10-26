@@ -111,7 +111,7 @@ Derived from production's schema as captured in the baseline migration
 | `email_log` | admin, or Organisateur and above on the party's event (#217) (members get a filtered summary of their own party through `my_party_emails()`, #93) | *no policy* → denied (the Edge Function writes it with the service role) | *no policy* → denied | *no policy* → denied (rows go with their party) |
 | `user_parties` | own, admin, or Organisateur and above on its event (#217, #290: Comité reads its edition's parties through `edition_parties()`, without the money) (members see other parties' lifts through `carpool_board()`, #180: the board's fields only) | own or admin | own, while the row is and stays `registered`/`pending`/`cancelled` (so a member can cancel, and register again over their cancelled row, #35), or admin. After the close date a trigger refuses a member's cancellation (see [Data model](./03-data-model.md#registration-close-date)); from the event's start another refuses any member write to it, insert included (#314, [Data model](./03-data-model.md#registration-frozen-from-the-start)). Admin-only fields are guarded by a trigger, see below | admin only (#35: cancelling is a status change, never a delete) |
 | `attendees` | same as the party: `EXISTS` on `user_parties`, which applies the party's own policies (#126), or Comité and above on the party's event (`private.edition_team_reads_party()`, #290); a restrictive policy hides [removed](./03-data-model.md#removed-attendees) attendees (`deleted_at` set) from everyone, admins included (#237) | one's own party, or admin (#217: reading a party doesn't let one write its attendees), and only through `save_registration()`: a trigger refuses direct writes | same, through `save_registration()`, admins included | none from the app: `save_registration()` marks a removed attendee `deleted_at` instead (#237); only the cascade when an admin deletes the party removes rows |
-| `event_feedback`, `event_feedback_authors` | **nobody**: no privilege for any client role, admins and `service_role` included; read through `my_event_feedback()` (own answer), `event_feedback_answers()` (admins, after the close only) and `event_feedback_counts()` (admins, counts only, anonymous from 3, #345), #315, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md) | nobody: `submit_event_feedback()` (the registration's owner, while the window is open) | same | nobody (the levée deletes the window rows of anonymous answers at the close) |
+| `event_feedback_items`, `event_feedback_item_authors`, `private.event_feedback_releases` | **nobody**: no privilege for any client role, admins and `service_role` included; read through `my_event_feedback()` (own items), `event_feedback_answers()` (admins: signed items live, private ones once released) and `event_feedback_counts()` (admins, counts only, private ones once released), #315, #345, #354, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md) | nobody: `submit_event_feedback()` (the registration's owner, while the window is open) | same | nobody directly: a member's save deletes the items they leave out; the levée deletes the window rows of private items at the close |
 | `app_feedback` | own (active account) or admin | own (`user_id = auth.uid()`, active account) | own (active account) or admin | admin only |
 | `galleries`, `gallery_images` | admin; a venue's `general` gallery for whoever (signed in) can read the venue; a location's gallery for whoever can read the location (a member, where their attendees sleep); `assignments` galleries for admins and the edition team (Comité and above) of any event held at the venue (#177, #217; anon has no grant at all) | admin only (images through `add_gallery_image()`; a 31st is refused) | admin only | admin only; a frozen copy's galleries can't change |
 | `storage.objects` in `location-photos` | anyone, by public URL (a public bucket; gallery images aren't private, #124, #177) | admin only | admin only | admin only |
@@ -183,28 +183,31 @@ Notes on specific choices:
   the attendee rows the caller's RLS shows, since Comité no longer reads `user_parties`.
   `set_place_override()` also refuses an archived event up front
   (`event_layout_frozen`), even for a write that would change nothing. `anon` can run none of them.
-- **Post-mortem answers: only counts before the close, then no link** (#315, #345,
-  [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). The answers (`event_feedback`) and
-  their author link (`event_feedback_authors`: author, party, times) are closed to every client role:
-  RLS on with no policy, every grant revoked. Before the close, `event_feedback_answers()` (account
-  admins only) gives the close date and nothing else, so an admin learns neither what was written
-  nor who answered; `event_feedback_counts()` (account admins only) gives how many: the signed
-  answers, the anonymous ones only from 3 besides the caller's own, and a total only with them. At the close (archival, or the end of the Toronto day "last day +
-  `events.feedback_days`") the levée, in `trg_close_event_feedback`, re-inserts the anonymous
-  answers with fresh ids in random order and deletes their window rows and links; then no row ties
-  an anonymous text to its author, party, id or time, even for the database owner. Anonymous answers
-  are shown only if there are at least 3. The close is final: `events.feedback_closed_at` can't be
-  written by anyone but the levée, nor cleared. Authors and events are fixed at the first write
-  (`author_id = auth.uid()`), never matched on the party, so an admin's owner change, event move or
-  delete of a party neither reads, overwrites, moves nor removes an answer. In « Voir comme »,
-  `my_event_feedback()` gives the same result whether the member has a named answer, an anonymous
-  one or none, and `submit_event_feedback()` refuses the session before any other check. A save
-  writes and locks no row a client can read (PostgREST returns `xmin`, `xmax` and `ctid` to anyone
-  who reads a row): save vs levée is an advisory lock, and the tables have no foreign key to
-  `events`, `profiles` or `user_parties`. The RLS
-  suite (« post-mortem feedback ») checks each of these, including an owner-level scan of every
-  table after the levée, and lists every function that reads the tables. The accepted limits
-  (the owner during the window, request logs, backups, the candidate set) are in the ADR.
+- **Post-mortem items: signed ones live, private ones from 3 authors, then no link** (#315, #345,
+  #354, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). The items
+  (`event_feedback_items`), their author link (`event_feedback_item_authors`: author, party, times)
+  and the release marker (`private.event_feedback_releases`) are closed to every client role: RLS
+  on with no policy, every grant revoked. `event_feedback_answers()` (account admins only) gives
+  the signed items as soon as they are saved, with their author and no time, and the private ones
+  only once 3 different members (anyone, admins included) have written a private item on the event,
+  as texts only, in random order, for good; `event_feedback_counts()` (account admins only) gives
+  how many, the private numbers null until then. The release marker has no time and no client
+  privilege. At the close (archival, or the end of the Toronto day "last day +
+  `events.feedback_days`") the levée, in `trg_close_event_feedback`, re-inserts the private items
+  with fresh ids in random order and deletes their window rows and links; then no row ties a
+  private text to its author, party, id or time, even for the database owner. The close is final:
+  `events.feedback_closed_at` can't be written by anyone but the levée, nor cleared. Authors and
+  events are fixed at the first write (`author_id = auth.uid()`), never matched on the party, so an
+  admin's owner change, event move or delete of a party neither reads, overwrites, moves nor removes
+  an item. In « Voir comme », `my_event_feedback()` gives the same result whatever the member wrote,
+  and `submit_event_feedback()` refuses the session before any other check. A save writes and locks
+  no row a client can read (PostgREST returns `xmin`, `xmax` and `ctid` to anyone who reads a row):
+  save vs levée and the release are advisory locks, and the tables have no foreign key to `events`,
+  `profiles` or `user_parties`. The RLS suite (« post-mortem feedback ») checks each of these,
+  including the release threshold, its stickiness and its race, an owner-level scan of every table
+  after the levée, and lists every function that reads the tables. The accepted limits (the owner
+  during the window, request logs, backups, an admin among the 3, the steps seen by reloading) are
+  in the ADR.
 - **`registration_edits` INSERT is open to the row's own author**, so a member could in principle
   forge audit entries about themselves. Low impact, but the audit log is not tamper-proof; if that
   matters, restrict INSERT to the trigger's definer context only.

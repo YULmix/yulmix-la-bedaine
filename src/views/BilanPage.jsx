@@ -14,6 +14,8 @@ import {
   fetchMyEventFeedback,
   hasAnyAnswer,
   isUnsaved,
+  itemsFromAnswers,
+  legacyAnswer,
   submitEventFeedback
 } from '../lib/eventFeedback';
 
@@ -89,7 +91,8 @@ const CategoryField = ({ category, value, onChange }) => {
 };
 
 const FeedbackForm = ({ eventId, feedback, onSaved }) => {
-  const saved = feedback.answer;
+  // Until #355 reworks the form: one answer, named or anonymous, over the items.
+  const saved = legacyAnswer(feedback.items);
   const [answers, setAnswers] = useState(() => answersFrom(saved));
   const [isAnonymous, setIsAnonymous] = useState(() => !!saved?.is_anonymous);
   const [saving, setSaving] = useState(false);
@@ -104,7 +107,8 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
     setJustSaved(false);
-    // The database refuses it too (event_feedback_empty); this saves the round trip.
+    // The one-answer form refuses an empty retour itself. The database accepts an empty set and
+    // deletes all the member's items (#354); the item form (#355) uses that for « Supprimer ».
     if (!hasAnyAnswer(answers)) {
       setError(fr.dbErrorEventFeedbackEmpty);
       return;
@@ -112,12 +116,12 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
     setSaving(true);
     setError(null);
     try {
-      const answer = await submitEventFeedback(supabase, eventId, answers, isAnonymous);
+      const items = await submitEventFeedback(supabase, eventId, itemsFromAnswers(answers, isAnonymous));
       // What the database kept (trimmed, blanks dropped) is the new saved state and the form's.
-      setAnswers(answersFrom(answer));
-      setIsAnonymous(answer.is_anonymous);
+      setAnswers(answersFrom(legacyAnswer(items)));
+      setIsAnonymous(isAnonymous);
       setJustSaved(true);
-      onSaved(answer);
+      onSaved(items);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -212,7 +216,7 @@ const BilanPage = ({ events = [] }) => {
           ) : state === 'closed_named' ? (
             <div className="space-y-5">
               <Notice tone="info" icon={LockKeyhole} title={fr.bilanClosedNamedTitle}>{fr.bilanClosedNamedMessage}</Notice>
-              <ReadOnlyAnswer answer={feedback.answer} />
+              <ReadOnlyAnswer answer={legacyAnswer(feedback.items)} />
             </div>
           ) : state === 'not_eligible' ? (
             <EmptyState icon={UserX} title={fr.bilanNotEligibleTitle} action={backHome}>{fr.bilanNotEligibleMessage}</EmptyState>
@@ -228,7 +232,7 @@ const BilanPage = ({ events = [] }) => {
               <FeedbackForm
                 eventId={eventId}
                 feedback={feedback}
-                onSaved={answer => setFeedback(current => ({ ...current, answer }))}
+                onSaved={items => setFeedback(current => ({ ...current, items }))}
               />
             </>
           )}

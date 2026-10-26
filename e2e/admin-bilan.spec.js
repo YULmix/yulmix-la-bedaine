@@ -1,5 +1,6 @@
 // The admin « Bilan » section (#317) over the database's event_feedback_counts() (#345/#346) and
-// event_feedback_answers() (#315, ADR 0029). The counts dashboard (#346): before the close the
+// event_feedback_answers() (#315, ADR 0029), on the per-item payloads of #354 (signed members, the
+// private items once 3 different private authors wrote one; the section's rework is #356). The counts dashboard (#346): before the close the
 // counts and the close date only (no text, author or time, on screen or in a payload; the answers
 // aren't even asked for), « moins de 3 » and the signed rate below 3 anonymous answers, 0 answers,
 // no eligible registration, no reload by itself. After the close the same dashboard, consistent
@@ -78,18 +79,19 @@ const forEvent = (isCall, eventId) => response => isCall(response) && (response.
 // A figure cell of the dashboard, by its label.
 const cell = (page, label) => dashboard(page).locator('div.bg-surface').filter({ has: page.getByText(label, { exact: true }) });
 
-// The dashboard's three figures: signed, anonymous (a number, or « moins de 3 »), and the rate
-// with its label (« Taux de réponse » or « Taux de réponse (signées) ») over `eligible`.
+// The dashboard's three figures: signed members, private items (a number, or « moins de 3 »), and
+// the signed members' rate (« Taux de réponse (signées) ») over `eligible`: until #356 the
+// dashboard shows no total, members and items don't add up.
 async function expectCounts(page, { signed, anonymous, rate, eligible }) {
   const hidden = anonymous === null;
   await expect(cell(page, fr.adminBilanCountsSigned)).toHaveText(fr.adminBilanCountsSigned + signed + fr.adminBilanCountsSignedHint);
   await expect(cell(page, fr.adminBilanCountsAnonymous)).toHaveText(fr.adminBilanCountsAnonymous
     + (hidden ? fr.adminBilanCountsAnonymousHidden + fr.adminBilanCountsAnonymousHiddenHint : anonymous + fr.adminBilanCountsAnonymousHint));
-  const rateLabel = hidden ? fr.adminBilanCountsRateSigned : fr.adminBilanCountsRate;
+  const rateLabel = fr.adminBilanCountsRateSigned;
   const onEligible = eligible === 1 ? fr.adminBilanCountsEligibleOne : fr.adminBilanCountsEligible.replace('{n}', eligible);
   await expect(cell(page, rateLabel)).toHaveText(`${rateLabel}${rate} %${onEligible}`);
   await expect(dashboard(page).getByRole('img'))
-    .toHaveAccessibleName((hidden ? fr.adminBilanCountsBarSigned : fr.adminBilanCountsBarAll).replace('{rate}', rate));
+    .toHaveAccessibleName(fr.adminBilanCountsBarSigned.replace('{rate}', rate));
 }
 // The French date the page shows for a 'YYYY-MM-DD' (src/lib/format.js formatDate).
 const frenchDate = day => {
@@ -148,12 +150,15 @@ test('admin, before the close: the counts and the close date; no text, author or
   await expect(page).toHaveURL(/\/admin\/bilan$/);
   const payload = await (await counted$).json();
 
-  // Counts only: the member's signed answer and the three anonymous ones, on four registrations.
-  expect(payload).toEqual({ closed: false, closes_on: expect.any(String), eligible: 4, signed: 1, anonymous: 3, total: 4 });
+  // Counts only: the member's signed item and the three private ones (three authors: released), on four registrations.
+  expect(payload).toEqual({
+    closed: false, closes_on: expect.any(String), eligible: 4, signed_members: 1, released: true,
+    categories: expect.any(Array), signed_total: 1, private_total: 3
+  });
   await expect(answersBox(page)).toHaveAttribute('data-state', 'not_closed');
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsTitle);
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsBeforeClose);
-  await expectCounts(page, { signed: 1, anonymous: 3, rate: 100, eligible: 4 });
+  await expectCounts(page, { signed: 1, anonymous: 3, rate: 25, eligible: 4 });
   await expect(answersBox(page)).toContainText(fr.adminBilanNotClosedTitle);
   await expect(answersBox(page)).toContainText(fr.adminBilanNotClosedMessage.replace('{date}', frenchDate(payload.closes_on)));
   await expect(adminMain(page)).not.toContainText('Accueil secret');
@@ -183,7 +188,7 @@ test('admin, before the close with two anonymous answers: « moins de 3 », the 
   await loginAs(page, TEST_USERS.admin);
 
   const { counts } = await openBilan(page, event.eventId, { closed: false });
-  expect(counts).toMatchObject({ closed: false, eligible: 4, signed: 1, anonymous: null, total: null });
+  expect(counts).toMatchObject({ closed: false, eligible: 4, signed_members: 1, released: false, private_total: null });
   await expectCounts(page, { signed: 1, anonymous: null, rate: 25, eligible: 4 });
   await expect(cell(page, fr.adminBilanCountsRate)).toHaveCount(0);
   await shoot(page, 'bilan-before-lt3-admin');
@@ -193,14 +198,14 @@ test('admin, before the close: no answer yet, then no eligible registration', as
   const event = await seedEvent();
   await loginAs(page, TEST_USERS.admin);
   const { counts } = await openBilan(page, event.eventId, { closed: false });
-  expect(counts).toMatchObject({ eligible: 1, signed: 0, anonymous: null, total: null });
+  expect(counts).toMatchObject({ eligible: 1, signed_members: 0, released: false, private_total: null });
   await expectCounts(page, { signed: 0, anonymous: null, rate: 0, eligible: 1 });
   await shoot(page, 'bilan-before-empty-admin');
 
   // Without its one registration: the card and its tag, a sentence, no figure and no bar.
   await teardownFeedbackEvent({ partyId: event.partyId });
   const again = await openBilan(page, event.eventId, { closed: false });
-  expect(again.counts).toMatchObject({ eligible: 0, signed: 0 });
+  expect(again.counts).toMatchObject({ eligible: 0, signed_members: 0 });
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsNoEligible);
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsBeforeClose);
   await expect(dashboard(page).getByRole('img')).toHaveCount(0);
@@ -222,12 +227,13 @@ test('admin, after the close: named answers with their author, anonymous ones as
   await loginAs(page, TEST_USERS.admin);
 
   const { counts, answers: payload } = await openBilan(page, event.eventId);
-  expect(counts).toMatchObject({ closed: true, eligible: 4, signed: 1, anonymous: 3, total: 4 });
+  // One signed member (three items), three private authors: six private items.
+  expect(counts).toMatchObject({ closed: true, eligible: 4, signed_members: 1, released: true, signed_total: 3, private_total: 6 });
   expect(payload.closed).toBe(true);
-  expect(payload.named).toHaveLength(1);
-  expect(payload.anonymous).toHaveLength(3);
-  // An anonymous answer is its texts, nothing else; no anonymous author anywhere in the payload.
-  for (const entry of payload.anonymous) expect(Object.keys(entry)).toEqual(['answers']);
+  expect(payload.signed).toHaveLength(3);
+  expect(payload.private).toHaveLength(6);
+  // A private item is its category and text, nothing else; no private author anywhere in the payload.
+  for (const entry of payload.private) expect(Object.keys(entry).sort()).toEqual(['category', 'text']);
   const raw = JSON.stringify(payload);
   for (const member of anonymous) {
     for (const trace of [member.id, member.email, member.fullName]) expect(raw).not.toContain(trace);
@@ -237,7 +243,7 @@ test('admin, after the close: named answers with their author, anonymous ones as
   // The dashboard, closed on its date: the answers listed below, on the four registrations.
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsClosedOn.split('{date}')[0]);
   await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsBeforeClose);
-  await expectCounts(page, { signed: 1, anonymous: 3, rate: 100, eligible: 4 });
+  await expectCounts(page, { signed: 1, anonymous: 6, rate: 25, eligible: 4 });
   await expect(answersBox(page).getByText(fr.adminBilanNotClosedTitle)).toHaveCount(0);
   // Every category, in order.
   await expect(adminMain(page).locator('h2[id^="bilan-category-"]'))
@@ -252,10 +258,10 @@ test('admin, after the close: named answers with their author, anonymous ones as
   const items = welcome.getByRole('listitem');
   await expect(items).toHaveCount(4);
   await expect(items.nth(0)).toHaveText('Test Member' + 'Accueil chaleureux, merci!');
-  const order = payload.anonymous.map(entry => entry.answers.welcome);
+  const order = payload.private.filter(entry => entry.category === 'welcome').map(entry => entry.text);
   await expect(items).toHaveText(['Test Member' + 'Accueil chaleureux, merci!', ...order.map(text => fr.adminBilanAnonymous + text)]);
   // Nourriture: two anonymous ones (the second member left it blank), in the payload's order.
-  const foodOrder = payload.anonymous.map(entry => entry.answers.food).filter(Boolean);
+  const foodOrder = payload.private.filter(entry => entry.category === 'food').map(entry => entry.text);
   await expect(category(page, fr.bilanCategoryFood).getByRole('listitem'))
     .toHaveText(['Test Member' + 'Repas copieux', ...foodOrder.map(text => fr.adminBilanAnonymous + text)]);
   await expect(category(page, fr.bilanCategorySchedule)).toContainText(fr.adminBilanCategoryEmpty);
@@ -278,8 +284,8 @@ test('admin, after the close with two anonymous answers: « moins de 3 », and n
   await loginAs(page, TEST_USERS.admin);
 
   const { counts, answers: payload } = await openBilan(page, event.eventId);
-  expect(payload).toMatchObject({ closed: true, anonymous: [] });
-  expect(counts).toMatchObject({ closed: true, eligible: 3, signed: 1, anonymous: null, total: null });
+  expect(payload).toMatchObject({ closed: true, released: false, private: [] });
+  expect(counts).toMatchObject({ closed: true, eligible: 3, signed_members: 1, released: false, private_total: null });
   expect(JSON.stringify(payload)).not.toContain('Hébergement anonyme');
   await expectCounts(page, { signed: 1, anonymous: null, rate: 33, eligible: 3 });
   await expect(category(page, fr.bilanCategoryLodging).getByRole('listitem')).toHaveText(['Test Member' + 'Chalet parfait']);

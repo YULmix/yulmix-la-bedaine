@@ -417,82 +417,70 @@ export type Database = {
           },
         ]
       }
-      event_feedback: {
-        Row: {
-          communications: string | null
-          event_id: string
-          food: string | null
-          id: string
-          is_anonymous: boolean
-          lodging: string | null
-          other: string | null
-          party_music: string | null
-          safety: string | null
-          schedule: string | null
-          welcome: string | null
-        }
-        Insert: {
-          communications?: string | null
-          event_id: string
-          food?: string | null
-          id?: string
-          is_anonymous?: boolean
-          lodging?: string | null
-          other?: string | null
-          party_music?: string | null
-          safety?: string | null
-          schedule?: string | null
-          welcome?: string | null
-        }
-        Update: {
-          communications?: string | null
-          event_id?: string
-          food?: string | null
-          id?: string
-          is_anonymous?: boolean
-          lodging?: string | null
-          other?: string | null
-          party_music?: string | null
-          safety?: string | null
-          schedule?: string | null
-          welcome?: string | null
-        }
-        Relationships: []
-      }
-      event_feedback_authors: {
+      event_feedback_item_authors: {
         Row: {
           author_id: string | null
+          category: string
           created_at: string
           event_id: string
-          feedback_id: string
+          is_private: boolean
+          item_id: string
           party_id: string | null
           updated_at: string
         }
         Insert: {
           author_id?: string | null
+          category: string
           created_at?: string
           event_id: string
-          feedback_id: string
+          is_private: boolean
+          item_id: string
           party_id?: string | null
           updated_at?: string
         }
         Update: {
           author_id?: string | null
+          category?: string
           created_at?: string
           event_id?: string
-          feedback_id?: string
+          is_private?: boolean
+          item_id?: string
           party_id?: string | null
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "event_feedback_authors_feedback_fkey"
-            columns: ["feedback_id", "event_id"]
+            foreignKeyName: "event_feedback_item_authors_item_fkey"
+            columns: ["item_id", "event_id", "category", "is_private"]
             isOneToOne: false
-            referencedRelation: "event_feedback"
-            referencedColumns: ["id", "event_id"]
+            referencedRelation: "event_feedback_items"
+            referencedColumns: ["id", "event_id", "category", "is_private"]
           },
         ]
+      }
+      event_feedback_items: {
+        Row: {
+          body: string
+          category: string
+          event_id: string
+          id: string
+          is_private: boolean
+        }
+        Insert: {
+          body: string
+          category: string
+          event_id: string
+          id?: string
+          is_private?: boolean
+        }
+        Update: {
+          body?: string
+          category?: string
+          event_id?: string
+          id?: string
+          is_private?: boolean
+        }
+        Relationships: []
       }
       event_place_overrides: {
         Row: {
@@ -1344,7 +1332,7 @@ export type Database = {
         }[]
       }
       submit_event_feedback: {
-        Args: { p_answers: Json; p_event_id: string; p_is_anonymous: boolean }
+        Args: { p_event_id: string; p_items: Json }
         Returns: Json
       }
       unused_gallery_images: { Args: { p_paths?: string[] }; Returns: string[] }

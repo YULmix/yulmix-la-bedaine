@@ -844,6 +844,7 @@
   "dbErrorEventFeedbackClosed": "Les retours de cette édition sont clos : il n'est plus possible de répondre ni de modifier sa réponse.",
   "dbErrorEventFeedbackEmpty": "Écrivez au moins un commentaire avant d'envoyer votre retour.",
   "dbErrorEventFeedbackInvalid": "Réponse invalide. Rechargez la page et réessayez.",
+  "dbErrorEventFeedbackDuplicate": "Une seule réponse signée et une seule réponse privée par catégorie. Rechargez la page et réessayez.",
   "dbErrorEventFeedbackTooLong": "Un commentaire est trop long ({max} caractères au plus).",
   "dbErrorEventFeedbackCloseLocked": "La clôture du bilan est définitive et se fait d'elle-même : elle ne se modifie pas à la main.",
   "voirCommeAction": "Voir comme",

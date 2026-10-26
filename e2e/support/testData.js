@@ -875,10 +875,15 @@ export async function teardownFeedbackEvent({ eventId, partyId, adminPartyId }) 
   if (eventId) check(await db.from('events').update({ is_active: false, status: 'DRAFT' }).eq('id', eventId), 'deactivate bilan event');
 }
 
-// Saves an answer as one of the seeded users, the way the page does; throws on a refusal.
-export async function submitFeedbackAs(user, eventId, answers, isAnonymous = false) {
+// Saves a retour as one of the seeded users; throws on a refusal. `answers` is either the items
+// ([{ category, private, text }], #354) or, as the one-answer form sends it, an object of texts by
+// category, all signed or all private (`isPrivate`). Replaces the user's whole set of items.
+export async function submitFeedbackAs(user, eventId, answers, isPrivate = false) {
   const db = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await db.auth.signInWithPassword(user);
   if (error) throw new Error(`sign-in as ${user.email} failed: ${error.message}`);
-  return check(await db.rpc('submit_event_feedback', { p_event_id: eventId, p_answers: answers, p_is_anonymous: isAnonymous }), 'submit bilan');
+  const items = Array.isArray(answers)
+    ? answers
+    : Object.entries(answers).map(([category, text]) => ({ category, private: isPrivate, text }));
+  return check(await db.rpc('submit_event_feedback', { p_event_id: eventId, p_items: items }), 'submit bilan');
 }

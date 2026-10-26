@@ -86,7 +86,7 @@ const BilanSection = () => {
         ) : (
           <div className="space-y-4">
             <div className="max-w-3xl">
-              <BilanDashboard counts={shownCounts(shown.counts, result)}
+              <BilanDashboard counts={shownCounts(shown.counts)}
                 closedOn={closed ? formatDate(eventDay(result.closed_at)) : null} />
             </div>
             {closed ? <BilanAnswers result={result} /> : (
