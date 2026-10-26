@@ -91,8 +91,20 @@ describe('what each role may open (#217, ADR 0023)', () => {
     expect(sectionsFor('committee')).toBe(sectionsFor('committee'));
   });
 
-  test('Équipe is under « Plus », before Retours', () => {
-    expect(MORE_SECTIONS.map(section => section.id).slice(-2)).toEqual(['team', 'feedback']);
+  test('Équipe and Bilan are under « Plus », before Retours', () => {
+    expect(MORE_SECTIONS.map(section => section.id).slice(-3)).toEqual(['team', 'bilan', 'feedback']);
+  });
+
+  // #317: the post-mortem answers are an account admin's only (ADR 0029).
+  test('Bilan is an admin\'s only: Comité and Organisateur are sent to their first section', () => {
+    expect(mayOpen(adminRoute('bilan'), 'admin')).toBe(true);
+    expect(sectionsFor('admin').map(section => section.id)).toContain('bilan');
+    for (const role of ['committee', 'organiser']) {
+      expect(mayOpen(adminRoute('bilan'), role)).toBe(false);
+      expect(sectionsFor(role).map(section => section.id)).not.toContain('bilan');
+      expect(roleRedirect(adminRoute('bilan'), role)).toEqual(adminRoute('overview'));
+    }
+    expect(adminPage(adminRoute('bilan'))).toMatchObject({ section: { id: 'bilan' }, view: null, drillDown: false, width: 'narrow' });
   });
 
   test('mayOpen checks the section and the view', () => {

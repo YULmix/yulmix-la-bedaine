@@ -210,6 +210,9 @@
    "admin-tabs",
    "admin-venues"
   ],
+  "src/components/admin/BilanAnswers.jsx": [
+   "admin-bilan"
+  ],
   "src/components/admin/ChangeHistory.jsx": [
    "admin-change-history",
    "admin-data-export",
@@ -329,6 +332,9 @@
   "src/components/admin/UserProfileDialog.jsx": [
    "admin-data-export",
    "admin-tabs"
+  ],
+  "src/components/admin/sections/BilanSection.jsx": [
+   "admin-bilan"
   ],
   "src/components/admin/sections/BudgetSection.jsx": [
    "admin-budget"
@@ -505,6 +511,7 @@
    "member-registration-confirmation"
   ],
   "src/lib/adminRoutes.ts": [
+   "admin-bilan",
    "admin-budget",
    "admin-data-export",
    "admin-drill-down",
@@ -527,6 +534,7 @@
    "preview-account-picker"
   ],
   "src/lib/adminSections.ts": [
+   "admin-bilan",
    "admin-data-export",
    "admin-drill-down",
    "admin-event-create",
@@ -713,8 +721,12 @@
    "admin-venues"
   ],
   "src/lib/eventFeedback.ts": [
+   "admin-bilan",
    "admin-event-feedback-days",
    "member-bilan"
+  ],
+  "src/lib/eventFeedbackAdmin.ts": [
+   "admin-bilan"
   ],
   "src/lib/eventPhase.ts": [
    "admin-budget",
@@ -1095,6 +1107,7 @@
    "member-page-widths"
   ],
   "src/views/AdminView.jsx": [
+   "admin-bilan",
    "admin-logistics-batch-save",
    "app-canvas"
   ],
