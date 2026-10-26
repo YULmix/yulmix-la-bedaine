@@ -628,11 +628,19 @@ Edit `supabase/preview-seed.json` (changes go through a PR like any other file):
 | `pastEvents.count` | `2` | Archived past editions, for profile history. |
 | `pastEvents.registrationsEach` | `15` | Registrations per past edition, all paid. |
 | `pastEvents.sellingPrice` | `220` | Past editions' selling price ($). |
+| `pastEvents.feedback.signedAuthors` / `privateAuthors` | `8` / `4` | Retours on the **latest** past edition, closed as after the levée: signed items with their author (Test Member is one of the signed authors), private items without any link, and the private items released (3 or more different authors). |
+| `recentEvent.registrations` | `16` | A just-ended edition (started 6 days ago, 3 days long, `ACTIVE` but not *the* active edition, retour switch on): its retour window is open. Test Member is registered, so the member form opens there. At most `members + 1`. |
+| `recentEvent.sellingPrice` | `220` | Its selling price ($). |
+| `recentEvent.feedback.signedAuthors` / `privateAuthors` | `8` / `2` | Retours already saved on it, through `submit_event_feedback()`: members who sign 1–3 categories, then members who leave one private item. With 2 private authors the private items are **not** released (the « Bilan » shows « moins de 3 »). Test Member has none there, so the form can be tried; at most `recentEvent.registrations - 1` authors in all. |
 | `parties.minSize` / `maxSize` | `1` / `4` | People per registration. |
 | `parties.newMemberShare` | `0.15` | Chance an adult or teen is a new member (priced at the main-event rate). |
 | `parties.teenShare` / `kidShare` | `0.2` / `0.2` | Chance each extra person is a teen / a kid (the registrant is always an adult). |
 | `emails.failed` / `pending` | `2` / `1` | Active-event parties whose latest email is `failed` (with a Resend error) / stuck `pending`, so the admin views have something to follow up. Never Test Member; the generated SQL lists which accounts got them. |
 | `emails.promotedShare` | `0.1` | Chance a non-waitlisted party's history is waitlist then promotion instead of a plain confirmation. |
+
+The retour texts (French, a few per category) are in `scripts/preview-seed/generate.mjs`; the categories
+are checked against the app's in `scripts/preview-seed/options.test.js`. Past and just-ended editions are
+generated after the rest, so adding them left the other fake data as it was.
 
 Every registration also gets an email history (`email_log`) matching its state, as `send-party-email`
 would have sent it: confirmation or waitlist, then payment once paid and accommodation once a bed is
