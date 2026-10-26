@@ -17,7 +17,9 @@ export const useFitToViewport = (ref, { reserve = 0, min = 256, fromWidth = 0, d
     const element = ref.current;
     if (!element) return undefined;
     const fit = () => {
-      // Measured uncapped.
+      // Measured uncapped. Uncapping makes the element full height, which clamps its scrollTop to
+      // 0: a re-fit (a late layout change) would throw the reader back to the top of the list.
+      const scrolled = element.scrollTop;
       element.style.maxHeight = 'none';
       if (window.innerWidth < fromWidth) return;
       // Layout offsets, not getBoundingClientRect(): the panel's entry animation (animate-step)
@@ -29,6 +31,7 @@ export const useFitToViewport = (ref, { reserve = 0, min = 256, fromWidth = 0, d
       const available = Math.floor(window.innerHeight - top - below - reserve);
       // A page that already fits needs no cap.
       if (pageHeight > window.innerHeight && available >= min) element.style.maxHeight = `${available}px`;
+      element.scrollTop = scrolled;
     };
     fit();
     window.addEventListener('resize', fit);
