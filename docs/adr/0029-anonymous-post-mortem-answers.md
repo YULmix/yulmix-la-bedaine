@@ -1,96 +1,151 @@
-# Anonymous post-mortem answers: the table is closed to every client
+# Anonymous post-mortem answers: nothing before the close, then the « levée » erases the link
 
 After an event, the organisers collect a post-mortem, the « bilan »: one free text per category
-from each registration, anonymous if the respondent chooses, readable by account admins only
-([issue #315](https://github.com/YULmix/yulmix-la-bedaine/issues/315), epic #309). An admin can read
-every registration, profile and change history, so "anonymous" can't be a matter of hiding a
-column on screen: the author must be unreachable from anything the admin can query. **The answers
-live in `event_feedback`, on which no client role (admins, `service_role` included) holds any
-privilege. Three `SECURITY DEFINER` functions are the only way in, and the admin's read gives an
-anonymous answer's texts and nothing else.**
+from each member registered on it, named or anonymous, read by account admins only
+([issue #315](https://github.com/YULmix/yulmix-la-bedaine/issues/315), epic #309). The organiser
+asked for **true anonymity**: "there should be ZERO ways to associate those comments with their
+author", « Voir comme » included. An admin reads every registration, profile and change history,
+and can open a member's session; so the author link can't just be hidden on screen, and it can't
+stay in the database for good either. **While the window is open, each answer has its author link,
+in tables no client role can read, and admins read nothing at all. At the close, one irreversible
+step, the « levée », publishes the answers and erases the link of every anonymous one.**
 
 **Status: accepted** (October 2026), implemented by #315: migration
-`20261026043829_event_feedback.sql`. The rules (one answer per registration, the window, who is
-eligible, admins only) were decided by the organiser in triage on #315; the answer's fixed author
-and event, and keeping it when its party is deleted, by the organiser after #315's review.
+`20261026043829_event_feedback.sql`. The rules were decided by the organiser on #315: in triage
+(2026-10-25: comments only, eight categories, admins only, eligibility, the window's opening) and
+after the anonymity review (2026-10-26: the offset close, the final close, nothing before it, the
+threshold of 3, editing until the close, the accepted backup and log limits). This replaces the
+first design of the same branch, in which every answer kept its `author_id` for good and admins
+read the answers live.
 
 ```mermaid
-flowchart LR
-  M["Member"] -->|"submit_event_feedback()"| T[("event_feedback<br/>no client privilege")]
-  M -->|"my_event_feedback(): own answer"| T
-  A["Admin"] -->|"event_feedback_answers()"| T
-  A -.->|"SELECT, embed, view: permission denied"| T
-  V["« Voir comme » session"] -->|"my_event_feedback(): answer hidden"| T
+sequenceDiagram
+  participant M as Member
+  participant DB as Database
+  participant A as Admin
+  M->>DB: submit_event_feedback() (window open)
+  Note over DB: event_feedback + event_feedback_authors
+  A->>DB: event_feedback_answers()
+  DB-->>A: closed: false, no answer, no count
+  Note over DB: close: archival, or the end of "last day + feedback_days"
+  DB->>DB: levée: anonymous answers re-inserted (fresh ids, random order), window rows and links deleted
+  A->>DB: event_feedback_answers()
+  DB-->>A: named answers with author; anonymous texts only if at least 3
+  M->>DB: my_event_feedback()
+  DB-->>M: own named answer; an anonymous one can no longer be found
 ```
 
 ## Decisions
 
-- **No table privilege, no policy.** `event_feedback` has RLS on and no policy, and its grants are
-  revoked from `anon`, `authenticated` and `service_role`. Nothing embeds it from `user_parties`,
-  and no view reads it. A table-level `SELECT` for admins, even of selected columns or through a
-  view, would hand them `author_id` (or `party_id`, and through it the profile).
-- **An answer belongs to its author and its event, not to the party.** Admins can write any
-  `user_parties` row: change its owner or event, or delete it. If the answer followed the party,
-  an admin could make a party theirs and read the anonymous answer in `my_event_feedback()` (or
-  overwrite it), or find its author by moving parties to another event, or deleting them, and
-  watching which move takes the answer out of the event's list. So `event_feedback` stores
-  `event_id` and `author_id` (`auth.uid()`) at the first write, keeps them (a trigger), and every
-  function matches on them: the member reads and edits the answer they wrote, the admin's list is
-  the answers stored for the event. `party_id` only records the registration it came from. One
-  answer per member per event (`UNIQUE (event_id, author_id)`): in the normal case, one per
-  registration; a party whose owner an admin changes may carry a second one, the new owner's.
-- **Deleting a party keeps its answer** on its event (`party_id` `ON DELETE SET NULL`), anonymous
-  or not as written: a cascade would make the delete an oracle too, and remove free text against
-  [ADR 0024](./0024-no-hard-deletes.md). Refusing the delete (`ON DELETE RESTRICT`) was not chosen:
-  the refusal itself would say which party has an answer. Account deletion (`delete_my_account()`,
-  a soft delete) leaves answers as written too, like the rest of the member's history; no output
-  ever gives an anonymous answer's `author_id`, so it never becomes attributable.
-- **The admin's read leaves out everything that leads back to the author.** For an anonymous
-  answer, `event_feedback_answers()` returns the texts and `is_anonymous` only: no user, party, row
-  id, `created_at` nor `updated_at` (a time could be matched against other activity). Anonymous
-  answers come after the named ones, ordered by their random id, so their position says nothing
-  either. A named answer carries the author's id, party, name and email, and its times.
-- **« Voir comme » hides the member's answer.** [ADR 0025](./0025-voir-comme-read-only-impersonation.md)
-  lets an admin open the app in a member's real session, which would show the member's own
-  answer and whether it is anonymous. In such a session (`impersonated_by` in the JWT)
-  `my_event_feedback()` returns no answer and `answer_hidden: true`, whether or not there is one,
-  so the session says nothing about who answered. This is the one place where « Voir comme »
-  deliberately differs from what the member sees. Writes are refused there anyway by the read-only
-  trigger, which `submit_event_feedback()` applies before any other check.
-- **Accepted limits.** The threat this design is built against is an account admin: they read
-  every registration, profile and change history, and write `user_parties` (owner, event,
-  deletion); none of those writes reaches an answer, and no read gives an anonymous answer's
-  author. Anonymity is per answer and the respondent can change it: making a named
-  answer anonymous later doesn't erase what an admin already read. With very few answers, the
-  texts themselves (or the count of named versus anonymous ones) may give someone away; so may
-  polling `event_feedback_answers()`: an anonymous answer that appears or changes between two
-  polls can be matched against other activity at that time (a sign-in, a registration edit),
-  although the result carries no time. The database can't prevent either. The database owner and direct connections (migrations, backups)
-  still see everything.
+- **Two closed tables.** `event_feedback` holds the texts, `is_anonymous` and `event_id`: nothing
+  about who or when. `event_feedback_authors` holds the link: answer, `author_id`, `party_id`,
+  `created_at`, `updated_at`, one per member per event (`UNIQUE (event_id, author_id)`). Both have
+  RLS on, no policy, and no privilege for `anon`, `authenticated` or `service_role`. No view reads
+  them, nothing embeds them, they aren't in the Realtime publication. Three `SECURITY DEFINER`
+  functions are the only way in, and each names its output.
+- **The window and the close.** It opens the day after the event's last day (Toronto day of the
+  start + `duration_days`). It closes at the end of the Toronto day "last day +
+  `events.feedback_days`" (default 14, from 1 to 365), or at archival if that comes first. A DRAFT
+  event, or one without a start date, never opens and never closes by date.
+- **The close is final.** `events.feedback_closed_at` is set once, by the levée, and never cleared;
+  a trigger refuses any other write to it, by an admin or the database owner. Once set, un-archiving
+  the event ([ADR 0008](./0008-archive-never-delete.md) allows it) or a new
+  `feedback_days` doesn't reopen anything: every function reads the marker first. Before the close an
+  admin may change `feedback_days`; a value that puts the close in the past closes it at once. A
+  close date that passed is final even before the levée has run: any update of the event then runs
+  it first.
+- **Nothing before the close.** `event_feedback_answers()` returns `closed: false`, the close date,
+  and `named`/`anonymous` null: no answer, no count, nothing that changes when a member writes. Who
+  answered isn't readable by an admin by any path. After the close, named answers carry their
+  author (id, party, name, email) and times; anonymous answers carry their texts only.
+- **The levée.** `private.event_feedback_levee()` runs once per event, in the `BEFORE UPDATE`
+  trigger on `events` (under the event row's lock), in one transaction with setting the marker: at
+  archival, at any update of the event once its close date has passed (or that puts it there), and,
+  through a no-op update, at the first call of any of the three functions after the close date. It
+  re-inserts each anonymous answer as a new row (fresh random id, the event and the texts only), all
+  of them in random order, then deletes their window rows, which deletes their links
+  (`ON DELETE CASCADE`). The new rows share one `xmin` (the levée's transaction) and carry no time,
+  and their physical position doesn't follow the order in which they were written. Named answers
+  stay as they are, with their link.
+- **The threshold.** Anonymous answers reach admins only when the event has at least 3, in the
+  order of their random ids; with 0, 1 or 2 the result is the same (`anonymous: []`). They are
+  kept, not deleted.
+- **Members edit until the close, from any device**, matched on `author_id = auth.uid()`, and may
+  switch named ↔ anonymous. After the close a member reads their named answer; an anonymous one
+  has no author any more, so `my_event_feedback()` can't find it: `answer` null then means "no
+  named answer", and the database can't say whether there was an anonymous one. Any record of
+  "this member answered anonymously" would identify the author of a lone anonymous answer (kept
+  under the threshold) to the database owner, and shrink the candidate set for the others.
+- **A save and the levée never cross.** `submit_event_feedback()` holds the event row `FOR SHARE`
+  while it checks the window and writes; the levée is an update of that row. A save in flight
+  commits first and is published, or the save waits and reads the marker. One save at a time per
+  member and event (a transaction advisory lock), so two first saves can't create two answers.
+- **An answer belongs to its author and its event, not to the party** (kept from the first design's
+  review). Admins can change a `user_parties` row's owner or event, or delete it. The link's
+  `author_id` and `event_id` are fixed at the first write (a trigger), `party_id` only records the
+  registration and becomes null if it is deleted. So an admin who makes a party theirs answers as
+  themselves and reads nothing of the previous owner's; moving or deleting parties neither moves
+  nor removes an answer, and changes nothing in the admin's read. A hard-deleted profile nulls
+  `author_id`: the answer stays, unattributed.
+- **« Voir comme »** ([ADR 0025](./0025-voir-comme-read-only-impersonation.md)) runs in the member's
+  real session. There `my_event_feedback()` returns `answer: null, answer_hidden: true` and the
+  same window fields, whether the member has a named answer, an anonymous one or none; it doesn't
+  run the levée (the session is read-only). `submit_event_feedback()` refuses the session before
+  any other check, and the read-only trigger is on both tables. `event_feedback_answers()` is
+  `admin_only` there (`is_admin()` is false in an impersonated session).
+- **ADR 0024 exception.** [ADR 0024](./0024-no-hard-deletes.md) keeps rows instead of deleting
+  them. The levée deletes the window rows of the anonymous answers and their links; the texts live
+  on in the published rows. Nothing else deletes an answer: a deleted party, a soft-deleted account
+  (`delete_my_account()`) and a hard-deleted profile leave it.
+
+## Accepted limits
+
+Not fixed, by the organiser's decision on #315:
+
+- **The database owner can read everything while the window is open** (the link is in the
+  database until the close). Direct connections, migrations and the dashboard's SQL editor run as
+  the owner.
+- **Logs.** Supabase request logs show who called `submit_event_feedback()` and when, not what was
+  sent, for their retention (1 day on the free plan, 7 on Pro).
+- **Backups.** The encrypted CI backup taken when a migration merges during an open window
+  ([ADR 0014](./0014-ci-applies-migrations-on-merge.md), kept 90 days, readable only with the backup
+  passphrase) holds the link. So do Supabase's own backups of that period, on a plan that has them.
+  The tables aren't excluded from dumps.
+- **The levée runs at the first call after the close date**, not at the stroke of midnight (no
+  scheduler): the link lives until then. Archival runs it at once.
+- **The texts themselves** may give their author away.
+- **The candidate set.** The participants without a named answer are the candidates for the
+  anonymous ones; the threshold of 3 counts answers, not people. An admin who registers accounts
+  they control and has them answer anonymously can pad the count past 3 and narrow the candidates.
+- **Changing the functions.** Anyone who changes them could capture authors; every change is a
+  reviewed migration in the public repository.
+- **Dead tuples.** The window's rows and their earlier versions stay on disk until vacuum, readable
+  only with superuser access to the storage.
 
 ## Options considered
 
-- **Functions only, table closed (chosen).** One place decides what an admin sees; adding a
-  column can't leak it by accident, since every output names its fields.
-- **Admin `SELECT` policy plus a view that blanks the author.** The base table would stay readable
-  by admins, `party_id` included, and the view would need `security_invoker` off to hide it.
-  Rejected.
-- **Store no author for anonymous answers** (a hash or a separate link table). It would take
-  "one answer per member, editable" away, or move the link somewhere else just as reachable.
-  Rejected.
-- **Let the answer follow its party, and refuse an owner or event change on a party that has one**
-  (a trigger on `user_parties`). The refusal would say which parties have an answer, and those
-  missing from the named list are the anonymous authors; it also can't cover a delete without
-  the same oracle. Rejected for a fixed author and event.
+- **Link until the close, erased by the levée (chosen).** Members keep "one answer, editable from
+  any device, switchable", and after the close nothing in the database ties an anonymous text to
+  its author.
+- **A permanent `author_id`, the admin's read leaving it out** (the first design). Admins couldn't
+  read the author, but the database owner, a backup or a future function could, for good; and the
+  live read let an admin match a new or changed anonymous answer with the member's other activity.
+  Rejected by the organiser.
+- **A client-held secret** (a key or token in the browser, a hash in the database). It still needs a
+  "has answered" row per member, written at the same moment as the answer, so it protects no better
+  during the window; it also breaks editing after a device loss or from another device. Rejected.
+- **A scheduled levée (pg_cron)** at the close instant. Out of scope for #315; the first call after
+  the close, or archival, is enough.
 
 ## Consequences
 
-- Any new reader of `event_feedback` (an export, an Edge Function) is a new `SECURITY DEFINER`
-  function that names its output and applies the same rule for anonymous answers. The RLS suite
-  (« post-mortem feedback ») lists every function that reads the table and fails when one is added
-  without updating it.
-- Answers are not deleted (ADR 0024): nothing deletes one, a deleted party leaves it, and only a
-  hard-deleted event (not something the app does) takes its answers with it.
-- An admin who makes a party theirs answers as themselves: their answer is named or anonymous like
-  anyone's, and the previous owner keeps theirs (readable, no longer editable once they own no
-  registration on the event).
+- Any new reader of these tables (an export, an Edge Function) is a new `SECURITY DEFINER`
+  function that names its output, applies the close and the threshold, and is added to the RLS
+  suite's list (« post-mortem feedback »), which fails when a function or view reads the tables
+  without being listed.
+- The member page (#316) shows, after the close, a named answer read-only and, without one, a
+  message that covers both cases: no answer, or an anonymous one that can no longer be shown.
+- The admin section (#317) shows nothing but the close date before the close, and the anonymous
+  answers in the order the database returns them.
+- The event form (#329) edits `feedback_days` and shows `feedback_closed_at`; it never writes the
+  marker.
