@@ -28,7 +28,7 @@ const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, 
 const SECTION_COUNT = 8;
 // The phone bar's sections (ADR 0022); the others are under « Plus ».
 const BAR_SECTIONS = [fr.adminTabOverview, fr.adminTabUsers, fr.adminTabLogistics, fr.adminTabBudget];
-const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTeam, fr.adminTabFeedback];
+const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTeam, fr.adminTabBilan, fr.adminTabFeedback];
 const MEMBER_NAME = 'Test Member';
 
 // The tests share one seeded registration (and the last one writes to it), so run them in

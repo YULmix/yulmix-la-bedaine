@@ -36,6 +36,7 @@ describe('adminHref and parseAdminLocation', () => {
     expect(adminHref(adminRoute('users'))).toBe('/admin/users');
     expect(adminHref({ section: 'users', view: 'history' })).toBe('/admin/users/history');
     expect(adminHref(adminRoute('feedback'))).toBe('/admin/feedback');
+    expect(adminHref(adminRoute('bilan'))).toBe('/admin/bilan');
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'details' })).toBe(`/admin/events/${EVENT}`);
     expect(adminHref({ section: 'events', eventId: EVENT, editorSection: 'sleeping' })).toBe(`/admin/events/${EVENT}?section=sleeping`);
     expect(adminHref({ section: 'venues', venueId: VENUE, locationId: LOCATION })).toBe(`/admin/venues/${VENUE}/${LOCATION}`);
@@ -85,6 +86,8 @@ describe('adminRedirect', () => {
     expect(adminRedirect('/admin/users')).toBeNull();
     expect(adminRedirect('/admin/users/history')).toBeNull();
     expect(adminRedirect('/admin/feedback')).toBeNull();
+    expect(adminRedirect('/admin/bilan')).toBeNull();
+    expect(parseAdminLocation('/admin/bilan')).toEqual({ section: 'bilan' });
   });
 
   test.each([

@@ -7,7 +7,7 @@
 // what it allows, and the shell sends it away from the rest.
 import {
   Banknote, BedDouble, CalendarRange, Car, ClipboardList, HandHeart, History, Inbox,
-  LayoutDashboard, List, MapPin, MessageSquareText, Users, UsersRound, Utensils
+  LayoutDashboard, List, MapPin, MessageSquareText, NotebookPen, Users, UsersRound, Utensils
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -108,6 +108,9 @@ const SECTIONS: Record<AdminSection, Omit<AdminSectionEntry, 'id'>> = {
   venues: { labelKey: 'adminTabVenues', shortKey: 'adminTabVenuesShort', icon: MapPin, inBar: false, views: [], width: 'narrow', minRole: 'admin' },
   // Who has a role on each edition (#217): granting one is an admin's.
   team: { labelKey: 'adminTabTeam', shortKey: 'adminTabTeamShort', icon: UsersRound, inBar: false, views: [], width: 'narrow', minRole: 'admin' },
+  // The post-mortem answers (#317, ADR 0029): an account admin's only, like the database's read.
+  // Free texts to read: narrow.
+  bilan: { labelKey: 'adminTabBilan', shortKey: 'adminTabBilanShort', icon: NotebookPen, inBar: false, views: [], width: 'narrow', minRole: 'admin' },
   // The unresolved count is the marker: it is what an organiser comes to this section for.
   feedback: { labelKey: 'adminTabFeedback', shortKey: 'adminTabFeedbackShort', icon: Inbox, inBar: false, views: [], width: 'dense', marker: 'unresolvedFeedback', minRole: 'admin' }
 };

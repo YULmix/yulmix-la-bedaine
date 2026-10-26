@@ -3,7 +3,7 @@
 // Components parse the location with parseAdminLocation() and build links with adminHref(), and
 // never format an admin URL themselves.
 //
-//   /admin/overview · /admin/budget · /admin/feedback · /admin/team
+//   /admin/overview · /admin/budget · /admin/feedback · /admin/team · /admin/bilan
 //   /admin/users[/<view>]                            view: list (default), participants, history
 //   /admin/participants                              Comité's « Participants » (#291)
 //   /admin/logistics[/<view>]                        view: places (default), food, …
@@ -18,10 +18,11 @@
 
 export const ADMIN_ROOT = '/admin';
 
-// « Équipe » (team, #217) sits before Retours: Retours stays last, as ADR 0022 decided.
+// « Équipe » (team, #217) sits before Retours: Retours stays last, as ADR 0022 decided. « Bilan »
+// (#317, the post-mortem answers) sits between them.
 // « Participants » (#291) is Comité's top-level stand-in for Inscrits, after it; the registry
 // (src/lib/adminSections.ts) shows each role only one of the two.
-export const ADMIN_SECTIONS = ['overview', 'users', 'participants', 'logistics', 'budget', 'events', 'venues', 'team', 'feedback'] as const;
+export const ADMIN_SECTIONS = ['overview', 'users', 'participants', 'logistics', 'budget', 'events', 'venues', 'team', 'bilan', 'feedback'] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 export const DEFAULT_ADMIN_SECTION: AdminSection = 'overview';
 
@@ -40,7 +41,7 @@ export type EditorSection = (typeof EDITOR_SECTIONS)[number];
 export const NEW_EVENT_ID = 'new';
 
 export type AdminRoute =
-  | { section: 'overview' | 'participants' | 'budget' | 'feedback' | 'team' }
+  | { section: 'overview' | 'participants' | 'budget' | 'feedback' | 'team' | 'bilan' }
   | { section: 'users'; view: UsersView }
   | { section: 'logistics'; view: LogisticsView }
   | { section: 'events'; eventId: string | null; editorSection: EditorSection }
