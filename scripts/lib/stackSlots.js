@@ -63,9 +63,11 @@ export async function pickSlot({ worktreePath, reserved = new Map(), isPortFree,
 }
 
 // A Docker-safe, readable, unique project id: the CLI names every container and volume after it.
+// At most 40 characters: Docker truncates names at 63, and the longest prefix the CLI adds
+// ("supabase_edge_runtime_") is 22, so a longer id would lose its tail and escape `stack:down`.
 export function projectIdFor(worktreePath) {
   const name = worktreePath.split('/').filter(Boolean).pop() || 'worktree';
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 23);
   const hash = createHash('sha256').update(worktreePath).digest('hex').slice(0, 6);
   return `yulmix-wt-${slug || 'worktree'}-${hash}`;
 }

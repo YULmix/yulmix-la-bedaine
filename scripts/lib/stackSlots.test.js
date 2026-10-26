@@ -73,6 +73,7 @@ describe('projectIdFor', () => {
   test('is Docker-safe, stable and unique per path', () => {
     const id = projectIdFor('/home/a/yulmix.worktrees/GH-312-worktree supabase');
     expect(id).toMatch(/^yulmix-wt-[a-z0-9-]+-[0-9a-f]{6}$/);
+    expect(id.length).toBeLessThanOrEqual(40);
     expect(projectIdFor('/home/a/yulmix.worktrees/GH-312-worktree supabase')).toBe(id);
     expect(projectIdFor('/other/GH-312-worktree supabase')).not.toBe(id);
   });
