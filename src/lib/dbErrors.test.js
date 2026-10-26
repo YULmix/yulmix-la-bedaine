@@ -32,6 +32,11 @@ describe('dbErrorMessage', () => {
       .toBe(fr.dbErrorAttendeeRemovalLocked.replace('{date}', '1 octobre 2026'));
   });
 
+  test('the start-date freeze has its own message (#314)', () => {
+    const details = JSON.stringify({ start_date: '2026-08-15T03:30:00+00:00' });
+    expect(dbErrorMessage({ message: 'registration_frozen', details }, FALLBACK)).toBe(fr.dbErrorRegistrationFrozen);
+  });
+
   test('an appError keeps its own French message; a plain Error does not', () => {
     expect(dbErrorMessage(appError(fr.noRowReturnedError), FALLBACK)).toBe(fr.noRowReturnedError);
     expect(dbErrorMessage(new Error('Failed to fetch'), FALLBACK)).toBe(FALLBACK);

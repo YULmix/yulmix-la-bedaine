@@ -405,6 +405,16 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
     const sorted = [...registrations].sort((a, b) => b.daysAgo - a.daysAgo);
     // Since #246 attendees can only be written through save_registration() on behalf of the
     // signed-in user, so each call runs with that user's JWT claims (auth.uid()) set.
+    // #314: from an event's start a member's registration is frozen, and these members registered
+    // before their edition started. The started events (the past ones, or the active one if its
+    // start has passed) get a start still to come while they register, then their own back, set
+    // without triggers like the rest of what the seed backdates.
+    out.push(`CREATE TEMP TABLE seed_event_starts AS
+SELECT id, event_start_date FROM public.events WHERE event_start_date <= now();
+ALTER TABLE public.events DISABLE TRIGGER USER;
+UPDATE public.events SET event_start_date = now() + interval '1 day'
+WHERE id IN (SELECT id FROM seed_event_starts);
+ALTER TABLE public.events ENABLE TRIGGER USER;`);
     for (const r of sorted) {
       out.push(`SELECT set_config('request.jwt.claims', ${lit(JSON.stringify({ sub: r.userId, role: 'authenticated' }))}, false);`);
       const transport = r.transportType === ''
@@ -423,6 +433,11 @@ ${events.map((e) => `  (${lit(e.id)}, ${jsonb(e.budgetLines)})`).join(',\n')};
   ${lit(r.userId)});`);
     }
     out.push(`SELECT set_config('request.jwt.claims', '', false);`);
+    out.push(`ALTER TABLE public.events DISABLE TRIGGER USER;
+UPDATE public.events e SET event_start_date = s.event_start_date
+FROM seed_event_starts s WHERE e.id = s.id;
+ALTER TABLE public.events ENABLE TRIGGER USER;
+DROP TABLE seed_event_starts;`);
 
     // What happened after registering: the date it was made, the admin marking it paid, notes
     // (in their own admin-only table, #227). Set without triggers, so none of it counts as an

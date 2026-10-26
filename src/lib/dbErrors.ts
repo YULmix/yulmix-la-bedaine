@@ -45,6 +45,8 @@ const DB_ERRORS: Record<string, (params: ErrorParams) => string> = {
   place_in_use: () => fr.placeOccupiedUnseen,
   registration_attendee_removal_locked: ({ close_date: closeDate }) => fr.dbErrorAttendeeRemovalLocked
     .replace('{date}', formatDate(closeDate as string | null)),
+  // #314: a member's registration is frozen from the event's start; details carry start_date.
+  registration_frozen: () => fr.dbErrorRegistrationFrozen,
   // Edition roles (#217, ADR 0023).
   committee_only: () => fr.dbErrorCommitteeOnly,
   organiser_only: () => fr.dbErrorOrganiserOnly,

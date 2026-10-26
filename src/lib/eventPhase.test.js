@@ -1,4 +1,4 @@
-import { getEventPhase, getEventTimeline, getRegistrationCloseDate, isRegistrationLocked } from './eventPhase';
+import { getEventPhase, getEventTimeline, getRegistrationCloseDate, isRegistrationFrozen, isRegistrationLocked } from './eventPhase';
 
 const event = {
   status: 'ACTIVE',
@@ -97,5 +97,24 @@ describe('with times of day', () => {
     expect(eventEnd).toEqual(new Date(2026, 7, 16));
     // Midnight is no time worth showing.
     expect(getEventTimeline(event).steps.find(s => s.id === 'weekend').time).toBeUndefined();
+  });
+});
+
+// #314: frozen from the start instant, like private.registration_started().
+describe('isRegistrationFrozen', () => {
+  const started = { event_start_date: '2026-08-15T03:30:00+00:00' };
+
+  test('freezes from the start instant, to the minute', () => {
+    expect(isRegistrationFrozen(started, new Date('2026-08-15T03:29:00Z'))).toBe(false);
+    expect(isRegistrationFrozen(started, new Date('2026-08-15T03:30:00Z'))).toBe(true);
+    expect(isRegistrationFrozen(started, new Date('2026-08-20T00:00:00Z'))).toBe(true);
+  });
+  test('a date-only start is midnight in Toronto', () => {
+    expect(isRegistrationFrozen({ event_start_date: '2026-08-14' }, new Date('2026-08-14T03:59:00Z'))).toBe(false);
+    expect(isRegistrationFrozen({ event_start_date: '2026-08-14' }, new Date('2026-08-14T04:00:00Z'))).toBe(true);
+  });
+  test('never freezes without a start date or an event', () => {
+    expect(isRegistrationFrozen({ event_start_date: null }, new Date(2030, 0, 1))).toBe(false);
+    expect(isRegistrationFrozen(null, new Date(2030, 0, 1))).toBe(false);
   });
 });

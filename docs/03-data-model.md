@@ -387,6 +387,7 @@ flowchart TD
     U3["BEFORE UPDATE → increment_edit_count()"]
     U4["AFTER UPDATE → log_registration_edit()<br/>a created entry on a new registration (#173)"]
     U5["BEFORE UPDATE/DELETE → enforce_registration_lock_after_close_date()"]
+    U7["BEFORE INSERT/UPDATE/DELETE → enforce_registration_frozen_after_start()<br/>a member changes nothing from the start (#314)"]
     U6["BEFORE INSERT/UPDATE → enforce_calculated_amount_owed()<br/>locked price and amount owed (#31, #117)"]
   end
   subgraph attendees
@@ -612,6 +613,48 @@ passed and the caller isn't an admin:
 The app mirrors the date with `getRegistrationCloseDate()` / `isRegistrationLocked()` in
 `src/lib/eventPhase.ts`, to hide "Se désinscrire" and explain why; the trigger is what enforces it.
 
+### Registration frozen from the start
+
+From the event's start (`events.event_start_date`, the instant, not its day) a member's
+registration is frozen ([#314](https://github.com/YULmix/yulmix-la-bedaine/issues/314)): no new
+registration, no edit, no participant added or removed, no cancellation, no registering again over
+a cancelled row. It is a second, stricter lock beside the close date, which stays as it is. A null
+start date never freezes.
+
+`private.enforce_registration_frozen_after_start()` (a `BEFORE INSERT/UPDATE/DELETE` trigger on
+`user_parties`) and a check at the top of `save_registration()` enforce it, both through
+`private.registration_started(event_id)` (`now() >= event_start_date`). Every member write to a
+registration touches `user_parties`: a direct insert or update (cancelling is one), or
+`save_registration()`, which inserts the party or ends by updating it. Attendees need no trigger of
+their own, since `guard_attendee_write()` only lets a member write them from inside
+`save_registration()`. The error is `registration_frozen`, details `{"start_date": …}`
+([ADR 0021](./adr/0021-database-errors-are-codes.md)); the check in `save_registration()` comes
+first, so a frozen save never reports the close date's `registration_attendee_removal_locked`.
+
+Who still writes after the start:
+
+- admins (`is_admin()`): corrections, payments, notes, with their `registration_edits` entries;
+- an Organisateur through `set_payment_status()` and `save_logistics()`, which authorise the caller
+  on the party's event and mark the party in `bedaine.organiser_party`
+  ([ADR 0023](./adr/0023-edition-roles.md)); the trigger lets that party through, like
+  `protect_admin_only_party_fields()` does;
+- the first-price cascade: when `apply_event_pricing()` (Organisateur and above) gives an event its
+  first price, `trg_lock_unpriced_registrations_on_first_price` updates that event's unpriced
+  parties, and `lock_unpriced_registrations_on_first_price()` marks the event in
+  `bedaine.pricing_event` around that update, which the trigger lets through. It only runs from an
+  update of `events`, which members can't do;
+- the service role, migrations and direct database sessions (`seed.sql`), whose JWT role isn't
+  `authenticated`/`anon`. The demo seed (`scripts/preview-seed/generate.mjs`) registers through
+  `save_registration()` with each member's claims, so it gives the events that have started a
+  start still to come while it registers, then restores theirs.
+
+The carpool board, profiles and feedback don't write `user_parties` and are unaffected.
+
+The app mirrors it with `isRegistrationFrozen()` in `src/lib/eventPhase.ts`, for non-admins only:
+the pass explains the freeze instead of offering « Modifier mon inscription » and « Se désinscrire »,
+`/inscription` leads back to the pass, a cancelled member is told registrations are closed instead
+of being invited back, and the carpool board stops prompting for a departure postal code.
+
 ### Event times and the time zone
 
 `event_start_date` and `reg_start_date` are `timestamptz` (#149): an admin enters a date and a
@@ -734,9 +777,11 @@ transaction:
 
 1. It refuses, changing nothing, if the member has an active registration (`registered` or
    `pending`) for an event that isn't over and whose [registration close date](#registration-close-date)
-   has passed. The amount owed stays owed. It also refuses for the root admin. Refusals are
-   raised as codes, not French text: `account_deletion_locked` (with `details` =
-   `{"event", "close_date"}`), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
+   has passed, or that has [started](#registration-frozen-from-the-start) (#314), whatever its close
+   date: a close date on the start day itself (`x_reg_close_weeks` 0) or none (null) would
+   otherwise let the cancellation reach the freeze. The amount owed stays owed. It also refuses for
+   the root admin. Refusals are raised as codes, not French text: `account_deletion_locked` (with
+   `details` = `{"event", "close_date"}`, the close date, or the start day when there is none), `root_admin_cannot_be_deleted` and `not_authenticated`. The app
    maps them to `fr.json` through `src/lib/dbErrors.ts`.
 2. It cancels the member's active registrations for events still to come, meaning not archived
    and not over (the start's Toronto day + `duration_days`). This is the same soft status change as a

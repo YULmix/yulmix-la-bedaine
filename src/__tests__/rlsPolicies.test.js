@@ -4748,3 +4748,241 @@ describe('📝 post-mortem feedback: one answer per registration, admins read, a
     }
   });
 });
+
+// #314: from the event's start instant a member's registration is frozen: no creation, edit,
+// addition, removal, cancellation or re-registration. Admins, an Organisateur's payment and
+// logistics writes, and the service role pass; a null start date never freezes.
+describe('🧊 registrations frozen from the event start (#314)', () => {
+  jest.setTimeout(30000);
+
+  const FROZEN_EVENT_ID = 'a0000000-a000-a000-a000-a00000000314';
+  const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
+  const ORGANISER_ID = '00000000-0000-0000-0000-000000000004';
+  const hoursFromNow = hours => new Date(Date.now() + hours * 3600 * 1000).toISOString();
+  const adult = name => ({ name, type: 'Adult', participation: 'Whole', is_new_member: false });
+
+  let memberClient;
+  let adminAuthClient;
+  let organiserClient;
+
+  // The event starting at `start` (an instant, or null), with no close-date lock of its own
+  // before it (x_reg_close_weeks 0), and no registration on it.
+  // duration_days 3: an event started an hour ago is never over yet, even right after midnight.
+  const setStart = async (start, closeWeeks = 0) => {
+    const { error } = await adminAuthClient.from('events').upsert({
+      id: FROZEN_EVENT_ID, theme: 'Frozen Test', status: 'ACTIVE', is_active: false,
+      event_start_date: start, x_reg_close_weeks: closeWeeks, duration_days: 3
+    });
+    if (error) throw error;
+  };
+  const clearParties = async () => {
+    const { error } = await adminAuthClient.from('user_parties').delete().eq('event_id', FROZEN_EVENT_ID);
+    if (error) throw error;
+  };
+  // The member's registration (two attendees), saved before the start, then the start moved.
+  const registeredThenStarted = async (start = hoursFromNow(-1)) => {
+    await clearParties();
+    await setStart(hoursFromNow(1));
+    const party = await saveOk(memberClient, FROZEN_EVENT_ID, [adult('Ann'), adult('Bob')]);
+    await setStart(start);
+    return party;
+  };
+  const partyOf = async id => (await adminAuthClient.from('user_parties').select('*').eq('id', id).single()).data;
+  const attendeesOf = async id => (await adminAuthClient.from('attendees').select('id, name')
+    .eq('party_id', id).is('deleted_at', null).order('position')).data;
+  const expectFrozen = (error) => {
+    expect(error?.message).toBe('registration_frozen');
+    expect(JSON.parse(error.details)).toHaveProperty('start_date');
+  };
+
+  beforeAll(async () => {
+    memberClient = await signIn('member@test.local');
+    adminAuthClient = await signIn('admin@test.local');
+    organiserClient = await signIn('organiser@test.local');
+    await setStart(hoursFromNow(1));
+    const { error } = await adminAuthClient.rpc('set_edition_role', {
+      p_event_id: FROZEN_EVENT_ID, p_user_id: ORGANISER_ID, p_role: 'organiser'
+    });
+    if (error) throw error;
+  });
+
+  const createdUserIds = [];
+
+  afterAll(async () => {
+    await clearParties();
+    for (const id of createdUserIds) {
+      const { error } = await adminClient.auth.admin.deleteUser(id);
+      if (error) throw error;
+    }
+    await adminAuthClient.from('edition_roles').delete().eq('event_id', FROZEN_EVENT_ID);
+    await adminAuthClient.from('events').update({ status: 'DRAFT' }).eq('id', FROZEN_EVENT_ID);
+  });
+
+  test('before the start instant, a member registers, edits and cancels', async () => {
+    await clearParties();
+    await setStart(hoursFromNow(1));
+    const party = await saveOk(memberClient, FROZEN_EVENT_ID, [adult('Ann'), adult('Bob')]);
+    await saveOk(memberClient, FROZEN_EVENT_ID, [adult('Ann')]);
+    const { error } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(error).toBeNull();
+    expect((await partyOf(party.id)).status).toBe('cancelled');
+  });
+
+  test('a null start date never freezes', async () => {
+    await clearParties();
+    await setStart(null);
+    const party = await saveOk(memberClient, FROZEN_EVENT_ID, [adult('Ann')]);
+    const { error } = await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(error).toBeNull();
+  });
+
+  test('after the start, a member cannot register', async () => {
+    await clearParties();
+    await setStart(hoursFromNow(-1));
+    const { error } = await save(memberClient, FROZEN_EVENT_ID, [adult('Ann')]);
+    expectFrozen(error);
+    const { error: insertError } = await memberClient.from('user_parties').insert({ user_id: MEMBER_ID, event_id: FROZEN_EVENT_ID });
+    expectFrozen(insertError);
+    expect((await adminAuthClient.from('user_parties').select('id').eq('event_id', FROZEN_EVENT_ID)).data).toEqual([]);
+  });
+
+  test('after the start, a member cannot edit, add or remove participants', async () => {
+    const party = await registeredThenStarted();
+    const [ann, bob] = await attendeesOf(party.id);
+
+    expectFrozen((await save(memberClient, FROZEN_EVENT_ID, [{ ...adult('Annie'), id: ann.id }, { ...adult('Bob'), id: bob.id }])).error);
+    expectFrozen((await save(memberClient, FROZEN_EVENT_ID, [{ ...adult('Ann'), id: ann.id }, { ...adult('Bob'), id: bob.id }, adult('Cy')])).error);
+    // Removing: this code, not the close date's registration_attendee_removal_locked.
+    expectFrozen((await save(memberClient, FROZEN_EVENT_ID, [{ ...adult('Ann'), id: ann.id }])).error);
+    expectFrozen((await memberClient.from('user_parties').update({ message_to_organizers: 'late' }).eq('id', party.id)).error);
+
+    expect((await attendeesOf(party.id)).map(attendee => attendee.name)).toEqual(['Ann', 'Bob']);
+    expect((await partyOf(party.id)).message_to_organizers).not.toBe('late');
+  });
+
+  test('after the start, a member cannot cancel nor register again', async () => {
+    const party = await registeredThenStarted();
+    expectFrozen((await memberClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id)).error);
+    expect((await partyOf(party.id)).status).toBe('registered');
+
+    // Cancelled by an admin: the member can't take it up again.
+    const { error: adminCancel } = await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(adminCancel).toBeNull();
+    expectFrozen((await save(memberClient, FROZEN_EVENT_ID, [adult('Ann')])).error);
+    expect((await partyOf(party.id)).status).toBe('cancelled');
+  });
+
+  test('after the start, an admin still edits, adds, removes, cancels and marks payments, and it is logged', async () => {
+    const party = await registeredThenStarted();
+    const [ann] = await attendeesOf(party.id);
+    const before = (await adminAuthClient.from('registration_edits').select('id').eq('registration_id', party.id)).data.length;
+
+    await saveOk(adminAuthClient, FROZEN_EVENT_ID, [{ ...adult('Annie'), id: ann.id }, adult('Cy')], { userId: MEMBER_ID });
+    expect((await attendeesOf(party.id)).map(attendee => attendee.name)).toEqual(['Annie', 'Cy']);
+    const { error: payError } = await adminAuthClient.from('user_parties').update({ payment_status: 'paid' }).eq('id', party.id);
+    expect(payError).toBeNull();
+    expect((await partyOf(party.id)).payment_status).toBe('paid');
+    const after = (await adminAuthClient.from('registration_edits').select('id').eq('registration_id', party.id)).data.length;
+    expect(after).toBeGreaterThan(before);
+
+    const { error: cancelError } = await adminAuthClient.from('user_parties').update({ status: 'cancelled' }).eq('id', party.id);
+    expect(cancelError).toBeNull();
+    await saveOk(adminAuthClient, FROZEN_EVENT_ID, [adult('Ann')], { userId: MEMBER_ID });
+    expect((await partyOf(party.id)).status).toBe('registered');
+  });
+
+  test("after the start, an Organisateur still marks payments and writes the party's message", async () => {
+    const party = await registeredThenStarted();
+    const { error } = await organiserClient.rpc('set_payment_status', { p_party_id: party.id, p_payment_status: 'paid' });
+    expect(error).toBeNull();
+    const { data: failed, error: logisticsError } = await organiserClient.rpc('save_logistics', {
+      p_changes: [{ party_id: party.id, places: {}, message_to_participants: 'Bienvenue' }]
+    });
+    expect(logisticsError).toBeNull();
+    expect(failed).toEqual([]);
+    const row = await partyOf(party.id);
+    expect(row.payment_status).toBe('paid');
+    expect(row.message_to_participants).toBe('Bienvenue');
+  });
+
+  test("after the start, an Organisateur's first price locks the unpriced parties (apply_event_pricing)", async () => {
+    const party = await registeredThenStarted();
+    const { error: unprice } = await adminAuthClient.from('events')
+      .update({ selling_price_whole_event: null }).eq('id', FROZEN_EVENT_ID);
+    expect(unprice).toBeNull();
+    expect((await partyOf(party.id)).locked_selling_price_whole_event).toBeNull();
+
+    // trg_lock_unpriced_registrations_on_first_price updates the event's unpriced parties: the
+    // freeze lets that cascade through rather than rolling the price back.
+    const { error } = await organiserClient.rpc('apply_event_pricing', {
+      p_event_id: FROZEN_EVENT_ID, p_selling_price_whole_event: 250, p_ratio_main_whole: 0.6
+    });
+    expect(error).toBeNull();
+    const { data: event } = await adminAuthClient.from('events').select('selling_price_whole_event').eq('id', FROZEN_EVENT_ID).single();
+    expect(Number(event.selling_price_whole_event)).toBe(250);
+    expect(Number((await partyOf(party.id)).locked_selling_price_whole_event)).toBe(250);
+
+    // The mark is cleared after the cascade: the member is still frozen in the same session.
+    expectFrozen((await memberClient.from('user_parties').update({ message_to_organizers: 'late' }).eq('id', party.id)).error);
+  });
+
+  test.each([
+    ['on the start day (x_reg_close_weeks 0)', 0],
+    ['with no close date (x_reg_close_weeks null)', null]
+  ])('during the weekend, deleting the account is refused with account_deletion_locked, %s', async (_label, closeWeeks) => {
+    await clearParties();
+    await setStart(hoursFromNow(1), closeWeeks);
+    const email = `del314-${closeWeeks ?? 'null'}-${Date.now()}@test.local`;
+    const { data, error: createError } = await adminClient.auth.admin.createUser({ email, password: 'password123', email_confirm: true });
+    if (createError) throw createError;
+    createdUserIds.push(data.user.id);
+    const client = await signIn(email);
+    const party = await saveOk(client, FROZEN_EVENT_ID, [adult('Del')]);
+    const start = hoursFromNow(-1);
+    await setStart(start, closeWeeks);
+
+    const { error } = await client.rpc('delete_my_account');
+    expect(error?.message).toBe('account_deletion_locked');
+    // The close date, or the start day when there is none: the start's Toronto day either way.
+    const startDay = new Date(start).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+    expect(JSON.parse(error.details)).toEqual({ event: 'Frozen Test', close_date: startDay });
+    expect((await partyOf(party.id)).status).toBe('registered');
+    const { data: profile } = await adminAuthClient.from('profiles').select('deleted_at').eq('id', data.user.id).single();
+    expect(profile.deleted_at).toBeNull();
+  });
+
+  test('after the start, direct database sessions (seed.sql) and service-role claims still write', async () => {
+    const party = await registeredThenStarted();
+    // Local only. The service role has no write grant on user_parties through the API; its claims
+    // still pass the guard, like a session with no claims at all.
+    const dbUrl = localDbUrl();
+    expect(['127.0.0.1', 'localhost', '::1']).toContain(new URL(dbUrl).hostname);
+    const db = new pg.Client({ connectionString: dbUrl });
+    await db.connect();
+    try {
+      await db.query(`update public.user_parties set message_to_organizers = 'seeded' where id = $1`, [party.id]);
+      await db.query('begin');
+      await db.query(`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`);
+      // Not a cancellation: the close-date lock (#38) has no service-role exemption, and this
+      // event's close day may already be over.
+      await db.query(`update public.user_parties set music_requests = 'claims' where id = $1`, [party.id]);
+      await db.query('commit');
+    } finally {
+      await db.end();
+    }
+    const row = await partyOf(party.id);
+    expect(row.message_to_organizers).toBe('seeded');
+    expect(row.music_requests).toBe('claims');
+  });
+
+  test("after the start, a member's other writes still work: profile, feedback", async () => {
+    await registeredThenStarted();
+    const { data: profile } = await memberClient.from('profiles').select('full_name').eq('id', MEMBER_ID).single();
+    const { error: profileError } = await memberClient.from('profiles').update({ full_name: profile.full_name }).eq('id', MEMBER_ID);
+    expect(profileError).toBeNull();
+    const { data: feedback, error: feedbackError } = await memberClient.from('app_feedback')
+      .insert({ user_id: MEMBER_ID, content: 'Frozen test feedback' }).select('id').single();
+    expect(feedbackError).toBeNull();
+    await adminAuthClient.from('app_feedback').delete().eq('id', feedback.id);
+  });
+});

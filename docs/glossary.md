@@ -96,6 +96,14 @@ by account admins only ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md))
 feedback (« Feedback », `app_feedback`), which is about the app itself.
 _Avoid_: feedback, survey, review (for this).
 
+**Registration close date** (fr. *date limite de désinscription*)
+The start day minus `x_reg_close_weeks` weeks. After it a member can still add and edit, but can no
+longer cancel or remove a participant: the amount owed stays owed.
+
+**Frozen registration** (#314)
+From the event's start instant (`event_start_date`) a member can change nothing on their
+registration, not even register again; admins still can.
+
 ## Money
 
 **Base price** / **selling price** (fr. *prix de base*, *prix de vente*, column

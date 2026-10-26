@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, CalendarX2, Hourglass, Info, PartyPopper, RotateCw } from 'lucide-react';
+import { ArrowRight, CalendarX2, Hourglass, Info, LockKeyhole, PartyPopper, RotateCw } from 'lucide-react';
 import RegistrationSummary from './RegistrationSummary';
 import PosterHeader from '../components/brand/PosterHeader';
 import PhaseTrack from '../components/brand/PhaseTrack';
 import { Button, Card, EmptyState, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
 import { formatCurrency } from '../lib/format';
-import { getEventPhase } from '../lib/eventPhase';
+import { getEventPhase, isRegistrationFrozen } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
 import { isActiveRegistration } from '../lib/registrationOptions';
 import { useToasts } from '../hooks/useToasts';
@@ -60,7 +60,7 @@ const InviteCard = ({ event, isIntent }) => (
 // Long enough to read a sentence and reach for the close button (#155).
 const TOAST_DURATION_MS = 7000;
 
-const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick }) => {
+const HomeView = ({ activeEvent, isAuthenticated, isAdmin = false, otherEvents = [], onEventClick }) => {
   const { registration, setRegistration, loading, error, refetch } = useMyRegistration(activeEvent, isAuthenticated);
   const { addToast } = useToasts(TOAST_DURATION_MS);
   const location = useLocation();
@@ -94,6 +94,8 @@ const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick
 
   const eventPhase = getEventPhase(activeEvent);
   const isIntent = eventPhase === 'INTENT_PHASE';
+  // From the event's start a member can no longer register (#314); admins still can.
+  const frozen = !isAdmin && isRegistrationFrozen(activeEvent);
 
   return (
     <div className="space-y-6">
@@ -133,6 +135,7 @@ const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick
           event={activeEvent}
           isIntent={isIntent}
           animateStamp={justSaved}
+          isAdmin={isAdmin}
           onEdit={() => navigate('/inscription')}
           onCancelled={(cancelled) => {
             setRegistration(cancelled);
@@ -142,8 +145,14 @@ const HomeView = ({ activeEvent, isAuthenticated, otherEvents = [], onEventClick
         />
       ) : !error && (
         <>
-          {registration && <Notice tone="info">{fr.registrationCancelledNotice}</Notice>}
-          <InviteCard event={activeEvent} isIntent={isIntent} />
+          {frozen ? (
+            <Notice tone="info" icon={LockKeyhole}>{fr.registrationFrozenClosed}</Notice>
+          ) : (
+            <>
+              {registration && <Notice tone="info">{fr.registrationCancelledNotice}</Notice>}
+              <InviteCard event={activeEvent} isIntent={isIntent} />
+            </>
+          )}
         </>
       )}
 
