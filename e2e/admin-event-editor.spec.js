@@ -1,7 +1,7 @@
 // The event editor page (Événements tab): unsaved edits to the event's fields are a draft that
 // survives the app re-rendering (it used to remount the whole admin page, e.g. when the browser tab
 // regained focus), a trip to another admin tab, and a reload.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, eventRow, backLink, moreButton, moreSheet, openSection, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { E2E_EVENT_THEME, getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';

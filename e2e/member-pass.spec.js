@@ -1,6 +1,6 @@
 // The member's Pass labels the amount to match its stamp (issue #90): "Montant dû" while unpaid,
 // "Montant payé" once an admin has marked the party paid.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { getParty, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';

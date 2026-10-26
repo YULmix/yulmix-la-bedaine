@@ -1,7 +1,7 @@
 // The admin navigation (#29, #83, #208): /admin/<section>, overview | users | logistics | budget |
 // events | venues | team | feedback (#196, ADR 0022), from a sidebar on desktop and a bottom bar plus « Plus »
 // on phones. Older ?tab= links redirect to their path.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,
@@ -257,7 +257,7 @@ test.describe('admin tabs', () => {
   test('« Inscription » is read-only; « Modifier » opens the editor, and the pencil column is gone (#258)', async ({ page }) => {
     await openAdmin(page, '/users');
     const detail = await openPartyDetail(page);
-    await expect(detail.getByText('member@test.local')).toBeVisible();
+    await expect(detail.getByText('member@test.local', { exact: true })).toBeVisible();
     await expect(detail.getByText(fr.partyDetailRegisteredOn)).toBeVisible();
     for (const attendee of E2E_ATTENDEES) await expect(detail.getByText(attendee.name, { exact: true })).toBeVisible();
     // Read-only: no field, and « Modifier » is the only way on.

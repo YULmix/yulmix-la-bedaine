@@ -1,7 +1,7 @@
 // Sleeping locations and places (#113) of a venue (#145), on its page of the Sites tab (#146).
 // Every change saves right away; an occupied place or location can't be deleted, and says who's
 // in it.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, backLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

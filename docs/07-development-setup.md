@@ -340,6 +340,14 @@ directly for the seeded `member@test.local` / `admin@test.local` users
 (`src/lib/supabase.ts`, guarded by `import.meta.env.DEV`; dead-code-eliminated from `npm run
 build`'s output).
 
+Specs import `test` from `e2e/support/test.js`, not from `@playwright/test`. It sends the app's and
+the API's requests through Playwright's Node-side `route.fetch()`: Chromium aborts the requests in
+flight with `net::ERR_NETWORK_CHANGED` whenever the host's network configuration changes, which
+containers of other worktree stacks starting and stopping do all the time, and the app then never
+loads (`loginAs` times out waiting for `window.__supabase`, #327). Served that way, the document
+has no IP address space and Chromium's Local Network Access checks would block its WebSockets, so
+`playwright.config.js` launches Chromium with `--disable-features=LocalNetworkAccessChecks`.
+
 Run it with `npm run test:e2e`. `playwright.config.js` reads `supabase status -o env` at config-load
 time (not in `globalSetup` — Playwright starts `webServer` before `globalSetup` runs, which is too
 late for Vite to pick up `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) and fails with a clear error

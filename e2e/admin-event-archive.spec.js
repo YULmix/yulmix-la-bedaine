@@ -1,6 +1,6 @@
 // Archiving the active event (Événements tab) asks first (#22): cancelling leaves it untouched,
 // confirming archives it. Archiving is one-way in the app, and the dialog says so.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { E2E_EVENT_THEME, getEvent, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';

@@ -1,7 +1,7 @@
 // Saving a registration says so (#155). A new one is confirmed on a screen of its own, with what
 // to do about paying, instead of dropping the member on the home page; the save shows it is in
 // flight; an edit returns to the pass with a toast.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,

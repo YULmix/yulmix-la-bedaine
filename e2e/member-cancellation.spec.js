@@ -1,7 +1,7 @@
 // Member self-cancellation (issue #35): "Se désinscrire" is a soft status change, and after the
 // registration close date the member can no longer cancel. From the event's start the whole
 // registration is frozen for members (#314); admins keep editing.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { adminMain, openPartyDetail, openPartyEditor } from './support/admin.js';
 import {

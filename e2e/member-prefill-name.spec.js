@@ -1,6 +1,6 @@
 // A new registration starts with the member's own name as the first attendee (#133); editing a
 // registration keeps the names it was saved with.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { E2E_ATTENDEES, deleteParty, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';

@@ -2,7 +2,7 @@
 // a back link naming the parent and then the title, keep the parent section current in the
 // navigation, and fit a phone. Geometry is asserted, not just visibility: boxes that overlap or a
 // page that scrolls sideways pass a visibility check.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, eventRow, backLink, moreButton, sectionLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

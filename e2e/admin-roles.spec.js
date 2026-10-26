@@ -4,7 +4,7 @@
 // admin grants, changes and removes a role in « Équipe », and sees each in the log.
 //
 // E2E_SCREENSHOT_DIR=<dir> saves « Équipe » at 390 and 1440 px wide.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { readFileSync } from 'node:fs';
 import { adminMain, adminNav, moreButton, openPartyDetail } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
