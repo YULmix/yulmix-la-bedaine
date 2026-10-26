@@ -1,7 +1,7 @@
 // The Logistique tab's five views (#179): places, and the form's answers (food, volunteering,
 // transport, comments) of confirmed parties. The view is in the URL; pending place changes
 // survive moving between views; a waitlisted party's answers are left out; members are blocked.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminNav, sectionLink, viewLink } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

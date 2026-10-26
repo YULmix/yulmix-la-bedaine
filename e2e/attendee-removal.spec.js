@@ -1,7 +1,7 @@
 // Removing someone from a registration (#237) keeps their attendee row, marked removed, and every
 // reader ignores it: the member's Pass and amount owed, the admin's Inscrits list, Logistique, the
 // « Par participant » export and the carpool board. Whether the member or an admin removes them.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, openPartyEditor } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

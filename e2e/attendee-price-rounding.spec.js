@@ -1,7 +1,7 @@
 // Each attendee's price is rounded up to the dollar, and a party owes the sum of those rounded
 // prices (issue #120): the lines in the registration form always add up to its estimate, and to
 // what the database stores.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { getParty, seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';

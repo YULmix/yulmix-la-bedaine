@@ -1,7 +1,7 @@
 // Inscrits' « Historique » view, « Historique des changements » (#173): one event's registrations and edits,
 // newest first, with their author; a CSV download and a Google Sheets copy of the same rows, one
 // per changed field. Members can't reach it; their own history still reads in French.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   addParty,

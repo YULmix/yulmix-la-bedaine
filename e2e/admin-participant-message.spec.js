@@ -2,7 +2,7 @@
 // shows each party's message to the organisers under its places. The organisers write a message
 // to the participants, saved with the one Save, logged in the change history and shown in the
 // member's « Logistique » card; their private notes never are.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

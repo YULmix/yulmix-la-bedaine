@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 
 test('unauthenticated visitor sees the sign-in prompt, not event data', async ({ page }) => {

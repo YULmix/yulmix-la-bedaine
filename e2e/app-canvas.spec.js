@@ -1,7 +1,7 @@
 // One app canvas (#226): the header, the page and the footer share the same left and right edges
 // on member and admin pages, the admin sidebar sits on the canvas's left edge, narrow pages stay
 // at most 768 px, and nothing scrolls horizontally.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 

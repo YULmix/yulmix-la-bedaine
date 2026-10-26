@@ -1,6 +1,6 @@
 // Galleries (#177): admins edit the venue's two galleries and each location's on the venue's page
 // of the Sites tab; members and admins view them through the same thumbnail button and carousel.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { readFileSync } from 'node:fs';
 import { loginAs, TEST_USERS } from './support/auth.js';

@@ -1,6 +1,6 @@
 // Retours (#209): the feedback inbox, its « Afficher résolus » filter, and the count of
 // unresolved items on the section's marker. Members can't reach it.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { resetFeedback } from './support/testData.js';
 import { adminMain, adminNav, moreButton } from './support/admin.js';

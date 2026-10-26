@@ -1,7 +1,7 @@
 // The carpool board (#180): members registered for the active event, and admins, see the lifts of
 // its confirmed parties, with name, email, departure, times and seats, and each one's closest
 // matches by detour. Anyone else gets no nav item and a « not available » page.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   addParty,

@@ -1,7 +1,7 @@
 // A new registration's transport arrival defaults to the event's first day and its departure to
 // the last (#123); saved times are never overwritten, and the inputs stay inside the event's
 // dates and their container.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { openPartyEditor } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

@@ -1,6 +1,6 @@
 // "Supprimer mon compte" (issue #36): a soft delete from the account menu, refused after the
 // registration close date. Uses a throwaway member: a deleted account can't be restored.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

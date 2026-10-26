@@ -1,6 +1,6 @@
 // The member's summary never shows a raw transport value (#232): the column default 'None' and
 // '' both read « Je me débrouille »; offer and need keep their wording, seats and departure.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   seedActiveEventWithMemberParty,

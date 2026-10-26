@@ -3,6 +3,8 @@
 // session via Supabase's password grant, then hand it to the app's own supabase client
 // (exposed on window in dev builds, see src/lib/supabase.ts) rather than poking at
 // localStorage directly, so this doesn't depend on the auth-js storage format.
+import { routeThroughNode } from './test.js';
+
 export const TEST_USERS = {
   member: { email: 'member@test.local', password: 'password123' },
   admin: { email: 'admin@test.local', password: 'password123' },
@@ -42,6 +44,7 @@ async function sessionFor(request, { email, password }) {
 
 let loginCount = 0;
 export async function loginAs(page, { email, password }) {
+  await routeThroughNode(page.context());
   const session = await sessionFor(page.request, { email, password });
   const storageKey = `sb-${new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
   // Written once per loginAs call (a marker in sessionStorage), so a spec that signs out and

@@ -1,6 +1,6 @@
 // The member pages use the two page widths (#211): the canvas is clamped and centred, the narrow
 // pages stay at max-w-3xl, and nothing scrolls horizontally at phone and laptop widths.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 

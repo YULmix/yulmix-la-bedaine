@@ -1,6 +1,6 @@
 // Assigning sleeping places from the Logistique tab (#114): a searchable dropdown of the event's
 // places, preference-matching ones first, full ones last and still pickable with a warning.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

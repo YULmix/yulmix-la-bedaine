@@ -1,7 +1,7 @@
 // Inscrits' « Exporter » dialog (#178, #209): « Par groupe » and « Par participant », each as a CSV
 // download (BOM, quoted cells) and a Google Sheets copy (TSV, one line per row). A waitlisted
 // party is listed with its status; members are blocked.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   ADMIN_ID,

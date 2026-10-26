@@ -1,6 +1,6 @@
 // The registration form keeps unsaved changes across a reload of the tab, and asks before they
 // are lost by closing the tab or leaving the form (#144).
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
   E2E_ATTENDEES,

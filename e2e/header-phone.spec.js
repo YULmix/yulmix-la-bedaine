@@ -1,7 +1,7 @@
 // The header on a narrow phone (#151): the brand name never wraps onto two lines or crowds the
 // nav icons, and the account button stays on screen however long the member's name is. Below
 // 440px the brand text is hidden and only the logo shows.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { createThrowawayMember, deleteThrowawayMember } from './support/testData.js';
 import { readFileSync } from 'node:fs';

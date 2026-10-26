@@ -1,7 +1,7 @@
 // Preview-only account picker (#105): "Se connecter comme…" signs in as a seeded @test.local
 // account. The dev server builds with __PREVIEW_TOOLS__ on and points at a local stack, so it's
 // enabled here the way it is on a preview deployment. Only sessions change; no data is written.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { adminNav as adminSidebar } from './support/admin.js';
 import {

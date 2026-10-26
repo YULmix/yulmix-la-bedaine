@@ -1,7 +1,7 @@
 // Cancelled registrations in the admin (issue #101): no refunds, so a cancelled party counts for
 // nothing. It stays out of the totals, "Tous" and logistics, and shows only under an "Annulées"
 // pill that exists only while there is one.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {

@@ -1,6 +1,6 @@
 // The member event info never shows the maximum capacity (#305): it is an internal planning
 // threshold (max_attendees), still enforced by the database and shown to admins in the editor.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, teardownActiveEventWithMemberParty } from './support/testData.js';
 

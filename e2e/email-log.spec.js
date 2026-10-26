@@ -1,7 +1,7 @@
 // Per-party email log (#93): a short, honest summary for the member under their Pass, every
 // detail for admins in the party's edit dialog, and failed/pending emails surfaced in Vue
 // d'ensemble. Run at a phone width and a desktop width.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import { seedActiveEventWithMemberParty, seedEmailLog, teardownActiveEventWithMemberParty } from './support/testData.js';
 import { readFileSync } from 'node:fs';

@@ -1,6 +1,6 @@
 // The overview's sleeping figures (#115): per-location occupancy, attendees without a place, and
 // overbooked places, following what's assigned in the Logistique tab.
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/test.js';
 import { adminMain, openSection } from './support/admin.js';
 import { loginAs, TEST_USERS } from './support/auth.js';
 import {
