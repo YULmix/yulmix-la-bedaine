@@ -4380,7 +4380,8 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
   const COUNTS_DUE = 'a0000000-a000-a000-a000-a0000000315d'; // counts: past its close date, the first call is the counts
   const COUNTS_DRAFT = 'a0000000-a000-a000-a000-a0000000315e'; // counts: a DRAFT event
   const RELEASE_RACE = 'a0000000-a000-a000-a000-a0000000315f'; // the 2nd and 3rd private authors save at once
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS, COUNTS_OWN, COUNTS_DUE, COUNTS_DRAFT, RELEASE_RACE];
+  const SET = 'a0000000-a000-a000-a000-a00000003160'; // the whole-set save: an empty set, a kind switched, a stale tab
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK, SWITCH, SWITCH_DUE, COUNTS, COUNTS_OWN, COUNTS_DUE, COUNTS_DRAFT, RELEASE_RACE, SET];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4501,6 +4502,7 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
     await register('admin', COUNTS_OWN, ADMIN_ID);
     for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named']) await register(label, COUNTS_DUE, users[label].id);
     for (const label of ['Anon1', 'Anon2', 'Anon3']) await register(label, RELEASE_RACE, users[label].id);
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named']) await register(label, SET, users[label].id);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${COUNTS}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${COUNTS}`]]);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
@@ -4669,7 +4671,7 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
     }
   });
 
-  test('refused with a coded error: before the window, after the close, empty, invalid, too long, cancelled, waitlisted, not registered', async () => {
+  test('refused with a coded error: before the window, after the close, invalid, too long, cancelled, waitlisted, not registered', async () => {
     const text = { other: 'Quelque chose' };
     expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(30) });
     expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ eligible: true, window: 'not_yet', opens_on: isoDay(30) });
@@ -4696,10 +4698,6 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
     expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed', closed_at: expect.any(String) });
 
     const before = await stored(OPEN);
-    // A save with no item is refused (blank texts are no item); the member's items stay.
-    for (const empty of [[], [item('welcome', ''), item('food', '   ', true), item('other', '\n\t ')]]) {
-      expectCode(await submitRaw(clients.member, OPEN, empty), 'event_feedback_empty');
-    }
     expectCode(await submitRaw(clients.member, OPEN, [item('rating', '5')]), 'event_feedback_invalid', { category: 'rating' });
     expectCode(await submitRaw(clients.member, OPEN, [{ text: 'x' }]), 'event_feedback_invalid', { category: null });
     expectCode(await submitRaw(clients.member, OPEN, [item('food', 5)]), 'event_feedback_invalid', { category: 'food' });
@@ -4732,6 +4730,71 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
     }
     const { rows } = await db.query('select count(*)::int as n from public.event_feedback_items where event_id = any($1::uuid[])', [[FUTURE, ARCHIVED]]);
     expect(rows[0].n).toBe(0);
+  });
+
+  // The save replaces the member's whole set (#354 round 2): an empty one deletes everything, the
+  // organiser's rule being that private items are deletable until the close.
+  test('an empty set deletes all the member\'s items (a no-op with none); a kind switch and a stale tab replace the set', async () => {
+    const own = async (label) => (await stored(SET)).filter((row) => row.author_id === users[label].id);
+    const counts = () => ok(countsOf(clients.admin, SET));
+
+    // 1. Nothing stored: an empty set (or blank texts only) changes nothing and returns no item.
+    expect(await ok(submitRaw(clients.Named, SET, []))).toEqual({ items: [] });
+    expect(await ok(submitRaw(clients.Named, SET, [item('welcome', ''), item('food', '  ', true)]))).toEqual({ items: [] });
+    expect(await stored(SET)).toEqual([]);
+
+    // 2. A member whose only item is private deletes it with an empty set, before the release.
+    await ok(submit(clients.Anon1, SET, { food: 'Set privé 1' }, true));
+    expect(await own('Anon1')).toHaveLength(1);
+    expect(await ok(submitRaw(clients.Anon1, SET, []))).toEqual({ items: [] });
+    expect(await own('Anon1')).toEqual([]);
+    expect(await stored(SET)).toEqual([]);
+    expect((await ok(mine(clients.Anon1, SET))).items).toEqual([]);
+    expect(await counts()).toMatchObject({ released: false, signed_total: 0, private_total: null });
+    // Blank texts only are an empty set too: a signed and a private item, both gone.
+    await ok(submit(clients.Anon1, SET, [item('food', 'Set signé 1'), item('food', 'Set privé 1', true)]));
+    await ok(submitRaw(clients.Anon1, SET, [item('food', ' '), item('food', '', true)]));
+    expect(await own('Anon1')).toEqual([]);
+
+    // A deleted author no longer counts toward the 3: two authors left, no release.
+    await ok(submit(clients.Anon1, SET, { food: 'Set privé 1' }, true));
+    await ok(submit(clients.Anon2, SET, { food: 'Set privé 2' }, true));
+    await ok(submitRaw(clients.Anon1, SET, []));
+    await ok(submit(clients.Anon3, SET, { food: 'Set privé 3' }, true));
+    expect(await released(SET)).toBe(false);
+    expect(await counts()).toMatchObject({ released: false, private_total: null });
+    await ok(submit(clients.Anon1, SET, { food: 'Set privé 1' }, true));
+    expect(await released(SET)).toBe(true);
+    expect(await counts()).toMatchObject({ released: true, private_total: 3 });
+
+    // After the release, an empty set still deletes, and the release stays (final).
+    await ok(submitRaw(clients.Anon3, SET, []));
+    expect(await own('Anon3')).toEqual([]);
+    expect(await released(SET)).toBe(true);
+    expect(await counts()).toMatchObject({ released: true, private_total: 2 });
+    expect((await ok(answersOf(clients.admin, SET))).private.map((entry) => entry.text).sort()).toEqual(['Set privé 1', 'Set privé 2']);
+
+    // 4. On the released event, Anon2 switches their only private item to signed in one save:
+    // the private one is gone, the signed one shown with its author, still released.
+    const switched = await ok(submit(clients.Anon2, SET, { food: 'Set privé 2' }, false));
+    expect(switched.items).toEqual([item('food', 'Set privé 2')]);
+    expect(await own('Anon2')).toEqual([expect.objectContaining({ category: 'food', body: 'Set privé 2', is_private: false })]);
+    const answers = await ok(answersOf(clients.admin, SET));
+    expect(answers).toMatchObject({ released: true, private: [{ category: 'food', text: 'Set privé 1' }] });
+    expect(answers.signed).toEqual([{
+      category: 'food', text: 'Set privé 2',
+      author: { id: users.Anon2.id, party: parties[`Anon2:${SET}`], name: users.Anon2.name, email: users.Anon2.email }
+    }]);
+    expect(await counts()).toMatchObject({ released: true, signed_members: 1, signed_total: 1, private_total: 1 });
+
+    // 8. Two tabs: the second adds an item, then the stale first one saves the set it still holds.
+    // The save replaces the whole set, so the item added in the other tab is deleted.
+    await ok(submit(clients.Named, SET, { welcome: 'Onglet 1' }, false)); // tab 1 loads this
+    await ok(submit(clients.Named, SET, [item('welcome', 'Onglet 1'), item('lodging', 'Onglet 2', true)])); // tab 2
+    const welcomeId = (await own('Named')).find((row) => row.category === 'welcome').id;
+    const stale = await ok(submit(clients.Named, SET, { welcome: 'Onglet 1 modifié' }, false)); // tab 1, stale
+    expect(stale.items).toEqual([item('welcome', 'Onglet 1 modifié')]);
+    expect(await own('Named')).toEqual([expect.objectContaining({ id: welcomeId, category: 'welcome', is_private: false })]);
   });
 
   test('nobody reads or writes the tables or the release marker directly, through an embed either', async () => {
@@ -4899,13 +4962,16 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
   });
 
   // #354: the #345 exclusion of the caller's own anonymous answer is dropped; anyone counts.
-  test('an admin\'s own private item counts toward the 3', async () => {
-    await ok(submit(clients.admin, COUNTS_OWN, { other: 'Admin privé' }, true));
+  test('an admin\'s own private item counts toward the 3, and they read both their items back', async () => {
+    const adminItems = [item('other', 'Admin signé'), item('other', 'Admin privé', true)];
+    await ok(submit(clients.admin, COUNTS_OWN, adminItems));
     await ok(submit(clients.Anon1, COUNTS_OWN, { other: 'Autre 1' }, true));
     expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ released: false, private_total: null });
     await ok(submit(clients.Anon2, COUNTS_OWN, { other: 'Autre 2' }, true));
-    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ released: true, signed_members: 0, private_total: 3 });
+    expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ released: true, signed_members: 1, private_total: 3 });
     expect((await ok(answersOf(clients.admin, COUNTS_OWN))).private.map((entry) => entry.text).sort()).toEqual(['Admin privé', 'Autre 1', 'Autre 2']);
+    // Released, the admin (a registered member here) still gets their signed and private items back.
+    expect(await ok(mine(clients.admin, COUNTS_OWN))).toMatchObject({ eligible: true, window: 'open', items: adminItems });
     // After the close (the levée), still released, the same texts.
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', COUNTS_OWN));
     expect(await ok(countsOf(clients.admin, COUNTS_OWN))).toMatchObject({ closed: true, released: true, private_total: 3 });
@@ -5250,12 +5316,22 @@ describe('📝 post-mortem feedback: signed items live, private ones from 3 auth
     await ok(submit(clients.Anon2, ARCH2, { welcome: 'Arch2 privé 2' }, true));
     await ok(submit(clients.Named, ARCH2, { welcome: 'Arch2 signé' }, false));
     expect(await ok(answersOf(clients.admin, ARCH2))).toMatchObject({ closed: false, released: false, private: [] });
+    const windowIds = (await stored(ARCH2)).filter((row) => row.is_private).map((row) => row.id);
+    expect(windowIds).toHaveLength(2);
 
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCH2));
     const closed = await eventRow(ARCH2);
     expect(closed.feedback_closed_at).not.toBeNull();
     const after = await stored(ARCH2);
-    expect(after.filter((row) => row.is_private).every((row) => row.author_id === null)).toBe(true);
+    // The levée on a never-released event: the private items get new ids and lose their links.
+    const published = after.filter((row) => row.is_private);
+    expect(published).toHaveLength(2);
+    expect(published.every((row) => row.author_id === null && row.party_id === null)).toBe(true);
+    expect(published.filter((row) => windowIds.includes(row.id))).toEqual([]);
+    const { rows: links } = await db.query('select count(*)::int as n from public.event_feedback_item_authors where event_id = $1 and is_private', [ARCH2]);
+    expect(links[0].n).toBe(0);
+    expect(await ok(countsOf(clients.admin, ARCH2))).toMatchObject({ closed: true, released: false, private_total: null });
+    expect((await ok(countsOf(clients.admin, ARCH2))).categories.every((entry) => entry.private === null)).toBe(true);
 
     await ok(clients.admin.from('events').update({ status: 'ACTIVE' }).eq('id', ARCH2));
     await ok(clients.admin.from('events').update({ feedback_days: 200 }).eq('id', ARCH2));

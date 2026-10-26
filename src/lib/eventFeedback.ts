@@ -153,8 +153,9 @@ export const fetchMyEventFeedback = async (client: Client, eventId: string): Pro
 };
 
 /**
- * Saves the caller's whole set of items (a pair left out is deleted, a kept one keeps its id);
- * returns the items as saved (trimmed, blanks dropped). Throws an appError in French.
+ * Saves the caller's whole set of items (a pair left out is deleted, a kept one keeps its id; an
+ * empty set deletes them all). Always send the full current set: a partial one deletes the rest.
+ * Returns the items as saved (trimmed, blanks dropped). Throws an appError in French.
  */
 export const submitEventFeedback = async (client: Client, eventId: string, items: FeedbackItem[]): Promise<FeedbackItem[]> => {
   const payload = items.map(({ category, private: isPrivate, text }) => ({ category, private: isPrivate, text }));
