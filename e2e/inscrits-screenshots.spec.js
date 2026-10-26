@@ -13,9 +13,6 @@ test('Inscrits screenshots', async ({ page }) => {
   test.skip(!process.env.E2E_SCREENSHOT_DIR, 'set E2E_SCREENSHOT_DIR');
   const shot = (name, width) => page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}-admin-${width}.png`, fullPage: false });
   const settle = () => page.waitForTimeout(500); // the switch's and the dialogs' animation
-  // The « Des ajustements… rafraîchir » banner (a resolved feedback in the seed) isn't the screen
-  // under review: mark it dismissed (ResolutionBanner's key) before any page loads.
-  await page.addInitScript(() => window.localStorage.setItem('feedbackBannerDismissedAt', '9999-12-31T00:00:00Z'));
   await loginAs(page, TEST_USERS.admin);
   for (const [width, height] of [[390, 1400], [768, 1100], [1024, 900], [1440, 1000], [2560, 1300]]) {
     await page.setViewportSize({ width, height });

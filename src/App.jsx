@@ -5,7 +5,6 @@ import Header from './components/Header';
 import { CANVAS_CLASS, pageWidthClass } from './lib/pageWidth';
 import EventModal from './components/EventModal';
 import FeedbackModal from './components/FeedbackModal';
-import ResolutionBanner from './components/ResolutionBanner';
 import ToastContainer from './components/Toast';
 import HomeView from './views/HomeView';
 import AdminView from './views/AdminView';
@@ -231,7 +230,6 @@ function App() {
   return (
     <div className="flex min-h-dvh flex-col bg-night text-ink">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-80 focus:rounded-control focus:bg-neon focus:px-4 focus:py-2 focus:text-night">{fr.skipToContent}</a>
-      {!voirComme && <ResolutionBanner isAuthenticated={isAuthenticated} />}
       <Header
         isAuthenticated={isAuthenticated}
         setIsAuthenticated={setIsAuthenticated}

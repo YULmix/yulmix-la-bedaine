@@ -115,9 +115,6 @@
    "member-transport-none",
    "member-prefill-name"
   ],
-  "src/components/ResolutionBanner.jsx": [
-   "member-registration-confirmation"
-  ],
   "src/components/Toast.jsx": [
    "admin-event-editor",
    "admin-remount",
