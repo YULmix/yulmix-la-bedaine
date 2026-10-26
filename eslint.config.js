@@ -41,5 +41,20 @@ export default [
     rules: {
       'local/no-literal-ui-strings': 'warn'
     }
+  },
+  {
+    // e2e specs take `test` from e2e/support/test.js, which keeps the app loading when the host's
+    // network changes (#327). `expect` and the types may still come from Playwright.
+    files: ['e2e/**/*.spec.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@playwright/test',
+          importNames: ['test', 'default'],
+          message: "Import `test` from './support/test.js' (it keeps the app loading through host network changes, #327)."
+        }]
+      }]
+    }
   }
 ];
