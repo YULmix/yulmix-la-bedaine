@@ -67,19 +67,21 @@ const HomeView = ({ activeEvent, isAuthenticated, isAdmin = false, otherEvents =
   const navigate = useNavigate();
   // Set by /inscription: 'created' after the confirmation screen, 'updated' straight after an edit.
   const savedKind = location.state?.justSaved;
-  const justSaved = !!savedKind;
+  // Only a registration stamps the pass: a saved retour (#366) is announced, nothing more.
+  const justSaved = savedKind === 'created' || savedKind === 'updated';
   const announcedSave = useRef(false);
 
   // Coming back from /inscription after a save: stamp the pass once, then clear the router state
   // so a refresh doesn't replay it. An edit is announced with a toast; a new registration already
   // was, by the confirmation screen it came from.
   useEffect(() => {
-    if (!justSaved || announcedSave.current) return;
+    if (!savedKind || announcedSave.current) return;
     announcedSave.current = true;
     if (savedKind === 'updated') addToast(fr.changesSavedToast, 'success');
+    if (savedKind === 'retour') addToast(fr.bilanSavedToast, 'success');
     const timer = setTimeout(() => navigate('.', { replace: true, state: null }), 1200);
     return () => clearTimeout(timer);
-  }, [justSaved]);
+  }, [savedKind]);
 
   if (!activeEvent) {
     return (

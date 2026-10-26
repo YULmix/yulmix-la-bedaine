@@ -92,7 +92,8 @@ test('switch off (#341): the member sees no card and the page says it is not ope
   await expect(body(adminPage)).toHaveAttribute('data-state', 'open');
   await field(adminPage, fr.bilanCategoryOther).fill('Test admin');
   await submitButton(adminPage).click();
-  await expect(body(adminPage).getByText(fr.bilanSavedTitle)).toBeVisible();
+  await expect(adminPage).toHaveURL(/\/$/);
+  await expect(adminPage.getByText(fr.bilanSavedToast)).toBeVisible();
   await adminPage.context().close();
 });
 
@@ -194,8 +195,10 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await shoot(page, 'bilan-form-both-member');
 
   await submitButton(page).click();
-  await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
-  await expect(submitButton(page)).toHaveText(fr.bilanSubmit);
+  // Saved: the form closes, back on the pass, which says so (#366).
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('status').filter({ hasText: fr.bilanSavedToast })).toBeVisible();
+  await expect(body(page)).toHaveCount(0);
   await shoot(page, 'bilan-saved-member');
 
   // Nothing of the answer is kept in the browser's storage.
@@ -203,7 +206,16 @@ test('member: from the pass, a signed and a private comment on one card, return,
   expect(stored).not.toContain('excellents');
   expect(stored).not.toContain('trop fort');
 
-  // Annuler after the save returns to the saved state, a removed comment included.
+  // Back to the form from the pass: Enregistrer is disabled, nothing changed since the save (#366).
+  await passCard(page).getByRole('link', { name: fr.bilanPassAction }).click();
+  await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
+  await expect(submitButton(page)).toBeDisabled();
+  await field(page, fr.bilanCategoryFood, true).fill('Autre chose');
+  await expect(submitButton(page)).toBeEnabled();
+  await field(page, fr.bilanCategoryFood, true).fill('Les repas étaient excellents');
+  await expect(submitButton(page)).toBeDisabled();
+
+  // Annuler returns to the saved state, a removed comment included.
   await field(page, fr.bilanCategoryFood, true).fill('Autre chose');
   await body(page).getByRole('button', { name: fr.bilanCancel, exact: true }).click();
   await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
@@ -225,8 +237,8 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(field(page, fr.bilanCategoryPartyMusic, true)).toBeFocused();
   await field(page, fr.bilanCategorySchedule).fill('Un peu serré le samedi');
   await submitButton(page).click();
-  await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
-  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto(`/bilan/${seeded.eventId}`);
   await expect(card(page, fr.bilanCategoryPartyMusic).getByRole('textbox')).toHaveCount(1);
   await expect(field(page, fr.bilanCategoryPartyMusic, true)).toHaveValue('Le son était trop fort près du bar');
   await expect(field(page, fr.bilanCategorySchedule)).toHaveValue('Un peu serré le samedi');
@@ -241,10 +253,9 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(body(page).getByRole('textbox')).toHaveCount(CATEGORIES.length);
   await expect(submitButton(page)).toBeEnabled();
   await submitButton(page).click();
-  await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
-  await expect(submitButton(page)).toHaveText(fr.bilanSubmit);
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto(`/bilan/${seeded.eventId}`);
   await expect(submitButton(page)).toBeDisabled();
-  await page.reload();
   for (const [key] of CATEGORIES) {
     await expect(field(page, fr[key])).toHaveValue('');
   }

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, EyeOff, LockKeyhole, MessageSquareText, Plus, RotateCw, Trash2, UserX } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CalendarClock, EyeOff, LockKeyhole, MessageSquareText, Plus, RotateCw, Trash2, UserX } from 'lucide-react';
 import PosterHeader from '../components/brand/PosterHeader';
 import FeedbackCategoryCard from '../components/FeedbackCategoryCard';
 import { Button, Card, EmptyState, Notice, Skeleton, Textarea, Toggle, cx } from '../components/ui';
@@ -191,22 +191,17 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   const [drafts, setDrafts] = useState(() => draftsFrom(saved));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [justSaved, setJustSaved] = useState(false);
+  const navigate = useNavigate();
 
-  const change = update => {
-    setDrafts(update);
-    setJustSaved(false);
-  };
+  const change = update => setDrafts(update);
 
   const cancel = () => {
     setDrafts(draftsFrom(saved));
     setError(null);
-    setJustSaved(false);
   };
 
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
-    setJustSaved(false);
     const items = itemsFromDrafts(drafts);
     // Nothing written and nothing saved: the button is disabled, nothing to send. With saved
     // comments, an empty form is sent: the save replaces the whole set, so it removes them all (#354).
@@ -215,10 +210,10 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
     setError(null);
     try {
       const savedItems = await submitEventFeedback(supabase, eventId, items);
-      // What the database kept (trimmed, blanks dropped) is the new saved state and the form's.
-      setDrafts(draftsFrom(savedItems));
-      setJustSaved(true);
+      // Saved: the form closes. The member goes back to the pass they opened it from, which says
+      // the retour went through (#366).
       onSaved(savedItems);
+      navigate('/', { state: { justSaved: 'retour' } });
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -229,7 +224,6 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   const unsaved = draftsUnsaved(drafts, saved);
   // Any edit at all, even a blank one that would not be sent: what Annuler can undo.
   const edited = JSON.stringify(drafts) !== JSON.stringify(draftsFrom(saved));
-  const nothingToSend = saved.length === 0 && itemsFromDrafts(drafts).length === 0;
 
   return (
     <form onSubmit={handleSubmit} noValidate autoComplete="off" className="space-y-6">
@@ -242,15 +236,12 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
       </div>
 
       {error && <Notice tone="bad">{error}</Notice>}
-      {justSaved && !unsaved && (
-        <Notice tone="ok" icon={CheckCircle2} role="status" title={fr.bilanSavedTitle} />
-      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-faint">{fr.bilanEditableUntil.replace('{date}', formatDate(feedback.closes_on))}</p>
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:shrink-0">
           <Button variant="secondary" onClick={cancel} disabled={!edited || saving}>{fr.bilanCancel}</Button>
-          <Button type="submit" loading={saving} disabled={nothingToSend}>{fr.bilanSubmit}</Button>
+          <Button type="submit" loading={saving} disabled={!unsaved}>{fr.bilanSubmit}</Button>
         </div>
       </div>
     </form>

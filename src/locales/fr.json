@@ -1097,7 +1097,7 @@
   "bilanWhoSeesAfterClose": "Après le {date}, vos commentaires ne peuvent plus être modifiés, et un commentaire anonyme ne peut plus être affiché, même à vous.",
   "bilanSubmit": "Enregistrer",
   "bilanCancel": "Annuler",
-  "bilanSavedTitle": "Merci! Votre retour est enregistré.",
+  "bilanSavedToast": "Merci ! Votre retour est enregistré.",
   "bilanLoadError": "Impossible de charger votre retour.",
   "bilanSaveError": "Impossible d'enregistrer votre retour. Réessayez.",
   "bilanHiddenTitle": "Bilan non affiché en « Voir comme »",
