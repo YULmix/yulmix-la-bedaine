@@ -60,6 +60,10 @@
    "header-phone",
    "member-account-deletion"
   ],
+  "src/components/FeedbackCategoryCard.jsx": [
+   "admin-bilan",
+   "member-bilan"
+  ],
   "src/components/FeedbackModal.jsx": [
    "admin-feedback"
   ],

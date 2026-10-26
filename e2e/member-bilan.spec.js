@@ -43,6 +43,16 @@ const field = (page, label) => body(page).getByLabel(label, { exact: true });
 const submitButton = page => body(page).getByRole('button', { name: new RegExp(`^(${fr.bilanSubmit}|${fr.bilanSubmitEdit})$`) });
 const identity = (page, label) => body(page).getByRole('radio', { name: label, exact: true });
 
+// The categories in display order, with their colour (#346's cycle, shared with the admin Bilan
+// through FeedbackCategoryCard, #352).
+const CATEGORIES = [
+  ['bilanCategoryWelcome', 'tint-neon'], ['bilanCategoryPartyMusic', 'tint-info'], ['bilanCategorySafety', 'tint-ok'],
+  ['bilanCategoryLodging', 'tint-warn'], ['bilanCategoryFood', 'tint-neon'], ['bilanCategoryCommunications', 'tint-info'],
+  ['bilanCategorySchedule', 'tint-ok'], ['bilanCategoryOther', 'tint-warn']
+];
+// A card's header: the tinted strip holding the icon chip and the title.
+const cardHeader = title => title.locator('xpath=..');
+
 async function shoot(page, name) {
   if (!SHOTS) return;
   for (const [width, height] of SIZES) {
@@ -92,10 +102,33 @@ test('member: from the pass, submit, return, edit and switch named ↔ anonymous
   await expect(body(page)).toHaveAttribute('data-state', 'open');
 
   // The eight categories, the choice, and who reads what next to it.
-  for (const key of ['bilanCategoryWelcome', 'bilanCategoryPartyMusic', 'bilanCategorySafety', 'bilanCategoryLodging',
-    'bilanCategoryFood', 'bilanCategoryCommunications', 'bilanCategorySchedule', 'bilanCategoryOther']) {
+  for (const [key] of CATEGORIES) {
     await expect(field(page, fr[key])).toBeVisible();
   }
+  // Each a card (#352): the title is the textarea's label, in a header tinted with the category's
+  // colour, with an icon; one icon per category; the textareas in display order, one column.
+  const cards = await body(page).getByRole('textbox').evaluateAll(areas => areas.map(area => {
+    const header = area.labels[0].parentElement;
+    return { label: area.labels[0].textContent, header: header.textContent, tint: header.className.match(/\btint-\w+/)?.[0], icon: header.querySelector('svg')?.innerHTML };
+  }));
+  expect(cards.map(card => [card.label, card.tint])).toEqual(CATEGORIES.map(([key, tint]) => [fr[key], tint]));
+  // No count on the member's card, and one icon per category.
+  expect(cards.map(card => card.header)).toEqual(cards.map(card => card.label));
+  expect(new Set(cards.map(card => card.icon)).size).toBe(CATEGORIES.length);
+  // One column on a phone and on a wide screen.
+  for (const [width, height] of [[390, 844], [2560, 1440]]) {
+    await page.setViewportSize({ width, height });
+    const lefts = await body(page).getByRole('textbox').evaluateAll(areas => areas.map(area => Math.round(area.getBoundingClientRect().left)));
+    expect(new Set(lefts).size, `one column at ${width}px`).toBe(1);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  // Tab order: category after category.
+  await field(page, fr.bilanCategoryWelcome).focus();
+  for (const [key] of CATEGORIES.slice(1)) {
+    await page.keyboard.press('Tab');
+    await expect(field(page, fr[key])).toBeFocused();
+  }
+  await page.evaluate(() => document.activeElement?.blur());
   await expect(identity(page, fr.bilanIdentityNamed)).toBeChecked();
   for (const key of ['bilanWhoSeesNamed', 'bilanWhoSeesAnonymous']) {
     await expect(body(page)).toContainText(fr[key]);
@@ -182,6 +215,13 @@ test('member: after the close, a named answer read-only', async ({ page }) => {
   await expect(body(page)).toContainText('Merci!');
   await expect(body(page).getByRole('textbox')).toHaveCount(0);
   await expect(body(page).getByRole('button', { name: fr.bilanSubmitEdit })).toHaveCount(0);
+  // The answered categories only, as read-only cards in the form's style and colours (#352).
+  await expect(body(page).getByRole('heading', { level: 3 })).toHaveText([fr.bilanCategorySafety, fr.bilanCategoryOther]);
+  await expect(body(page).getByRole('region', { name: fr.bilanCategorySafety })).toContainText('Rien à signaler');
+  await expect(body(page).getByRole('region', { name: fr.bilanCategoryOther })).toContainText('Merci!');
+  await expect(cardHeader(body(page).getByRole('heading', { name: fr.bilanCategorySafety }))).toHaveClass(/\btint-ok\b/);
+  await expect(cardHeader(body(page).getByRole('heading', { name: fr.bilanCategoryOther }))).toHaveClass(/\btint-warn\b/);
+  await expect(body(page)).not.toContainText(/bilan/i);
   await shoot(page, 'bilan-closed-named-member');
 });
 
