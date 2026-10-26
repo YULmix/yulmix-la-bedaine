@@ -270,6 +270,11 @@ stay as installed.
   *Apply migrations* jobs of the `main` run.
 - **The second identical infra red in a day gets a fix, not a rerun** (the ECR data cap was rerun three
   times before #321 fixed it).
+- **Call fleet scripts by absolute path** (`/home/…/yulmix-la-bedaine/.claude/scripts/land.sh 326`), each as
+  a command of its own: the allow rules match the absolute form, and a relative or chained call is denied by
+  the auto-mode classifier (sup-2 had to ask the organiser for a grant he had already given).
+- **Ask yes/no questions so "yes" means the default.** "Can an anonymous answer be edited? (default: no)"
+  answered "1 yes" cost a clarification round.
 - **herdr agent names are lowercase**: `dev-gh-<n>`, `rev-gh-<n>` (herdr refuses `GH`); brief, report
   and worktree names keep the `GH-<n>` key.
 - **Start `ci-watch.sh` and `fleet-watch.sh` directly** with `run_in_background`, never behind a
@@ -301,6 +306,10 @@ stay as installed.
   which docs change, which tests prove it (RLS suite, pricing test, e2e as member and admin), what
   makes it risky (migration, RLS, `SECURITY DEFINER`, money, auth, concurrency), and functions another
   open issue also redefines.
+- **Privacy features state their threat model in the Agent Brief** before any developer starts: who must
+  not learn what (admin, « Voir comme », the database owner, backups, request logs), and the organiser's bar
+  in his words. #315 went through two developer rounds and two reviews on a design that stored the author,
+  before the organiser said "ZERO ways to associate those comments with their author".
 - An epic is charted with the wayfinder method when a `wayfinder` skill is installed: the map is an
   issue labelled `wayfinder:map`, its tickets are sub-issues labelled
   `wayfinder:research|prototype|grilling|task`. When the map is clear, turn its decisions into
