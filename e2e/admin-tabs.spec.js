@@ -25,7 +25,7 @@ const LOGISTICS_TAB = fr.adminTabLogistics;
 const USERS_HEADING = `${fr.adminTabUsers} · ${fr.usersViewList}`;
 const LOGISTICS_HEADING = `${fr.adminTabLogistics} · ${fr.logisticsViewTitle}`;
 const pageTitle = (scope, name) => scope.getByRole('heading', { level: 1, name, exact: true });
-const SECTION_COUNT = 8;
+const SECTION_COUNT = 9; // an admin's: Bilan (#317) is the ninth
 // The phone bar's sections (ADR 0022); the others are under « Plus ».
 const BAR_SECTIONS = [fr.adminTabOverview, fr.adminTabUsers, fr.adminTabLogistics, fr.adminTabBudget];
 const MORE_SECTIONS = [fr.adminTabEvents, fr.adminTabVenues, fr.adminTabTeam, fr.adminTabBilan, fr.adminTabFeedback];
