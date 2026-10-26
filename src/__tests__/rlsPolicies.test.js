@@ -4538,11 +4538,22 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // The first day opens it (#339), the day before doesn't; the close doesn't move.
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(1)]);
     expectCode(await submit(clients.member, FUTURE, text), 'event_feedback_not_open', { opens_on: isoDay(1) });
+    // Late evening of the first day (23:30 Toronto) is the same day: open too.
+    await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, `${isoDay(0)} 23:30 America/Toronto`]);
+    expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ window: 'open', opens_on: isoDay(0) });
+    // An admin without a registration of their own sees the open window but isn't eligible: no pass card.
+    expect(await ok(mine(clients.admin, FUTURE))).toMatchObject({ eligible: false, reason: 'not_registered', window: 'open' });
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(0)]);
     expect(await ok(mine(clients.member, FUTURE))).toMatchObject({ window: 'open', opens_on: isoDay(0), closes_on: isoDay(3 + 14 - 1) });
     await ok(submit(clients.member, FUTURE, text));
     await db.query('delete from public.event_feedback where event_id = $1', [FUTURE]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
+    // A closed event stays closed when its start moves to today (the marker is read first).
+    const { rows: [{ start: archivedStart }] } = await db.query('select event_start_date as start from public.events where id = $1', [ARCHIVED]);
+    await db.query('update public.events set event_start_date = $2 where id = $1', [ARCHIVED, startsIn(0)]);
+    expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
+    expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ window: 'closed' });
+    await db.query('update public.events set event_start_date = $2 where id = $1', [ARCHIVED, archivedStart]);
     expectCode(await submit(clients.member, ARCHIVED, text), 'event_feedback_closed');
     expect(await ok(mine(clients.member, ARCHIVED))).toMatchObject({ eligible: true, window: 'closed', closed_at: expect.any(String) });
 

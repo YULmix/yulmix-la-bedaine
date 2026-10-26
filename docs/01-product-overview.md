@@ -69,8 +69,7 @@ Exactly one event may be `is_active = TRUE`, enforced by the partial unique inde
 `only_one_active_event`. The UI checks first and also catches the constraint error
 (`activateEvent` in `src/lib/events.ts`).
 
-After the weekend, the **bilan** (post-mortem, #315, #316) opens the day after the event's last
-day, until its close (`feedback_days` after the last day, or archival if earlier). While it is
+The **bilan** (post-mortem, #315, #316, #339) opens on the event's first day, until its close (`feedback_days` after the last day, or archival if earlier). While it is
 open, the pass links to `/bilan/<event>`, where each member with a registration writes one comment
 per category, named or anonymous, and edits it until the close. Nobody reads anything before the
 close; then admins read the named answers, and the anonymous ones only when there are at least

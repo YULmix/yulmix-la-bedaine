@@ -54,7 +54,7 @@ export interface MyEventFeedback {
  *   not_eligible not a registration that may answer (no answer to show);
  *   closed       after the close without a named answer: no answer, or an anonymous one the levée
  *                unlinked, which nobody (the database included) can tell apart (ADR 0029);
- *   not_yet      the event isn't over yet (or has no date);
+ *   not_yet      the event hasn't started yet (or has no date);
  *   open         the form.
  */
 export type FeedbackPageState = 'hidden' | 'closed_named' | 'not_eligible' | 'closed' | 'not_yet' | 'open';
