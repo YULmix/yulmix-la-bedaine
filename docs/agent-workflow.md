@@ -286,6 +286,12 @@ stay as installed.
 - When the organiser reports that something fails, first ask what he saw (which screen, which
   record), then answer with what the code and data show, marked as verified or not. Never offer a
   guessed cause as the answer, and run a read-only production query only with his OK.
+- **Stack children on a reviewed parent only after its review verdict.** Children of a `review: yes`
+  parent started before the review (#355, #357 on #354) each paid a rework round when the review changed
+  the contract. Start them once the verdict is in; or, when speed matters, brief them that the contract may change.
+- **Read these overrides at takeover, before the first action.** sup-5 skipped them: it asked the organiser
+  before merging decision-record PRs, skipped the Preview push of migration PRs, and briefed a read-only
+  production query without his OK.
 - Parallel lanes that may both need a new shared module (a `src/lib` helper): the briefs name which
   lane owns it; the other lane puts its code in its own module.
 
