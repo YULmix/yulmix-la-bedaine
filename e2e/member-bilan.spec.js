@@ -1,8 +1,8 @@
 // The member's retour page (#316), at /bilan/:eventId, over the database's my_event_feedback() and
 // submit_event_feedback() (#315, #354, ADR 0029): the pass links to it while the window is open;
 // per category a comment signed by default, a « Privé » switch, the other kind added beside it and
-// never a third (#355); submit, return, edit, remove; the explanation of who reads what; the empty
-// form refused; after the close the signed comments read-only and one neutral message otherwise;
+// never a third (#355); submit, return, edit, remove one or all; the explanation of who reads what;
+// nothing to send while nothing is written or saved; after the close the signed comments read-only and one neutral message otherwise;
 // the not-eligible and not-yet-open messages; « Voir comme » shows the same hidden state whether the
 // member wrote signed, private or nothing; unsaved text survives a tab refocus and is never written
 // to the browser's storage.
@@ -149,10 +149,10 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(body(page)).not.toContainText(/bilan|voir comme|levée|anonyme|signée|n'importe quel appareil|aucune réponse n'est lue|pas montrée aux administrateurs/i);
   await shoot(page, 'bilan-form-member');
 
-  // The empty form is refused, in French (blank text counts as empty).
+  // Nothing written and nothing saved: nothing to send (blank text counts as nothing).
+  await expect(submitButton(page)).toBeDisabled();
   await field(page, fr.bilanCategoryFood).fill('   ');
-  await submitButton(page).click();
-  await expect(body(page).getByRole('alert')).toHaveText(fr.dbErrorEventFeedbackEmpty);
+  await expect(submitButton(page)).toBeDisabled();
   await field(page, fr.bilanCategoryFood).fill('');
 
   // « Party + musique »: a signed comment, then the private one added beside it; the focus follows.
@@ -210,6 +210,26 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(field(page, fr.bilanCategorySchedule)).toHaveValue('Un peu serré le samedi');
   answers = await feedbackAnswersAs(TEST_USERS.admin, seeded.eventId);
   expect(answers.signed.map(item => [item.category, item.text])).toEqual([['schedule', 'Un peu serré le samedi']]);
+
+  // Remove everything and save: the empty set deletes all the member's comments (#354), signed and private.
+  for (const [label, isPrivate] of [[fr.bilanCategoryPartyMusic, true], [fr.bilanCategoryFood, true], [fr.bilanCategorySchedule, false]]) {
+    await card(page, label)
+      .getByRole('button', { name: (isPrivate ? fr.bilanRemovePrivateLabel : fr.bilanRemoveSignedLabel).replace('{category}', label) }).click();
+  }
+  await expect(body(page).getByRole('textbox')).toHaveCount(CATEGORIES.length);
+  await expect(submitButton(page)).toBeEnabled();
+  await submitButton(page).click();
+  await expect(body(page).getByRole('status')).toContainText(fr.bilanSavedTitle);
+  await expect(submitButton(page)).toHaveText(fr.bilanSubmit);
+  await expect(submitButton(page)).toBeDisabled();
+  await page.reload();
+  for (const [key] of CATEGORIES) {
+    await expect(field(page, fr[key])).toHaveValue('');
+  }
+  await expect(body(page).getByTestId('bilan-comment')).toHaveCount(CATEGORIES.length);
+  answers = await feedbackAnswersAs(TEST_USERS.admin, seeded.eventId);
+  expect(answers.signed).toEqual([]);
+  expect(answers.private).toEqual([]);
 });
 
 test('member: unsaved text survives the tab regaining focus, and stays out of storage', async ({ page }) => {

@@ -334,7 +334,9 @@ REVOKE ALL ON FUNCTION private.event_feedback_released(uuid) FROM PUBLIC;
 
 -- Sets the caller's whole set of items for the event while the window is open. p_items: an array
 -- of { category, private, text } (private: boolean, false when missing or null; text: a string).
--- Surrounding whitespace is trimmed and a blank text is no item; at least one item is required.
+-- Surrounding whitespace is trimmed and a blank text is no item. An empty set (or only blank
+-- texts) deletes all the caller's items (private ones are deletable until the close, the
+-- organiser's rule); with none stored it changes nothing. A release already made stays (final).
 -- A (category, private) pair appears once. An item kept from the previous set keeps its id (its
 -- text is updated); a pair left out is deleted, its link with it. Returns { items } as
 -- my_event_feedback() shows them. The doors, locks and order of checks are those of the
@@ -431,10 +433,6 @@ BEGIN
             v_items := v_items || jsonb_build_array(jsonb_build_object('category', v_category, 'private', v_private, 'text', v_text));
         END IF;
     END LOOP;
-    IF jsonb_array_length(v_items) = 0 THEN
-        RAISE EXCEPTION USING MESSAGE = 'event_feedback_empty', ERRCODE = 'check_violation';
-    END IF;
-
     -- One save at a time per member and event (two first saves would both insert an item).
     PERFORM pg_advisory_xact_lock(hashtextextended('event_feedback:' || p_event_id || ':' || auth.uid(), 0));
 
@@ -486,7 +484,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.submit_event_feedback(uuid, jsonb) IS
-    'Sets the caller''s post-mortem items for the event (#354, ADR 0029): [{ category, private, text }], at most one signed and one private per category, while the window is open, by the owner of a registered or pending, non-waitlisted registration. A pair left out is deleted; a kept one keeps its id. Releases the private items when the event reaches 3 different private authors. Returns { items }. Codes: not_authenticated, read_only_impersonation, event_not_found (also a DRAFT event and the members'' switch off, for non-admins), event_feedback_not_eligible {reason}, event_feedback_not_open {opens_on}, event_feedback_closed, event_feedback_invalid {key | category}, event_feedback_duplicate {category, private}, event_feedback_too_long {category, private, max}, event_feedback_empty.';
+    'Sets the caller''s post-mortem items for the event (#354, ADR 0029): [{ category, private, text }], at most one signed and one private per category, while the window is open, by the owner of a registered or pending, non-waitlisted registration. A pair left out is deleted; a kept one keeps its id. Releases the private items when the event reaches 3 different private authors. Returns { items }. Codes: not_authenticated, read_only_impersonation, event_not_found (also a DRAFT event and the members'' switch off, for non-admins), event_feedback_not_eligible {reason}, event_feedback_not_open {opens_on}, event_feedback_closed, event_feedback_invalid {key | category}, event_feedback_duplicate {category, private}, event_feedback_too_long {category, private, max}. An empty set deletes all the caller''s items.';
 
 -- Copied from 20261026220000_feedback_switch_closes_first.sql; the edit: `items` (the caller's own
 -- items, private ones included, during the window; after the close their signed ones only, a
