@@ -10,7 +10,19 @@
   "pastEvents": {
     "count": 2,
     "registrationsEach": 15,
-    "sellingPrice": 220
+    "sellingPrice": 220,
+    "feedback": {
+      "signedAuthors": 8,
+      "privateAuthors": 4
+    }
+  },
+  "recentEvent": {
+    "registrations": 16,
+    "sellingPrice": 220,
+    "feedback": {
+      "signedAuthors": 8,
+      "privateAuthors": 2
+    }
   },
   "parties": {
     "minSize": 1,

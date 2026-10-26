@@ -9,6 +9,8 @@ export const OPTION_VALUES = {
     'neighbor_management', 'parking', 'art_initiative', 'pharmacy', 'other'
   ],
   transport: ['offer', 'need'],
+  // Post-mortem categories (#357), in the app's display order.
+  feedbackCategories: ['welcome', 'party_music', 'safety', 'lodging', 'food', 'communications', 'schedule', 'other'],
   // Where lifts leave from (#181): the start of a postal code, with a note, weighted towards
   // Montreal like the real crowd, plus a few from farther away, so the carpool board (#180) has
   // near and far pairs to rank. Each must be a valid FSA (options.test.js).

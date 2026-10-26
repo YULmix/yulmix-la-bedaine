@@ -7,6 +7,7 @@ import {
   TRANSPORT_TYPES,
   PAYMENT_STATUS
 } from '../../src/lib/registrationOptions';
+import { FEEDBACK_CATEGORIES } from '../../src/lib/eventFeedback';
 import { isValidFsa } from '../../src/lib/postalCode';
 
 // The demo data generator can't import registrationOptions.ts directly (it imports JSON), so it
@@ -26,6 +27,10 @@ describe('preview seed option values match the app', () => {
 
   test('departures are valid postal code starts (#181)', () => {
     expect(OPTION_VALUES.departures.filter(([fsa]) => !isValidFsa(fsa))).toEqual([]);
+  });
+
+  test('feedbackCategories (#357)', () => {
+    expect(OPTION_VALUES.feedbackCategories).toEqual([...FEEDBACK_CATEGORIES]);
   });
 
   test('paymentStatus', () => {
