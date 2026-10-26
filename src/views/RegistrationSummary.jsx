@@ -12,6 +12,7 @@ import { AttendeeList, InfoBlock, RegistrationInputs } from '../components/Regis
 import Pass from '../components/brand/Pass';
 import { useAccountName } from '../hooks/useAccountName';
 import MyPartyEmails from '../components/MyPartyEmails';
+import BilanPassCard from '../components/BilanPassCard';
 import GalleryButton from '../components/Gallery';
 import { Button, Card, ConfirmDialog } from '../components/ui';
 import { EDITABLE_REGISTRATION_STATUSES } from '../lib/registrationOptions';
@@ -99,6 +100,9 @@ const RegistrationSummary = ({ registration, event, isIntent, animateStamp, isAd
           </Button>
         )}
       />
+
+      {/* The event's « bilan », while it is open (#316). */}
+      <BilanPassCard eventId={event?.id} />
 
       <MyPartyEmails registration={registration} />
 
