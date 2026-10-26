@@ -5093,12 +5093,20 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
     if (error) throw error;
   };
   // The member's registration (two attendees), saved before the start, then the start moved.
-  const registeredThenStarted = async (start = hoursFromNow(-1)) => {
+  // `unpriced` clears the event's price first: a previous run may have left one (#330), and a
+  // registration saved on a priced event locks that price in.
+  const registeredThenStarted = async (start = hoursFromNow(-1), { unpriced = false } = {}) => {
     await clearParties();
     await setStart(hoursFromNow(1));
+    if (unpriced) await unprice();
     const party = await saveOk(memberClient, FROZEN_EVENT_ID, [adult('Ann'), adult('Bob')]);
     await setStart(start);
     return party;
+  };
+  const unprice = async () => {
+    const { error } = await adminAuthClient.from('events')
+      .update({ selling_price_whole_event: null }).eq('id', FROZEN_EVENT_ID);
+    expect(error).toBeNull();
   };
   const partyOf = async id => (await adminAuthClient.from('user_parties').select('*').eq('id', id).single()).data;
   const attendeesOf = async id => (await adminAuthClient.from('attendees').select('id, name')
@@ -5219,10 +5227,7 @@ describe('🧊 registrations frozen from the event start (#314)', () => {
   });
 
   test("after the start, an Organisateur's first price locks the unpriced parties (apply_event_pricing)", async () => {
-    const party = await registeredThenStarted();
-    const { error: unprice } = await adminAuthClient.from('events')
-      .update({ selling_price_whole_event: null }).eq('id', FROZEN_EVENT_ID);
-    expect(unprice).toBeNull();
+    const party = await registeredThenStarted(undefined, { unpriced: true });
     expect((await partyOf(party.id)).locked_selling_price_whole_event).toBeNull();
 
     // trg_lock_unpriced_registrations_on_first_price updates the event's unpriced parties: the
