@@ -4372,7 +4372,8 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
   const ARCH2 = 'a0000000-a000-a000-a000-a00000003155'; // archived with 2 anonymous answers
   const SHORT = 'a0000000-a000-a000-a000-a00000003156'; // an admin shortens feedback_days into the past
   const RACE = 'a0000000-a000-a000-a000-a00000003157'; // concurrent saves and an archival
-  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE];
+  const UNLINK = 'a0000000-a000-a000-a000-a00000003158'; // a party deleted while its save is in flight
+  const EVENT_IDS = [OPEN, FUTURE, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK];
   const MEMBER_ID = '00000000-0000-0000-0000-000000000001';
   const ADMIN_ID = '00000000-0000-0000-0000-000000000002';
   const COMMITTEE_ID = '00000000-0000-0000-0000-000000000003';
@@ -4440,7 +4441,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     clients.member = await signIn('member@test.local');
     clients.committee = await signIn('committee@test.local');
     clients.organiser = await signIn('organiser@test.local');
-    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer', 'Cancelled', 'Waitlisted', 'Outsider', 'Mover']) {
+    for (const label of ['Anon1', 'Anon2', 'Anon3', 'Named', 'NoAnswer', 'Cancelled', 'Waitlisted', 'Outsider', 'Mover', 'Racer']) {
       users[label] = await createUser(label);
       clients[label] = await signIn(users[label].email);
     }
@@ -4458,6 +4459,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, ARCH2, users[label].id);
     await register('Anon1', SHORT, users.Anon1.id);
     for (const label of ['Anon1', 'Anon2', 'Named']) await register(label, RACE, users[label].id);
+    await register('Racer', UNLINK, users.Racer.id);
     await db.query("update public.user_parties set status = 'cancelled' where id = $1", [parties[`Cancelled:${OPEN}`]]);
     await db.query('update public.user_parties set is_waitlisted = true where id = $1', [parties[`Waitlisted:${OPEN}`]]);
     for (const [userId, role] of [[COMMITTEE_ID, 'committee'], [ORGANISER_ID, 'organiser']]) {
@@ -4466,7 +4468,7 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
     // Started 10 days ago for 3 days: the last day was 8 days ago, the window opened 7 days ago
     // and closes at the end of the day in 6 days (last day + 14).
     await db.query('update public.events set reg_start_date = $2, event_start_date = $3 where id = any($1::uuid[])',
-      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE], startsIn(-90), startsIn(-10)]);
+      [[OPEN, ARCHIVED, LAZY, ARCH2, SHORT, RACE, UNLINK], startsIn(-90), startsIn(-10)]);
     await db.query('update public.events set event_start_date = $2 where id = $1', [FUTURE, startsIn(30)]);
     await ok(clients.admin.from('events').update({ status: 'ARCHIVED' }).eq('id', ARCHIVED));
   });
@@ -4953,6 +4955,32 @@ describe('📝 post-mortem feedback: true anonymity, nothing before the close, t
       'private.event_feedback_levee(uuid)',
       'submit_event_feedback(uuid,jsonb,boolean)'
     ]);
+  });
+
+  // No foreign key to user_parties: trg_event_feedback_forget_party clears party_id, after taking
+  // the event's lock exclusively, so a save in flight from the deleted party is cleared too.
+  test('a party deleted while its save is in flight: the delete waits, then the link loses its party', async () => {
+    const member = new pg.Client({ connectionString: DB_URL });
+    await member.connect();
+    const party = parties[`Racer:${UNLINK}`];
+    try {
+      await member.query('begin');
+      await member.query('set local role authenticated');
+      await member.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: users.Racer.id, role: 'authenticated' })]);
+      await member.query('select public.submit_event_feedback($1, $2, false)', [UNLINK, JSON.stringify({ other: 'Unlink: en vol' })]);
+      const remove = clients.admin.from('user_parties').delete().eq('id', party).then(({ error }) => { if (error) throw error; });
+      const state = await Promise.race([
+        remove.then(() => 'done'), new Promise((resolve) => setTimeout(() => resolve('pending'), 800))
+      ]);
+      expect(state).toBe('pending');
+      await member.query('commit');
+      await remove;
+    } finally {
+      await member.end();
+    }
+    expect(await stored(UNLINK)).toEqual([expect.objectContaining({
+      other: 'Unlink: en vol', is_anonymous: false, author_id: users.Racer.id, party_id: null
+    })]);
   });
 
   // Save vs levée: a save holds the event's advisory lock shared, the levée exclusive. Two saves

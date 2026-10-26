@@ -367,6 +367,10 @@ BEGIN
 END;
 $$;
 
+-- No lock here, unlike the party trigger: a save needs a party the caller owns, and deleting the
+-- profile deletes its parties (ON DELETE CASCADE), each through trg_event_feedback_forget_party,
+-- which waits for a save in flight and clears its author too. Keep it that way: if a save ever
+-- stops requiring an owned party, this trigger needs the events' locks as well.
 CREATE FUNCTION private.event_feedback_forget_profile()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -132,6 +132,11 @@ Not fixed, by the organiser's decision on #315:
   they control and has them answer anonymously can pad the count past 3 and narrow the candidates.
 - **Changing the functions.** Anyone who changes them could capture authors; every change is a
   reviewed migration in the public repository.
+- **Rare deadlocks.** The levée holds the event's lock through the rest of its update. An update
+  that both closes an event and promotes its waiting list (`promote_waitlisted_for_event`, e.g. a
+  raised `max_attendees`, the first update past the close date), racing an admin's party delete on
+  that event, can deadlock; so can two account hard-deletes whose parties on the same events
+  cascade in opposite order. Postgres aborts one of the two, and retrying it works.
 - **Dead tuples and heap slots.** The window's rows and their earlier versions stay on disk until
   vacuum, readable only with superuser access to the storage. While the window is open, the owner
   can also see where the rows sit in the heap (`ctid`): an anonymous row between two named ones was
