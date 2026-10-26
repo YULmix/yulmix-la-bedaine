@@ -145,6 +145,9 @@ const SERIAL_ENTRIES = [
   // final, so the shared event can't be reused) and opens « Voir comme », so it runs after
   // voir-comme, on its own. Sets its own viewports.
   { name: 'member-bilan' },
+  // The admin « Bilan » (#317) makes a fresh event per test the active one and grants edition
+  // roles on it, like member-bilan, so it runs after it, on its own. Sets its own viewports.
+  { name: 'admin-bilan' },
 ];
 const SERIAL_SPECS = SERIAL_ENTRIES.map(({ name, spec = name, device = 'Desktop Chrome' }) => ({ name, spec, device }));
 

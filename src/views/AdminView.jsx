@@ -12,6 +12,7 @@ import EventsSection from '../components/admin/sections/EventsSection';
 import VenuesSection from '../components/admin/sections/VenuesSection';
 import FeedbackSection from '../components/admin/sections/FeedbackSection';
 import TeamSection from '../components/admin/sections/TeamSection';
+import BilanSection from '../components/admin/sections/BilanSection';
 import { AdminBottomBar, AdminHeaderActionsProvider, AdminPageHeader, AdminSidebar } from '../components/admin/AdminNav';
 import { ConfirmDialog, Notice, ViewPanel, ViewTabs } from '../components/ui';
 import { CANVAS_CLASS, pageWidthClass } from '../lib/pageWidth';
@@ -46,6 +47,7 @@ const SECTION_COMPONENTS = {
   events: EventsSection,
   venues: VenuesSection,
   team: TeamSection,
+  bilan: BilanSection,
   feedback: FeedbackSection
 };
 
