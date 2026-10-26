@@ -167,8 +167,8 @@ const wholeNumber = (value: number | string | null | undefined): number | null =
 /**
  * The state and dates of an event's post-mortem window. Mirrors private.event_feedback_window():
  * closed once the marker is set or the event is archived; not yet for a non-ACTIVE event or one
- * without a start date; otherwise closed from the close instant, open from the first answerable
- * day, not yet before.
+ * without a start date; otherwise closed from the close instant, open from the event's first day,
+ * not yet before.
  */
 export const getFeedbackWindow = (event: FeedbackEvent | null | undefined, now: Date = new Date()): FeedbackWindow => {
   const start = eventClock(startInstant(event?.event_start_date));
@@ -184,10 +184,11 @@ export const getFeedbackWindow = (event: FeedbackEvent | null | undefined, now: 
   let closesAt = null;
   let opensAt = null;
   if (start && days != null && days >= 1) {
-    const opens = plusDays(start, duration);
-    opensAt = midnight(opens);
-    closesOn = localDay(plusDays(opens, days - 1));
-    closesAt = midnight(plusDays(opens, days));
+    // Opens on the first day; closes at the end of "last day + feedback_days" (the day after the last day is day 0).
+    opensAt = midnight(start);
+    const afterLast = plusDays(start, duration);
+    closesOn = localDay(plusDays(afterLast, days - 1));
+    closesAt = midnight(plusDays(afterLast, days));
   }
   let state: FeedbackState = 'not_yet';
   if (done) state = 'closed';

@@ -758,9 +758,9 @@ and erases the author link of every anonymous one. Migration `20261026043829_eve
 
 - **Eligible**: the owner of a `registered` or `pending`, non-waitlisted registration on the event,
   with an active account. An admin answers only for their own registration.
-- **The window** opens on the start's Toronto day + `duration_days` (the day after the last day,
-  #149) and closes at the end of the Toronto day "last day + `feedback_days`", i.e. at midnight
-  (Toronto) starting day `opens_on + feedback_days`, or at archival if earlier. A DRAFT event, or
+- **The window** opens on the start's Toronto day, the event's first day (#339; it was the day after the last
+  day), and closes at the end of the Toronto day "last day + `feedback_days`", i.e. at midnight
+  (Toronto) starting day `opens_on + duration_days + feedback_days`, or at archival if earlier. A DRAFT event, or
   one without a start date, is `not_yet` and never closes by date.
 - **The close** happens in `trg_close_event_feedback` (`BEFORE UPDATE` on `events`): at archival,
   at an update once the close date has passed or that moves it into the past, or at the first call

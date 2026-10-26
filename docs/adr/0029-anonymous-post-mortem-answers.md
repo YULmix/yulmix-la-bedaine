@@ -23,6 +23,7 @@ sequenceDiagram
   participant M as Member
   participant DB as Database
   participant A as Admin
+  Note over DB: opens on the event's first day (Toronto, 00:00)
   M->>DB: submit_event_feedback() (window open)
   Note over DB: event_feedback + event_feedback_authors
   A->>DB: event_feedback_answers()
@@ -43,8 +44,8 @@ sequenceDiagram
   RLS on, no policy, and no privilege for `anon`, `authenticated` or `service_role`. No view reads
   them, nothing embeds them, they aren't in the Realtime publication. Three `SECURITY DEFINER`
   functions are the only way in, and each names its output.
-- **The window and the close.** It opens the day after the event's last day (Toronto day of the
-  start + `duration_days`). It closes at the end of the Toronto day "last day +
+- **The window and the close.** It opens on the event's first day (Toronto day of the
+  start, from 00:00; amended 2026-10-26, #339, was the day after the last day). It closes at the end of the Toronto day "last day +
   `events.feedback_days`" (default 14, from 1 to 365), or at archival if that comes first. A DRAFT
   event, or one without a start date, never opens and never closes by date.
 - **The close is final.** `events.feedback_closed_at` is set once, by the levée, and never cleared;
