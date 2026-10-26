@@ -68,6 +68,17 @@ export const isRegistrationLocked = (event: PhasedEvent | null | undefined, toda
 };
 
 /**
+ * True from the event's start instant on (#314): a member's registration is frozen, no creation,
+ * edit, addition, removal, cancellation or re-registration. Admins are not frozen. Mirrors
+ * private.registration_started(), which is what actually enforces it: false when the start date
+ * is missing.
+ */
+export const isRegistrationFrozen = (event: PhasedEvent | null | undefined, now: Date = new Date()): boolean => {
+  const start = toInstant(event?.event_start_date);
+  return !!start && now.getTime() >= start.getTime();
+};
+
+/**
  * Dated milestones for the phase track, by day in the event zone (local-midnight Dates). The
  * registration opening and the weekend also carry their time of day ("18 h 00") when it isn't
  * midnight. Milestones whose date can't be derived (no event_start_date yet) are returned with

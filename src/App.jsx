@@ -261,6 +261,7 @@ function App() {
                 <HomeView
                   activeEvent={activeEvent}
                   isAuthenticated={isAuthenticated}
+                  isAdmin={isAdmin}
                   otherEvents={otherEvents}
                   onEventClick={handleEventClick}
                 />
@@ -270,7 +271,7 @@ function App() {
 
           <Route path="/inscription" element={
             <ProtectedRoute {...guard}>
-              <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} userId={user?.id} />
+              <RegistrationPage activeEvent={activeEvent} isAuthenticated={isAuthenticated} isAdmin={isAdmin} userId={user?.id} />
             </ProtectedRoute>
           } />
 
@@ -286,7 +287,7 @@ function App() {
           <Route path="/carpool" element={
             <ProtectedRoute {...guard}>
               <PageMain width="dense">
-                <CarpoolView />
+                <CarpoolView activeEvent={activeEvent} isAdmin={isAdmin} />
               </PageMain>
             </ProtectedRoute>
           } />

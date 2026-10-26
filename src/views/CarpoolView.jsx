@@ -7,6 +7,7 @@ import { dbErrorMessage } from '../lib/dbErrors';
 import { formatDateTime } from '../lib/format';
 import { departureOf } from '../lib/registrationOptions';
 import { carpoolSections } from '../lib/carpool';
+import { isRegistrationFrozen } from '../lib/eventPhase';
 import { Card, EmptyState, Notice, Skeleton, Tag } from '../components/ui';
 
 const EDIT_TRANSPORT = '/inscription#transport';
@@ -91,7 +92,7 @@ const Section = ({ title, entries, empty, icon }) => (
 // /carpool (#180): the lifts offered and needed by the confirmed parties of the active event, each
 // with its closest matches. Only for admins and confirmed (not waitlisted) members. Who may see it, who is on it and the detours are the
 // database's (carpool_board()); anyone else gets its error, shown as « not available ».
-const CarpoolView = () => {
+const CarpoolView = ({ activeEvent = null, isAdmin = false }) => {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
 
@@ -129,7 +130,8 @@ const CarpoolView = () => {
 
       {error && <Notice tone="bad">{dbErrorMessage(error, fr.carpoolLoadError)}</Notice>}
 
-      {rows && (mine && !mine.departure_fsa ? (
+      {/* From the event's start a member's transport is frozen with the rest (#314). */}
+      {rows && (isAdmin || !isRegistrationFrozen(activeEvent)) && (mine && !mine.departure_fsa ? (
         <Notice tone="warn" icon={MapPin}
           action={<Link to={EDIT_TRANSPORT} className="shrink-0 self-center text-sm font-semibold text-neon underline underline-offset-4">{fr.carpoolAddFsa}</Link>}>
           {fr.carpoolAddFsaHint}

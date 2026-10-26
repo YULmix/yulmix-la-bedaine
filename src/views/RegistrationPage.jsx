@@ -5,7 +5,7 @@ import RegistrationForm from '../components/RegistrationForm';
 import RegistrationConfirmation from '../components/RegistrationConfirmation';
 import { Button, Notice, Skeleton } from '../components/ui';
 import fr from '../locales/fr.json';
-import { getEventPhase } from '../lib/eventPhase';
+import { getEventPhase, isRegistrationFrozen } from '../lib/eventPhase';
 import { useMyRegistration } from '../hooks/useMyRegistration';
 import { isActiveRegistration } from '../lib/registrationOptions';
 import { CANVAS_CLASS, pageWidthClass } from '../lib/pageWidth';
@@ -13,7 +13,7 @@ import { draftStorageKey } from '../lib/registrationDraft';
 
 // /inscription: the registration flow on its own route, so the phone's back button leaves the
 // form instead of the app, and the form gets the whole screen.
-const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
+const RegistrationPage = ({ activeEvent, isAuthenticated, isAdmin = false, userId }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { registration: row, loading, error } = useMyRegistration(activeEvent, isAuthenticated);
@@ -23,6 +23,9 @@ const RegistrationPage = ({ activeEvent, isAuthenticated, userId }) => {
   const registration = isActiveRegistration(row) ? row : null;
 
   if (!activeEvent) return <Navigate to="/" replace />;
+  // From the event's start a member's registration is frozen (#314): the pass explains it. Not
+  // once a new registration has just been saved, so its confirmation still shows.
+  if (!isAdmin && !savedParty && isRegistrationFrozen(activeEvent)) return <Navigate to="/" replace />;
 
   // /inscription#transport (from the carpool board, #180) opens an existing registration on its
   // transport card.
