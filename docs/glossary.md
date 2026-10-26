@@ -88,20 +88,27 @@ The window before registration opens (`reg_start_date − z_intent_months`) wher
 that they plan to come and who with, so organisers can size and price the weekend. Non-binding.
 _Avoid_: pre-registration, RSVP, expression of interest.
 
-**Post-mortem** (fr. *bilan*, tables `event_feedback`, `event_feedback_authors`)
-What a member registered on an event writes after it: one optional free text per category
+**Post-mortem** (fr. *bilan*; for members, *retour*; tables `event_feedback_items`, `event_feedback_item_authors`)
+What a member registered on an event writes about it: **items**, one free text per category
 (Accueil, Party + musique, Sécurité, Hébergement, Nourriture, Communications, Horaire, Autres),
-named or anonymous. Open from the day after the event's last day until the end of the day
-`feedback_days` (default 14) later, or archival if earlier; read by account admins only, after the
-close ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). Not the app feedback
+each **signed** or **private**, at most one of each per category (#354). Open from the event's
+first day until the end of the day `feedback_days` (default 14) after its last day, or archival
+if earlier. Read by account admins only: signed items live, with their author; private ones once
+released ([ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)). Not the app feedback
 (« Feedback », `app_feedback`), which is about the app itself.
 _Avoid_: feedback, survey, review (for this).
 
+**Private item** (fr. *privé*; was « anonymous answer »)
+A post-mortem item whose author admins never see. Readable by admins, as its text only, once the
+event is **released**: 3 different members (admins included) have written at least one private item
+on it; from then on for good, even if items are deleted. Loses its link to its author at the
+levée. Code: `is_private`, `private`.
+_Avoid_: anonymous (in code and docs; the organiser says « privé »).
+
 **Levée** (of the post-mortem, fr. *levée*)
-The one irreversible step at the post-mortem's close (archival, or its close date passed): the
-answers become readable by admins, and every anonymous answer loses its link to its author for
-good (re-inserted with a new id, the window's row and link deleted). Sets
-`events.feedback_closed_at`; never runs twice.
+The one irreversible step at the post-mortem's close (archival, or its close date passed): every
+private item loses its link to its author for good (re-inserted with a new id, the window's row and
+link deleted); signed items keep theirs. Sets `events.feedback_closed_at`; never runs twice.
 
 **Registration close date** (fr. *date limite de désinscription*)
 The start day minus `x_reg_close_weeks` weeks. After it a member can still add and edit, but can no

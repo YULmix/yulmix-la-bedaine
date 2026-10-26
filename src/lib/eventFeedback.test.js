@@ -1,3 +1,4 @@
+import fr from '../locales/fr.json';
 import {
   FEEDBACK_CATEGORIES,
   answersFrom,
@@ -7,11 +8,16 @@ import {
   emptyAnswers,
   feedbackPageState,
   getFeedbackWindow,
+  fetchMyEventFeedback,
   hasAnyAnswer,
-  isUnsaved
+  isUnsaved,
+  itemOf,
+  itemsFromAnswers,
+  legacyAnswer,
+  submitEventFeedback
 } from './eventFeedback';
 
-// my_event_feedback()'s shape, an open window and an eligible member without an answer.
+// my_event_feedback()'s shape (#354), an open window and an eligible member without an item.
 const base = {
   eligible: true,
   reason: null,
@@ -20,16 +26,18 @@ const base = {
   closes_on: '2026-11-02',
   closes_at: '2026-11-03T04:00:00+00:00',
   closed_at: null,
-  answer: null,
+  items: [],
   answer_hidden: false
 };
-const named = { answers: { welcome: 'Super accueil', food: null }, is_anonymous: false, created_at: 'x', updated_at: 'x' };
-const anonymous = { ...named, is_anonymous: true };
+const signedItems = [{ category: 'welcome', private: false, text: 'Super accueil' }];
+const privateItems = [{ category: 'food', private: true, text: 'Trop salé' }];
+const named = legacyAnswer(signedItems);
 
 describe('feedbackPageState', () => {
   test('open and eligible: the form, with or without an answer', () => {
     expect(feedbackPageState(base)).toBe('open');
-    expect(feedbackPageState({ ...base, answer: anonymous })).toBe('open');
+    expect(feedbackPageState({ ...base, items: privateItems })).toBe('open');
+    expect(feedbackPageState({ ...base, items: [...signedItems, ...privateItems] })).toBe('open');
   });
 
   test('« Voir comme »: hidden, whatever the window or eligibility', () => {
@@ -39,13 +47,15 @@ describe('feedbackPageState', () => {
     }
   });
 
-  test('closed with a named answer: read-only, even if no longer eligible', () => {
-    expect(feedbackPageState({ ...base, window: 'closed', answer: named })).toBe('closed_named');
-    expect(feedbackPageState({ ...base, window: 'closed', answer: named, eligible: false, reason: 'cancelled' })).toBe('closed_named');
+  test('closed with a signed item: read-only, even if no longer eligible', () => {
+    expect(feedbackPageState({ ...base, window: 'closed', items: signedItems })).toBe('closed_named');
+    expect(feedbackPageState({ ...base, window: 'closed', items: signedItems, eligible: false, reason: 'cancelled' })).toBe('closed_named');
   });
 
   test('closed without an answer: one neutral state (no answer and an unlinked anonymous one look the same)', () => {
     expect(feedbackPageState({ ...base, window: 'closed' })).toBe('closed');
+    // The database returns no private item after the close; one in a payload changes nothing.
+    expect(feedbackPageState({ ...base, window: 'closed', items: privateItems })).toBe('closed');
   });
 
   test('not eligible: the message, before any window state', () => {
@@ -81,6 +91,30 @@ describe('the form state', () => {
     expect(FEEDBACK_CATEGORIES.map(categoryLabel)).toEqual(['Accueil', 'Party + musique', 'Sécurité', 'Hébergement', 'Nourriture', 'Communications', 'Horaire', 'Autres']);
   });
 
+  test('itemOf finds a category\'s item of one kind', () => {
+    const items = [...signedItems, { category: 'welcome', private: true, text: 'En privé' }];
+    expect(itemOf(items, 'welcome', false)).toEqual(signedItems[0]);
+    expect(itemOf(items, 'welcome', true).text).toBe('En privé');
+    expect(itemOf(items, 'food', false)).toBeNull();
+    expect(itemOf(null, 'food', false)).toBeNull();
+  });
+
+  // Transitional, until #355: the one-answer form over the items.
+  test('legacyAnswer: the signed items when there are any, else the private ones', () => {
+    expect(legacyAnswer([])).toBeNull();
+    expect(legacyAnswer(signedItems)).toEqual({ answers: { welcome: 'Super accueil' }, is_anonymous: false });
+    expect(legacyAnswer(privateItems)).toEqual({ answers: { food: 'Trop salé' }, is_anonymous: true });
+    expect(legacyAnswer([...privateItems, ...signedItems])).toEqual({ answers: { welcome: 'Super accueil' }, is_anonymous: false });
+  });
+
+  test('itemsFromAnswers: the non-blank texts, all of the chosen kind', () => {
+    const answers = { ...emptyAnswers(), welcome: 'Bien', food: '  ', other: 'Merci' };
+    expect(itemsFromAnswers(answers, true)).toEqual([
+      { category: 'welcome', private: true, text: 'Bien' }, { category: 'other', private: true, text: 'Merci' }
+    ]);
+    expect(itemsFromAnswers(emptyAnswers(), false)).toEqual([]);
+  });
+
   test('answersFrom fills every category, null and missing as blank', () => {
     expect(answersFrom(named)).toEqual({ ...emptyAnswers(), welcome: 'Super accueil' });
     expect(answersFrom(null)).toEqual(emptyAnswers());
@@ -98,6 +132,33 @@ describe('the form state', () => {
     expect(isUnsaved(answersFrom(named), false, named)).toBe(false);
     expect(isUnsaved(answersFrom(named), true, named)).toBe(true);
     expect(isUnsaved({ ...answersFrom(named), welcome: 'Autre' }, false, named)).toBe(true);
+  });
+});
+
+describe('the database calls', () => {
+  const clientReturning = (result) => ({ rpc: jest.fn().mockResolvedValue(result) });
+
+  test('submitEventFeedback sends the items as { category, private, text } and returns the saved ones', async () => {
+    const saved = [{ category: 'food', private: true, text: 'Bon' }];
+    const client = clientReturning({ data: { items: saved }, error: null });
+    await expect(submitEventFeedback(client, 'event-1', [{ category: 'food', private: true, text: ' Bon ', extra: 'x' }])).resolves.toEqual(saved);
+    expect(client.rpc).toHaveBeenCalledWith('submit_event_feedback', {
+      p_event_id: 'event-1', p_items: [{ category: 'food', private: true, text: ' Bon ' }]
+    });
+  });
+
+  test('a refused save throws in French, without logging the items', async () => {
+    const log = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const client = clientReturning({ data: null, error: { message: 'event_feedback_duplicate', code: '23514', details: '{"category":"food","private":true}' } });
+    await expect(submitEventFeedback(client, 'event-1', [{ category: 'food', private: true, text: 'Secret' }]))
+      .rejects.toThrow(fr.dbErrorEventFeedbackDuplicate);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('Secret');
+    log.mockRestore();
+  });
+
+  test('fetchMyEventFeedback: items default to []', async () => {
+    const client = clientReturning({ data: { ...base, items: undefined }, error: null });
+    await expect(fetchMyEventFeedback(client, 'event-1')).resolves.toEqual(base);
   });
 });
 

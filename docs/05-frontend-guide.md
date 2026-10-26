@@ -127,8 +127,11 @@ shows only that and the close date; after it the answers take the full width
 ([ADR 0022's amendment](./adr/0022-admin-navigation-and-page-widths.md#amendment-346-bilan-is-dense-but-narrow-before-the-close)),
 one tinted card per category in a grid of up to three columns, named ones with their author, anonymous
 ones as « Anonyme » in the order the database returns them (never re-sorted, no id, date or attribute in
-the DOM; their React key is their index in that random order). After the close the dashboard's counts are
-those of the answers shown (`shownCounts()`). « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
+the DOM; their React key is their index in that random order). Since #354 the database returns items,
+signed live and private once released: until the section's rework (#356) `shownCounts()` maps
+`event_feedback_counts()` to the dashboard's figures (members with a signed item, private items once
+released, no total), and until the form's (#355) `BilanPage` edits one set of texts, all signed or all
+private, through `legacyAnswer()` / `itemsFromAnswers()`. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
 values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
 are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
 `sortAttendees()` orders them. The « Historique des

@@ -10,7 +10,9 @@ stay in the database for good either. **While the window is open, each answer ha
 in tables no client role can read, and admins read no answer (since #345, counts only). At the close, one irreversible
 step, the « levée », publishes the answers and erases the link of every anonymous one.**
 
-**Status: accepted** (October 2026), implemented by #315: migration
+**Status: accepted** (October 2026), amended by #354 (items, signed or private, read live:
+see [the amendment](#amendment-354-items-signed-or-private-read-live), which supersedes « nothing
+before the close », the threshold of 3 answers and #345's own-answer exclusion). Implemented by #315: migration
 `20261026043829_event_feedback.sql`. The rules were decided by the organiser on #315: in triage
 (2026-10-25: comments only, eight categories, admins only, eligibility, the window's opening) and
 after the anonymity review (2026-10-26: the offset close, the final close, nothing before it, the
@@ -253,3 +255,98 @@ change as a step, and the organiser accepted it:
 Matched with what else an admin sees (who just logged in, a message from a member), a step can
 narrow who wrote an anonymous answer; that is the price of the counts. No timestamp is returned, so
 nothing tells when a step happened beyond the admin's own reloads.
+
+## Amendment (#354): items, signed or private, read live
+
+The organiser changed plans (2026-10-26): "anonymity is per response not all or nothing", and
+admins read the comments as they come in rather than after the close. This amendment
+**supersedes**, for everything below, « nothing before the close », the threshold of 3 *answers*
+and #345's exclusion of the caller's own answer; the levée, the close, the members' switch, the
+closed tables, the locks and « Voir comme » stay as decided above. Migration
+`20261027000000_feedback_items.sql`.
+
+```mermaid
+sequenceDiagram
+  participant M as Member
+  participant DB as Database
+  participant A as Admin
+  M->>DB: submit_event_feedback(items) (window open)
+  Note over DB: event_feedback_items + event_feedback_item_authors
+  A->>DB: event_feedback_answers()
+  DB-->>A: signed items with their author, no time; private: [] (not released)
+  Note over DB: a save brings the 3rd different private author: release marker, for good
+  A->>DB: event_feedback_answers()
+  DB-->>A: signed items; private texts only, random order
+  Note over DB: close: levée re-inserts private items (fresh ids), deletes their links
+  M->>DB: my_event_feedback()
+  DB-->>M: own signed items only
+```
+
+- **A retour is made of items.** One row per item in `event_feedback_items` (`id` random,
+  `event_id`, `category` among the eight, `body` non-blank, at most 5000 characters,
+  `is_private`), nothing about who or when. The link is in `event_feedback_item_authors`
+  (`item_id`, `event_id`, `category`, `is_private`, `author_id`, `party_id`, `created_at`,
+  `updated_at`), `UNIQUE (event_id, author_id, category, is_private)`: **at most one signed and
+  one private item per member, category and event**. The link's composite foreign key carries the
+  item's category and kind, so the two can't disagree. Both tables keep the properties above (RLS
+  on, no policy, no client privilege, no foreign key to a client-readable row). An item's event,
+  category and kind are fixed; switching kind is a delete and a new item.
+- **The save sets the member's whole set.** `submit_event_feedback(event, items)` with
+  `items = [{ category, private, text }]` (`private` false when missing: **signed by default**).
+  A pair left out is deleted, its link with it; a kept pair keeps its item id (its text is
+  updated); a blank text is no item; at least one item is required (`event_feedback_empty`); a
+  duplicate pair is refused (`event_feedback_duplicate {category, private}`). Same doors, order of
+  checks and advisory locks as before. Members edit or delete their items, signed or private,
+  until the close, after the release too. ADR 0024 exception, widened: a member's save deletes the
+  items they leave out.
+- **Signed items are read live**, by account admins, before and after the close:
+  `event_feedback_answers()` returns `signed: [{ category, text, author: { id, party, name, email } }]`,
+  in category order then by author name, **with no time** (and no order that follows one).
+- **Private items are released at 3 different authors, for good.** When a save makes the event's
+  count of *distinct* authors of private items reach 3 (any category, anyone, admins included),
+  it inserts the event's row in `private.event_feedback_releases`. From then on
+  `event_feedback_answers()` returns `private: [{ category, text }]` in random (id) order, even if
+  authors later delete theirs; before, `private: []`, the same for 0, 1 or 2 authors. One member's
+  three private items don't release themselves. The marker has **no time** and **no client
+  privilege** (not a column of `events`, which every client reads with its `xmin`/`xmax`), and its
+  insert writes no client-readable row. Two saves that bring the 2nd and the 3rd author at once
+  can't both miss each other: the saves with a private item take an exclusive advisory lock on the
+  event's release before counting, so the second one counts the first's committed items. Until the
+  release, two saves with a private item on the same event therefore wait for each other's commit
+  (milliseconds; other saves, and all saves after the release, still don't). An event never
+  released before the close stays hidden for good.
+- **The counts** (`event_feedback_counts()`): `{ closed, closes_on, eligible, signed_members,
+  released, categories: [{ category, signed, private }], signed_total, private_total }`.
+  `signed_members` is the members with at least one signed item; every private number is null
+  until the release. No text, author, id, time or order.
+- **The member's read** (`my_event_feedback()`): `items: [{ category, private, text }]`, the
+  member's own, private ones included, while the window is open; after the close their signed
+  ones only (a private item has no author any more). « Voir comme » and the switch off: `items: []`
+  and, in « Voir comme », `answer_hidden: true`, whatever the member wrote.
+- **The levée** re-inserts every private item with a fresh random id, in random order (the event,
+  category and text only), and deletes its window row and link; signed items keep their link. It
+  doesn't touch the release marker.
+- **Existing answers were converted as they were** (production never showed the post-mortem to
+  members): each non-null category text of an answer became one item of its kind (named → signed,
+  anonymous → private), with the answer's link (author, party, times) when it still had one. An
+  event with 3 or more anonymous answers is released (one answer was one author). The one-answer
+  tables `event_feedback` and `event_feedback_authors` are dropped.
+
+### Accepted limits (items)
+
+Accepted by the organiser (2026-10-26), on top of the limits above, which still hold for the
+private items until the close:
+
+- **An admin can be one of the 3.** Anyone counts toward the release, an admin registered on the
+  edition included, so an admin can complete it with their own private item, or with accounts they
+  control: the release then shows the one or two real authors' texts.
+- **Reloading shows steps.** An admin who reloads sees a signed item appear, change or disappear,
+  the release happen (`released` turns true when the 3rd private author saved), and, once released,
+  a private item appear, change or disappear, and the counts move with them. Matched with what
+  else they see, a step can narrow who wrote a private item. No time is ever returned.
+- **Signed and private side by side.** A member with a signed and a private item in the same
+  category is one of the signed authors of that category; the private text may read like the
+  signed one. Switching an item's kind deletes it and adds the other: once released, an admin who
+  reloads sees one disappear as the other appears.
+- **The candidate set** of a private item is every member with access to the form, and since the
+  threshold counts authors, 3 private texts come from at least 3 people.
