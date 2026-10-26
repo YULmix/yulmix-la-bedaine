@@ -1,61 +1,76 @@
 import { render, screen, within } from '@testing-library/react';
 import BilanDashboard from './BilanDashboard';
 import fr from '../../locales/fr.json';
+import { FEEDBACK_CATEGORIES } from '../../lib/eventFeedback';
 
-// The « Bilan » counts (#346), from event_feedback_counts()'s shape (ADR 0029).
-const before = { closed: false, closes_on: '2026-11-15', eligible: 86, signed: 23, anonymous: null, total: null };
+// The « Bilan » counts (#346, reworked for items by #356), from event_feedback_counts()'s shape (#354, ADR 0029).
+const perCategory = (signed, privateCounts) => FEEDBACK_CATEGORIES.map((category, index) => ({
+  category, signed: signed[index], private: privateCounts ? privateCounts[index] : null
+}));
+const hidden = {
+  closed: false, closes_on: '2026-11-15', eligible: 86, signed_members: 23, released: false,
+  categories: perCategory([5, 4, 3, 2, 1, 0, 0, 1]), signed_total: 16, private_total: null
+};
+const shown = {
+  ...hidden, released: true,
+  categories: perCategory([5, 4, 3, 2, 1, 0, 0, 1], [2, 0, 1, 0, 3, 0, 0, 1]), private_total: 7
+};
+const OPEN = fr.adminBilanCountsOpenUntil.replace('{date}', '15 novembre 2026');
 const cell = label => screen.getByText(label, { selector: 'p' }).parentElement;
+const tile = name => screen.getByText(name, { selector: 'span' }).closest('li');
 
-test('before the close, fewer than 3 anonymous: « moins de 3 », the signed rate only', () => {
-  render(<BilanDashboard counts={before} closedOn={null} />);
+test('before the release: the signed comments, « moins de 3 » private, the members who signed over the eligible', () => {
+  render(<BilanDashboard counts={hidden} closed={false} status={OPEN} />);
   const card = screen.getByRole('region', { name: fr.adminBilanCountsTitle });
-  expect(within(card).getByText(fr.adminBilanCountsBeforeClose)).toBeInTheDocument();
-  expect(within(cell(fr.adminBilanCountsSigned)).getByText('23')).toBeInTheDocument();
-  expect(within(cell(fr.adminBilanCountsAnonymous)).getByText(fr.adminBilanCountsAnonymousHidden)).toBeInTheDocument();
-  expect(within(cell(fr.adminBilanCountsAnonymous)).getByText(fr.adminBilanCountsAnonymousHiddenHint)).toBeInTheDocument();
-  // 23 / 86 = 27 %, labelled as the signed answers' rate; no plain « Taux de réponse » cell.
-  const rate = cell(fr.adminBilanCountsRateSigned);
-  expect(rate).toHaveTextContent('27 %');
-  expect(rate).toHaveTextContent(fr.adminBilanCountsEligible.replace('{n}', 86));
-  expect(screen.queryByText(fr.adminBilanCountsRate, { selector: 'p' })).toBeNull();
-  expect(screen.getByRole('img', { name: fr.adminBilanCountsBarSigned.replace('{rate}', 27) })).toBeInTheDocument();
+  expect(within(card).getByText(OPEN)).toBeInTheDocument();
+  expect(within(cell(fr.adminBilanCountsSigned)).getByText('16')).toBeInTheDocument();
+  expect(cell(fr.adminBilanCountsPrivate)).toHaveTextContent(fr.adminBilanCountsPrivateHidden + fr.adminBilanCountsPrivateHiddenHint);
+  // 23 / 86 = 27 %.
+  expect(cell(fr.adminBilanCountsMembers)).toHaveTextContent(`23 ${fr.adminBilanCountsMembersOf.replace('{n}', 86)}`);
+  expect(cell(fr.adminBilanCountsMembers)).toHaveTextContent(fr.adminBilanCountsMembersHint.replace('{rate}', 27));
+  const bar = screen.getByRole('img', { name: fr.adminBilanCountsBar.replace('{n}', 23).replace('{eligible}', 86).replace('{rate}', 27) });
+  expect(bar.querySelector('span').style.width).toMatch(/^26\.7\d*%$/);
+  // Per category, one tile each in display order: the signed count, and « moins de 3 » for every private one.
+  const tiles = within(screen.getByText(fr.adminBilanCountsByCategory).parentElement).getAllByRole('listitem');
+  expect(tiles.map(item => item.querySelector('p').textContent))
+    .toEqual(FEEDBACK_CATEGORIES.map(c => fr[`bilanCategory${{ welcome: 'Welcome', party_music: 'PartyMusic', safety: 'Safety', lodging: 'Lodging', food: 'Food', communications: 'Communications', schedule: 'Schedule', other: 'Other' }[c]}`]));
+  expect(tile(fr.bilanCategoryWelcome)).toHaveTextContent(`${fr.bilanCategoryWelcome}${fr.adminBilanCountsSignedShort}5${fr.adminBilanCountsPrivateShort}${fr.adminBilanCountsPrivateHidden}`);
+  expect(tiles.filter(item => item.textContent.endsWith(fr.adminBilanCountsPrivateHidden))).toHaveLength(8);
+  // No total adding signed and private up.
+  expect(screen.queryByText('16 + ')).toBeNull();
 });
 
-test('3 or more anonymous: their count, the combined rate, a two-part bar', () => {
-  render(<BilanDashboard counts={{ ...before, signed: 31, anonymous: 12, total: 43 }} closedOn={null} />);
-  expect(within(cell(fr.adminBilanCountsAnonymous)).getByText('12')).toBeInTheDocument();
-  expect(within(cell(fr.adminBilanCountsAnonymous)).getByText(fr.adminBilanCountsAnonymousHint)).toBeInTheDocument();
-  expect(cell(fr.adminBilanCountsRate)).toHaveTextContent('50 %');
-  const bar = screen.getByRole('img', { name: fr.adminBilanCountsBarAll.replace('{rate}', 50) });
-  const [signed, anonymous] = bar.querySelectorAll('span');
-  expect(signed.style.width).toMatch(/^36\.0\d*%$/);
-  expect(anonymous.style.width).toMatch(/^13\.9\d*%$/);
+test('released: the private counts, overall and per category', () => {
+  render(<BilanDashboard counts={shown} closed={false} status={OPEN} />);
+  expect(cell(fr.adminBilanCountsPrivate)).toHaveTextContent('7' + fr.adminBilanCountsPrivateHint);
+  expect(tile(fr.bilanCategoryWelcome)).toHaveTextContent(`${fr.bilanCategoryWelcome}${fr.adminBilanCountsSignedShort}5${fr.adminBilanCountsPrivateShort}2`);
+  expect(tile(fr.bilanCategoryFood)).toHaveTextContent(`${fr.bilanCategoryFood}${fr.adminBilanCountsSignedShort}1${fr.adminBilanCountsPrivateShort}3`);
+  expect(screen.queryByText(fr.adminBilanCountsPrivateHidden)).toBeNull();
 });
 
-test('no answer yet: 0, « moins de 3 », 0 %', () => {
-  render(<BilanDashboard counts={{ ...before, signed: 0 }} closedOn={null} />);
+test('no comment yet: 0, « moins de 3 », 0 sur 1', () => {
+  render(<BilanDashboard counts={{ ...hidden, eligible: 1, signed_members: 0, signed_total: 0, categories: perCategory([0, 0, 0, 0, 0, 0, 0, 0]) }} closed={false} status={OPEN} />);
   expect(within(cell(fr.adminBilanCountsSigned)).getByText('0')).toBeInTheDocument();
-  expect(within(cell(fr.adminBilanCountsAnonymous)).getByText(fr.adminBilanCountsAnonymousHidden)).toBeInTheDocument();
-  expect(cell(fr.adminBilanCountsRateSigned)).toHaveTextContent('0 %');
+  expect(cell(fr.adminBilanCountsMembers)).toHaveTextContent(`0 ${fr.adminBilanCountsMembersOf.replace('{n}', 1)}`);
+  expect(cell(fr.adminBilanCountsMembers)).toHaveTextContent(fr.adminBilanCountsMembersHint.replace('{rate}', 0));
 });
 
 test('no eligible registration: the title and the tag, a sentence, no figure', () => {
-  render(<BilanDashboard counts={{ ...before, eligible: 0, signed: 0 }} closedOn={null} />);
+  render(<BilanDashboard counts={{ ...hidden, eligible: 0, signed_members: 0 }} closed={false} status={fr.adminBilanCountsOpen} />);
   expect(screen.getByText(fr.adminBilanCountsNoEligible)).toBeInTheDocument();
-  expect(screen.getByText(fr.adminBilanCountsBeforeClose)).toBeInTheDocument();
+  expect(screen.getByText(fr.adminBilanCountsOpen)).toBeInTheDocument();
   expect(screen.queryByText(fr.adminBilanCountsSigned)).toBeNull();
   expect(screen.queryByRole('img')).toBeNull();
+  expect(screen.queryByText(fr.adminBilanCountsByCategory)).toBeNull();
 });
 
-test('after the close: « Clos le » and its date; one registration in the singular', () => {
-  render(<BilanDashboard counts={{ ...before, closed: true, eligible: 1, signed: 1 }} closedOn="15 novembre 2026" />);
-  expect(screen.getByText(fr.adminBilanCountsClosedOn.replace('{date}', '15 novembre 2026'))).toBeInTheDocument();
-  expect(screen.queryByText(fr.adminBilanCountsBeforeClose)).toBeNull();
-  expect(cell(fr.adminBilanCountsRateSigned)).toHaveTextContent(fr.adminBilanCountsEligibleOne);
-  expect(cell(fr.adminBilanCountsRateSigned)).toHaveTextContent('100 %');
+test('after the close: the tag passed in', () => {
+  const status = fr.adminBilanCountsClosedOn.replace('{date}', '15 novembre 2026');
+  render(<BilanDashboard counts={{ ...shown, closed: true }} closed status={status} />);
+  expect(screen.getByText(status)).toBeInTheDocument();
 });
 
-test('no time of any kind: nothing but the close date', () => {
-  const { container } = render(<BilanDashboard counts={{ ...before, signed: 31, anonymous: 12, total: 43 }} closedOn={null} />);
+test('no time of any kind', () => {
+  const { container } = render(<BilanDashboard counts={shown} closed={false} status="" />);
   expect(container.innerHTML).not.toMatch(/\d{1,2}:\d{2}|2026|<time/);
 });

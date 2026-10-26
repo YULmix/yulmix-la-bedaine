@@ -552,10 +552,9 @@ function authAdmin() {
   return createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } }).auth.admin;
 }
 
-export async function createThrowawayMember(label) {
+export async function createThrowawayMember(label, { fullName = `E2E ${label} ${Date.now()}` } = {}) {
   const email = `e2e-${label}-${Date.now()}@test.local`;
   const password = 'password123';
-  const fullName = `E2E ${label} ${Date.now()}`;
   const { data, error } = await authAdmin().createUser({
     email, password, email_confirm: true, user_metadata: { full_name: fullName }
   });

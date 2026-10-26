@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { FEEDBACK_CATEGORIES } from './eventFeedback';
-import { authorLabel, fetchEventFeedbackCounts, groupByCategory, responseRate, shownCounts, toFeedbackCounts } from './eventFeedbackAdmin';
+import { authorLabel, fetchEventFeedbackCounts, groupByCategory, signedRate, toFeedbackCounts } from './eventFeedbackAdmin';
 
 // event_feedback_answers()'s shape (#354, ADR 0029): live, signed items with their author, private
 // texts once released.
@@ -31,19 +31,19 @@ const group = (payload, category) => groupByCategory(payload).find(entry => entr
 describe('groupByCategory', () => {
   test('every category, in display order, an empty one included', () => {
     expect(groupByCategory(result).map(entry => entry.category)).toEqual([...FEEDBACK_CATEGORIES]);
-    expect(group(result, 'schedule')).toEqual({ category: 'schedule', named: [], anonymous: [] });
+    expect(group(result, 'schedule')).toEqual({ category: 'schedule', signed: [], private: [] });
   });
 
   test('signed items with their author, in the database\'s order; blank texts skipped', () => {
-    expect(group(result, 'welcome').named).toEqual([{ author: 'Alice', text: 'Accueil top' }, { author: 'Bruno', text: 'Bof' }]);
-    expect(group(result, 'food').named).toEqual([{ author: 'Bruno', text: 'Bon' }]);
-    expect(group(result, 'other').named).toEqual([]);
+    expect(group(result, 'welcome').signed).toEqual([{ author: 'Alice', text: 'Accueil top' }, { author: 'Bruno', text: 'Bof' }]);
+    expect(group(result, 'food').signed).toEqual([{ author: 'Bruno', text: 'Bon' }]);
+    expect(group(result, 'other').signed).toEqual([]);
   });
 
   test('private items are their texts only, in the database\'s order, never re-sorted', () => {
-    expect(group(result, 'welcome').anonymous).toEqual(['Zèbre', 'Abricot', 'Mangue']);
-    expect(group(result, 'food').anonymous).toEqual(['Trop salé']);
-    expect(group(result, 'safety').anonymous).toEqual(['RAS']);
+    expect(group(result, 'welcome').private).toEqual(['Zèbre', 'Abricot', 'Mangue']);
+    expect(group(result, 'food').private).toEqual(['Trop salé']);
+    expect(group(result, 'safety').private).toEqual(['RAS']);
   });
 
   test('anything else a private entry might carry is dropped', () => {
@@ -52,13 +52,13 @@ describe('groupByCategory', () => {
   });
 
   test('live, before the close too; nothing without a result', () => {
-    expect(group(result, 'welcome').named).toHaveLength(2);
+    expect(group(result, 'welcome').signed).toHaveLength(2);
     expect(groupByCategory({ ...result, closed: true }).map(entry => entry.category)).toEqual([...FEEDBACK_CATEGORIES]);
     expect(groupByCategory(null)).toEqual([]);
   });
 
   test('not released: the signed items only', () => {
-    expect(group({ ...result, released: false, private: [] }, 'welcome').anonymous).toEqual([]);
+    expect(group({ ...result, released: false, private: [] }, 'welcome').private).toEqual([]);
   });
 });
 
@@ -104,23 +104,14 @@ describe('toFeedbackCounts', () => {
   });
 });
 
-// Transitional, until #356: the dashboard's figures.
-describe('shownCounts', () => {
-  test('the signed members, the private items once released, never a total', () => {
-    expect(shownCounts(toFeedbackCounts(counts))).toEqual({ closed: false, closes_on: '2026-11-08', eligible: 12, signed: 4, anonymous: 4, total: null });
-    expect(shownCounts(toFeedbackCounts({ ...counts, released: false }))).toMatchObject({ signed: 4, anonymous: null, total: null });
-  });
-});
-
-describe('responseRate', () => {
-  const base = { closed: false, closes_on: null, eligible: 86, signed: 23, anonymous: null, total: null };
-  test('signed only while the total is hidden, all answers once it is shown', () => {
-    expect(responseRate(base)).toBe(27);
-    expect(responseRate({ ...base, signed: 31, anonymous: 12, total: 43 })).toBe(50);
+describe('signedRate', () => {
+  test('the members who signed, in whole percent of the eligible registrations', () => {
+    expect(signedRate({ eligible: 86, signed_members: 23 })).toBe(27);
+    expect(signedRate(toFeedbackCounts(counts))).toBe(33);
   });
   test('0 without eligible registrations, never above 100', () => {
-    expect(responseRate({ ...base, eligible: 0 })).toBe(0);
-    expect(responseRate({ ...base, eligible: 2, signed: 3 })).toBe(100);
+    expect(signedRate({ eligible: 0, signed_members: 0 })).toBe(0);
+    expect(signedRate({ eligible: 2, signed_members: 3 })).toBe(100);
   });
 });
 

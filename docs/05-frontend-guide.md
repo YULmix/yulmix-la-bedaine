@@ -119,18 +119,18 @@ the shell like Logistique's; the feedback inbox is its own section, `/admin/feed
 old `/admin/tools/…` URLs redirect. « Bilan » (`/admin/bilan`, #317/#346, `BilanSection`, `BilanDashboard`
 and `BilanAnswers` over `src/lib/eventFeedbackAdmin.ts`) is an account admin's only (Comité and
 Organisateur don't get it, and `event_feedback_counts()` and `event_feedback_answers()` refuse them,
-[ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): an edition picker, then the « Réponses reçues »
-dashboard (signed, anonymous or « moins de 3 », the response rate over the eligible registrations, signed
-only while the anonymous count is hidden, one bar; loaded with the page, on a change of edition and on
-« Réessayer » only: no polling, Realtime, animation or time). Before the close the page is narrow and
-shows only that and the close date; after it the answers take the full width
+[ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): an edition picker, then the same screen before
+and after the close (#356). The « Réponses reçues » dashboard, its tag saying « Ouvert jusqu'au {date} » or
+« Clos le {date} »: signed comments, private comments or « moins de 3 », the members who signed at least one
+comment over the eligible registrations (and their bar), and a tile per category with its signed and
+private counts; until the release every private number reads « moins de 3 » and nothing adds signed and private up.
+Then the comments take the full width
 ([ADR 0022's amendment](./adr/0022-admin-navigation-and-page-widths.md#amendment-346-bilan-is-dense-but-narrow-before-the-close)),
-one tinted card per category in a grid of up to three columns, named ones with their author, anonymous
-ones as « Anonyme » in the order the database returns them (never re-sorted, no id, date or attribute in
-the DOM; their React key is their index in that random order). Since #354 the database returns items,
-signed live and private once released: until the section's rework (#356) `shownCounts()` maps
-`event_feedback_counts()` to the dashboard's figures (members with a signed item, private items once
-released, no total). `BilanPage` edits the member's items as drafts (`draftsFrom()`, `itemsFromDrafts()` in
+one tinted card per category in a grid of up to three columns: signed ones with their author and no date,
+private ones as « Privé » once 3 members have written one, in the order the database returns them (never
+re-sorted, no id, date or attribute in the DOM; their React key is their index in that random order). Until
+then each card says when they show, with no count. Both RPCs load with the page, on a change of edition and
+on « Réessayer » only: no polling, Realtime, animation or time. `BilanPage` edits the member's items as drafts (`draftsFrom()`, `itemsFromDrafts()` in
 `src/lib/eventFeedback.ts`, #355) and always sends the whole set. « Participants » (#262; Inscrits' view from Organisateur up, Comité's own section, #291, both `ParticipantsSection`) is one row per attendee of the non-cancelled parties, read-only: enum
 values as pills, free text in a « Détails » pop-up, sort by name or group, a « Grouper » toggle. Its rows
 are `attendeeRows()` in `src/lib/dataExport.js`, the same source as the « Par participant » export, and
