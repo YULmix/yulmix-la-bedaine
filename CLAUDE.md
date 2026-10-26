@@ -127,7 +127,7 @@ Production runs on **Vercel** (`vercel.json`).
 
 If you run the agents-dev-fleet (a private, personal toolkit: supervisor, developer,
 code reviewer, scoper…), it is installed per developer under the gitignored `.claude/`; its
-project-specific configuration (validation, local database lock, tracker conventions, review
+project-specific configuration (validation, per-worktree local stacks, tracker conventions, review
 triggers, model selection, and the overrides of the generic agents) is shared, in
 [docs/agent-workflow.md](docs/agent-workflow.md). Read it before working as one of those agents. Its
 "Hard rules for implementers" bind every agent, including: never open a visible window on the

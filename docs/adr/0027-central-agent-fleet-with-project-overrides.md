@@ -3,7 +3,7 @@
 Since September 2026 the organiser has run the issue backlog with a fleet of Claude Code agents
 (a supervisor that dispatches, developers that implement and verify, a reviewer for risky changes, a
 scoper that files issues). Those agent definitions were written for this repo and lived in the
-gitignored `.claude/agents/`, with every project fact (commands, the local database lock, review
+gitignored `.claude/agents/`, with every project fact (commands, the local database lock (since removed, ADR 0028), review
 triggers, issue conventions) hard-coded in them. Meanwhile the same fleet was generalised into a
 private, personal toolkit, **agents-dev-fleet**, which carries no project knowledge and reads one
 project file instead. The two copies drifted: improvements made centrally (an automatic supervisor
@@ -42,7 +42,9 @@ flowchart TD
   - **One issue at a time**, a second only when truly independent (`FLEET_MAX_LANES=2`): every
     developer shares one local Supabase behind a lock, so more lanes only queue, and parallel
     branches here have collided on the e2e dependency chain, redefined SQL functions and migration
-    timestamps.
+    timestamps. *Amended by [ADR 0028](./0028-one-local-supabase-stack-per-worktree.md): each
+    worktree has its own stack and the lock is gone, so two lanes run whenever the items pass the
+    "Parallelism" rules.*
   - **Only the organiser merges**, since a merge applies migrations to production
     ([ADR 0014](./0014-ci-applies-migrations-on-merge.md)).
 - **Central behaviour adopted** in place of the old local one: the fleet does visual QA (the
