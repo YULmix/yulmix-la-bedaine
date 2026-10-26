@@ -264,6 +264,13 @@ stay as installed.
   branch Preview matches, and don't push a second one until the organiser says the first is tested.
   No migration in the PR → skip.
 - **Never merge**, even with `land.sh` available: merging applies migrations to production.
+- **Two lanes never share the local database.** Disjoint files are not enough: two developers that both
+  run database checks queue on the one local stack (#308 waited behind #310). Until each worktree has
+  its own stack (#312), a second lane only takes work that needs no local database.
+- **herdr agent names are lowercase**: `dev-gh-<n>`, `rev-gh-<n>` (herdr refuses `GH`); brief, report
+  and worktree names keep the `GH-<n>` key.
+- **Start `ci-watch.sh` and `fleet-watch.sh` directly** with `run_in_background`, never behind a
+  `sleep`: the Stop hook only sees a watcher once it runs, and blocks the turn otherwise.
 - **Keep optional cleanups out of urgent fixes.** Dropping a now-unused function, column or file is
   its own issue, filed after the fix ships: in the fix it turns a UI change into a reviewed migration
   with the full database verification (#308).
