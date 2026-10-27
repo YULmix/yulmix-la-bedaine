@@ -1102,6 +1102,8 @@
   "bilanSaveError": "Impossible d'enregistrer votre retour. Réessayez.",
   "bilanHiddenTitle": "Bilan non affiché en « Voir comme »",
   "bilanHiddenMessage": "Le bilan est personnel : en « Voir comme », on ne voit ni la réponse de ce membre, ni s'il a répondu.",
+  "bilanNoEventTitle": "Aucun retour à donner pour le moment",
+  "bilanNoEventMessage": "Il n'y a pas d'édition en cours sur laquelle donner votre retour.",
   "bilanNotEligibleTitle": "Retour réservé aux inscrits",
   "bilanNotEligibleMessage": "Seules les personnes inscrites à cette édition (ni annulées ni en liste d'attente) peuvent donner leur retour.",
   "bilanNotYetTitle": "Le retour n'est pas encore ouvert",

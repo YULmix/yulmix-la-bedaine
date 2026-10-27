@@ -1,4 +1,4 @@
-// The member's retour page (#316), at /bilan/:eventId, over the database's my_event_feedback() and
+// The member's retour page (#316), at /bilan (the active event; the URL stays /bilan, #370) and /bilan/:eventId (links already shared), over the database's my_event_feedback() and
 // submit_event_feedback() (#315, #354, ADR 0029): the pass links to it while the window is open;
 // per category a comment signed by default, a « Anonyme » switch, the other kind added beside it and
 // never a third (#355); submit, return, edit, remove one or all; the explanation of who reads what;
@@ -106,7 +106,8 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(passCard(page)).toContainText(fr.bilanPassTitle);
   await shoot(page, 'bilan-pass-card-member');
   await passCard(page).getByRole('link', { name: fr.bilanPassAction }).click();
-  await expect(page).toHaveURL(new RegExp(`/bilan/${seeded.eventId}$`));
+  // The link and the address never carry the event id (#370).
+  expect(new URL(page.url()).pathname).toBe('/bilan');
   await expect(body(page)).toHaveAttribute('data-state', 'open');
 
   // The eight categories, each one blank comment, signed, its « Anonyme » switch off.
@@ -158,14 +159,18 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(body(page).getByText(fr.bilanPrivateToggle, { exact: true }).first()).toBeVisible();
   await expect(body(page)).not.toContainText(/signé|privé/i);
 
-  // Annuler: disabled until something changes, then drops the edits.
+  // Annuler (#371): always enabled; with nothing changed it takes the member back to the pass,
+  // and with edits it drops them.
   const cancelButton = body(page).getByRole('button', { name: fr.bilanCancel, exact: true });
-  await expect(cancelButton).toBeDisabled();
-  await field(page, fr.bilanCategoryFood).fill('À jeter');
   await expect(cancelButton).toBeEnabled();
   await cancelButton.click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
+  await field(page, fr.bilanCategoryFood).fill('À jeter');
+  await cancelButton.click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
   await expect(field(page, fr.bilanCategoryFood)).toHaveValue('');
-  await expect(cancelButton).toBeDisabled();
 
   // Nothing written and nothing saved: nothing to send (blank text counts as nothing).
   await expect(submitButton(page)).toBeDisabled();
@@ -215,9 +220,11 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await field(page, fr.bilanCategoryFood, true).fill('Les repas étaient excellents');
   await expect(submitButton(page)).toBeDisabled();
 
-  // Annuler returns to the saved state, a removed comment included.
+  // Annuler leaves without saving: the saved state is still there afterwards.
   await field(page, fr.bilanCategoryFood, true).fill('Autre chose');
   await body(page).getByRole('button', { name: fr.bilanCancel, exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
   await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
 
   // Return: both kinds on the « Party + musique » card, the private one on « Nourriture ».
@@ -238,7 +245,8 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await field(page, fr.bilanCategorySchedule).fill('Un peu serré le samedi');
   await submitButton(page).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.goto(`/bilan/${seeded.eventId}`);
+  await page.goto('/bilan');
+  expect(new URL(page.url()).pathname).toBe('/bilan');
   await expect(card(page, fr.bilanCategoryPartyMusic).getByRole('textbox')).toHaveCount(1);
   await expect(field(page, fr.bilanCategoryPartyMusic, true)).toHaveValue('Le son était trop fort près du bar');
   await expect(field(page, fr.bilanCategorySchedule)).toHaveValue('Un peu serré le samedi');
@@ -254,7 +262,8 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(submitButton(page)).toBeEnabled();
   await submitButton(page).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.goto(`/bilan/${seeded.eventId}`);
+  await page.goto('/bilan');
+  expect(new URL(page.url()).pathname).toBe('/bilan');
   await expect(submitButton(page)).toBeDisabled();
   for (const [key] of CATEGORIES) {
     await expect(field(page, fr[key])).toHaveValue('');
@@ -363,6 +372,54 @@ test('member: closed without an answer, not open yet, not eligible: French messa
   await expect(body(page)).toContainText(fr.bilanNotYetMessage.split('{date}')[0]);
   await shoot(page, 'bilan-not-yet-member');
   await expect(body(page).getByRole('textbox')).toHaveCount(0);
+});
+
+test('/bilan is the active event and stays /bilan; /bilan/<id> still works for the active and a past event (#370)', async ({ page }) => {
+  seeded = await seedFeedbackEvent({ startDaysAgo: 10 });
+  const past = await seedFeedbackEvent({ startDaysAgo: 40, active: false });
+  try {
+    await loginAs(page, TEST_USERS.member);
+    await page.goto('/bilan');
+    await expect(body(page)).toHaveAttribute('data-state', 'open');
+    await field(page, fr.bilanCategoryFood).fill('Sur /bilan');
+    await submitButton(page).click();
+    await expect(page).toHaveURL(/\/$/);
+    // Saved on the active event, read back through the legacy URL and through /bilan.
+    const answers = await feedbackAnswersAs(TEST_USERS.admin, seeded.eventId);
+    expect(answers.signed.map(item => [item.category, item.text])).toEqual([['food', 'Sur /bilan']]);
+    await page.goto(`/bilan/${seeded.eventId}`);
+    await expect(field(page, fr.bilanCategoryFood)).toHaveValue('Sur /bilan');
+    await page.goto('/bilan');
+    await expect(field(page, fr.bilanCategoryFood)).toHaveValue('Sur /bilan');
+    expect(new URL(page.url()).pathname).toBe('/bilan');
+    // A past event by its id: the page as before.
+    await page.goto(`/bilan/${past.eventId}`);
+    await expect(body(page)).toHaveAttribute('data-state', /^(closed|closed_named)$/);
+    await expect(body(page)).not.toHaveAttribute('data-state', 'no_event');
+  } finally {
+    await teardownFeedbackEvent(past);
+  }
+});
+
+test('/bilan: not registered shows the not-eligible state; no event at all shows the empty state with a link home, no redirect (#370)', async ({ page }) => {
+  seeded = await seedFeedbackEvent();
+  await loginAs(page, TEST_USERS.admin);
+  await page.goto('/bilan');
+  await expect(body(page)).toHaveAttribute('data-state', 'not_eligible');
+  expect(new URL(page.url()).pathname).toBe('/bilan');
+
+  // The app's rule (src/lib/activeEvent.js) falls back to the newest event, so "no active event" is
+  // an events list with nothing in it: stub the read.
+  await page.route(/\/rest\/v1\/events\?/, route => route.request().method() === 'GET'
+    ? route.fulfill({ json: [] })
+    : route.continue());
+  await page.goto('/bilan');
+  await expect(body(page)).toHaveAttribute('data-state', 'no_event');
+  await expect(body(page)).toContainText(fr.bilanNoEventTitle);
+  expect(new URL(page.url()).pathname).toBe('/bilan');
+  await shoot(page, 'bilan-no-event-admin');
+  await body(page).getByRole('link', { name: fr.backToHome }).click();
+  await expect(page).toHaveURL(/\/$/);
 });
 
 test('admin: not registered, the page refuses; the database refuses a submit too', async ({ page }) => {

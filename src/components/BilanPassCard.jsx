@@ -38,7 +38,7 @@ const BilanPassCard = ({ eventId }) => {
             <p className="mt-1 text-muted">{fr.bilanPassText.replace('{date}', formatDate(feedback.closes_on))}</p>
           </div>
         </div>
-        <Link to={`/bilan/${eventId}`} className={`${LINK_CLASS} sm:shrink-0`}>
+        <Link to="/bilan" className={`${LINK_CLASS} sm:shrink-0`}>
           {fr.bilanPassAction}
           <ArrowRight aria-hidden="true" className="size-4.5" />
         </Link>

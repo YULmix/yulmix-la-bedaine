@@ -128,12 +128,13 @@ export const ChipGroup = ({ label, options, value, onChange, multiple = false, n
 };
 
 // `switchLabel` names the switch when the visible label alone wouldn't say what it does (a list
-// of them); `aside` goes between the text and the switch.
-export const Toggle = ({ checked, onChange, label, description, disabled, className, switchLabel, aside }) => {
+// of them); `aside` goes between the text and the switch; `inline` keeps the label right beside
+// the switch instead of spreading them across the row.
+export const Toggle = ({ checked, onChange, label, description, disabled, className, switchLabel, aside, inline }) => {
   const id = useId();
   return (
-    <div className={cx('flex items-center justify-between gap-4', className)}>
-      <div className="min-w-0 flex-1">
+    <div className={cx('flex items-center gap-4', inline ? 'flex-row-reverse justify-end gap-1' : 'justify-between', className)}>
+      <div className={cx('min-w-0', !inline && 'flex-1')}>
         <span id={`${id}-label`} className="block text-base text-ink">{label}</span>
         {description && <span className="block text-sm text-faint">{description}</span>}
       </div>
