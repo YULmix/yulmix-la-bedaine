@@ -159,14 +159,18 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await expect(body(page).getByText(fr.bilanPrivateToggle, { exact: true }).first()).toBeVisible();
   await expect(body(page)).not.toContainText(/signé|privé/i);
 
-  // Annuler: disabled until something changes, then drops the edits.
+  // Annuler (#371): always enabled; with nothing changed it takes the member back to the pass,
+  // and with edits it drops them.
   const cancelButton = body(page).getByRole('button', { name: fr.bilanCancel, exact: true });
-  await expect(cancelButton).toBeDisabled();
-  await field(page, fr.bilanCategoryFood).fill('À jeter');
   await expect(cancelButton).toBeEnabled();
   await cancelButton.click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
+  await field(page, fr.bilanCategoryFood).fill('À jeter');
+  await cancelButton.click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
   await expect(field(page, fr.bilanCategoryFood)).toHaveValue('');
-  await expect(cancelButton).toBeDisabled();
 
   // Nothing written and nothing saved: nothing to send (blank text counts as nothing).
   await expect(submitButton(page)).toBeDisabled();
@@ -216,9 +220,11 @@ test('member: from the pass, a signed and a private comment on one card, return,
   await field(page, fr.bilanCategoryFood, true).fill('Les repas étaient excellents');
   await expect(submitButton(page)).toBeDisabled();
 
-  // Annuler returns to the saved state, a removed comment included.
+  // Annuler leaves without saving: the saved state is still there afterwards.
   await field(page, fr.bilanCategoryFood, true).fill('Autre chose');
   await body(page).getByRole('button', { name: fr.bilanCancel, exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto('/bilan');
   await expect(field(page, fr.bilanCategoryFood, true)).toHaveValue('Les repas étaient excellents');
 
   // Return: both kinds on the « Party + musique » card, the private one on « Nourriture ».

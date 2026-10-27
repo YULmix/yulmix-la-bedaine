@@ -130,16 +130,15 @@ const Comment = ({ category, titleId, card, draft, focusRequest, onText, onPriva
         className="min-h-24"
         {...NO_AUTOFILL}
       />
-      {canSwitchKind(card) ? (
+      <p id={hintId} className="text-sm text-faint">{hint}</p>
+      {canSwitchKind(card) && (
         <Toggle
+          inline
           label={fr.bilanPrivateToggle}
-          description={<span id={hintId}>{hint}</span>}
           checked={draft.private}
           onChange={onPrivate}
           switchLabel={fr.bilanPrivateSwitchLabel.replace('{category}', label)}
         />
-      ) : (
-        <p id={hintId} className="text-sm text-faint">{hint}</p>
       )}
     </div>
   );
@@ -195,10 +194,8 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
 
   const change = update => setDrafts(update);
 
-  const cancel = () => {
-    setDrafts(draftsFrom(saved));
-    setError(null);
-  };
+  // Back to the pass, whatever was typed: nothing is sent (#371). Always available.
+  const cancel = () => navigate('/');
 
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
@@ -222,8 +219,6 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   };
 
   const unsaved = draftsUnsaved(drafts, saved);
-  // Any edit at all, even a blank one that would not be sent: what Annuler can undo.
-  const edited = JSON.stringify(drafts) !== JSON.stringify(draftsFrom(saved));
 
   return (
     <form onSubmit={handleSubmit} noValidate autoComplete="off" className="space-y-6">
@@ -240,7 +235,7 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-faint">{fr.bilanEditableUntil.replace('{date}', formatDate(feedback.closes_on))}</p>
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:shrink-0">
-          <Button variant="secondary" onClick={cancel} disabled={!edited || saving}>{fr.bilanCancel}</Button>
+          <Button variant="secondary" onClick={cancel} disabled={saving}>{fr.bilanCancel}</Button>
           <Button type="submit" loading={saving} disabled={!unsaved}>{fr.bilanSubmit}</Button>
         </div>
       </div>
