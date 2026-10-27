@@ -292,6 +292,15 @@ stay as installed.
 - **Read these overrides at takeover, before the first action.** sup-5 skipped them: it asked the organiser
   before merging decision-record PRs, skipped the Preview push of migration PRs, and briefed a read-only
   production query without his OK.
+- **Feedback on an open PR goes into that PR.** When the organiser reviews a preview and asks for
+  changes, the fix is a new round on the same branch (a comment on its issue, or a new issue the PR
+  also closes), never a second PR stacked on it: he asked for #367 to be folded back into #365.
+  To fold a stacked child anyway, close the child PR first: fast-forwarding the parent to the child
+  tip marks the child PR merged and fires its `Closes` lines.
+- **The organiser can suspend the merge grant** (2026-10-26: "don't merge by yourself now. let me
+  review staging build before"). The user log and the ledger's standing rules say so; while
+  suspended, after each push reset Preview from the branch (`gh workflow run preview-db-reset.yml
+  --ref <branch>`), then send him the preview link, and he merges.
 - Parallel lanes that may both need a new shared module (a `src/lib` helper): the briefs name which
   lane owns it; the other lane puts its code in its own module.
 
