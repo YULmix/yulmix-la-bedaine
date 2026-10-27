@@ -16,7 +16,7 @@ no component library.
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
 | `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
-| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Votre retour sur l'édition »: one card per category, each with a comment with the member's name by default, an « Anonyme » switch, « Enregistrer » and « Annuler » and the other kind addable beside it (never more than two, #355), with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close the signed comments read-only or one neutral message (no comment and private ones only look the same), and in « Voir comme » the same hidden state whatever the member answered |
+| `/bilan` and `/bilan/:eventId` | `BilanPage`: the member's retour on one event (#316): `/bilan` is the active event and the URL stays `/bilan` (#370, no event id in any link the app builds), `/bilan/:eventId` is kept for links already shared; no active event: a short empty state with a link home, « Votre retour sur l'édition »: one card per category, each with a comment with the member's name by default, an « Anonyme » switch, « Enregistrer » and « Annuler » and the other kind addable beside it (never more than two, #355), with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close the signed comments read-only or one neutral message (no comment and private ones only look the same), and in « Voir comme » the same hidden state whatever the member answered |
 | `/a-propos` | `AboutView` | None |
 | `/voir-comme/:memberId` | A « Voir comme » tab (#267): `VoirCommeTab` opens the member's read-only session, then moves to `/` and runs the whole app on it | The `impersonate` Edge Function (admins only, non-admin targets) and the database (read-only); see « Voir comme » below |
 
@@ -40,7 +40,7 @@ flowchart TD
   APP -->|route /event-details| DETAILS["EventDetailsView"]
   APP -->|route /carpool| CARPOOL["CarpoolView"]
   APP -->|route /admin| ADMIN["AdminView"]
-  APP -->|"route /bilan/:eventId"| BILAN["BilanPage<br/>post-mortem"]
+  APP -->|"routes /bilan, /bilan/:eventId"| BILAN["BilanPage<br/>post-mortem"]
 
   HOME --> SUMMARY["RegistrationSummary<br/>Pass + group, logistics, edit history"]
   HOME --> PAST["PastEditions"]

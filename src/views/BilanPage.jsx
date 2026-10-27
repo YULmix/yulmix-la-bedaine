@@ -26,7 +26,7 @@ import {
   submitEventFeedback
 } from '../lib/eventFeedback';
 
-// The member's retour on one event (#316), at /bilan/:eventId. The database (#315, #354, ADR 0029)
+// The member's retour on one event (#316), at /bilan (the active event; the URL stays /bilan) or /bilan/:eventId (links already shared). The database (#315, #354, ADR 0029)
 // decides the window, who may answer and what is shown; this page reads my_event_feedback() once
 // and shows its state (src/lib/eventFeedback.ts).
 //
@@ -248,8 +248,10 @@ const FeedbackForm = ({ eventId, feedback, onSaved }) => {
   );
 };
 
-const BilanPage = ({ events = [] }) => {
-  const { eventId } = useParams();
+const BilanPage = ({ events = [], activeEventId = null }) => {
+  // The URL's event when it names one, else the active event, resolved in memory (never put in the URL).
+  const { eventId: urlEventId } = useParams();
+  const eventId = urlEventId ?? activeEventId;
   const event = events.find(candidate => candidate?.id === eventId) || null;
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -259,6 +261,7 @@ const BilanPage = ({ events = [] }) => {
   // Keyed on the event only: an auth event on tab refocus re-renders the app, and must not
   // reload (and reset) the form.
   useEffect(() => {
+    if (!eventId) return undefined;
     let current = true;
     setLoading(true);
     setError(null);
@@ -270,6 +273,17 @@ const BilanPage = ({ events = [] }) => {
   }, [eventId, attempt]);
 
   const state = feedback ? feedbackPageState(feedback) : null;
+
+  // No active event on /bilan: nothing to ask about.
+  if (!eventId) {
+    return (
+      <Card className="p-5 sm:p-6">
+        <div data-testid="bilan-body" data-state="no_event">
+          <EmptyState icon={CalendarClock} title={fr.bilanNoEventTitle} action={backHome}>{fr.bilanNoEventMessage}</EmptyState>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">

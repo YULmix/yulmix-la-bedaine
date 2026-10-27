@@ -293,14 +293,17 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* The member's post-mortem of one event (#316); the database says what it may show. */}
-          <Route path="/bilan/:eventId" element={
-            <ProtectedRoute {...guard}>
-              <PageMain>
-                <BilanPage events={activeEvent ? [activeEvent, ...otherEvents] : otherEvents} />
-              </PageMain>
-            </ProtectedRoute>
-          } />
+          {/* The member's retour (#316). /bilan is the active event, and the URL stays /bilan (#370);
+              /bilan/:eventId is kept for links already shared. The database says what it may show. */}
+          {['/bilan', '/bilan/:eventId'].map(path => (
+            <Route key={path} path={path} element={
+              <ProtectedRoute {...guard}>
+                <PageMain>
+                  <BilanPage events={activeEvent ? [activeEvent, ...otherEvents] : otherEvents} activeEventId={activeEvent?.id} />
+                </PageMain>
+              </ProtectedRoute>
+            } />
+          ))}
 
           {/* /admin/* so AdminView stays mounted between its tabs and the event editor
               (/admin/events/:id), keeping unsaved drafts. */}
