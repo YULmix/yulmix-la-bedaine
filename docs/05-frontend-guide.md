@@ -16,7 +16,7 @@ no component library.
 | `/carpool` | `CarpoolView`: the carpool board (#180), « Covoiturage » | Authenticated; the database (`carpool_board()`) refuses anyone not admin or confirmed (not waitlisted) for the active event, and the page says so. The nav item shows only for them (`useCarpoolAccess`) |
 | `/admin/*` | `AdminView`: `/admin/<tab>[/<view>]`, tabs `overview\|users\|logistics\|budget\|events\|venues\|feedback`; `/admin/venues/<venue>[/<location>]`. A bare `/admin` and the older `?tab=` / `?view=` / `?venue=` URLs redirect there (`src/lib/adminRoutes.ts`, #196) | Authenticated **and** admin |
 | `/admin/events/:id` | `AdminView` → `EventEditor` (`?section=sleeping`), same admin shell | Authenticated **and** admin |
-| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Votre retour sur l'édition »: one card per category, each with a comment signed by default, a « Privé » switch and the other kind addable beside it (never more than two, #355), with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close the signed comments read-only or one neutral message (no comment and private ones only look the same), and in « Voir comme » the same hidden state whatever the member answered |
+| `/bilan/:eventId` | `BilanPage`: the member's post-mortem of one event (#316), « Votre retour sur l'édition »: one card per category, each with a comment with the member's name by default, an « Anonyme » switch, « Enregistrer » and « Annuler » and the other kind addable beside it (never more than two, #355), with who reads what and when. The pass links to it (`BilanPassCard`) while the window is open and the member may answer | Authenticated; the database (`my_event_feedback()`, `submit_event_feedback()`, [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)) decides what the page shows: not eligible, not yet open, the form, after the close the signed comments read-only or one neutral message (no comment and private ones only look the same), and in « Voir comme » the same hidden state whatever the member answered |
 | `/a-propos` | `AboutView` | None |
 | `/voir-comme/:memberId` | A « Voir comme » tab (#267): `VoirCommeTab` opens the member's read-only session, then moves to `/` and runs the whole app on it | The `impersonate` Edge Function (admins only, non-admin targets) and the database (read-only); see « Voir comme » below |
 
@@ -121,13 +121,13 @@ and `BilanAnswers` over `src/lib/eventFeedbackAdmin.ts`) is an account admin's o
 Organisateur don't get it, and `event_feedback_counts()` and `event_feedback_answers()` refuse them,
 [ADR 0029](./adr/0029-anonymous-post-mortem-answers.md)): an edition picker, then the same screen before
 and after the close (#356). The « Réponses reçues » dashboard, its tag saying « Ouvert jusqu'au {date} » or
-« Clos le {date} »: signed comments, private comments or « moins de 3 », the members who signed at least one
-comment over the eligible registrations (and their bar), and a tile per category with its signed and
-private counts; until the release every private number reads « moins de 3 » and nothing adds signed and private up.
+« Clos le {date} »: comments, anonymous comments or « moins de 3 », the members who wrote at least one named
+comment over the eligible registrations (and their bar), and a tile per category with its
+anonymous counts; until the release every anonymous number reads « moins de 3 » and nothing adds named and anonymous up.
 Then the comments take the full width
 ([ADR 0022's amendment](./adr/0022-admin-navigation-and-page-widths.md#amendment-346-bilan-is-dense-but-narrow-before-the-close)),
-one tinted card per category in a grid of up to three columns: signed ones with their author and no date,
-private ones as « Privé » once 3 members have written one, in the order the database returns them (never
+one tinted card per category in a grid of up to three columns: named ones with their author and no date,
+anonymous ones as « Anonyme » once 3 members have written one, in the order the database returns them (never
 re-sorted, no id, date or attribute in the DOM; their React key is their index in that random order). Until
 then each card says when they show, with no count. Both RPCs load with the page, on a change of edition and
 on « Réessayer » only: no polling, Realtime, animation or time. `BilanPage` edits the member's items as drafts (`draftsFrom()`, `itemsFromDrafts()` in

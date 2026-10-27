@@ -3,7 +3,10 @@ import fr from '../locales/fr.json';
 import { appError, dbErrorMessage } from './dbErrors';
 import type { ErrorLike } from './dbErrors';
 import type { Database } from './database.types';
-import { FEEDBACK_CATEGORIES } from './eventFeedback';
+import { FEEDBACK_CATEGORIES, getFeedbackWindow } from './eventFeedback';
+import type { FeedbackEvent } from './eventFeedback';
+import { eventDay } from './eventTime';
+import { formatDate } from './format';
 import type { FeedbackCategory } from './eventFeedback';
 
 // The admin « Bilan » section (#317): an event's post-mortem items, over the database's
@@ -162,3 +165,17 @@ export const fetchEventFeedbackCounts = async (client: Client, eventId: string):
 /** The members who signed at least one item, in whole percent of the eligible registrations (0 to 100). */
 export const signedRate = ({ eligible, signed_members: signed }: Pick<EventFeedbackCounts, 'eligible' | 'signed_members'>): number =>
   eligible > 0 ? Math.min(100, Math.max(0, Math.round((signed / eligible) * 100))) : 0;
+
+/**
+ * The dashboard tag's text (#364): « Clos le » once the database says closed; « S'ouvre le » before the
+ * event's first day (the member side's getFeedbackWindow, so one rule for both, ADR 0029); otherwise
+ * « Ouvert jusqu'au » the last day, or just « Ouvert » without a date.
+ */
+export const bilanStatus = (
+  { closed, closedAt, closesOn, event, now }: { closed: boolean; closedAt?: string | null; closesOn?: string | null; event?: FeedbackEvent | null; now?: Date }
+): string => {
+  if (closed) return fr.adminBilanCountsClosedOn.replace('{date}', formatDate(eventDay(closedAt ?? null) as unknown as string));
+  const win = getFeedbackWindow(event, now);
+  if (win.state === 'not_yet' && win.opensOn) return fr.adminBilanCountsOpensOn.replace('{date}', formatDate(win.opensOn as unknown as string));
+  return closesOn ? fr.adminBilanCountsOpenUntil.replace('{date}', formatDate(closesOn)) : fr.adminBilanCountsOpen;
+};

@@ -1,6 +1,6 @@
 import fr from '../locales/fr.json';
 import { FEEDBACK_CATEGORIES } from './eventFeedback';
-import { authorLabel, fetchEventFeedbackCounts, groupByCategory, signedRate, toFeedbackCounts } from './eventFeedbackAdmin';
+import { authorLabel, bilanStatus, fetchEventFeedbackCounts, groupByCategory, signedRate, toFeedbackCounts } from './eventFeedbackAdmin';
 
 // event_feedback_answers()'s shape (#354, ADR 0029): live, signed items with their author, private
 // texts once released.
@@ -137,5 +137,29 @@ describe('fetchEventFeedbackCounts', () => {
     const client = clientReturning({ data: null, error: { message: 'boom', code: 'XX000' } });
     await expect(fetchEventFeedbackCounts(client, 'event-1')).rejects.toThrow(fr.adminBilanLoadError);
     console.error.mockRestore();
+  });
+});
+
+// The dashboard tag (#364): the member side's window decides when the retours open.
+describe('bilanStatus', () => {
+  const event = { status: 'ACTIVE', event_start_date: '2026-11-06T00:00:00-05:00', duration_days: 2, feedback_days: 14 };
+  const tag = (now, extra = {}) => bilanStatus({ closed: false, closesOn: '2026-11-22', event, now: new Date(now), ...extra });
+
+  test('before the first day: when it opens, not « Ouvert jusqu\'au »', () => {
+    expect(tag('2026-11-05T12:00:00-05:00')).toBe(fr.adminBilanCountsOpensOn.replace('{date}', '6 novembre 2026'));
+  });
+
+  test('from the first day: open until the last day', () => {
+    expect(tag('2026-11-06T00:30:00-05:00')).toBe(fr.adminBilanCountsOpenUntil.replace('{date}', '22 novembre 2026'));
+    expect(tag('2026-11-20T12:00:00-05:00')).toBe(fr.adminBilanCountsOpenUntil.replace('{date}', '22 novembre 2026'));
+  });
+
+  test('closed: the day it closed, whatever the dates', () => {
+    expect(tag('2026-11-05T12:00:00-05:00', { closed: true, closedAt: '2026-11-22T17:00:00Z' }))
+      .toBe(fr.adminBilanCountsClosedOn.replace('{date}', '22 novembre 2026'));
+  });
+
+  test('no event or start date: open without a date', () => {
+    expect(bilanStatus({ closed: false, event: null })).toBe(fr.adminBilanCountsOpen);
   });
 });

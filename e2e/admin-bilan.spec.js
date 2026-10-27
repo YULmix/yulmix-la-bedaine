@@ -1,8 +1,8 @@
 // The admin « Bilan » section (#317, live since #356) over the database's event_feedback_counts()
 // (#345/#346) and event_feedback_answers() (#315, ADR 0029), on the per-item payloads of #354. The
 // same screen before and after the close: the « Réponses reçues » dashboard (signed comments,
-// private ones or « moins de 3 », the members who signed over the eligible registrations, the
-// counts per category), its tag saying whether the window is open or closed, then the comments by
+// private ones or « moins de 3 », the members who signed over the eligible registrations, no
+// breakdown per category, #363), its tag saying whether the window is open or closed, then the comments by
 // category. Signed ones show live, with their author and no date, on the next load; private ones
 // only once 3 different members wrote one, with nothing that leads back to their authors (not in
 // the page, not in a payload), in the database's order. No polling. An event never released stays
@@ -78,7 +78,6 @@ const isCountsCall = response => response.url().includes('/rpc/event_feedback_co
 const forEvent = (isCall, eventId) => response => isCall(response) && (response.request().postData() ?? '').includes(eventId);
 // A figure cell of the dashboard, by its label.
 const cell = (page, label) => dashboard(page).locator('div.bg-surface').filter({ has: page.getByText(label, { exact: true }) });
-const categoryTile = (page, c) => dashboard(page).locator(`li[data-category="${c}"]`);
 const categoryCards = page => adminMain(page).locator('section[aria-labelledby^="bilan-category-"]');
 
 // The dashboard's figures: signed comments, private ones (a number, or null for « moins de 3 »),
@@ -95,8 +94,8 @@ async function expectCounts(page, { signed, private: privateTotal, members, elig
     .toHaveAccessibleName(fr.adminBilanCountsBar.replace('{n}', members).replace('{eligible}', eligible).replace('{rate}', rate));
 }
 
-// Each category's counts match its card: the dashboard row's signed and private (or « moins de 3 »)
-// numbers, the card's count, and the comments it lists, against the payloads.
+// Each category's counts match its card: the payload's signed and private (or null) numbers, the
+// card's count, and the comments it lists, against the payloads. The dashboard shows no per-category tile (#363).
 async function expectCategoriesMatch(page, { counts, answers }) {
   for (const c of CATEGORIES) {
     const row = counts.categories.find(entry => entry.category === c);
@@ -104,12 +103,32 @@ async function expectCategoriesMatch(page, { counts, answers }) {
     const shown = answers.private.filter(item => item.category === c).length;
     expect(row.signed, `${c} signed`).toBe(signed);
     expect(row.private, `${c} private`).toBe(counts.released ? shown : null);
-    await expect(categoryTile(page, c)).toHaveText(categoryName(c) + fr.adminBilanCountsSignedShort + row.signed
-      + fr.adminBilanCountsPrivateShort + (counts.released ? row.private : fr.adminBilanCountsPrivateHidden));
     const card = category(page, categoryName(c));
     await expect(card.locator('h2 + span')).toHaveText(String(signed + shown));
     await expect(card.getByRole('listitem')).toHaveCount(signed + shown);
   }
+}
+
+// #363: no per-category tile in the dashboard, and the summary card is never wider than two columns
+// of the category-card grid below it (one column at 390). Checked at every screenshot width.
+async function expectSummaryWidth(page) {
+  await expect(dashboard(page).getByRole('listitem')).toHaveCount(0);
+  await expect(dashboard(page)).not.toContainText(/Par catégorie/);
+  for (const [width, height] of SIZES) {
+    await page.setViewportSize({ width, height });
+    const { card, first, second, columns } = await page.evaluate(() => {
+      const box = el => el.getBoundingClientRect();
+      const cards = [...document.querySelectorAll('section[aria-labelledby^="bilan-category-"]')].map(box);
+      const rowTop = cards[0].top;
+      const row = cards.filter(c => Math.abs(c.top - rowTop) < 2);
+      return { card: box(document.querySelector('[data-testid="bilan-dashboard"]')).width, first: row[0].width, second: row[1]?.width ?? null, columns: row.length };
+    });
+    const gap = 16;
+    const limit = columns === 1 ? first : first * Math.min(columns, 2) + gap * (Math.min(columns, 2) - 1);
+    expect(card, `summary card at ${width}px (${columns} columns, ${first}/${second})`).toBeLessThanOrEqual(limit + 1);
+    if (width === 390) expect(columns).toBe(1);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
 }
 
 // The French date the page shows for a 'YYYY-MM-DD' (src/lib/format.js formatDate).
@@ -232,7 +251,7 @@ test('admin, before and after the close: signed comments live, private ones from
     }
   }
   await expect(answersBox(page)).not.toContainText('Marc-André Roy');
-  // Sécurité: the two private comments, « Privé » and no name, in the payload's order.
+  // Sécurité: the two private comments, « Anonyme » and no name, in the payload's order.
   const safetyOrder = released.answers.private.filter(entry => entry.category === 'safety').map(entry => fr.adminBilanPrivate + entry.text);
   await expect(category(page, fr.bilanCategorySafety).getByRole('listitem')).toHaveText(safetyOrder);
   const item = category(page, fr.bilanCategorySafety).getByRole('listitem').first();
@@ -244,6 +263,7 @@ test('admin, before and after the close: signed comments live, private ones from
   await expectCounts(page, { signed: 5, private: 4, members: 4, eligible: 5 });
   await expectCategoriesMatch(page, released);
   await expectNoTime(page);
+  await expectSummaryWidth(page);
   // Every category, in order, their colours cycling as on the member's form (#352).
   await expect(adminMain(page).locator('h2[id^="bilan-category-"]')).toHaveText(CATEGORIES.map(categoryName));
   const tints = await adminMain(page).locator('h2[id^="bilan-category-"]')
@@ -264,6 +284,19 @@ test('admin, before and after the close: signed comments live, private ones from
   await expectCategoriesMatch(page, closed);
   await expectNoTime(page);
   await shoot(page, 'bilan-closed-admin');
+});
+
+test('admin, before the event\'s first day: the tag says when the retours open, not « Ouvert jusqu\'au »', async ({ page }) => {
+  // Starts in 3 days (Toronto), so the window opens then.
+  const event = await seedEvent({ startDaysAgo: -3 });
+  await loginAs(page, TEST_USERS.admin);
+  const payload = await openBilan(page, event.eventId);
+  const opensOn = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+  await expect(dashboard(page)).toContainText(fr.adminBilanCountsOpensOn.replace('{date}', frenchDate(opensOn)));
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsOpenUntil.split('{date}')[0]);
+  await expect(dashboard(page)).not.toContainText(fr.adminBilanCountsClosedOn.split('{date}')[0]);
+  expect(payload.counts.closed).toBe(false);
+  await shoot(page, 'bilan-not-yet-admin');
 });
 
 test('admin, closed without a release: the private comments stay hidden for good, « moins de 3 »', async ({ page }) => {
@@ -312,11 +345,10 @@ test('admin: no eligible registration, then loading and error states, in French'
   fail = false;
   await answersBox(page).getByRole('button', { name: fr.retry }).click();
   await expect(answersBox(page)).toHaveAttribute('data-state', 'open');
-  // Without a registration: the card and its tag, a sentence, no figure, bar or category tile.
+  // Without a registration: the card and its tag, a sentence, no figure or bar.
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsNoEligible);
   await expect(dashboard(page)).toContainText(fr.adminBilanCountsOpenUntil.split('{date}')[0]);
   await expect(dashboard(page).getByRole('img')).toHaveCount(0);
-  await expect(dashboard(page).getByRole('listitem')).toHaveCount(0);
   await expect(answersBox(page)).toContainText(fr.adminBilanEmptySignedTitle);
   await shoot(page, 'bilan-noeligible-admin');
 });

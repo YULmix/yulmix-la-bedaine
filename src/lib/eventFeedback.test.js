@@ -243,6 +243,7 @@ describe('getFeedbackWindow dates', () => {
   test.each(FROM_DATABASE)('start %s, %i day(s), +%i days closes like the database', (start, duration, days, opensOn, closesOn, closesAt) => {
     const window = getFeedbackWindow({ status: 'ACTIVE', event_start_date: start, duration_days: duration, feedback_days: days }, new Date('2020-01-01T00:00:00Z'));
     expect(dayText(window.closesOn)).toBe(closesOn);
+    expect(dayText(window.opensOn)).toBe(opensOn);
     expect(window.closesAt.getTime()).toBe(new Date(closesAt).getTime());
     // The first answerable day is the event's first day: the state flips to open at its midnight.
     const [y, m, d] = opensOn.split('-').map(Number);

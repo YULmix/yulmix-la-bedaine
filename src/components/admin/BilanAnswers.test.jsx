@@ -17,7 +17,7 @@ const released = {
 };
 const category = name => screen.getByRole('region', { name });
 
-test('released: the signed comment with its author, the private ones as « Privé », in the database\'s order', () => {
+test('released: the signed comment with its author, the private ones as « Anonyme », in the database\'s order', () => {
   render(<BilanAnswers result={released} />);
   const welcome = category(fr.bilanCategoryWelcome);
   const items = within(welcome).getAllByRole('listitem');
